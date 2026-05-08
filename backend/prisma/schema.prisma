@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum Rol {
+  ADMIN
+  OPERADOR
+  VIEWER
+}
+
+enum Tipo {
+  EGRESO
+  INGRESO
+}
+
+enum EstadoEvento {
+  ACTIVO
+  CERRADO
+  IMPORTADO
+}
+
+enum TipoCuenta {
+  EFECTIVO
+  BANCO
+}
+
+enum EstadoEcheq {
+  PENDIENTE
+  COBRADO
+  RECHAZADO
+}
+
+enum Moneda {
+  ARS
+  USD
+}
+
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+
+model Usuario {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  nombre        String
+  password_hash String
+  rol           Rol       @default(OPERADOR)
+  activo        Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+}
+
+// ─── CONFIGURACIÓN GLOBAL DE PESTAÑAS ────────────────────────────────────────
+// 5 egresos + 5 ingresos. `nombre` es editable por el admin desde la UI.
+// `codigo` es inmutable y lo usa el importer Excel para mapear hojas.
+
+model TabConfig {
+  id     Int    @id @default(autoincrement())
+  tipo   Tipo
+  numero Int    // 1–5 dentro de su tipo
+  nombre String // editable
+  codigo String @unique // inmutable: "EG-TC", "ING-TICKETS", etc.
+
+  @@unique([tipo, numero])
+}
+
+// ─── EVENTOS ─────────────────────────────────────────────────────────────────
+
+model Evento {
+  id           Int              @id @default(autoincrement())
+  nombre       String
+  fecha_inicio DateTime?
+  fecha_fin    DateTime?
+  estado       EstadoEvento     @default(ACTIVO)
+  // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
+  socios       Json             @default("[]")
+  moneda_base  Moneda           @default(ARS)
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+  deleted_at   DateTime?
+  created_by   Int?
+  updated_by   Int?
+
+  movimientos Movimiento[]
+  cuentas     CuentaBancaria[]
+  echeqs      Echeq[]
+}
+
+// ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
+// Saldo calculado por el backend — el usuario nunca lo escribe directamente.
+
+model Movimiento {
+  id                    Int             @id @default(autoincrement())
+  evento_id             Int
+  evento                Evento          @relation(fields: [evento_id], references: [id])
+  tipo                  Tipo
+  tab_numero            Int             // 1–5 dentro de su tipo
+  fecha                 DateTime?
+  concepto              String?         // opcional en ambos tipos
+  descripcion           String?
+  debe                  Decimal         @default(0) @db.Decimal(15, 2)
+  haber                 Decimal         @default(0) @db.Decimal(15, 2)
+  saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO
+  moneda                Moneda          @default(ARS)
+  orden                 Int             // define la secuencia para recálculo de saldo
+  impuesto_subcategoria String?         // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
+  // Vinculación opcional con un movimiento de caja
+  movimiento_caja_id    Int?
+  movimiento_caja       MovimientoCaja? @relation("MovimientoOrigenCaja", fields: [movimiento_caja_id], references: [id])
+  created_at            DateTime        @default(now())
+  updated_at            DateTime        @updatedAt
+  deleted_at            DateTime?
+  created_by            Int?
+  updated_by            Int?
+
+  echeq Echeq? @relation("EcheqMovimiento")
+}
+
+// ─── CAJA ─────────────────────────────────────────────────────────────────────
+
+model CuentaBancaria {
+  id            Int              @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento           @relation(fields: [evento_id], references: [id])
+  nombre        String           // "Efectivo", "Banco Galicia", etc.
+  tipo          TipoCuenta
+  moneda        Moneda           @default(ARS)
+  saldo_inicial Decimal          @default(0) @db.Decimal(15, 2)
+  created_at    DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+  deleted_at    DateTime?
+
+  movimientos MovimientoCaja[]
+}
+
+// Saldo corriente calculado por el backend — nunca editable directamente.
+
+model MovimientoCaja {
+  id              Int              @id @default(autoincrement())
+  cuenta_id       Int
+  cuenta          CuentaBancaria   @relation(fields: [cuenta_id], references: [id])
+  fecha           DateTime?
+  descripcion     String?
+  debe            Decimal          @default(0) @db.Decimal(15, 2)
+  haber           Decimal          @default(0) @db.Decimal(15, 2)
+  saldo_corriente Decimal          @default(0) @db.Decimal(15, 2) // CALCULADO
+  orden           Int
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+  updated_by      Int?
+
+  // Movimientos de egreso/ingreso que originaron este movimiento de caja
+  movimientos_origen Movimiento[] @relation("MovimientoOrigenCaja")
+  // Echeqs cobrados que liquidaron en este movimiento bancario
+  echeqs_cobrados    Echeq[]     @relation("EcheqCobradoCaja")
+}
+
+// ─── ECHEQS ───────────────────────────────────────────────────────────────────
+// Nace desde EG-EXTRA. Al cobrarse, genera un MovimientoCaja automáticamente.
+
+model Echeq {
+  id                   Int             @id @default(autoincrement())
+  evento_id            Int
+  evento               Evento          @relation(fields: [evento_id], references: [id])
+  // Movimiento en EG-EXTRA que originó este echeq (uno a uno)
+  movimiento_id        Int?            @unique
+  movimiento           Movimiento?     @relation("EcheqMovimiento", fields: [movimiento_id], references: [id])
+  // MovimientoCaja generado al cobrar este echeq
+  movimiento_caja_id   Int?
+  movimiento_caja      MovimientoCaja? @relation("EcheqCobradoCaja", fields: [movimiento_caja_id], references: [id])
+  numero               String
+  razon_social         String
+  detalle              String?
+  importe              Decimal         @db.Decimal(15, 2)
+  moneda               Moneda          @default(ARS)
+  estado               EstadoEcheq     @default(PENDIENTE)
+  fecha_emision        DateTime?
+  fecha_cobro_estimada DateTime?
+  fecha_cobro_real     DateTime?
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+  updated_by           Int?
+}

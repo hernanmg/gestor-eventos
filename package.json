@@ -1,0 +1,17 @@
+{
+  "name": "admin-portal",
+  "version": "1.0.0",
+  "description": "",
+  "main": "plan_desarrollo.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "docx": "^9.6.1",
+    "mammoth": "^1.12.0"
+  }
+}
