@@ -102,43 +102,83 @@ export interface CuentaBancaria {
   deleted_at:    string | null;
 }
 
-export interface MovimientoCaja {
-  id:              number;
-  cuenta_id:       number;
-  fecha:           string | null;
-  descripcion:     string | null;
-  debe:            number;
-  haber:           number;
-  saldo_corriente: number; // calculado por el backend
-  orden:           number;
-  created_at:      string;
-  updated_at:      string;
-  deleted_at:      string | null;
-  created_by:      number | null;
-  updated_by:      number | null;
+export interface MovimientoOrigen {
+  id:         number;
+  tipo:       Tipo;
+  tab_numero: number;
+  tab_codigo: string | null;
+  concepto:   string | null;
 }
 
-// ── Echeqs ────────────────────────────────────────────────────────────────────
-
-export interface Echeq {
+export interface MovimientoCaja {
   id:                   number;
-  evento_id:            number;
-  movimiento_id:        number | null;
-  movimiento_caja_id:   number | null;
-  numero:               string;
-  razon_social:         string;
-  detalle:              string | null;
-  importe:              number;
-  moneda:               Moneda;
-  estado:               EstadoEcheq;
-  fecha_emision:        string | null;
-  fecha_cobro_estimada: string | null;
-  fecha_cobro_real:     string | null;
+  cuenta_id:            number;
+  fecha:                string | null;
+  descripcion:          string | null;
+  debe:                 number;
+  haber:                number;
+  saldo_corriente:      number; // calculado por el backend
+  orden:                number;
+  transferencia_par_id: number | null;
+  movimiento_origen:    MovimientoOrigen | null;
   created_at:           string;
   updated_at:           string;
   deleted_at:           string | null;
   created_by:           number | null;
   updated_by:           number | null;
+}
+
+export interface PosicionCuenta {
+  cuenta_id:            number;
+  nombre:               string;
+  tipo:                 TipoCuenta;
+  saldo_inicial:        number;
+  saldo_actual:         number;
+  total_debe:           number;
+  total_haber:          number;
+  cantidad_movimientos: number;
+}
+
+export interface PosicionMoneda {
+  moneda:               Moneda;
+  cuentas:              PosicionCuenta[];
+  saldo_total:          number;
+  total_transferencias: number;
+}
+
+export interface PosicionConsolidada {
+  evento_id:  number;
+  por_moneda: PosicionMoneda[];
+}
+
+// ── Echeqs ────────────────────────────────────────────────────────────────────
+
+export interface Echeq {
+  id:                    number;
+  evento_id:             number;
+  movimiento_id:         number | null;
+  movimiento_caja_id:    number | null;
+  numero:                string;
+  razon_social:          string;
+  detalle:               string | null;
+  importe:               number;
+  moneda:                Moneda;
+  estado:                EstadoEcheq;
+  motivo_rechazo:        string | null;
+  fecha_emision:         string | null;
+  fecha_cobro_estimada:  string | null;
+  fecha_cobro_real:      string | null;
+  dias_para_vencimiento: number | null;
+  created_at:            string;
+  updated_at:            string;
+  deleted_at:            string | null;
+  created_by:            number | null;
+  updated_by:            number | null;
+}
+
+export interface AlertasEcheqs {
+  vencidos:      Echeq[];
+  vencen_pronto: Echeq[];
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

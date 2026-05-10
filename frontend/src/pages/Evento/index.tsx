@@ -4,22 +4,25 @@ import { ArrowLeft } from 'lucide-react';
 import { useEvento } from '@/hooks/useEvento';
 import { useTabConfig } from '@/hooks/useTabConfig';
 import { useAuth } from '@/hooks/useAuth';
+import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
 import { EstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import MovimientoTable from '@/components/domain/MovimientoTable';
 import EcheqFormDialog from '@/components/domain/EcheqFormDialog';
 import CajaPage from './Caja';
 import ConciliatoriaPage from './Conciliatoria';
+import EcheqsPage from './Echeqs';
 import { cn } from '@/lib/utils';
 import type { Tipo } from '@/types';
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA';
+type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS';
 
 const MAIN_TABS: { key: MainTab; label: string }[] = [
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
   { key: 'CONCILIATORIA', label: 'Conciliatoria' },
+  { key: 'ECHEQS',        label: 'Echeqs'        },
 ];
 
 export default function EventoPage() {
@@ -30,6 +33,10 @@ export default function EventoPage() {
 
   const { data: evento,   isLoading: loadingEvento } = useEvento(eventoId);
   const { data: tabs = [], isLoading: loadingTabs }  = useTabConfig();
+
+  const { data: echeqs = [] }    = useEcheqs(eventoId);
+  const { data: alertas }        = useAlertasEcheqs(eventoId);
+  const alertasCount = (alertas?.vencidos.length ?? 0) + (alertas?.vencen_pronto.length ?? 0);
 
   const [mainTab, setMainTab] = useState<MainTab>('EGRESO');
   const [subTab,  setSubTab]  = useState(1);
@@ -89,13 +96,18 @@ export default function EventoPage() {
             key={key}
             onClick={() => handleMainTab(key)}
             className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'relative px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
               mainTab === key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {label}
+            {key === 'ECHEQS' && alertasCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full bg-red-500 text-white">
+                {alertasCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -128,7 +140,9 @@ export default function EventoPage() {
             tipo={mainTab as Tipo}
             tabNumero={subTab}
             monedaBase={evento.moneda_base}
-            onCreateEcheq={canEdit ? setEcheqMovimientoId : undefined}
+            onCreateEcheq={canEdit && mainTab === 'EGRESO' ? setEcheqMovimientoId : undefined}
+            echeqs={mainTab === 'EGRESO' ? echeqs : undefined}
+            onNavigateToEcheqs={() => handleMainTab('ECHEQS')}
           />
         )}
 
@@ -142,6 +156,10 @@ export default function EventoPage() {
 
         {mainTab === 'CONCILIATORIA' && (
           <ConciliatoriaPage eventoId={eventoId} />
+        )}
+
+        {mainTab === 'ECHEQS' && (
+          <EcheqsPage eventoId={eventoId} canEdit={canEdit} />
         )}
       </div>
 

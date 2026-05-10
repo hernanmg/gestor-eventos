@@ -150,12 +150,13 @@ model MovimientoCaja {
   debe            Decimal          @default(0) @db.Decimal(15, 2)
   haber           Decimal          @default(0) @db.Decimal(15, 2)
   saldo_corriente Decimal          @default(0) @db.Decimal(15, 2) // CALCULADO
-  orden           Int
-  created_at      DateTime         @default(now())
-  updated_at      DateTime         @updatedAt
-  deleted_at      DateTime?
-  created_by      Int?
-  updated_by      Int?
+  orden                Int
+  transferencia_par_id Int?
+  created_at           DateTime         @default(now())
+  updated_at           DateTime         @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+  updated_by           Int?
 
   // Movimientos de egreso/ingreso que originaron este movimiento de caja
   movimientos_origen Movimiento[] @relation("MovimientoOrigenCaja")
@@ -182,6 +183,7 @@ model Echeq {
   importe              Decimal         @db.Decimal(15, 2)
   moneda               Moneda          @default(ARS)
   estado               EstadoEcheq     @default(PENDIENTE)
+  motivo_rechazo       String?
   fecha_emision        DateTime?
   fecha_cobro_estimada DateTime?
   fecha_cobro_real     DateTime?

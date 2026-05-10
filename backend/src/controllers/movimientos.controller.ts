@@ -58,6 +58,22 @@ const updateSchema = z.object({
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 
+export async function listSinConciliar(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const [movs, tabs] = await Promise.all([
+    prisma.movimiento.findMany({
+      where:   { evento_id: eventoId, movimiento_caja_id: null, deleted_at: null },
+      orderBy: [{ tipo: 'asc' }, { tab_numero: 'asc' }, { orden: 'asc' }],
+    }),
+    prisma.tabConfig.findMany(),
+  ]);
+  const tabMap = new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo]));
+  res.json(movs.map(m => ({
+    ...mapMov(m),
+    tab_codigo: tabMap.get(`${m.tipo}-${m.tab_numero}`) ?? null,
+  })));
+}
+
 export async function list(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
   const tipo     = req.query.tipo as string | undefined;

@@ -5,6 +5,7 @@ import LoginPage            from '@/pages/Login';
 import EventosPage          from '@/pages/Eventos';
 import EventoPage           from '@/pages/Evento';
 import ConfiguracionPage    from '@/pages/Configuracion';
+import ImporterPage         from '@/pages/Importer';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/eventos"       element={<EventosPage />} />
             <Route path="/eventos/:id"   element={<EventoPage />} />
             <Route path="/configuracion" element={<ConfiguracionPage />} />
+            <Route path="/importer"      element={<ImporterPage />} />
             <Route path="*" element={<Navigate to="/eventos" replace />} />
           </Route>
         </Routes>

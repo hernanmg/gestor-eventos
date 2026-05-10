@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { Moneda, EstadoEcheq } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
@@ -8,6 +9,17 @@ import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
+}
+
+function calcDiasVencimiento(e: any): number | null {
+  if (e.estado !== EstadoEcheq.PENDIENTE || !e.fecha_cobro_estimada) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((new Date(e.fecha_cobro_estimada).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function mapEcheqFull(e: any) {
+  return { ...mapEcheq(e), dias_para_vencimiento: calcDiasVencimiento(e) };
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -38,15 +50,41 @@ const cobrarSchema = z.object({
   fecha_cobro_real: z.string().nullable().optional(),
 });
 
+const rechazarSchema = z.object({
+  motivo_rechazo: z.string().nullable().optional(),
+});
+
 // ── Controllers ───────────────────────────────────────────────────────────────
 
 export async function listEcheqs(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
-  const echeqs   = await prisma.echeq.findMany({
-    where:   { evento_id: eventoId, deleted_at: null },
+  const { estado, moneda, desde, hasta, razon_social, vencen_en_dias } = req.query;
+
+  const where: Prisma.EcheqWhereInput = { evento_id: eventoId, deleted_at: null };
+
+  if (estado)       where.estado = estado as EstadoEcheq;
+  if (moneda)       where.moneda = moneda as Moneda;
+  if (razon_social) where.razon_social = { contains: String(razon_social), mode: 'insensitive' };
+
+  const fechaFilter: Prisma.DateTimeNullableFilter<'Echeq'> = {};
+  if (desde) fechaFilter.gte = new Date(String(desde));
+  if (hasta) fechaFilter.lte = new Date(String(hasta));
+
+  if (vencen_en_dias !== undefined) {
+    const limit = new Date();
+    limit.setDate(limit.getDate() + Number(vencen_en_dias));
+    where.estado = EstadoEcheq.PENDIENTE;
+    fechaFilter.lte = limit;
+  }
+
+  if (Object.keys(fechaFilter).length > 0) where.fecha_cobro_estimada = fechaFilter;
+
+  const echeqs = await prisma.echeq.findMany({
+    where,
     orderBy: { created_at: 'desc' },
   });
-  res.json(echeqs.map(mapEcheq));
+
+  res.json(echeqs.map(mapEcheqFull));
 }
 
 export async function createEcheq(req: Request, res: Response) {
@@ -93,7 +131,7 @@ export async function createEcheq(req: Request, res: Response) {
       updated_by:           req.user!.id,
     },
   });
-  res.status(201).json(mapEcheq(echeq));
+  res.status(201).json(mapEcheqFull(echeq));
 }
 
 export async function updateEcheq(req: Request, res: Response) {
@@ -127,7 +165,7 @@ export async function updateEcheq(req: Request, res: Response) {
       updated_by: req.user!.id,
     },
   });
-  res.json(mapEcheq(updated));
+  res.json(mapEcheqFull(updated));
 }
 
 export async function deleteEcheq(req: Request, res: Response) {
@@ -175,8 +213,8 @@ export async function cobrarEcheq(req: Request, res: Response) {
         cuenta_id:   parsed.data.cuenta_id,
         fecha:       parsed.data.fecha_cobro_real ? new Date(parsed.data.fecha_cobro_real) : new Date(),
         descripcion: `Cobro echeq ${echeq.numero} — ${echeq.razon_social}`,
-        debe:        0,
-        haber:       Number(echeq.importe),
+        debe:        Number(echeq.importe),
+        haber:       0,
         orden:       (last?.orden ?? 0) + 1,
         created_by:  req.user!.id,
         updated_by:  req.user!.id,
@@ -197,5 +235,63 @@ export async function cobrarEcheq(req: Request, res: Response) {
   });
 
   const updated = await prisma.echeq.findUnique({ where: { id } });
-  res.json(mapEcheq(updated));
+  res.json(mapEcheqFull(updated));
+}
+
+export async function rechazarEcheq(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = rechazarSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos' }); return;
+  }
+
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
+  if (echeq.estado !== EstadoEcheq.PENDIENTE) {
+    res.status(400).json({ error: 'Solo se pueden rechazar echeqs en estado PENDIENTE' }); return;
+  }
+
+  const updated = await prisma.echeq.update({
+    where: { id },
+    data: {
+      estado:         EstadoEcheq.RECHAZADO,
+      motivo_rechazo: parsed.data.motivo_rechazo ?? null,
+      updated_by:     req.user!.id,
+    },
+  });
+  res.json(mapEcheqFull(updated));
+}
+
+export async function alertasEcheqs(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const today    = new Date();
+  today.setHours(0, 0, 0, 0);
+  const en7Dias  = new Date(today);
+  en7Dias.setDate(en7Dias.getDate() + 7);
+
+  const [vencidos, vencen_pronto] = await Promise.all([
+    prisma.echeq.findMany({
+      where: {
+        evento_id:            eventoId,
+        deleted_at:           null,
+        estado:               EstadoEcheq.PENDIENTE,
+        fecha_cobro_estimada: { lt: today },
+      },
+      orderBy: { fecha_cobro_estimada: 'asc' },
+    }),
+    prisma.echeq.findMany({
+      where: {
+        evento_id:            eventoId,
+        deleted_at:           null,
+        estado:               EstadoEcheq.PENDIENTE,
+        fecha_cobro_estimada: { gte: today, lte: en7Dias },
+      },
+      orderBy: { fecha_cobro_estimada: 'asc' },
+    }),
+  ]);
+
+  res.json({
+    vencidos:      vencidos.map(mapEcheqFull),
+    vencen_pronto: vencen_pronto.map(mapEcheqFull),
+  });
 }

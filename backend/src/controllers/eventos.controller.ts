@@ -180,7 +180,10 @@ export async function conciliatoria(req: Request, res: Response) {
         const rows       = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
         const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
         const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
-        const saldo       = parseFloat((total_debe - total_haber).toFixed(2));
+        // For ingresos: net income = haber - debe. For egresos: net expense = debe - haber.
+        const saldo = tipo === 'INGRESO'
+          ? parseFloat((total_haber - total_debe).toFixed(2))
+          : parseFloat((total_debe  - total_haber).toFixed(2));
         return { tab_numero: t.numero, nombre: t.nombre, total_debe, total_haber, saldo };
       });
 

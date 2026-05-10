@@ -1,4 +1,4 @@
-import { Menu, X, LogOut, Calendar, Settings } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
@@ -65,6 +65,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <Calendar size={18} className="shrink-0" />
             {isOpen && <span>Eventos</span>}
           </NavLink>
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/importer" title={!isOpen ? 'Importar Excel' : undefined} className={navItem}>
+              <FileUp size={18} className="shrink-0" />
+              {isOpen && <span>Importar Excel</span>}
+            </NavLink>
+          )}
 
           {user.rol === 'ADMIN' && (
             <NavLink to="/configuracion" title={!isOpen ? 'Configuración' : undefined} className={navItem}>

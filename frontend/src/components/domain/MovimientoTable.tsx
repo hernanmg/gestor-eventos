@@ -17,10 +17,11 @@ import {
 } from '@/hooks/useMovimientos';
 import { useCuentas } from '@/hooks/useCuentas';
 import { SaldoCell } from './SaldoCell';
+import { EcheqEstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import type { Movimiento, Tipo, Moneda } from '@/types';
+import type { Echeq, Movimiento, Tipo, Moneda } from '@/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -122,18 +123,20 @@ function EditableCell({
 // ── SortableRow ───────────────────────────────────────────────────────────────
 
 function SortableRow({
-  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onCreateEcheq,
+  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onCreateEcheq, echeqForRow, onNavigateToEcheqs,
 }: {
-  mov:             Movimiento;
-  isEgImp:         boolean;
-  isEgExtra:       boolean;
-  editCell:        EditCell | null;
-  onCellClick:     (id: number, field: EditableField, value: string) => void;
-  onCellChange:    (v: string) => void;
-  onCellSave:      () => void;
-  onKeyDown:       (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onDelete:        (id: number) => void;
-  onCreateEcheq?:  (movimientoId: number) => void;
+  mov:                 Movimiento;
+  isEgImp:             boolean;
+  isEgExtra:           boolean;
+  editCell:            EditCell | null;
+  onCellClick:         (id: number, field: EditableField, value: string) => void;
+  onCellChange:        (v: string) => void;
+  onCellSave:          () => void;
+  onKeyDown:           (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onDelete:            (id: number) => void;
+  onCreateEcheq?:      (movimientoId: number) => void;
+  echeqForRow?:        Echeq;
+  onNavigateToEcheqs?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: mov.id });
@@ -261,17 +264,28 @@ function SortableRow({
       </td>
 
       {/* Actions */}
-      <td className="px-1 w-16">
+      <td className="px-1 w-20">
         <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition">
-          {isEgExtra && onCreateEcheq && (
-            <button
-              tabIndex={-1}
-              onClick={() => onCreateEcheq(mov.id)}
-              title="Crear echeq"
-              className="p-1 rounded text-primary hover:bg-primary/10 transition"
-            >
-              <FileCheck size={14} />
-            </button>
+          {isEgExtra && (
+            echeqForRow ? (
+              <button
+                tabIndex={-1}
+                onClick={onNavigateToEcheqs}
+                title="Ver echeq"
+                className="p-0.5 rounded transition"
+              >
+                <EcheqEstadoBadge estado={echeqForRow.estado} />
+              </button>
+            ) : onCreateEcheq ? (
+              <button
+                tabIndex={-1}
+                onClick={() => onCreateEcheq(mov.id)}
+                title="Crear echeq"
+                className="p-1 rounded text-primary hover:bg-primary/10 transition"
+              >
+                <FileCheck size={14} />
+              </button>
+            ) : null
           )}
           <button
             tabIndex={-1}
@@ -290,14 +304,16 @@ function SortableRow({
 // ── MovimientoTable ───────────────────────────────────────────────────────────
 
 interface Props {
-  eventoId:       number;
-  tipo:           Tipo;
-  tabNumero:      number;
-  monedaBase?:    Moneda;
-  onCreateEcheq?: (movimientoId: number) => void;
+  eventoId:            number;
+  tipo:                Tipo;
+  tabNumero:           number;
+  monedaBase?:         Moneda;
+  onCreateEcheq?:      (movimientoId: number) => void;
+  echeqs?:             Echeq[];
+  onNavigateToEcheqs?: () => void;
 }
 
-export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase = 'ARS', onCreateEcheq }: Props) {
+export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase = 'ARS', onCreateEcheq, echeqs, onNavigateToEcheqs }: Props) {
   const isEgImp   = tipo === 'EGRESO' && tabNumero === 4;
   const isEgExtra = tipo === 'EGRESO' && tabNumero === 3;
 
@@ -437,6 +453,8 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                   onKeyDown={handleKeyDown}
                   onDelete={handleDelete}
                   onCreateEcheq={onCreateEcheq}
+                  echeqForRow={echeqs?.find(e => e.movimiento_id === mov.id)}
+                  onNavigateToEcheqs={onNavigateToEcheqs}
                 />
               ))}
 

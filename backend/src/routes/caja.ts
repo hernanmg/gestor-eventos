@@ -6,6 +6,7 @@ import {
   updateCuenta, deleteCuenta,
   listMovimientosCaja, createMovimientoCaja,
   updateMovimientoCaja, deleteMovimientoCaja,
+  conciliar,
 } from '../controllers/caja.controller';
 
 export const cuentasRouter = Router();
@@ -17,5 +18,6 @@ cuentasRouter.post('/:id/movimientos', requireRole('OPERADOR'), asyncHandler(cre
 
 export const movCajaRouter = Router();
 movCajaRouter.use(auth);
-movCajaRouter.put('/:id',    requireRole('OPERADOR'), asyncHandler(updateMovimientoCaja));
-movCajaRouter.delete('/:id', requireRole('OPERADOR'), asyncHandler(deleteMovimientoCaja));
+movCajaRouter.put('/:id',      requireRole('OPERADOR'), asyncHandler(updateMovimientoCaja));
+movCajaRouter.delete('/:id',   requireRole('OPERADOR'), asyncHandler(deleteMovimientoCaja));
+movCajaRouter.post('/:id/conciliar', requireRole('OPERADOR'), asyncHandler(conciliar));

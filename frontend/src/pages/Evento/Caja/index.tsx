@@ -1,102 +1,19 @@
-import { useState } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
 import {
   useCuentas, useCreateCuenta, useUpdateCuenta, useDeleteCuenta,
+  useTransferencia, usePosicionConsolidada,
 } from '@/hooks/useCaja';
-import { useEcheqs, useDeleteEcheq, useCobrarEcheq } from '@/hooks/useEcheqs';
+import { useEcheqs, useDeleteEcheq } from '@/hooks/useEcheqs';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import MovimientoCajaTable from '@/components/domain/MovimientoCajaTable';
+import CobrarEcheqDialog from '@/components/domain/CobrarEcheqDialog';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import type { CuentaBancaria, Echeq, Moneda, TipoCuenta } from '@/types';
-
-// ── Cobrar Echeq Dialog ───────────────────────────────────────────────────────
-
-function CobrarEcheqDialog({
-  echeq, cuentas, open, onClose,
-}: {
-  echeq:   Echeq;
-  cuentas: CuentaBancaria[];
-  open:    boolean;
-  onClose: () => void;
-}) {
-  const [cuentaId,      setCuentaId]      = useState('');
-  const [fechaCobro,    setFechaCobro]    = useState('');
-  const [error,         setError]         = useState<string | null>(null);
-  const cobrar = useCobrarEcheq(echeq.evento_id);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!cuentaId) { setError('Seleccioná una cuenta bancaria'); return; }
-    try {
-      await cobrar.mutateAsync({
-        id:              echeq.id,
-        cuenta_id:       Number(cuentaId),
-        fecha_cobro_real: fechaCobro || null,
-      });
-      setCuentaId(''); setFechaCobro('');
-      onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Error al cobrar');
-    }
-  };
-
-  const input = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
-  const label = 'block text-xs font-medium text-muted-foreground mb-0.5';
-
-  return (
-    <Dialog open={open} onOpenChange={open => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Cobrar echeq</DialogTitle>
-        </DialogHeader>
-        <div className="text-sm text-muted-foreground mb-3">
-          <span className="font-medium text-foreground">{echeq.numero}</span> — {echeq.razon_social}
-          <span className="ml-2 font-medium text-foreground">
-            {formatCurrency(echeq.importe, echeq.moneda)}
-          </span>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className={label}>Cuenta bancaria *</label>
-            <select
-              value={cuentaId}
-              onChange={e => setCuentaId(e.target.value)}
-              className={input}
-            >
-              <option value="">— Seleccionar cuenta</option>
-              {cuentas.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre} ({c.moneda})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={label}>Fecha de cobro</label>
-            <input
-              type="date"
-              value={fechaCobro}
-              onChange={e => setFechaCobro(e.target.value)}
-              className={input}
-            />
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" size="sm" disabled={cobrar.isPending}>
-              {cobrar.isPending ? 'Procesando…' : 'Cobrar'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+import type { CuentaBancaria, Echeq, Moneda, TipoCuenta, PosicionConsolidada } from '@/types';
 
 // ── Add Cuenta Dialog ─────────────────────────────────────────────────────────
 
@@ -198,6 +115,209 @@ function AddCuentaDialog({
   );
 }
 
+// ── Transferencia Dialog ──────────────────────────────────────────────────────
+
+function TransferenciaDialog({
+  eventoId, cuentas, posicion, open, onClose,
+}: {
+  eventoId: number;
+  cuentas:  CuentaBancaria[];
+  posicion: PosicionConsolidada | undefined;
+  open:     boolean;
+  onClose:  () => void;
+}) {
+  const [moneda,      setMoneda]      = useState<Moneda>('ARS');
+  const [origenId,    setOrigenId]    = useState('');
+  const [destinoId,   setDestinoId]   = useState('');
+  const [importe,     setImporte]     = useState('');
+  const [fecha,       setFecha]       = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [error,       setError]       = useState<string | null>(null);
+
+  const transferencia = useTransferencia(eventoId);
+
+  const saldoMap = useMemo(() => {
+    const map = new Map<number, number>();
+    posicion?.por_moneda.forEach(pm =>
+      pm.cuentas.forEach(c => map.set(c.cuenta_id, c.saldo_actual)),
+    );
+    return map;
+  }, [posicion]);
+
+  const cuentasMoneda  = cuentas.filter(c => c.moneda === moneda);
+  const cuentasDestino = cuentasMoneda.filter(c => String(c.id) !== origenId);
+
+  const handleMonedaChange = (m: Moneda) => {
+    setMoneda(m);
+    setOrigenId('');
+    setDestinoId('');
+  };
+
+  const handleOrigenChange = (id: string) => {
+    setOrigenId(id);
+    if (id === destinoId) setDestinoId('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const imp = parseFloat(importe);
+    if (isNaN(imp) || imp <= 0) { setError('El importe debe ser mayor a 0'); return; }
+    if (!origenId || !destinoId) { setError('Seleccioná cuenta origen y destino'); return; }
+    try {
+      await transferencia.mutateAsync({
+        cuenta_origen_id:  Number(origenId),
+        cuenta_destino_id: Number(destinoId),
+        importe:           imp,
+        moneda,
+        fecha:       fecha || null,
+        descripcion: descripcion.trim() || null,
+      });
+      setImporte(''); setFecha(''); setDescripcion(''); setOrigenId(''); setDestinoId('');
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Error al transferir');
+    }
+  };
+
+  const input = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+  const label = 'block text-xs font-medium text-muted-foreground mb-0.5';
+
+  const cuentaLabel = (c: CuentaBancaria) => {
+    const saldo = saldoMap.get(c.id);
+    return saldo !== undefined ? `${c.nombre} (${formatCurrency(saldo, c.moneda)})` : c.nombre;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nueva transferencia</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div>
+            <label className={label}>Moneda</label>
+            <select value={moneda} onChange={e => handleMonedaChange(e.target.value as Moneda)} className={input}>
+              <option value="ARS">ARS</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <div>
+            <label className={label}>Cuenta origen *</label>
+            <select value={origenId} onChange={e => handleOrigenChange(e.target.value)} className={input}>
+              <option value="">-- seleccionar --</option>
+              {cuentasMoneda.map(c => (
+                <option key={c.id} value={c.id}>{cuentaLabel(c)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label}>Cuenta destino *</label>
+            <select
+              value={destinoId}
+              onChange={e => setDestinoId(e.target.value)}
+              className={input}
+              disabled={!origenId}
+            >
+              <option value="">-- seleccionar --</option>
+              {cuentasDestino.map(c => (
+                <option key={c.id} value={c.id}>{cuentaLabel(c)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label}>Importe *</label>
+            <input
+              type="number" min="0.01" step="0.01"
+              value={importe}
+              onChange={e => setImporte(e.target.value)}
+              className={cn(input, 'text-right')}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Fecha</label>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className={input} />
+            </div>
+            <div>
+              <label className={label}>Descripción</label>
+              <input
+                value={descripcion}
+                onChange={e => setDescripcion(e.target.value)}
+                className={input}
+                placeholder="Opcional"
+              />
+            </div>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={transferencia.isPending}>
+              {transferencia.isPending ? 'Transfiriendo…' : 'Transferir'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Posición Consolidada Section ──────────────────────────────────────────────
+
+function PosicionConsolidadaSection({ posicion }: { posicion: PosicionConsolidada | undefined }) {
+  const [expanded, setExpanded] = useState(true);
+
+  if (!posicion || posicion.por_moneda.length === 0) return null;
+
+  const thClass = 'px-3 py-1.5 text-left text-xs font-medium text-muted-foreground';
+
+  return (
+    <div className="mb-4 rounded-lg border border-border overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:bg-gray-100 transition"
+      >
+        <span>Posición consolidada</span>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {expanded && (
+        <div className={cn('p-3', posicion.por_moneda.length > 1 && 'sm:grid sm:grid-cols-2 sm:gap-3 space-y-3 sm:space-y-0')}>
+          {posicion.por_moneda.map(pm => (
+            <div key={pm.moneda} className="rounded-lg border border-border overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-border">
+                <span className="text-xs font-semibold text-muted-foreground">{pm.moneda}</span>
+                <span className="text-sm font-bold tabular-nums">{formatCurrency(pm.saldo_total, pm.moneda)}</span>
+              </div>
+              {/* Desktop: full breakdown */}
+              <table className="w-full hidden sm:table">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className={thClass}>Cuenta</th>
+                    <th className={cn(thClass, 'text-right')}>Saldo</th>
+                    <th className={cn(thClass, 'text-right')}>Debe</th>
+                    <th className={cn(thClass, 'text-right')}>Haber</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {pm.cuentas.map(c => (
+                    <tr key={c.cuenta_id}>
+                      <td className="px-3 py-1.5 text-sm">{c.nombre}</td>
+                      <td className="px-3 py-1.5 text-sm text-right tabular-nums font-medium">{formatCurrency(c.saldo_actual, pm.moneda)}</td>
+                      <td className="px-3 py-1.5 text-sm text-right tabular-nums text-muted-foreground">{formatCurrency(c.total_debe, pm.moneda)}</td>
+                      <td className="px-3 py-1.5 text-sm text-right tabular-nums text-muted-foreground">{formatCurrency(c.total_haber, pm.moneda)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Echeqs Section ────────────────────────────────────────────────────────────
 
 function EcheqsSection({
@@ -209,8 +329,8 @@ function EcheqsSection({
   const { data: echeqs = [] } = useEcheqs(eventoId);
   const deleteEcheq           = useDeleteEcheq(eventoId);
 
-  const [cobrarTarget,    setCobrarTarget]    = useState<Echeq | null>(null);
-  const [historialOpen,   setHistorialOpen]   = useState(false);
+  const [cobrarTarget,  setCobrarTarget]  = useState<Echeq | null>(null);
+  const [historialOpen, setHistorialOpen] = useState(false);
 
   const pendientes = echeqs.filter(e => e.estado === 'PENDIENTE');
   const cobrados   = echeqs.filter(e => e.estado === 'COBRADO');
@@ -318,7 +438,7 @@ function EcheqsSection({
                     <td className={tdClass}>
                       <span className={cn(
                         'text-xs px-1.5 py-0.5 rounded-full font-medium',
-                        e.estado === 'COBRADO'   ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
+                        e.estado === 'COBRADO' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
                       )}>
                         {e.estado}
                       </span>
@@ -356,14 +476,16 @@ interface Props {
 
 export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
   const { data: cuentas = [], isLoading } = useCuentas(eventoId);
+  const { data: posicion }                = usePosicionConsolidada(eventoId);
   const updateCuenta  = useUpdateCuenta(eventoId);
   const deleteCuenta  = useDeleteCuenta(eventoId);
 
-  const [selectedId,    setSelectedId]    = useState<number | null>(null);
-  const [addCuentaOpen, setAddCuentaOpen] = useState(false);
-  const [editSaldo,     setEditSaldo]     = useState<string | null>(null);
+  const [selectedId,        setSelectedId]        = useState<number | null>(null);
+  const [addCuentaOpen,     setAddCuentaOpen]     = useState(false);
+  const [transferenciaOpen, setTransferenciaOpen] = useState(false);
+  const [editSaldo,         setEditSaldo]         = useState<string | null>(null);
 
-  const activeCuentas = cuentas.filter(c => !c.deleted_at);
+  const activeCuentas  = cuentas.filter(c => !c.deleted_at);
   const selectedCuenta = activeCuentas.find(c => c.id === selectedId) ?? activeCuentas[0] ?? null;
   const effectiveId    = selectedCuenta?.id ?? null;
 
@@ -407,30 +529,46 @@ export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
 
   return (
     <div>
-      {/* Cuenta selector tabs */}
-      <div className="flex items-center gap-1 mb-4 flex-wrap">
-        {activeCuentas.map(c => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedId(c.id)}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-md border transition-colors',
-              (selectedCuenta?.id === c.id)
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border hover:bg-accent',
-            )}
+      {/* Posición consolidada */}
+      <PosicionConsolidadaSection posicion={posicion} />
+
+      {/* Cuenta selector + actions */}
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-1 flex-wrap">
+          {activeCuentas.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedId(c.id)}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-md border transition-colors',
+                (selectedCuenta?.id === c.id)
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-accent',
+              )}
+            >
+              {c.nombre}
+            </button>
+          ))}
+          {canEdit && (
+            <button
+              onClick={() => setAddCuentaOpen(true)}
+              className="px-3 py-1.5 text-sm rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors"
+            >
+              <Plus size={13} className="inline mr-1" />
+              Agregar
+            </button>
+          )}
+        </div>
+        {canEdit && activeCuentas.length >= 2 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setTransferenciaOpen(true)}
+            className="shrink-0"
           >
-            {c.nombre}
-          </button>
-        ))}
-        {canEdit && (
-          <button
-            onClick={() => setAddCuentaOpen(true)}
-            className="px-3 py-1.5 text-sm rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors"
-          >
-            <Plus size={13} className="inline mr-1" />
-            Agregar
-          </button>
+            <ArrowLeftRight size={13} className="mr-1.5" />
+            Nueva transferencia
+          </Button>
         )}
       </div>
 
@@ -490,6 +628,8 @@ export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
             <MovimientoCajaTable
               cuentaId={effectiveId}
               moneda={selectedCuenta.moneda}
+              eventoId={eventoId}
+              canEdit={canEdit}
             />
           )}
 
@@ -499,6 +639,14 @@ export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
       )}
 
       <AddCuentaDialog eventoId={eventoId} open={addCuentaOpen} onClose={() => setAddCuentaOpen(false)} />
+
+      <TransferenciaDialog
+        eventoId={eventoId}
+        cuentas={activeCuentas}
+        posicion={posicion}
+        open={transferenciaOpen}
+        onClose={() => setTransferenciaOpen(false)}
+      />
     </div>
   );
 }
