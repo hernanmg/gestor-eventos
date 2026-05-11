@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
-import { useEventos, useDeleteEvento } from '@/hooks/useEvento';
+import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2 } from 'lucide-react';
+import { useEventos, useDeleteEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useAuth } from '@/hooks/useAuth';
 import { EstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,11 @@ export default function EventosPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: eventos = [], isLoading } = useEventos();
-  const { mutate: deleteEvento } = useDeleteEvento();
+  const { mutate: deleteEvento }          = useDeleteEvento();
+  const { exportar, isExporting }              = useExportarExcel();
+  const { exportar: exportPDF }                = useExportarPDF();
+  const [exportingId,    setExportingId]       = useState<number | null>(null);
+  const [exportingPDFId, setExportingPDFId]    = useState<number | null>(null);
 
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
@@ -39,6 +43,18 @@ export default function EventosPage() {
   const handleDelete = (id: number) => {
     if (!window.confirm('¿Eliminar este evento? Esta acción no se puede deshacer.')) return;
     deleteEvento(id);
+  };
+
+  const handleExport = async (id: number) => {
+    setExportingId(id);
+    try { await exportar(id); }
+    finally { setExportingId(null); }
+  };
+
+  const handleExportPDF = async (id: number) => {
+    setExportingPDFId(id);
+    try { await exportPDF(id); }
+    finally { setExportingPDFId(null); }
   };
 
   const handleFormSuccess = () => {
@@ -119,6 +135,30 @@ export default function EventosPage() {
                         >
                           <Eye size={15} />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleExport(evento.id)}
+                          disabled={exportingId === evento.id}
+                          title="Exportar Excel"
+                        >
+                          {exportingId === evento.id
+                            ? <Loader2 size={15} className="animate-spin" />
+                            : <FileSpreadsheet size={15} />
+                          }
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleExportPDF(evento.id)}
+                          disabled={exportingPDFId === evento.id}
+                          title="Exportar PDF completo"
+                        >
+                          {exportingPDFId === evento.id
+                            ? <Loader2 size={15} className="animate-spin" />
+                            : <FileDown size={15} />
+                          }
+                        </Button>
                         {canEdit && (
                           <>
                             <Button
@@ -167,10 +207,34 @@ export default function EventosPage() {
                   </div>
                   <EstadoBadge estado={evento.estado} />
                 </div>
-                <div className="mt-3 flex justify-end gap-1 border-t border-border pt-3">
+                <div className="mt-3 flex justify-end gap-1 border-t border-border pt-3 flex-wrap">
                   <Button variant="outline" size="sm" onClick={() => navigate(`/eventos/${evento.id}`)}>
                     <Eye size={13} className="mr-1.5" />
                     Ver
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingId === evento.id}
+                    onClick={() => handleExport(evento.id)}
+                  >
+                    {exportingId === evento.id
+                      ? <Loader2 size={13} className="animate-spin mr-1.5" />
+                      : <FileSpreadsheet size={13} className="mr-1.5" />
+                    }
+                    Excel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingPDFId === evento.id}
+                    onClick={() => handleExportPDF(evento.id)}
+                  >
+                    {exportingPDFId === evento.id
+                      ? <Loader2 size={13} className="animate-spin mr-1.5" />
+                      : <FileDown size={13} className="mr-1.5" />
+                    }
+                    PDF
                   </Button>
                   {canEdit && (
                     <>

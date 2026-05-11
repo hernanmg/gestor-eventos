@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import { useEvento } from '@/hooks/useEvento';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2 } from 'lucide-react';
+import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useTabConfig } from '@/hooks/useTabConfig';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
@@ -13,7 +13,100 @@ import CajaPage from './Caja';
 import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import { cn } from '@/lib/utils';
-import type { Tipo } from '@/types';
+import type { TabConfig, Tipo } from '@/types';
+
+// ── Export Dropdown ───────────────────────────────────────────────────────────
+
+function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[] }) {
+  const { exportar: exportExcel } = useExportarExcel();
+  const { exportar: exportPDF }   = useExportarPDF();
+  const [open,        setOpen]        = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleExcel = async (tab?: string) => {
+    setOpen(false);
+    setIsExporting(true);
+    try { await exportExcel(eventoId, tab); } finally { setIsExporting(false); }
+  };
+
+  const handlePDF = async (seccion?: string) => {
+    setOpen(false);
+    setIsExporting(true);
+    try { await exportPDF(eventoId, seccion); } finally { setIsExporting(false); }
+  };
+
+  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
+
+  const itemClass = 'w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50';
+  const sectionLabel = 'px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-gray-50';
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={isExporting}
+        onClick={() => !isExporting && setOpen(v => !v)}
+        className="flex items-center gap-1.5"
+      >
+        {isExporting
+          ? <Loader2 size={13} className="animate-spin" />
+          : <FileSpreadsheet size={13} />
+        }
+        Exportar
+        <ChevronDown size={12} className={cn('transition-transform', open && 'rotate-180')} />
+      </Button>
+      {open && !isExporting && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-white shadow-lg py-1 max-h-96 overflow-y-auto">
+          {/* Excel section */}
+          <div className={sectionLabel}>Excel</div>
+          <button onClick={() => handleExcel()} className={itemClass}>
+            Evento completo
+          </button>
+          <hr className="my-0.5 border-border" />
+          {egresoTabs.map(t => (
+            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
+              {t.nombre}
+            </button>
+          ))}
+          <hr className="my-0.5 border-border" />
+          {ingresoTabs.map(t => (
+            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
+              {t.nombre}
+            </button>
+          ))}
+          <hr className="my-0.5 border-border" />
+          <button onClick={() => handleExcel('CONCILIATORIA')} className={itemClass}>
+            Solo Conciliatoria
+          </button>
+
+          {/* PDF section */}
+          <hr className="my-1 border-border" />
+          <div className={sectionLabel}>PDF</div>
+          <button onClick={() => handlePDF()} className={itemClass}>
+            Reporte completo (PDF)
+          </button>
+          <button onClick={() => handlePDF('conciliatoria')} className={itemClass}>
+            Conciliatoria (PDF)
+          </button>
+          <button onClick={() => handlePDF('caja')} className={itemClass}>
+            Resumen de Caja (PDF)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS';
 
@@ -87,6 +180,7 @@ export default function EventoPage() {
           <h1 className="text-xl font-semibold truncate">{evento.nombre}</h1>
         </div>
         <EstadoBadge estado={evento.estado} />
+        <ExportDropdown eventoId={eventoId} tabs={tabs} />
       </div>
 
       {/* Main tab navigation */}

@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, ArrowLeftRight, FileDown, Loader2 } from 'lucide-react';
 import {
   useCuentas, useCreateCuenta, useUpdateCuenta, useDeleteCuenta,
   useTransferencia, usePosicionConsolidada,
 } from '@/hooks/useCaja';
+import { useExportarPDF } from '@/hooks/useEvento';
 import { useEcheqs, useDeleteEcheq } from '@/hooks/useEcheqs';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -479,11 +480,18 @@ export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
   const { data: posicion }                = usePosicionConsolidada(eventoId);
   const updateCuenta  = useUpdateCuenta(eventoId);
   const deleteCuenta  = useDeleteCuenta(eventoId);
+  const { exportar: exportPDF } = useExportarPDF();
 
   const [selectedId,        setSelectedId]        = useState<number | null>(null);
   const [addCuentaOpen,     setAddCuentaOpen]     = useState(false);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
   const [editSaldo,         setEditSaldo]         = useState<string | null>(null);
+  const [isPDFExporting,    setIsPDFExporting]    = useState(false);
+
+  const handlePDF = async () => {
+    setIsPDFExporting(true);
+    try { await exportPDF(eventoId, 'caja'); } finally { setIsPDFExporting(false); }
+  };
 
   const activeCuentas  = cuentas.filter(c => !c.deleted_at);
   const selectedCuenta = activeCuentas.find(c => c.id === selectedId) ?? activeCuentas[0] ?? null;
@@ -531,6 +539,24 @@ export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
     <div>
       {/* Posición consolidada */}
       <PosicionConsolidadaSection posicion={posicion} />
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePDF}
+          disabled={isPDFExporting}
+          className="gap-1.5 shrink-0"
+        >
+          {isPDFExporting
+            ? <Loader2 size={13} className="animate-spin" />
+            : <FileDown size={13} />
+          }
+          Descargar PDF
+        </Button>
+      </div>
 
       {/* Cuenta selector + actions */}
       <div className="flex items-center justify-between gap-2 mb-4">

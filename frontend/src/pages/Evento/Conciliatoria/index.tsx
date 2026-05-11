@@ -1,6 +1,8 @@
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { RefreshCw, AlertTriangle, FileDown, Loader2 } from 'lucide-react';
 import { useConciliatoria } from '@/hooks/useConciliatoria';
 import type { PorMoneda, CajaCuenta, TabResumen } from '@/hooks/useConciliatoria';
+import { useExportarPDF } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -191,6 +193,13 @@ interface Props {
 
 export default function ConciliatoriaPage({ eventoId }: Props) {
   const { data, isLoading, refetch, isFetching } = useConciliatoria(eventoId);
+  const { exportar: exportPDF } = useExportarPDF();
+  const [isPDFExporting, setIsPDFExporting] = useState(false);
+
+  const handlePDF = async () => {
+    setIsPDFExporting(true);
+    try { await exportPDF(eventoId, 'conciliatoria'); } finally { setIsPDFExporting(false); }
+  };
 
   if (isLoading) return <p className="p-4 text-sm text-muted-foreground">Cargando...</p>;
   if (!data)    return null;
@@ -199,7 +208,20 @@ export default function ConciliatoriaPage({ eventoId }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePDF}
+          disabled={isPDFExporting}
+          className="gap-1.5"
+        >
+          {isPDFExporting
+            ? <Loader2 size={13} className="animate-spin" />
+            : <FileDown size={13} />
+          }
+          Descargar PDF
+        </Button>
         <Button
           variant="outline"
           size="sm"

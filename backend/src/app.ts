@@ -10,6 +10,8 @@ import { cuentasRouter, movCajaRouter } from './routes/caja';
 import echeqsRouter                  from './routes/echeqs';
 import usuariosRouter                from './routes/usuarios';
 import importerRouter                from './routes/importer';
+import exportarRouter               from './routes/exportar';
+import dashboardRouter              from './routes/dashboard';
 
 const app = express();
 
@@ -33,6 +35,8 @@ app.use('/api/movimientos-caja', movCajaRouter);
 app.use('/api/echeqs',           echeqsRouter);
 app.use('/api/usuarios',         usuariosRouter);
 app.use('/api/importer',         importerRouter);
+app.use('/api/eventos',          exportarRouter);
+app.use('/api/dashboard',        dashboardRouter);
 
 app.use(errorHandler);
 

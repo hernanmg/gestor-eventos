@@ -1,5 +1,6 @@
-import { Menu, X, LogOut, Calendar, Settings, FileUp } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
 
@@ -17,6 +18,9 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 };
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
+  const { data: alertasData } = useAlertasDashboard();
+  const errorCount = alertasData?.alertas.filter(a => a.severidad === 'ERROR').length ?? 0;
+
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
       'flex items-center gap-3 mx-2 px-2 py-2 rounded-md text-sm transition-colors',
@@ -61,6 +65,26 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
         {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
+          {/* Dashboard — visible for all roles */}
+          <NavLink to="/dashboard" title={!isOpen ? 'Dashboard' : undefined} className={navItem}>
+            <div className="relative shrink-0">
+              <LayoutDashboard size={18} />
+              {!isOpen && errorCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+              )}
+            </div>
+            {isOpen && (
+              <>
+                <span className="flex-1">Dashboard</span>
+                {errorCount > 0 && (
+                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {errorCount > 99 ? '99+' : errorCount}
+                  </span>
+                )}
+              </>
+            )}
+          </NavLink>
+
           <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
             <Calendar size={18} className="shrink-0" />
             {isOpen && <span>Eventos</span>}
