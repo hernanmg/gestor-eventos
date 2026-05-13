@@ -16,12 +16,13 @@ import {
   useDeleteMovimiento, useReordenarMovimiento,
 } from '@/hooks/useMovimientos';
 import { useCuentas } from '@/hooks/useCuentas';
+import ProveedorCombobox from './ProveedorCombobox';
 import { SaldoCell } from './SaldoCell';
 import { EcheqEstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import type { Echeq, Movimiento, Tipo, Moneda } from '@/types';
+import type { Echeq, Movimiento, Tipo, Moneda, ProveedorBusqueda } from '@/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -44,11 +45,12 @@ interface NewRowData {
   impuesto_subcategoria: string;
   impacta_caja:          boolean;
   cuenta_id:             string;
+  proveedor:             ProveedorBusqueda | null;
 }
 
 const EMPTY_ROW: NewRowData = {
   fecha: '', concepto: '', descripcion: '', debe: '', haber: '',
-  moneda: 'ARS', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '',
+  moneda: 'ARS', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,20 +125,21 @@ function EditableCell({
 // ── SortableRow ───────────────────────────────────────────────────────────────
 
 function SortableRow({
-  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onCreateEcheq, echeqForRow, onNavigateToEcheqs,
+  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onCreateEcheq, echeqForRow, onNavigateToEcheqs, onProveedorChange,
 }: {
-  mov:                 Movimiento;
-  isEgImp:             boolean;
-  isEgExtra:           boolean;
-  editCell:            EditCell | null;
-  onCellClick:         (id: number, field: EditableField, value: string) => void;
-  onCellChange:        (v: string) => void;
-  onCellSave:          () => void;
-  onKeyDown:           (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onDelete:            (id: number) => void;
-  onCreateEcheq?:      (movimientoId: number) => void;
-  echeqForRow?:        Echeq;
-  onNavigateToEcheqs?: () => void;
+  mov:                  Movimiento;
+  isEgImp:              boolean;
+  isEgExtra:            boolean;
+  editCell:             EditCell | null;
+  onCellClick:          (id: number, field: EditableField, value: string) => void;
+  onCellChange:         (v: string) => void;
+  onCellSave:           () => void;
+  onKeyDown:            (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onDelete:             (id: number) => void;
+  onCreateEcheq?:       (movimientoId: number) => void;
+  echeqForRow?:         Echeq;
+  onNavigateToEcheqs?:  () => void;
+  onProveedorChange:    (id: number, v: ProveedorBusqueda | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: mov.id });
@@ -202,6 +205,14 @@ function SortableRow({
         onBlur={onCellSave}
         onKeyDown={onKeyDown}
       />
+
+      {/* Proveedor */}
+      <td className={cn(cell, 'w-32')}>
+        <ProveedorCombobox
+          value={mov.proveedor ?? null}
+          onChange={v => onProveedorChange(mov.id, v)}
+        />
+      </td>
 
       {/* Subcategoría — EG-IMP only */}
       {isEgImp && (
@@ -369,6 +380,10 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
     deleteMov.mutate(id);
   }, [deleteMov]);
 
+  const handleProveedorChange = useCallback((id: number, v: ProveedorBusqueda | null) => {
+    updateMov.mutate({ id, data: { proveedor_id: v?.id ?? null } });
+  }, [updateMov]);
+
   // New row
   const openNewRow = () => {
     setNewRowData({ ...EMPTY_ROW, moneda: monedaBase });
@@ -397,6 +412,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
         haber:                 parseFloat(newRowData.haber) || 0,
         moneda:                newRowData.moneda,
         impuesto_subcategoria: isEgImp ? (newRowData.impuesto_subcategoria || null) : null,
+        ...(newRowData.proveedor && { proveedor_id: newRowData.proveedor.id }),
         ...(newRowData.impacta_caja && newRowData.cuenta_id && {
           impacta_caja: true,
           cuenta_id:    Number(newRowData.cuenta_id),
@@ -415,7 +431,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
     setNewRowError(null);
   };
 
-  const colCount = 8 + (isEgImp ? 1 : 0);
+  const colCount = 9 + (isEgImp ? 1 : 0);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-muted-foreground">Cargando...</p>;
@@ -432,6 +448,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                 <th className="px-2 py-2 text-left w-28">Fecha</th>
                 <th className="px-2 py-2 text-left">Concepto</th>
                 <th className="px-2 py-2 text-left">Descripción</th>
+                <th className="px-2 py-2 text-left w-32">Proveedor</th>
                 {isEgImp && <th className="px-2 py-2 text-left w-36">Subcategoría</th>}
                 <th className="px-2 py-2 text-right w-28">Debe</th>
                 <th className="px-2 py-2 text-right w-28">Haber</th>
@@ -452,6 +469,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                   onCellSave={handleCellSave}
                   onKeyDown={handleKeyDown}
                   onDelete={handleDelete}
+                  onProveedorChange={handleProveedorChange}
                   onCreateEcheq={onCreateEcheq}
                   echeqForRow={echeqs?.find(e => e.movimiento_id === mov.id)}
                   onNavigateToEcheqs={onNavigateToEcheqs}
@@ -485,6 +503,12 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                         value={newRowData.descripcion}
                         onChange={e => setNewRowData(p => ({ ...p, descripcion: e.target.value }))}
                         className="w-full border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <ProveedorCombobox
+                        value={newRowData.proveedor}
+                        onChange={v => setNewRowData(p => ({ ...p, proveedor: v }))}
                       />
                     </td>
                     {isEgImp && (

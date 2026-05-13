@@ -116,7 +116,7 @@ async function buildExportData(eventoId: number): Promise<EventoExportData> {
   // Build echeq rows
   const echeqRows: EcheqRow[] = echeqs.map(e => ({
     numero:               e.numero,
-    razon_social:         e.razon_social,
+    razon_social:         e.razon_social ?? '',
     detalle:              e.detalle,
     importe:              Number(e.importe),
     moneda:               e.moneda,

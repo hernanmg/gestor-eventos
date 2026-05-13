@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useTabConfig } from '@/hooks/useTabConfig';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
+import { useAuditoriaEvento } from '@/hooks/useAuditoria';
+import type { AuditoriaLog } from '@/types';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { EstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import MovimientoTable from '@/components/domain/MovimientoTable';
@@ -108,9 +112,106 @@ function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[
   );
 }
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS';
+// ── Auditoria tab (inline) ───────────────────────────────────────────────────
 
-const MAIN_TABS: { key: MainTab; label: string }[] = [
+function AuditoriaTab({ eventoId }: { eventoId: number }) {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useAuditoriaEvento(eventoId, { page, limit: 50 });
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const accionColor: Record<string, string> = {
+    CREATE: 'bg-green-100 text-green-800',
+    UPDATE: 'bg-blue-100 text-blue-800',
+    DELETE: 'bg-red-100 text-red-800',
+    LOGIN:  'bg-purple-100 text-purple-800',
+    LOGOUT: 'bg-gray-100 text-gray-800',
+    EXPORT: 'bg-yellow-100 text-yellow-800',
+  };
+
+  if (isLoading) return <p className="text-sm text-muted-foreground py-4">Cargando...</p>;
+  if (!data?.data.length) return <p className="text-sm text-muted-foreground py-4">Sin registros de auditoría para este evento.</p>;
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border bg-white">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/30">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Acción</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Entidad</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Usuario</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Descripción</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {data.data.map((log: AuditoriaLog) => {
+              const hasExtra  = log.datos_antes || log.datos_despues;
+              const isExpanded = expandedId === log.id;
+              return (
+                <>
+                  <tr
+                    key={log.id}
+                    className={cn('border-b hover:bg-muted/20', hasExtra && 'cursor-pointer')}
+                    onClick={() => hasExtra && setExpandedId(p => p === log.id ? null : log.id)}
+                  >
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {format(new Date(log.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', accionColor[log.accion] ?? 'bg-gray-100 text-gray-800')}>
+                        {log.accion}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{log.entidad}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {log.usuario?.nombre ?? 'Sistema'}
+                    </td>
+                    <td className="px-3 py-2 text-xs max-w-xs truncate">{log.descripcion}</td>
+                    <td className="px-3 py-2 text-center">
+                      {hasExtra && (isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+                    </td>
+                  </tr>
+                  {isExpanded && hasExtra && (
+                    <tr key={`${log.id}-detail`} className="border-b bg-muted/10">
+                      <td colSpan={6} className="px-6 py-2 space-y-1 text-xs">
+                        {log.datos_antes && (
+                          <div><span className="font-medium text-muted-foreground">Antes: </span>
+                            <code className="bg-muted px-1 rounded">{JSON.stringify(log.datos_antes)}</code>
+                          </div>
+                        )}
+                        {log.datos_despues && (
+                          <div><span className="font-medium text-muted-foreground">Después: </span>
+                            <code className="bg-muted px-1 rounded">{JSON.stringify(log.datos_despues)}</code>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {data.pages > 1 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{data.total} registros — pág. {data.page}/{data.pages}</span>
+          <div className="flex gap-2">
+            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-muted">Anterior</button>
+            <button disabled={page >= data.pages} onClick={() => setPage(p => p + 1)} className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-muted">Siguiente</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'AUDITORIA';
+
+const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -135,7 +236,11 @@ export default function EventoPage() {
   const [subTab,  setSubTab]  = useState(1);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
 
-  const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const isAdmin  = user?.rol === 'ADMIN';
+  const MAIN_TABS = isAdmin
+    ? [...MAIN_TABS_BASE, { key: 'AUDITORIA' as MainTab, label: 'Auditoría' }]
+    : MAIN_TABS_BASE;
 
   const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
   const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
@@ -254,6 +359,10 @@ export default function EventoPage() {
 
         {mainTab === 'ECHEQS' && (
           <EcheqsPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'AUDITORIA' && isAdmin && (
+          <AuditoriaTab eventoId={eventoId} />
         )}
       </div>
 

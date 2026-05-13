@@ -3,14 +3,11 @@ import { z } from 'zod';
 import { Tipo, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldos, recalcularSaldosCaja } from '../lib/recalcularSaldos';
-
-// ── Constantes ────────────────────────────────────────────────────────────────
+import { registrarAuditoria } from '../lib/auditoria';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
 ] as const;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDate(s: string | null | undefined): Date | null {
   if (!s) return null;
@@ -26,11 +23,9 @@ function mapMov(m: any) {
   };
 }
 
-// ── Schemas Zod ───────────────────────────────────────────────────────────────
-
 const createSchema = z.object({
   tipo:                  z.enum(['EGRESO', 'INGRESO']),
-  tab_numero:            z.number().int().min(1).max(5),
+  tab_numero:            z.number().int().min(1),
   fecha:                 z.string().nullable().optional(),
   concepto:              z.string().nullable().optional(),
   descripcion:           z.string().nullable().optional(),
@@ -41,6 +36,7 @@ const createSchema = z.object({
   impuesto_subcategoria: z.string().nullable().optional(),
   impacta_caja:          z.boolean().optional(),
   cuenta_id:             z.number().int().positive().optional(),
+  proveedor_id:          z.number().int().positive().optional(),
 }).refine(
   d => !(d.impacta_caja && !d.cuenta_id),
   { message: 'cuenta_id es requerido cuando impacta_caja es true', path: ['cuenta_id'] },
@@ -54,9 +50,8 @@ const updateSchema = z.object({
   haber:                 z.number().min(0).optional(),
   moneda:                z.enum(['ARS', 'USD']).optional(),
   impuesto_subcategoria: z.string().nullable().optional(),
+  proveedor_id:          z.number().int().positive().nullable().optional(),
 });
-
-// ── Controllers ───────────────────────────────────────────────────────────────
 
 export async function listSinConciliar(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
@@ -87,6 +82,7 @@ export async function list(req: Request, res: Response) {
   const movs = await prisma.movimiento.findMany({
     where:   { evento_id: eventoId, tipo: tipo as Tipo, tab_numero: tab, deleted_at: null },
     orderBy: { orden: 'asc' },
+    include: { proveedor: { select: { id: true, nombre: true, alias: true } } },
   });
   res.json(movs.map(mapMov));
 }
@@ -102,11 +98,19 @@ export async function create(req: Request, res: Response) {
   const {
     tipo, tab_numero, fecha, concepto, descripcion,
     debe, haber, moneda, impuesto_subcategoria,
-    impacta_caja, cuenta_id,
+    impacta_caja, cuenta_id, proveedor_id,
   } = parsed.data;
 
-  // EG-IMP validation
-  if (tipo === 'EGRESO' && tab_numero === 4) {
+  const tabCfg = await prisma.tabConfig.findFirst({
+    where: { tipo: tipo as Tipo, numero: tab_numero, activo: true },
+  });
+  if (!tabCfg) {
+    res.status(400).json({ error: `La pestaña ${tipo} nº${tab_numero} no existe o está inactiva` });
+    return;
+  }
+
+  const isEgImp = tabCfg.codigo === 'EG-IMP';
+  if (isEgImp) {
     if (!impuesto_subcategoria) {
       res.status(400).json({ error: 'impuesto_subcategoria es requerido para EG-IMP' });
       return;
@@ -129,8 +133,12 @@ export async function create(req: Request, res: Response) {
     if (!cuenta) { res.status(400).json({ error: 'Cuenta bancaria no encontrada en este evento' }); return; }
   }
 
+  if (proveedor_id) {
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null } });
+    if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
+  }
+
   const movId = await prisma.$transaction(async tx => {
-    // Auto-assign orden if not provided
     let orden = parsed.data.orden;
     if (orden === undefined) {
       const last = await tx.movimiento.findFirst({
@@ -154,6 +162,7 @@ export async function create(req: Request, res: Response) {
         moneda:                (moneda ?? 'ARS') as Moneda,
         orden,
         impuesto_subcategoria: impuesto_subcategoria ?? null,
+        proveedor_id:          proveedor_id          ?? null,
         created_by:            req.user!.id,
         updated_by:            req.user!.id,
       },
@@ -185,10 +194,26 @@ export async function create(req: Request, res: Response) {
     }
 
     await recalcularSaldos(eventoId, tipo as Tipo, tab_numero, tx);
+
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'CREATE',
+      entidad:      'Movimiento',
+      entidadId:    mov.id,
+      eventoId,
+      descripcion:  `Creó movimiento en ${tabCfg.codigo} del evento #${eventoId}`,
+      datosDespues: { tipo, tab_numero, concepto, debe, haber, moneda },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+
     return mov.id;
   });
 
-  const updated = await prisma.movimiento.findUnique({ where: { id: movId } });
+  const updated = await prisma.movimiento.findUnique({
+    where:   { id: movId },
+    include: { proveedor: { select: { id: true, nombre: true, alias: true } } },
+  });
   res.status(201).json(mapMov(updated));
 }
 
@@ -203,9 +228,13 @@ export async function update(req: Request, res: Response) {
   const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null } });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
-  const { fecha, concepto, descripcion, debe, haber, moneda, impuesto_subcategoria } = parsed.data;
+  const { fecha, concepto, descripcion, debe, haber, moneda, impuesto_subcategoria, proveedor_id } = parsed.data;
 
-  // EG-IMP: validate subcategory if provided
+  if (proveedor_id !== undefined && proveedor_id !== null) {
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null } });
+    if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
+  }
+
   if (
     existing.tipo === Tipo.EGRESO &&
     existing.tab_numero === 4 &&
@@ -231,15 +260,36 @@ export async function update(req: Request, res: Response) {
         ...(haber              !== undefined && { haber }),
         ...(moneda             !== undefined && { moneda: moneda as Moneda }),
         ...(impuesto_subcategoria !== undefined && { impuesto_subcategoria }),
+        ...(proveedor_id          !== undefined && { proveedor_id }),
         updated_by: req.user!.id,
       },
     });
 
     await recalcularSaldos(existing.evento_id, existing.tipo, existing.tab_numero, tx);
+
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'Movimiento',
+      entidadId:    id,
+      eventoId:     existing.evento_id,
+      descripcion:  `Actualizó movimiento #${id} del evento #${existing.evento_id}`,
+      datosAntes:   {
+        concepto: existing.concepto, debe: Number(existing.debe),
+        haber: Number(existing.haber), moneda: existing.moneda,
+      },
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+
     return id;
   });
 
-  const updated = await prisma.movimiento.findUnique({ where: { id: movId } });
+  const updated = await prisma.movimiento.findUnique({
+    where:   { id: movId },
+    include: { proveedor: { select: { id: true, nombre: true, alias: true } } },
+  });
   res.json(mapMov(updated));
 }
 
@@ -254,6 +304,20 @@ export async function remove(req: Request, res: Response) {
       data:  { deleted_at: new Date(), updated_by: req.user!.id },
     });
     await recalcularSaldos(existing.evento_id, existing.tipo, existing.tab_numero, tx);
+    await registrarAuditoria({
+      usuarioId:  req.user!.id,
+      accion:     'DELETE',
+      entidad:    'Movimiento',
+      entidadId:  id,
+      eventoId:   existing.evento_id,
+      descripcion: `Eliminó movimiento #${id} del evento #${existing.evento_id}`,
+      datosAntes:  {
+        concepto: existing.concepto, debe: Number(existing.debe),
+        haber: Number(existing.haber), moneda: existing.moneda,
+      },
+      ip:  req.ip,
+      tx:  tx as any,
+    });
   });
 
   res.json({ message: 'Movimiento eliminado correctamente' });
@@ -296,9 +360,19 @@ export async function reordenar(req: Request, res: Response) {
     }
 
     await recalcularSaldos(moving.evento_id, moving.tipo, moving.tab_numero, tx);
+
+    await registrarAuditoria({
+      usuarioId:   req.user!.id,
+      accion:      'UPDATE',
+      entidad:     'Movimiento',
+      entidadId:   id,
+      eventoId:    moving.evento_id,
+      descripcion: `Reordenó movimiento #${id} a posición ${newOrden}`,
+      ip:          req.ip,
+      tx:          tx as any,
+    });
   });
 
   const updated = await prisma.movimiento.findUnique({ where: { id } });
   res.json(mapMov(updated));
 }
-

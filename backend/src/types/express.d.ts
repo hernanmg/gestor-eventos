@@ -6,7 +6,8 @@ export type AuthUser = {
 declare global {
   namespace Express {
     interface Request {
-      user?: AuthUser;
+      user?:     AuthUser;
+      eventoRol?: 'ADMIN' | 'OPERADOR' | 'VIEWER';
     }
   }
 }

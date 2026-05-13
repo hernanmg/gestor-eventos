@@ -4,7 +4,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useCreateEcheq } from '@/hooks/useEcheqs';
-import type { Moneda } from '@/types';
+import ProveedorCombobox from './ProveedorCombobox';
+import type { Moneda, ProveedorBusqueda } from '@/types';
 
 interface Props {
   eventoId:     number;
@@ -34,8 +35,9 @@ const EMPTY: FormData = {
 };
 
 export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose }: Props) {
-  const [form,  setForm]  = useState<FormData>(EMPTY);
-  const [error, setError] = useState<string | null>(null);
+  const [form,       setForm]       = useState<FormData>(EMPTY);
+  const [proveedor,  setProveedor]  = useState<ProveedorBusqueda | null>(null);
+  const [error,      setError]      = useState<string | null>(null);
 
   const createEcheq = useCreateEcheq(eventoId);
 
@@ -45,12 +47,25 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
       setForm(p => ({ ...p, [key]: e.target.value })),
   });
 
+  const handleProveedorChange = (v: ProveedorBusqueda | null) => {
+    setProveedor(v);
+    if (v) setForm(p => ({ ...p, razon_social: v.nombre }));
+  };
+
+  const handleRazonSocialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm(p => ({ ...p, razon_social: e.target.value }));
+    // Desvincular proveedor si el usuario edita manualmente
+    if (proveedor && e.target.value !== proveedor.nombre) setProveedor(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!form.numero.trim())       { setError('Número es obligatorio');   return; }
-    if (!form.razon_social.trim()) { setError('Razón social es obligatoria'); return; }
+    if (!form.numero.trim()) { setError('Número es obligatorio'); return; }
+    if (!form.razon_social.trim() && !proveedor) {
+      setError('Razón social o proveedor son obligatorios'); return;
+    }
     if (!form.importe || parseFloat(form.importe) <= 0) {
       setError('Importe debe ser mayor a cero'); return;
     }
@@ -58,8 +73,9 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
     try {
       await createEcheq.mutateAsync({
         movimiento_id:        movimientoId,
+        proveedor_id:         proveedor?.id,
         numero:               form.numero.trim(),
-        razon_social:         form.razon_social.trim(),
+        razon_social:         form.razon_social.trim() || undefined,
         detalle:              form.detalle.trim()              || null,
         importe:              parseFloat(form.importe),
         moneda:               form.moneda,
@@ -67,6 +83,7 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
         fecha_cobro_estimada: form.fecha_cobro_estimada       || null,
       });
       setForm(EMPTY);
+      setProveedor(null);
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Error al guardar');
@@ -74,7 +91,7 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
   };
 
   const handleClose = (open: boolean) => {
-    if (!open) { setForm(EMPTY); setError(null); onClose(); }
+    if (!open) { setForm(EMPTY); setProveedor(null); setError(null); onClose(); }
   };
 
   const input = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -105,8 +122,20 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
           </div>
 
           <div>
-            <label className={label}>Razón social *</label>
-            <input {...field('razon_social')} className={input} placeholder="Empresa S.A." />
+            <label className={label}>Proveedor</label>
+            <div className="border border-input rounded px-2 py-1.5">
+              <ProveedorCombobox value={proveedor} onChange={handleProveedorChange} />
+            </div>
+          </div>
+
+          <div>
+            <label className={label}>Razón social {!proveedor && '*'}</label>
+            <input
+              value={form.razon_social}
+              onChange={handleRazonSocialChange}
+              className={input}
+              placeholder="Empresa S.A."
+            />
           </div>
 
           <div>

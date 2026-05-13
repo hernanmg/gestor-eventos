@@ -56,18 +56,33 @@ export interface PreviewResult {
 
 // ── Sheet map — position 0-9 within the 10 data sheets ────────────────────────
 
-const SHEET_MAP = [
-  { codigo: 'EG-TC',           tipo: 'EGRESO'  as const, tab_numero: 1 },
-  { codigo: 'EG-RET-SOC',      tipo: 'EGRESO'  as const, tab_numero: 2 },
-  { codigo: 'EG-EXTRA',        tipo: 'EGRESO'  as const, tab_numero: 3 },
-  { codigo: 'EG-IMP',          tipo: 'EGRESO'  as const, tab_numero: 4 },
-  { codigo: 'EG-PREST',        tipo: 'EGRESO'  as const, tab_numero: 5 },
-  { codigo: 'ING-TICKETS',     tipo: 'INGRESO' as const, tab_numero: 1 },
-  { codigo: 'ING-SPON',        tipo: 'INGRESO' as const, tab_numero: 2 },
-  { codigo: 'ING-CORP',        tipo: 'INGRESO' as const, tab_numero: 3 },
-  { codigo: 'ING-GASTRO',      tipo: 'INGRESO' as const, tab_numero: 4 },
-  { codigo: 'ING-SERV-CHARGE', tipo: 'INGRESO' as const, tab_numero: 5 },
+type SheetMapEntry = { codigo: string; tipo: 'EGRESO' | 'INGRESO'; tab_numero: number };
+
+// Callers can pass active DB tabs (ordered by tipo+orden) to override this default.
+export type TabMapEntry = { codigo: string; tipo: string; numero: number };
+
+const SHEET_MAP: SheetMapEntry[] = [
+  { codigo: 'EG-TC',           tipo: 'EGRESO',  tab_numero: 1 },
+  { codigo: 'EG-RET-SOC',      tipo: 'EGRESO',  tab_numero: 2 },
+  { codigo: 'EG-EXTRA',        tipo: 'EGRESO',  tab_numero: 3 },
+  { codigo: 'EG-IMP',          tipo: 'EGRESO',  tab_numero: 4 },
+  { codigo: 'EG-PREST',        tipo: 'EGRESO',  tab_numero: 5 },
+  { codigo: 'ING-TICKETS',     tipo: 'INGRESO', tab_numero: 1 },
+  { codigo: 'ING-SPON',        tipo: 'INGRESO', tab_numero: 2 },
+  { codigo: 'ING-CORP',        tipo: 'INGRESO', tab_numero: 3 },
+  { codigo: 'ING-GASTRO',      tipo: 'INGRESO', tab_numero: 4 },
+  { codigo: 'ING-SERV-CHARGE', tipo: 'INGRESO', tab_numero: 5 },
 ];
+
+function buildSheetMap(tabs?: TabMapEntry[]): SheetMapEntry[] {
+  if (!tabs || tabs.length === 0) return SHEET_MAP;
+  const egresos  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresos = tabs.filter(t => t.tipo === 'INGRESO');
+  return [
+    ...egresos.map(t  => ({ codigo: t.codigo, tipo: 'EGRESO'  as const, tab_numero: t.numero })),
+    ...ingresos.map(t => ({ codigo: t.codigo, tipo: 'INGRESO' as const, tab_numero: t.numero })),
+  ];
+}
 
 const SUBCATEGORIAS = ['PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS'];
 
@@ -299,7 +314,7 @@ function parseEcheqs(rows: any[][], afterRowIdx: number): EcheqPreview[] {
 function parseHoja(
   sheetName: string,
   ws: XLSX.WorkSheet,
-  map: typeof SHEET_MAP[0],
+  map: SheetMapEntry,
 ): HojaPreview {
   const rows = XLSX.utils.sheet_to_json<any[]>(ws, {
     header: 1,
@@ -420,12 +435,13 @@ function parseHoja(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function parseExcelFile(buffer: Buffer, filename: string): PreviewResult {
+export function parseExcelFile(buffer: Buffer, filename: string, tabs?: TabMapEntry[]): PreviewResult {
+  const sheetMap = buildSheetMap(tabs);
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
 
   const dataSheets = findDataSheets(wb);
   const hojas = dataSheets.map(({ name, mapIdx }) =>
-    parseHoja(name, wb.Sheets[name], SHEET_MAP[mapIdx]),
+    parseHoja(name, wb.Sheets[name], sheetMap[mapIdx]),
   );
 
   const totalMovimientos  = hojas.reduce((a, h) => a + h.stats.importables,  0);

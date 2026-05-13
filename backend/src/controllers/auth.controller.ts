@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
+import { registrarAuditoria } from '../lib/auditoria';
 
 const loginSchema = z.object({
   email:    z.string().email('Email inválido'),
@@ -16,31 +17,62 @@ function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'strict' as const,
-    maxAge:   8 * 60 * 60 * 1000, // 8 horas en ms
+    maxAge:   8 * 60 * 60 * 1000,
     secure:   process.env.NODE_ENV === 'production',
     path:     '/',
   };
 }
 
+async function fetchAccesos(usuarioId: number) {
+  return (prisma as any).eventoAcceso.findMany({
+    where:  { usuario_id: usuarioId },
+    select: { evento_id: true, rol: true },
+  });
+}
+
 export async function login(req: Request, res: Response, _next: NextFunction): Promise<void> {
-  // ZodError se propaga al asyncHandler → errorHandler (devuelve 400)
   const body = loginSchema.parse(req.body);
 
   const usuario = await prisma.usuario.findFirst({
     where: { email: body.email, deleted_at: null },
   });
 
-  // Mismo mensaje para usuario no encontrado y password incorrecta — evita enumerar usuarios
   if (!usuario) {
+    await registrarAuditoria({
+      usuarioId:   null,
+      accion:      'LOGIN',
+      entidad:     'Usuario',
+      descripcion: `Intento de login fallido — email no encontrado: ${body.email}`,
+      ip:          req.ip,
+      tx:          prisma as any,
+    });
     throw new AppError(401, 'Credenciales incorrectas');
   }
 
   if (!usuario.activo) {
+    await registrarAuditoria({
+      usuarioId:   usuario.id,
+      accion:      'LOGIN',
+      entidad:     'Usuario',
+      entidadId:   usuario.id,
+      descripcion: `Intento de login fallido — usuario inactivo: ${body.email}`,
+      ip:          req.ip,
+      tx:          prisma as any,
+    });
     throw new AppError(403, 'Usuario inactivo. Contactá al administrador');
   }
 
   const coincide = await bcrypt.compare(body.password, usuario.password_hash);
   if (!coincide) {
+    await registrarAuditoria({
+      usuarioId:   usuario.id,
+      accion:      'LOGIN',
+      entidad:     'Usuario',
+      entidadId:   usuario.id,
+      descripcion: `Intento de login fallido — contraseña incorrecta: ${body.email}`,
+      ip:          req.ip,
+      tx:          prisma as any,
+    });
     throw new AppError(401, 'Credenciales incorrectas');
   }
 
@@ -50,24 +82,48 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     { expiresIn: '8h' },
   );
 
+  const [accesos] = await Promise.all([
+    fetchAccesos(usuario.id),
+    registrarAuditoria({
+      usuarioId:    usuario.id,
+      accion:       'LOGIN',
+      entidad:      'Usuario',
+      entidadId:    usuario.id,
+      descripcion:  `Login exitoso: ${body.email}`,
+      datosDespues: { id: usuario.id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol },
+      ip:           req.ip,
+      tx:           prisma as any,
+    }),
+  ]);
+
   res.cookie(COOKIE_NAME, token, cookieOptions());
-  res.json({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol });
+  res.json({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, accesos });
 }
 
-export async function logout(_req: Request, res: Response, _next: NextFunction): Promise<void> {
+export async function logout(req: Request, res: Response, _next: NextFunction): Promise<void> {
+  await registrarAuditoria({
+    usuarioId:   req.user?.id ?? null,
+    accion:      'LOGOUT',
+    entidad:     'Usuario',
+    entidadId:   req.user?.id,
+    descripcion: `Logout de usuario #${req.user?.id ?? 'desconocido'}`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
   res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'strict', path: '/' });
   res.json({ message: 'Sesión cerrada' });
 }
 
 export async function me(req: Request, res: Response, _next: NextFunction): Promise<void> {
-  const usuario = await prisma.usuario.findFirst({
+  const raw = await prisma.usuario.findFirst({
     where:  { id: req.user!.id, deleted_at: null },
     select: { id: true, nombre: true, email: true, rol: true, activo: true },
   });
 
-  if (!usuario || !usuario.activo) {
+  if (!raw || !raw.activo) {
     throw new AppError(401, 'Sesión inválida');
   }
 
-  res.json(usuario);
+  const accesos = await fetchAccesos(req.user!.id);
+  res.json({ ...raw, accesos });
 }

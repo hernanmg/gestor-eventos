@@ -27,7 +27,12 @@ export async function preview(req: Request, res: Response) {
     res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return;
   }
   try {
-    const result = parseExcelFile(req.file.buffer, req.file.originalname);
+    const tabs = await prisma.tabConfig.findMany({
+      where:   { activo: true },
+      orderBy: [{ tipo: 'asc' }, { orden: 'asc' }],
+      select:  { codigo: true, tipo: true, numero: true },
+    });
+    const result = parseExcelFile(req.file.buffer, req.file.originalname, tabs);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message });

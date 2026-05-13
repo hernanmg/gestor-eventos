@@ -12,6 +12,8 @@ import usuariosRouter                from './routes/usuarios';
 import importerRouter                from './routes/importer';
 import exportarRouter               from './routes/exportar';
 import dashboardRouter              from './routes/dashboard';
+import proveedoresRouter            from './routes/proveedores';
+import auditoriaRouter             from './routes/auditoria';
 
 const app = express();
 
@@ -37,6 +39,8 @@ app.use('/api/usuarios',         usuariosRouter);
 app.use('/api/importer',         importerRouter);
 app.use('/api/eventos',          exportarRouter);
 app.use('/api/dashboard',        dashboardRouter);
+app.use('/api/proveedores',      proveedoresRouter);
+app.use('/api/auditoria',        auditoriaRouter);
 
 app.use(errorHandler);
 

@@ -46,8 +46,9 @@ export function useCreateEcheq(eventoId: number) {
   return useMutation({
     mutationFn: (data: {
       movimiento_id?:        number;
+      proveedor_id?:         number;
       numero:                string;
-      razon_social:          string;
+      razon_social?:         string;
       detalle?:              string | null;
       importe:               number;
       moneda:                string;

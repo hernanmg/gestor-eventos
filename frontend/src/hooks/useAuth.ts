@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
-import type { MeResponse } from '@/types';
+import type { MeResponse, Rol } from '@/types';
 
 export const ME_QUERY_KEY = ['auth', 'me'] as const;
 
@@ -42,12 +42,28 @@ export function useAuth() {
     },
   });
 
+  // ── Helpers de acceso por evento ──────────────────────────────────────────
+
+  function hasEventoAcceso(eventoId: number): boolean {
+    if (!user) return false;
+    if (user.rol === 'ADMIN') return true;
+    return (user.accesos ?? []).some(a => a.evento_id === eventoId);
+  }
+
+  function getEventoRol(eventoId: number): Rol | null {
+    if (!user) return null;
+    if (user.rol === 'ADMIN') return 'ADMIN';
+    return (user.accesos ?? []).find(a => a.evento_id === eventoId)?.rol ?? null;
+  }
+
   return {
     user,
     isLoading,
-    login:          loginMutation.mutateAsync,
-    logout:         logoutMutation.mutate,
-    loginError:     loginMutation.error,
-    isLoginLoading: loginMutation.isPending,
+    login:            loginMutation.mutateAsync,
+    logout:           logoutMutation.mutate,
+    loginError:       loginMutation.error,
+    isLoginLoading:   loginMutation.isPending,
+    hasEventoAcceso,
+    getEventoRol,
   };
 }

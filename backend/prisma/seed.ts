@@ -6,25 +6,25 @@ const prisma = new PrismaClient();
 
 const TABS = [
   // Egresos — códigos fijos usados por el importer Excel
-  { tipo: Tipo.EGRESO,  numero: 1, nombre: 'EG-TC',           codigo: 'EG-TC' },
-  { tipo: Tipo.EGRESO,  numero: 2, nombre: 'EG-RET SOC',      codigo: 'EG-RET-SOC' },
-  { tipo: Tipo.EGRESO,  numero: 3, nombre: 'EG-EXTRA',        codigo: 'EG-EXTRA' },
-  { tipo: Tipo.EGRESO,  numero: 4, nombre: 'EG-IMP',          codigo: 'EG-IMP' },
-  { tipo: Tipo.EGRESO,  numero: 5, nombre: 'EG-PREST',        codigo: 'EG-PREST' },
+  { tipo: Tipo.EGRESO,  numero: 1, orden: 1, nombre: 'EG-TC',           codigo: 'EG-TC',           es_sistema: true, activo: true },
+  { tipo: Tipo.EGRESO,  numero: 2, orden: 2, nombre: 'EG-RET SOC',      codigo: 'EG-RET-SOC',      es_sistema: true, activo: true },
+  { tipo: Tipo.EGRESO,  numero: 3, orden: 3, nombre: 'EG-EXTRA',        codigo: 'EG-EXTRA',        es_sistema: true, activo: true },
+  { tipo: Tipo.EGRESO,  numero: 4, orden: 4, nombre: 'EG-IMP',          codigo: 'EG-IMP',          es_sistema: true, activo: true },
+  { tipo: Tipo.EGRESO,  numero: 5, orden: 5, nombre: 'EG-PREST',        codigo: 'EG-PREST',        es_sistema: true, activo: true },
   // Ingresos
-  { tipo: Tipo.INGRESO, numero: 1, nombre: 'ING TICKETS',     codigo: 'ING-TICKETS' },
-  { tipo: Tipo.INGRESO, numero: 2, nombre: 'ING SPON',        codigo: 'ING-SPON' },
-  { tipo: Tipo.INGRESO, numero: 3, nombre: 'ING CORP',        codigo: 'ING-CORP' },
-  { tipo: Tipo.INGRESO, numero: 4, nombre: 'ING GASTRO',      codigo: 'ING-GASTRO' },
-  { tipo: Tipo.INGRESO, numero: 5, nombre: 'ING SERV CHARGE', codigo: 'ING-SERV-CHARGE' },
+  { tipo: Tipo.INGRESO, numero: 1, orden: 1, nombre: 'ING TICKETS',     codigo: 'ING-TICKETS',     es_sistema: true, activo: true },
+  { tipo: Tipo.INGRESO, numero: 2, orden: 2, nombre: 'ING SPON',        codigo: 'ING-SPON',        es_sistema: true, activo: true },
+  { tipo: Tipo.INGRESO, numero: 3, orden: 3, nombre: 'ING CORP',        codigo: 'ING-CORP',        es_sistema: true, activo: true },
+  { tipo: Tipo.INGRESO, numero: 4, orden: 4, nombre: 'ING GASTRO',      codigo: 'ING-GASTRO',      es_sistema: true, activo: true },
+  { tipo: Tipo.INGRESO, numero: 5, orden: 5, nombre: 'ING SERV CHARGE', codigo: 'ING-SERV-CHARGE', es_sistema: true, activo: true },
 ];
 
 async function main() {
   // ── TabConfig ─────────────────────────────────────────────────────────────
   for (const tab of TABS) {
     await prisma.tabConfig.upsert({
-      where: { codigo: tab.codigo },
-      update: { nombre: tab.nombre },
+      where:  { codigo: tab.codigo },
+      update: { nombre: tab.nombre, orden: tab.orden, es_sistema: tab.es_sistema, activo: tab.activo },
       create: tab,
     });
   }

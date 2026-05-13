@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { Moneda, EstadoEvento } from '@prisma/client';
+import { Moneda, EstadoEvento, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { registrarAuditoria } from '../lib/auditoria';
 
 const socioSchema = z.object({
   nombre:     z.string().min(1, 'Nombre requerido'),
@@ -46,9 +47,20 @@ function mapEvento(e: any) {
   return { ...rest, movimiento_count: _count?.movimientos ?? 0 };
 }
 
-export async function list(_req: Request, res: Response) {
+export async function list(req: Request, res: Response) {
+  const isAdmin = req.user!.rol === 'ADMIN';
+  const where: Prisma.EventoWhereInput = { deleted_at: null };
+
+  if (!isAdmin) {
+    const accesos = await (prisma as any).eventoAcceso.findMany({
+      where:  { usuario_id: req.user!.id },
+      select: { evento_id: true },
+    });
+    where.id = { in: accesos.map((a: any) => a.evento_id) };
+  }
+
   const eventos = await prisma.evento.findMany({
-    where:   { deleted_at: null },
+    where,
     orderBy: { created_at: 'desc' },
     include: includeCount,
   });
@@ -76,18 +88,34 @@ export async function create(req: Request, res: Response) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
   }
-  const evento = await prisma.evento.create({
-    data: {
-      nombre,
-      fecha_inicio: toDate(fecha_inicio) ?? null,
-      fecha_fin:    toDate(fecha_fin) ?? null,
-      socios,
-      moneda_base:  moneda_base as Moneda,
-      created_by:   req.user!.id,
-      updated_by:   req.user!.id,
-    },
-    include: includeCount,
+
+  const evento = await prisma.$transaction(async tx => {
+    const created = await tx.evento.create({
+      data: {
+        nombre,
+        fecha_inicio: toDate(fecha_inicio) ?? null,
+        fecha_fin:    toDate(fecha_fin) ?? null,
+        socios,
+        moneda_base:  moneda_base as Moneda,
+        created_by:   req.user!.id,
+        updated_by:   req.user!.id,
+      },
+      include: includeCount,
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'CREATE',
+      entidad:      'Evento',
+      entidadId:    created.id,
+      eventoId:     created.id,
+      descripcion:  `Creó el evento "${nombre}"`,
+      datosDespues: { id: created.id, nombre, moneda_base },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return created;
   });
+
   res.status(201).json(mapEvento(evento));
 }
 
@@ -106,19 +134,36 @@ export async function update(req: Request, res: Response) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
   }
-  const evento = await prisma.evento.update({
-    where: { id },
-    data: {
-      ...(nombre       !== undefined && { nombre }),
-      ...(fecha_inicio !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
-      ...(fecha_fin    !== undefined && { fecha_fin:    toDate(fecha_fin) }),
-      ...(socios       !== undefined && { socios }),
-      ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
-      ...(estado       !== undefined && { estado: estado as EstadoEvento }),
-      updated_by: req.user!.id,
-    },
-    include: includeCount,
+
+  const evento = await prisma.$transaction(async tx => {
+    const updated = await tx.evento.update({
+      where: { id },
+      data: {
+        ...(nombre       !== undefined && { nombre }),
+        ...(fecha_inicio !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
+        ...(fecha_fin    !== undefined && { fecha_fin:    toDate(fecha_fin) }),
+        ...(socios       !== undefined && { socios }),
+        ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
+        ...(estado       !== undefined && { estado: estado as EstadoEvento }),
+        updated_by: req.user!.id,
+      },
+      include: includeCount,
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'Evento',
+      entidadId:    id,
+      eventoId:     id,
+      descripcion:  `Actualizó el evento "${existing.nombre}"`,
+      datosAntes:   { nombre: existing.nombre, estado: existing.estado, moneda_base: existing.moneda_base },
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return updated;
   });
+
   res.json(mapEvento(evento));
 }
 
@@ -126,10 +171,25 @@ export async function remove(req: Request, res: Response) {
   const id = Number(req.params.id);
   const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
-  await prisma.evento.update({
-    where: { id },
-    data:  { deleted_at: new Date(), updated_by: req.user!.id },
+
+  await prisma.$transaction(async tx => {
+    await tx.evento.update({
+      where: { id },
+      data:  { deleted_at: new Date(), updated_by: req.user!.id },
+    });
+    await registrarAuditoria({
+      usuarioId:  req.user!.id,
+      accion:     'DELETE',
+      entidad:    'Evento',
+      entidadId:  id,
+      eventoId:   id,
+      descripcion: `Eliminó el evento "${existing.nombre}"`,
+      datosAntes:  { id: existing.id, nombre: existing.nombre, estado: existing.estado },
+      ip:          req.ip,
+      tx:          tx as any,
+    });
   });
+
   res.json({ message: 'Evento eliminado correctamente' });
 }
 
@@ -163,7 +223,6 @@ export async function conciliatoria(req: Request, res: Response) {
     }),
   ]);
 
-  // Monedas presentes — at least moneda_base if no movimientos
   const monedasSet = new Set(movimientos.map(m => m.moneda as string));
   if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
   const monedas = [...monedasSet];
@@ -177,10 +236,9 @@ export async function conciliatoria(req: Request, res: Response) {
 
     const buildTabs = (tipo: 'INGRESO' | 'EGRESO', tabList: typeof ingresoTabs) =>
       tabList.map(t => {
-        const rows       = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+        const rows        = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
         const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
         const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
-        // For ingresos: net income = haber - debe. For egresos: net expense = debe - haber.
         const saldo = tipo === 'INGRESO'
           ? parseFloat((total_haber - total_debe).toFixed(2))
           : parseFloat((total_debe  - total_haber).toFixed(2));
@@ -203,11 +261,11 @@ export async function conciliatoria(req: Request, res: Response) {
   });
 
   const caja_por_cuenta = cuentas.map(c => {
-    const movs          = c.movimientos;
-    const lastMov       = movs[movs.length - 1];
-    const saldo_actual  = lastMov ? Number(lastMov.saldo_corriente) : Number(c.saldo_inicial);
-    const total_ing     = movs.reduce((a, m) => a + Number(m.debe),  0);
-    const total_egr     = movs.reduce((a, m) => a + Number(m.haber), 0);
+    const movs         = c.movimientos;
+    const lastMov      = movs[movs.length - 1];
+    const saldo_actual = lastMov ? Number(lastMov.saldo_corriente) : Number(c.saldo_inicial);
+    const total_ing    = movs.reduce((a, m) => a + Number(m.debe),  0);
+    const total_egr    = movs.reduce((a, m) => a + Number(m.haber), 0);
     return {
       cuenta_id:      c.id,
       nombre:         c.nombre,
@@ -225,7 +283,7 @@ export async function conciliatoria(req: Request, res: Response) {
     totalPorMonedaMap.set(e.moneda, (totalPorMonedaMap.get(e.moneda) ?? 0) + Number(e.importe));
   }
   const echeqs_pendientes = {
-    cantidad:        echeqsPendientes.length,
+    cantidad:         echeqsPendientes.length,
     total_por_moneda: [...totalPorMonedaMap.entries()].map(([moneda, total]) => ({
       moneda,
       total: parseFloat(total.toFixed(2)),

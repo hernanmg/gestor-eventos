@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
+import { requireEventoAcceso, requireEventoRole } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
 import { list, detail, create, update, remove, conciliatoria } from '../controllers/eventos.controller';
 import {
@@ -16,32 +17,32 @@ const router = Router();
 router.use(auth);
 
 router.get('/',       asyncHandler(list));
-router.get('/:id',    asyncHandler(detail));
+router.get('/:id',    requireEventoAcceso(), asyncHandler(detail));
 router.post('/',      requireRole('OPERADOR'), asyncHandler(create));
-router.put('/:id',    requireRole('OPERADOR'), asyncHandler(update));
-router.delete('/:id', requireRole('OPERADOR'), asyncHandler(remove));
+router.put('/:id',    requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(update));
+router.delete('/:id', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(remove));
 
 // Movimientos anidados bajo un evento
-router.get('/:id/movimientos',  asyncHandler(listMovimientos));
-router.post('/:id/movimientos', requireRole('OPERADOR'), asyncHandler(createMovimiento));
+router.get('/:id/movimientos',  requireEventoAcceso(), asyncHandler(listMovimientos));
+router.post('/:id/movimientos', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(createMovimiento));
 
 // Cuentas bancarias del evento
-router.get('/:id/cuentas',  asyncHandler(listCuentas));
-router.post('/:id/cuentas', requireRole('OPERADOR'), asyncHandler(createCuenta));
+router.get('/:id/cuentas',  requireEventoAcceso(), asyncHandler(listCuentas));
+router.post('/:id/cuentas', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(createCuenta));
 
 // Echeqs del evento
-router.get('/:id/echeqs/alertas', asyncHandler(alertasEcheqs));
-router.get('/:id/echeqs',         asyncHandler(listEcheqs));
-router.post('/:id/echeqs',        requireRole('OPERADOR'), asyncHandler(createEcheq));
+router.get('/:id/echeqs/alertas', requireEventoAcceso(), asyncHandler(alertasEcheqs));
+router.get('/:id/echeqs',         requireEventoAcceso(), asyncHandler(listEcheqs));
+router.post('/:id/echeqs',        requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(createEcheq));
 
 // Conciliatoria — calculada al momento
-router.get('/:id/conciliatoria', asyncHandler(conciliatoria));
+router.get('/:id/conciliatoria', requireEventoAcceso(), asyncHandler(conciliatoria));
 
 // Caja — transferencia y posición consolidada
-router.post('/:id/cuentas/transferencia', requireRole('OPERADOR'), asyncHandler(transferencia));
-router.get('/:id/posicion-consolidada',   asyncHandler(posicionConsolidada));
+router.post('/:id/cuentas/transferencia', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(transferencia));
+router.get('/:id/posicion-consolidada',   requireEventoAcceso(), asyncHandler(posicionConsolidada));
 
 // Movimientos sin conciliar (para dialog de conciliación retroactiva)
-router.get('/:id/movimientos-sin-conciliar', asyncHandler(listSinConciliar));
+router.get('/:id/movimientos-sin-conciliar', requireEventoAcceso(), asyncHandler(listSinConciliar));
 
 export default router;

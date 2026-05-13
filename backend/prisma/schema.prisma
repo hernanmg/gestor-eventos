@@ -54,6 +54,9 @@ model Usuario {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
+
+  eventoAccesos EventoAcceso[]
+  auditoriaLogs AuditoriaLog[]
 }
 
 // ─── CONFIGURACIÓN GLOBAL DE PESTAÑAS ────────────────────────────────────────
@@ -61,11 +64,14 @@ model Usuario {
 // `codigo` es inmutable y lo usa el importer Excel para mapear hojas.
 
 model TabConfig {
-  id     Int    @id @default(autoincrement())
-  tipo   Tipo
-  numero Int    // 1–5 dentro de su tipo
-  nombre String // editable
-  codigo String @unique // inmutable: "EG-TC", "ING-TICKETS", etc.
+  id         Int     @id @default(autoincrement())
+  tipo       Tipo
+  numero     Int     // identificador estable — nunca reasignado
+  nombre     String  // editable
+  codigo     String  @unique // inmutable
+  orden      Int     // posición de visualización dentro del tipo (reordenable)
+  activo     Boolean @default(true)
+  es_sistema Boolean @default(false) // las 10 tabs originales no se pueden eliminar
 
   @@unique([tipo, numero])
 }
@@ -90,6 +96,7 @@ model Evento {
   movimientos Movimiento[]
   cuentas     CuentaBancaria[]
   echeqs      Echeq[]
+  accesos     EventoAcceso[]
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -110,6 +117,8 @@ model Movimiento {
   moneda                Moneda          @default(ARS)
   orden                 Int             // define la secuencia para recálculo de saldo
   impuesto_subcategoria String?         // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
+  proveedor_id          Int?
+  proveedor             Proveedor?      @relation(fields: [proveedor_id], references: [id])
   // Vinculación opcional con un movimiento de caja
   movimiento_caja_id    Int?
   movimiento_caja       MovimientoCaja? @relation("MovimientoOrigenCaja", fields: [movimiento_caja_id], references: [id])
@@ -164,6 +173,26 @@ model MovimientoCaja {
   echeqs_cobrados    Echeq[]     @relation("EcheqCobradoCaja")
 }
 
+// ─── PROVEEDORES ─────────────────────────────────────────────────────────────
+
+model Proveedor {
+  id         Int       @id @default(autoincrement())
+  nombre     String
+  alias      String?
+  cuit       String?   @unique
+  categoria  String?
+  notas      String?
+  activo     Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+
+  movimientos Movimiento[]
+  echeqs      Echeq[]
+}
+
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
 // Nace desde EG-EXTRA. Al cobrarse, genera un MovimientoCaja automáticamente.
 
@@ -177,8 +206,10 @@ model Echeq {
   // MovimientoCaja generado al cobrar este echeq
   movimiento_caja_id   Int?
   movimiento_caja      MovimientoCaja? @relation("EcheqCobradoCaja", fields: [movimiento_caja_id], references: [id])
+  proveedor_id         Int?
+  proveedor            Proveedor?      @relation(fields: [proveedor_id], references: [id])
   numero               String
-  razon_social         String
+  razon_social         String?         // auto-filled from proveedor.nombre when proveedor_id is set
   detalle              String?
   importe              Decimal         @db.Decimal(15, 2)
   moneda               Moneda          @default(ARS)
@@ -192,4 +223,36 @@ model Echeq {
   deleted_at           DateTime?
   created_by           Int?
   updated_by           Int?
+}
+
+// ─── ACCESO POR EVENTO ────────────────────────────────────────────────────────
+
+model EventoAcceso {
+  id         Int      @id @default(autoincrement())
+  usuario_id Int
+  usuario    Usuario  @relation(fields: [usuario_id], references: [id])
+  evento_id  Int
+  evento     Evento   @relation(fields: [evento_id], references: [id])
+  rol        Rol
+  created_at DateTime @default(now())
+  created_by Int?
+
+  @@unique([usuario_id, evento_id])
+}
+
+// ─── AUDITORÍA ────────────────────────────────────────────────────────────────
+
+model AuditoriaLog {
+  id            Int      @id @default(autoincrement())
+  usuario_id    Int?
+  usuario       Usuario? @relation(fields: [usuario_id], references: [id])
+  accion        String
+  entidad       String
+  entidad_id    Int?
+  evento_id     Int?
+  descripcion   String
+  datos_antes   Json?
+  datos_despues Json?
+  ip            String?
+  created_at    DateTime @default(now())
 }

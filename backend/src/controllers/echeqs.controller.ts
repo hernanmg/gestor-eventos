@@ -4,8 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { Moneda, EstadoEcheq } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import { registrarAuditoria } from '../lib/auditoria';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -22,20 +21,23 @@ function mapEcheqFull(e: any) {
   return { ...mapEcheq(e), dias_para_vencimiento: calcDiasVencimiento(e) };
 }
 
-// ── Schemas ───────────────────────────────────────────────────────────────────
-
 const createEcheqSchema = z.object({
   movimiento_id:        z.number().int().positive().optional(),
+  proveedor_id:         z.number().int().positive().optional(),
   numero:               z.string().min(1),
-  razon_social:         z.string().min(1),
+  razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
   importe:              z.number().positive(),
   moneda:               z.enum(['ARS', 'USD']).default('ARS'),
   fecha_emision:        z.string().nullable().optional(),
   fecha_cobro_estimada: z.string().nullable().optional(),
-});
+}).refine(
+  d => d.razon_social || d.proveedor_id,
+  { message: 'razon_social o proveedor_id son requeridos', path: ['razon_social'] },
+);
 
 const updateEcheqSchema = z.object({
+  proveedor_id:         z.number().int().positive().nullable().optional(),
   numero:               z.string().min(1).optional(),
   razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
@@ -53,8 +55,6 @@ const cobrarSchema = z.object({
 const rechazarSchema = z.object({
   motivo_rechazo: z.string().nullable().optional(),
 });
-
-// ── Controllers ───────────────────────────────────────────────────────────────
 
 export async function listEcheqs(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
@@ -98,6 +98,14 @@ export async function createEcheq(req: Request, res: Response) {
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
+  let razonSocial = parsed.data.razon_social ?? null;
+  if (parsed.data.proveedor_id) {
+    const prov = await prisma.proveedor.findFirst({ where: { id: parsed.data.proveedor_id, activo: true, deleted_at: null } });
+    if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
+    if (!razonSocial) razonSocial = prov.nombre;
+  }
+  if (!razonSocial) { res.status(400).json({ error: 'razon_social o proveedor_id son requeridos' }); return; }
+
   if (parsed.data.movimiento_id) {
     const mov = await prisma.movimiento.findFirst({
       where: { id: parsed.data.movimiento_id, evento_id: eventoId, deleted_at: null },
@@ -119,10 +127,11 @@ export async function createEcheq(req: Request, res: Response) {
   const echeq = await prisma.echeq.create({
     data: {
       evento_id:            eventoId,
-      movimiento_id:        parsed.data.movimiento_id        ?? null,
+      movimiento_id:        parsed.data.movimiento_id  ?? null,
+      proveedor_id:         parsed.data.proveedor_id   ?? null,
       numero:               parsed.data.numero,
-      razon_social:         parsed.data.razon_social,
-      detalle:              parsed.data.detalle               ?? null,
+      razon_social:         razonSocial,
+      detalle:              parsed.data.detalle        ?? null,
       importe:              parsed.data.importe,
       moneda:               parsed.data.moneda                as Moneda,
       fecha_emision:        parsed.data.fecha_emision        ? new Date(parsed.data.fecha_emision)        : null,
@@ -131,6 +140,19 @@ export async function createEcheq(req: Request, res: Response) {
       updated_by:           req.user!.id,
     },
   });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    accion:       'CREATE',
+    entidad:      'Echeq',
+    entidadId:    echeq.id,
+    eventoId,
+    descripcion:  `Creó echeq #${parsed.data.numero} por ${parsed.data.importe} ${parsed.data.moneda} — ${razonSocial}`,
+    datosDespues: { numero: parsed.data.numero, importe: parsed.data.importe, moneda: parsed.data.moneda, razon_social: razonSocial },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
   res.status(201).json(mapEcheqFull(echeq));
 }
 
@@ -151,6 +173,7 @@ export async function updateEcheq(req: Request, res: Response) {
   const updated = await prisma.echeq.update({
     where: { id },
     data: {
+      ...(parsed.data.proveedor_id         !== undefined && { proveedor_id: parsed.data.proveedor_id }),
       ...(parsed.data.numero               !== undefined && { numero: parsed.data.numero }),
       ...(parsed.data.razon_social         !== undefined && { razon_social: parsed.data.razon_social }),
       ...(parsed.data.detalle              !== undefined && { detalle: parsed.data.detalle }),
@@ -165,6 +188,20 @@ export async function updateEcheq(req: Request, res: Response) {
       updated_by: req.user!.id,
     },
   });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    accion:       'UPDATE',
+    entidad:      'Echeq',
+    entidadId:    id,
+    eventoId:     existing.evento_id,
+    descripcion:  `Actualizó echeq #${existing.numero}`,
+    datosAntes:   { numero: existing.numero, importe: Number(existing.importe), moneda: existing.moneda, estado: existing.estado },
+    datosDespues: parsed.data,
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
   res.json(mapEcheqFull(updated));
 }
 
@@ -180,6 +217,19 @@ export async function deleteEcheq(req: Request, res: Response) {
     where: { id },
     data:  { deleted_at: new Date(), updated_by: req.user!.id },
   });
+
+  await registrarAuditoria({
+    usuarioId:  req.user!.id,
+    accion:     'DELETE',
+    entidad:    'Echeq',
+    entidadId:  id,
+    eventoId:   existing.evento_id,
+    descripcion: `Eliminó echeq #${existing.numero}`,
+    datosAntes:  { numero: existing.numero, importe: Number(existing.importe), moneda: existing.moneda, razon_social: existing.razon_social },
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
   res.json({ message: 'Echeq eliminado correctamente' });
 }
 
@@ -232,6 +282,19 @@ export async function cobrarEcheq(req: Request, res: Response) {
     });
 
     await recalcularSaldosCaja(parsed.data.cuenta_id, tx);
+
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'Echeq',
+      entidadId:    id,
+      eventoId:     echeq.evento_id,
+      descripcion:  `Cobró echeq #${echeq.numero} — ${echeq.razon_social}`,
+      datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
+      datosDespues: { estado: 'COBRADO', cuenta_id: parsed.data.cuenta_id },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
   });
 
   const updated = await prisma.echeq.findUnique({ where: { id } });
@@ -259,6 +322,20 @@ export async function rechazarEcheq(req: Request, res: Response) {
       updated_by:     req.user!.id,
     },
   });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    accion:       'UPDATE',
+    entidad:      'Echeq',
+    entidadId:    id,
+    eventoId:     echeq.evento_id,
+    descripcion:  `Rechazó echeq #${echeq.numero}${parsed.data.motivo_rechazo ? ` — ${parsed.data.motivo_rechazo}` : ''}`,
+    datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
+    datosDespues: { estado: 'RECHAZADO', motivo_rechazo: parsed.data.motivo_rechazo },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
   res.json(mapEcheqFull(updated));
 }
 

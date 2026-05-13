@@ -3,8 +3,7 @@ import { z } from 'zod';
 import { TipoCuenta, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
-
-// ── Tab code lookup (cached per process) ──────────────────────────────────────
+import { registrarAuditoria } from '../lib/auditoria';
 
 let _tabCache: Map<string, string> | null = null;
 async function getTabMap(): Promise<Map<string, string>> {
@@ -14,8 +13,6 @@ async function getTabMap(): Promise<Map<string, string>> {
   }
   return _tabCache;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function mapCuenta(c: any) {
   return { ...c, saldo_inicial: Number(c.saldo_inicial) };
@@ -33,15 +30,13 @@ function mapMovCaja(m: any, tabMap?: Map<string, string>) {
 
   return {
     ...m,
-    debe:             Number(m.debe),
-    haber:            Number(m.haber),
-    saldo_corriente:  Number(m.saldo_corriente),
+    debe:              Number(m.debe),
+    haber:             Number(m.haber),
+    saldo_corriente:   Number(m.saldo_corriente),
     movimiento_origen: movOrigen,
-    movimientos_origen: undefined, // strip raw relation
+    movimientos_origen: undefined,
   };
 }
-
-// ── Schemas ───────────────────────────────────────────────────────────────────
 
 const createCuentaSchema = z.object({
   nombre:        z.string().min(1),
@@ -93,15 +88,30 @@ export async function createCuenta(req: Request, res: Response) {
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const cuenta = await prisma.cuentaBancaria.create({
-    data: {
-      evento_id:     eventoId,
-      nombre:        parsed.data.nombre,
-      tipo:          parsed.data.tipo as TipoCuenta,
-      moneda:        parsed.data.moneda as Moneda,
-      saldo_inicial: parsed.data.saldo_inicial,
-    },
+  const cuenta = await prisma.$transaction(async tx => {
+    const c = await tx.cuentaBancaria.create({
+      data: {
+        evento_id:     eventoId,
+        nombre:        parsed.data.nombre,
+        tipo:          parsed.data.tipo as TipoCuenta,
+        moneda:        parsed.data.moneda as Moneda,
+        saldo_inicial: parsed.data.saldo_inicial,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'CREATE',
+      entidad:      'CuentaBancaria',
+      entidadId:    c.id,
+      eventoId,
+      descripcion:  `Creó cuenta bancaria "${parsed.data.nombre}" en evento #${eventoId}`,
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return c;
   });
+
   res.status(201).json(mapCuenta(cuenta));
 }
 
@@ -131,6 +141,18 @@ export async function updateCuenta(req: Request, res: Response) {
     if (saldo_inicial !== undefined) {
       await recalcularSaldosCaja(id, tx);
     }
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'CuentaBancaria',
+      entidadId:    id,
+      eventoId:     existing.evento_id,
+      descripcion:  `Actualizó cuenta bancaria "${existing.nombre}"`,
+      datosAntes:   { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda, saldo_inicial: Number(existing.saldo_inicial) },
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
     return c;
   });
 
@@ -142,7 +164,21 @@ export async function deleteCuenta(req: Request, res: Response) {
   const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
-  await prisma.cuentaBancaria.update({ where: { id }, data: { deleted_at: new Date() } });
+  await prisma.$transaction(async tx => {
+    await tx.cuentaBancaria.update({ where: { id }, data: { deleted_at: new Date() } });
+    await registrarAuditoria({
+      usuarioId:  req.user!.id,
+      accion:     'DELETE',
+      entidad:    'CuentaBancaria',
+      entidadId:  id,
+      eventoId:   existing.evento_id,
+      descripcion: `Eliminó cuenta bancaria "${existing.nombre}"`,
+      datosAntes:  { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda },
+      ip:          req.ip,
+      tx:          tx as any,
+    });
+  });
+
   res.json({ message: 'Cuenta eliminada correctamente' });
 }
 
@@ -197,6 +233,17 @@ export async function createMovimientoCaja(req: Request, res: Response) {
       },
     });
     await recalcularSaldosCaja(cuentaId, tx);
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'CREATE',
+      entidad:      'MovimientoCaja',
+      entidadId:    mov.id,
+      eventoId:     cuenta.evento_id,
+      descripcion:  `Creó movimiento de caja en cuenta "${cuenta.nombre}"`,
+      datosDespues: { debe: parsed.data.debe, haber: parsed.data.haber, descripcion: parsed.data.descripcion },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
     return mov.id;
   });
 
@@ -212,7 +259,10 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.movimientoCaja.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.movimientoCaja.findFirst({
+    where:   { id, deleted_at: null },
+    include: { cuenta: { select: { evento_id: true, nombre: true } } },
+  });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
 
   const movId = await prisma.$transaction(async tx => {
@@ -227,6 +277,18 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
       },
     });
     await recalcularSaldosCaja(existing.cuenta_id, tx);
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'MovimientoCaja',
+      entidadId:    id,
+      eventoId:     (existing as any).cuenta.evento_id,
+      descripcion:  `Actualizó movimiento de caja #${id}`,
+      datosAntes:   { debe: Number(existing.debe), haber: Number(existing.haber), descripcion: existing.descripcion },
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
     return id;
   });
 
@@ -236,7 +298,10 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
 
 export async function deleteMovimientoCaja(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.movimientoCaja.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.movimientoCaja.findFirst({
+    where:   { id, deleted_at: null },
+    include: { cuenta: { select: { evento_id: true } } },
+  });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -245,6 +310,17 @@ export async function deleteMovimientoCaja(req: Request, res: Response) {
       data:  { deleted_at: new Date(), updated_by: req.user!.id },
     });
     await recalcularSaldosCaja(existing.cuenta_id, tx);
+    await registrarAuditoria({
+      usuarioId:  req.user!.id,
+      accion:     'DELETE',
+      entidad:    'MovimientoCaja',
+      entidadId:  id,
+      eventoId:   (existing as any).cuenta.evento_id,
+      descripcion: `Eliminó movimiento de caja #${id}`,
+      datosAntes:  { debe: Number(existing.debe), haber: Number(existing.haber), descripcion: existing.descripcion },
+      ip:          req.ip,
+      tx:          tx as any,
+    });
   });
 
   res.json({ message: 'Movimiento de caja eliminado correctamente' });
@@ -328,6 +404,17 @@ export async function transferencia(req: Request, res: Response) {
     await tx.movimientoCaja.update({ where: { id: orig.id }, data: { transferencia_par_id: dest.id } });
     await recalcularSaldosCaja(cuenta_origen_id,  tx);
     await recalcularSaldosCaja(cuenta_destino_id, tx);
+
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'CREATE',
+      entidad:      'Transferencia',
+      eventoId,
+      descripcion:  `Transferencia ${moneda} ${importe} de "${cuentaOrigen.nombre}" a "${cuentaDestino.nombre}"`,
+      datosDespues: { importe, moneda, cuenta_origen: cuentaOrigen.nombre, cuenta_destino: cuentaDestino.nombre },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
 
     return [
       await tx.movimientoCaja.findUnique({ where: { id: orig.id } }),
@@ -417,8 +504,8 @@ export async function posicionConsolidada(req: Request, res: Response) {
     const cuentasMoneda = cuentas.filter(c => c.moneda === moneda);
 
     const cuentasDetalle = cuentasMoneda.map(c => {
-      const movs      = c.movimientos;
-      const last      = movs[movs.length - 1];
+      const movs       = c.movimientos;
+      const last       = movs[movs.length - 1];
       const saldo_actual = last ? Number(last.saldo_corriente) : Number(c.saldo_inicial);
       const total_debe  = movs.reduce((a, m) => a + Number(m.debe),  0);
       const total_haber = movs.reduce((a, m) => a + Number(m.haber), 0);
@@ -435,7 +522,6 @@ export async function posicionConsolidada(req: Request, res: Response) {
     });
 
     const saldo_total = parseFloat(cuentasDetalle.reduce((a, c) => a + c.saldo_actual, 0).toFixed(2));
-    // sum of haber of outgoing transfer movements (one side per transfer)
     const total_transferencias = parseFloat(
       cuentasMoneda
         .flatMap(c => c.movimientos)

@@ -1,4 +1,4 @@
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { cn } from '@/lib/utils';
@@ -91,9 +91,23 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           </NavLink>
 
           {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/proveedores" title={!isOpen ? 'Proveedores' : undefined} className={navItem}>
+              <Building2 size={18} className="shrink-0" />
+              {isOpen && <span>Proveedores</span>}
+            </NavLink>
+          )}
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
             <NavLink to="/importer" title={!isOpen ? 'Importar Excel' : undefined} className={navItem}>
               <FileUp size={18} className="shrink-0" />
               {isOpen && <span>Importar Excel</span>}
+            </NavLink>
+          )}
+
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/auditoria" title={!isOpen ? 'Auditoría' : undefined} className={navItem}>
+              <ClipboardList size={18} className="shrink-0" />
+              {isOpen && <span>Auditoría</span>}
             </NavLink>
           )}
 

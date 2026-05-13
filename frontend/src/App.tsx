@@ -7,6 +7,9 @@ import EventosPage          from '@/pages/Eventos';
 import EventoPage           from '@/pages/Evento';
 import ConfiguracionPage    from '@/pages/Configuracion';
 import ImporterPage         from '@/pages/Importer';
+import ProveedoresPage      from '@/pages/Proveedores';
+import ProveedorDetallePage from '@/pages/Proveedores/ProveedorDetalle';
+import AuditoriaPage        from '@/pages/Auditoria';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,8 +31,11 @@ export default function App() {
             <Route path="/dashboard"     element={<DashboardPage />} />
             <Route path="/eventos"       element={<EventosPage />} />
             <Route path="/eventos/:id"   element={<EventoPage />} />
-            <Route path="/configuracion" element={<ConfiguracionPage />} />
-            <Route path="/importer"      element={<ImporterPage />} />
+            <Route path="/configuracion"    element={<ConfiguracionPage />} />
+            <Route path="/importer"         element={<ImporterPage />} />
+            <Route path="/proveedores"      element={<ProveedoresPage />} />
+            <Route path="/proveedores/:id"  element={<ProveedorDetallePage />} />
+            <Route path="/auditoria"        element={<AuditoriaPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

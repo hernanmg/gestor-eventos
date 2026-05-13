@@ -20,14 +20,42 @@ export interface Usuario {
   deleted_at: string | null;
 }
 
+// ── Proveedores ───────────────────────────────────────────────────────────────
+
+export interface Proveedor {
+  id:         number;
+  nombre:     string;
+  alias:      string | null;
+  cuit:       string | null;
+  categoria:  string | null;
+  notas:      string | null;
+  activo:     boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  created_by: number | null;
+  updated_by: number | null;
+}
+
+export interface ProveedorBusqueda {
+  id:        number;
+  nombre:    string;
+  alias:     string | null;
+  cuit:      string | null;
+  categoria: string | null;
+}
+
 // ── Configuración de pestañas ─────────────────────────────────────────────────
 
 export interface TabConfig {
-  id:     number;
-  tipo:   Tipo;
-  numero: number;
-  nombre: string; // editable
-  codigo: string; // inmutable
+  id:         number;
+  tipo:       Tipo;
+  numero:     number;
+  nombre:     string;
+  codigo:     string;
+  orden:      number;
+  activo:     boolean;
+  es_sistema: boolean;
 }
 
 // ── Eventos ───────────────────────────────────────────────────────────────────
@@ -80,6 +108,8 @@ export interface Movimiento {
   moneda:                Moneda;
   orden:                 number;
   impuesto_subcategoria: string | null;
+  proveedor_id:          number | null;
+  proveedor:             ProveedorBusqueda | null;
   movimiento_caja_id:    number | null;
   created_at:            string;
   updated_at:            string;
@@ -158,8 +188,9 @@ export interface Echeq {
   evento_id:             number;
   movimiento_id:         number | null;
   movimiento_caja_id:    number | null;
+  proveedor_id:          number | null;
   numero:                string;
-  razon_social:          string;
+  razon_social:          string | null;
   detalle:               string | null;
   importe:               number;
   moneda:                Moneda;
@@ -181,15 +212,60 @@ export interface AlertasEcheqs {
   vencen_pronto: Echeq[];
 }
 
+// ── EventoAcceso ──────────────────────────────────────────────────────────────
+
+export interface EventoAcceso {
+  id:         number;
+  usuario_id: number;
+  evento_id:  number;
+  rol:        Rol;
+  created_at: string;
+  evento?: {
+    id:     number;
+    nombre: string;
+    estado: EstadoEvento;
+  };
+}
+
+// ── AuditoriaLog ──────────────────────────────────────────────────────────────
+
+export interface AuditoriaLog {
+  id:            number;
+  usuario_id:    number | null;
+  accion:        string;
+  entidad:       string;
+  entidad_id:    number | null;
+  evento_id:     number | null;
+  descripcion:   string;
+  datos_antes:   Record<string, unknown> | null;
+  datos_despues: Record<string, unknown> | null;
+  ip:            string | null;
+  created_at:    string;
+  usuario?: {
+    id:     number;
+    nombre: string;
+    email:  string;
+  } | null;
+}
+
+export interface AuditoriaPage {
+  total: number;
+  page:  number;
+  limit: number;
+  pages: number;
+  data:  AuditoriaLog[];
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 // Subconjunto devuelto por GET /api/auth/me y POST /api/auth/login
 
 export type MeResponse = {
-  id:     number;
-  nombre: string;
-  email:  string;
-  rol:    Rol;
-  activo: boolean;
+  id:      number;
+  nombre:  string;
+  email:   string;
+  rol:     Rol;
+  activo:  boolean;
+  accesos: { evento_id: number; rol: Rol }[];
 };
 
 // ── Respuestas API ────────────────────────────────────────────────────────────
