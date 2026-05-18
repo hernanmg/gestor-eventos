@@ -10,6 +10,8 @@ import ImporterPage         from '@/pages/Importer';
 import ProveedoresPage      from '@/pages/Proveedores';
 import ProveedorDetallePage from '@/pages/Proveedores/ProveedorDetalle';
 import AuditoriaPage        from '@/pages/Auditoria';
+import StockPage            from '@/pages/Stock';
+import ProductoDetallePage  from '@/pages/Stock/ProductoDetalle';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,7 +37,9 @@ export default function App() {
             <Route path="/importer"         element={<ImporterPage />} />
             <Route path="/proveedores"      element={<ProveedoresPage />} />
             <Route path="/proveedores/:id"  element={<ProveedorDetallePage />} />
-            <Route path="/auditoria"        element={<AuditoriaPage />} />
+            <Route path="/auditoria"               element={<AuditoriaPage />} />
+            <Route path="/stock"                   element={<StockPage />} />
+            <Route path="/stock/productos/:id"     element={<ProductoDetallePage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

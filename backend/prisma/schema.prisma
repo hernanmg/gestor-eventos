@@ -42,6 +42,25 @@ enum Moneda {
   USD
 }
 
+enum UbicacionStock {
+  DEPOSITO
+  EN_EVENTO
+  EN_TRANSITO
+  BAJA
+}
+
+enum EstadoAsignacion {
+  ACTIVA
+  TRANSFERIDA
+  DEVUELTA
+  CANCELADA
+}
+
+enum OrigenTransfer {
+  DEPOSITO
+  EVENTO
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model Usuario {
@@ -93,10 +112,12 @@ model Evento {
   created_by   Int?
   updated_by   Int?
 
-  movimientos Movimiento[]
-  cuentas     CuentaBancaria[]
-  echeqs      Echeq[]
-  accesos     EventoAcceso[]
+  movimientos            Movimiento[]
+  cuentas                CuentaBancaria[]
+  echeqs                 Echeq[]
+  accesos                EventoAcceso[]
+  asignaciones_stock     AsignacionStock[]
+  asignaciones_prestadas AsignacionStock[] @relation("StockPrestado")
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -238,6 +259,84 @@ model EventoAcceso {
   created_by Int?
 
   @@unique([usuario_id, evento_id])
+}
+
+// ─── STOCK ───────────────────────────────────────────────────────────────────
+
+model CategoriaStock {
+  id          Int        @id @default(autoincrement())
+  nombre      String     @unique
+  descripcion String?
+  color       String?
+  activo      Boolean    @default(true)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+  deleted_at  DateTime?
+  created_by  Int?
+
+  productos Producto[]
+}
+
+model Producto {
+  id           Int             @id @default(autoincrement())
+  nombre       String
+  descripcion  String?
+  categoria_id Int?
+  categoria    CategoriaStock? @relation(fields: [categoria_id], references: [id])
+  codigo       String?         @unique
+  stock_total  Int
+  stock_minimo Int             @default(0)
+  unidad       String          @default("unidad")
+  notas        String?
+  activo       Boolean         @default(true)
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  deleted_at   DateTime?
+  created_by   Int?
+  updated_by   Int?
+
+  asignaciones AsignacionStock[]
+  movimientos  MovimientoStock[]
+}
+
+model AsignacionStock {
+  id               Int              @id @default(autoincrement())
+  producto_id      Int
+  producto         Producto         @relation(fields: [producto_id], references: [id])
+  evento_id        Int
+  evento           Evento           @relation(fields: [evento_id], references: [id])
+  cantidad         Int
+  fecha_salida     DateTime
+  fecha_retorno    DateTime?
+  ubicacion        UbicacionStock   @default(EN_EVENTO)
+  estado           EstadoAsignacion @default(ACTIVA)
+  origen           OrigenTransfer   @default(DEPOSITO)
+  evento_origen_id Int?
+  evento_origen    Evento?          @relation("StockPrestado", fields: [evento_origen_id], references: [id])
+  notas            String?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  deleted_at       DateTime?
+  created_by       Int?
+  updated_by       Int?
+
+  movimientos MovimientoStock[]
+}
+
+model MovimientoStock {
+  id                Int              @id @default(autoincrement())
+  producto_id       Int
+  producto          Producto         @relation(fields: [producto_id], references: [id])
+  asignacion_id     Int?
+  asignacion        AsignacionStock? @relation(fields: [asignacion_id], references: [id])
+  tipo              String
+  cantidad          Int
+  evento_origen_id  Int?
+  evento_destino_id Int?
+  fecha             DateTime
+  descripcion       String?
+  created_at        DateTime         @default(now())
+  created_by        Int?
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

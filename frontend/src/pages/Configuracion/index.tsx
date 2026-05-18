@@ -17,12 +17,13 @@ import {
 import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } from '@/hooks/useUsuarios';
 import { useEventoAccesos, useCreateAcceso, useUpdateAcceso, useDeleteAcceso } from '@/hooks/useEventoAccesos';
 import { useEventos } from '@/hooks/useEvento';
+import { useCategoriasStock, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/hooks/useStock';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo, Usuario, Rol } from '@/types';
+import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock } from '@/types';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -647,9 +648,213 @@ function UsuariosSection({ currentUserId }: { currentUserId: number }) {
   );
 }
 
+// ── Categorías de Stock section ───────────────────────────────────────────────
+
+interface CategoriaFormData {
+  nombre:      string;
+  descripcion: string;
+  color:       string;
+}
+
+const EMPTY_CAT: CategoriaFormData = { nombre: '', descripcion: '', color: '#6B7280' };
+
+function CategoriaDialog({
+  open, categoria, onClose,
+}: {
+  open:      boolean;
+  categoria: CategoriaStock | null;
+  onClose:   () => void;
+}) {
+  const isEdit       = !!categoria;
+  const createCat    = useCreateCategoria();
+  const updateCat    = useUpdateCategoria();
+  const [form, setForm]   = useState<CategoriaFormData>(EMPTY_CAT);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(categoria
+      ? { nombre: categoria.nombre, descripcion: categoria.descripcion ?? '', color: categoria.color ?? '#6B7280' }
+      : EMPTY_CAT,
+    );
+    setError(null);
+  }, [categoria, open]);
+
+  const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+  const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      if (isEdit) {
+        await updateCat.mutateAsync({ id: categoria!.id, data: { nombre: form.nombre, descripcion: form.descripcion || null, color: form.color } });
+      } else {
+        await createCat.mutateAsync({ nombre: form.nombre, descripcion: form.descripcion || null, color: form.color });
+      }
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Error al guardar');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Editar categoría' : 'Nueva categoría de stock'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div>
+            <label className={labelCls}>Nombre *</label>
+            <input value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={inputCls} required />
+          </div>
+          <div>
+            <label className={labelCls}>Descripción</label>
+            <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Color</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={form.color}
+                onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+                className="w-10 h-8 border rounded cursor-pointer p-0.5"
+              />
+              <input
+                value={form.color}
+                onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+                pattern="^#[0-9A-Fa-f]{6}$"
+                className="flex-1 border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="#000000"
+              />
+            </div>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={createCat.isPending || updateCat.isPending}>
+              {createCat.isPending || updateCat.isPending ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CategoriasSection() {
+  const { data: categorias = [], isLoading } = useCategoriasStock();
+  const updateCat = useUpdateCategoria();
+  const deleteCat = useDeleteCategoria();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing,    setEditing]    = useState<CategoriaStock | null>(null);
+
+  const openNew  = () => { setEditing(null); setDialogOpen(true); };
+  const openEdit = (c: CategoriaStock) => { setEditing(c); setDialogOpen(true); };
+  const close    = () => { setDialogOpen(false); setEditing(null); };
+
+  const handleToggle = (c: CategoriaStock) => {
+    updateCat.mutate({ id: c.id, data: { activo: !c.activo } });
+  };
+
+  const handleDelete = (c: CategoriaStock) => {
+    if (!window.confirm(`¿Eliminar la categoría "${c.nombre}"?`)) return;
+    deleteCat.mutate(c.id, {
+      onError: (err: any) => alert(err?.response?.data?.error ?? 'Error al eliminar'),
+    });
+  };
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">Cargando...</p>;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-xs text-muted-foreground max-w-md">
+          Las categorías activas aparecen en el selector del formulario de productos.
+          No se puede eliminar una categoría si tiene productos activos asociados.
+        </p>
+        <Button size="sm" onClick={openNew}>
+          <Plus size={14} className="mr-1.5" /> Nueva categoría
+        </Button>
+      </div>
+
+      <div className="rounded-lg border border-border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-border">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-10">Color</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground hidden md:table-cell">Descripción</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-24">Productos</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-20">Estado</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {categorias.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No hay categorías. Creá la primera para organizar tu inventario.
+                </td>
+              </tr>
+            ) : categorias.map(c => (
+              <tr key={c.id} className={cn('hover:bg-muted/20 group', !c.activo && 'opacity-60')}>
+                <td className="px-3 py-2.5">
+                  <span
+                    className="w-5 h-5 rounded-full inline-block border border-white shadow-sm"
+                    style={{ backgroundColor: c.color ?? '#6B7280' }}
+                  />
+                </td>
+                <td className="px-3 py-2.5 font-medium">{c.nombre}</td>
+                <td className="px-3 py-2.5 text-muted-foreground text-xs hidden md:table-cell">{c.descripcion ?? '-'}</td>
+                <td className="px-3 py-2.5 text-right text-muted-foreground">{c.productos_count ?? 0}</td>
+                <td className="px-3 py-2.5">
+                  <button
+                    onClick={() => handleToggle(c)}
+                    className={cn(
+                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                      c.activo ? 'bg-primary' : 'bg-gray-200',
+                    )}
+                    title={c.activo ? 'Desactivar' : 'Activar'}
+                  >
+                    <span className={cn(
+                      'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                      c.activo ? 'translate-x-4' : 'translate-x-0.5',
+                    )} />
+                  </button>
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(c)}
+                      className="text-destructive hover:text-destructive"
+                      title="Eliminar"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <CategoriaDialog open={dialogOpen} categoria={editing} onClose={close} />
+    </div>
+  );
+}
+
 // ── ConfiguracionPage ─────────────────────────────────────────────────────────
 
-type ActiveTab = 'tabs' | 'usuarios';
+type ActiveTab = 'tabs' | 'usuarios' | 'categorias';
 
 export default function ConfiguracionPage() {
   const { user } = useAuth();
@@ -664,8 +869,9 @@ export default function ConfiguracionPage() {
 
       <div className="flex border-b border-border mb-6">
         {([
-          { key: 'tabs',     label: 'Pestañas del sistema' },
-          { key: 'usuarios', label: 'Usuarios' },
+          { key: 'tabs',       label: 'Pestañas del sistema' },
+          { key: 'usuarios',   label: 'Usuarios' },
+          { key: 'categorias', label: 'Categorías de Stock' },
         ] as { key: ActiveTab; label: string }[]).map(({ key, label }) => (
           <button
             key={key}
@@ -682,8 +888,9 @@ export default function ConfiguracionPage() {
         ))}
       </div>
 
-      {activeTab === 'tabs'     && <TabsSection />}
-      {activeTab === 'usuarios' && <UsuariosSection currentUserId={user.id} />}
+      {activeTab === 'tabs'       && <TabsSection />}
+      {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} />}
+      {activeTab === 'categorias' && <CategoriasSection />}
     </div>
   );
 }

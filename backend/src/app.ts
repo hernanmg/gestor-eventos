@@ -14,6 +14,7 @@ import exportarRouter               from './routes/exportar';
 import dashboardRouter              from './routes/dashboard';
 import proveedoresRouter            from './routes/proveedores';
 import auditoriaRouter             from './routes/auditoria';
+import stockRouter, { eventoStockRouter } from './routes/stock';
 
 const app = express();
 
@@ -41,6 +42,8 @@ app.use('/api/eventos',          exportarRouter);
 app.use('/api/dashboard',        dashboardRouter);
 app.use('/api/proveedores',      proveedoresRouter);
 app.use('/api/auditoria',        auditoriaRouter);
+app.use('/api/stock',            stockRouter);
+app.use('/api/eventos/:id/stock', eventoStockRouter);
 
 app.use(errorHandler);
 

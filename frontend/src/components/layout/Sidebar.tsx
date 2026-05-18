@@ -1,6 +1,7 @@
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
+import { useAlertasStock } from '@/hooks/useStock';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
 
@@ -18,8 +19,10 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 };
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
-  const { data: alertasData } = useAlertasDashboard();
-  const errorCount = alertasData?.alertas.filter(a => a.severidad === 'ERROR').length ?? 0;
+  const { data: alertasData }     = useAlertasDashboard();
+  const { data: stockAlertasData } = useAlertasStock();
+  const errorCount      = alertasData?.alertas.filter(a => a.severidad === 'ERROR').length ?? 0;
+  const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -94,6 +97,27 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/proveedores" title={!isOpen ? 'Proveedores' : undefined} className={navItem}>
               <Building2 size={18} className="shrink-0" />
               {isOpen && <span>Proveedores</span>}
+            </NavLink>
+          )}
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
+              <div className="relative shrink-0">
+                <Package size={18} />
+                {!isOpen && stockQuiebres > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                )}
+              </div>
+              {isOpen && (
+                <>
+                  <span className="flex-1">Stock</span>
+                  {stockQuiebres > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {stockQuiebres > 99 ? '99+' : stockQuiebres}
+                    </span>
+                  )}
+                </>
+              )}
             </NavLink>
           )}
 

@@ -16,6 +16,7 @@ import EcheqFormDialog from '@/components/domain/EcheqFormDialog';
 import CajaPage from './Caja';
 import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
+import EventoStockPage from './Stock';
 import { cn } from '@/lib/utils';
 import type { TabConfig, Tipo } from '@/types';
 
@@ -209,7 +210,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'AUDITORIA';
+type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'AUDITORIA';
 
 const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'EGRESO',        label: 'Egresos'       },
@@ -217,6 +218,7 @@ const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'CAJA',          label: 'Caja'          },
   { key: 'CONCILIATORIA', label: 'Conciliatoria' },
   { key: 'ECHEQS',        label: 'Echeqs'        },
+  { key: 'STOCK',         label: 'Stock'         },
 ];
 
 export default function EventoPage() {
@@ -359,6 +361,10 @@ export default function EventoPage() {
 
         {mainTab === 'ECHEQS' && (
           <EcheqsPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'STOCK' && (
+          <EventoStockPage evento={evento} canEdit={canEdit} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (
