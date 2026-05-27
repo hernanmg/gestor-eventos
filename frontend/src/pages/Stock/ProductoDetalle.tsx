@@ -65,7 +65,7 @@ export default function ProductoDetallePage() {
               <span className="text-xs font-mono bg-secondary px-2 py-0.5 rounded">{producto.codigo}</span>
             )}
             {producto.categoria && (
-              <span className="text-xs text-muted-foreground">{producto.categoria}</span>
+              <span className="text-xs text-muted-foreground">{producto.categoria.nombre}</span>
             )}
           </div>
           {producto.descripcion && (
