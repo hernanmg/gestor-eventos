@@ -14,7 +14,9 @@
     "db:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
     "seed:demo": "ts-node prisma/seed-demo.ts",
-    "demo:setup": "npm run db:reset && npm run seed && npm run seed:demo"
+    "demo:setup": "npm run db:reset && npm run seed && npm run seed:demo",
+    "build:render": "npm install --include=dev && tsc -p tsconfig.build.json && npx prisma migrate deploy && npx prisma db seed",
+    "build:render:demo": "npm install --include=dev && tsc -p tsconfig.build.json && npx prisma migrate deploy && npx prisma db seed && ts-node prisma/seed-demo.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
