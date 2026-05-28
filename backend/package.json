@@ -10,8 +10,11 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force",
-    "db:studio": "prisma studio"
+    "db:reset": "psql $DATABASE_URL -f prisma/reset-db.sql",
+    "db:studio": "prisma studio",
+    "seed": "ts-node prisma/seed.ts",
+    "seed:demo": "ts-node prisma/seed-demo.ts",
+    "demo:setup": "npm run db:reset && npm run seed && npm run seed:demo"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
