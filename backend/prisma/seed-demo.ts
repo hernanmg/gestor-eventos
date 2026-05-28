@@ -445,18 +445,10 @@ async function main() {
     });
 
     totalEventos++;
-    totalMovimientos  += egTCDef.length + egIMPDef.length + 1 + ingTickets.length + ingSpon.length + ingGastro.length;
+    totalMovimientos  += 5 + 4 + 1 + 3 + 2 + 2; // EG-TC + EG-IMP + EG-PREST + ING-TICKETS + ING-SPON + ING-GASTRO
     totalEcheqs       += 2;
     console.log('✓ Evento 1 creado (17 movimientos, 8 mov. caja, 2 echeqs)');
   }
-
-  // Definiciones para los cálculos del bloque anterior (solo para el contador)
-  const egTCDef    = [null, null, null, null, null];
-  const egIMPDef   = [null, null, null, null];
-  const ingTickets = [null, null, null];
-  const ingSpon    = [null, null];
-  const ingGastro  = [null, null];
-  void egTCDef; void egIMPDef; void ingTickets; void ingSpon; void ingGastro;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // EVENTO 2 — ACTIVO (próximo, en preparación)
