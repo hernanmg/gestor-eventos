@@ -1,8 +1,15 @@
 import axios from 'axios';
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+console.log('[API BaseURL]', BASE_URL);
+
 const api = axios.create({
-  baseURL:         import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
-  withCredentials: true, // envía cookies httpOnly en cada request
+  baseURL:         `${BASE_URL}/api`,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 api.interceptors.response.use(
