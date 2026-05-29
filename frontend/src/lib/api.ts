@@ -6,8 +6,12 @@ const api = axios.create({
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('[API Response]', response.config.url, response.data);
+    return response;
+  },
   (error) => {
+    console.error('[API Error]', error.config?.url, error.response?.data);
     // No redirige si ya estamos en /login (evita loop con la query de /me)
     if (error.response?.status === 401 && window.location.pathname !== '/login') {
       window.location.href = '/login';
