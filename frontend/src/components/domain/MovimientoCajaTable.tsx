@@ -222,12 +222,11 @@ function ConciliarDialog({
 // ── Row ────────────────────��──────────────────────────────────────────────────
 
 function Row({
-  mov, moneda, eventoId, canEdit, editCell,
+  mov, moneda, canEdit, editCell,
   onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onConciliar,
 }: {
   mov:          MovimientoCaja;
   moneda:       Moneda;
-  eventoId:     number;
   canEdit:      boolean;
   editCell:     EditCell | null;
   onCellClick:  (id: number, field: EditableField, value: string) => void;
@@ -431,7 +430,6 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
                 key={mov.id}
                 mov={mov}
                 moneda={moneda}
-                eventoId={eventoId}
                 canEdit={canEdit}
                 editCell={editCell}
                 onCellClick={handleCellClick}

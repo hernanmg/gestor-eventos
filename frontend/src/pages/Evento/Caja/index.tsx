@@ -475,7 +475,7 @@ interface Props {
   canEdit:    boolean;
 }
 
-export default function CajaPage({ eventoId, monedaBase, canEdit }: Props) {
+export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }: Props) {
   const { data: cuentas = [], isLoading } = useCuentas(eventoId);
   const { data: posicion }                = usePosicionConsolidada(eventoId);
   const updateCuenta  = useUpdateCuenta(eventoId);

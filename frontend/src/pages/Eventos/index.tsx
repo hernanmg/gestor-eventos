@@ -20,7 +20,7 @@ export default function EventosPage() {
   const { user } = useAuth();
   const { data: eventos = [], isLoading } = useEventos();
   const { mutate: deleteEvento }          = useDeleteEvento();
-  const { exportar, isExporting }              = useExportarExcel();
+  const { exportar }                            = useExportarExcel();
   const { exportar: exportPDF }                = useExportarPDF();
   const [exportingId,    setExportingId]       = useState<number | null>(null);
   const [exportingPDFId, setExportingPDFId]    = useState<number | null>(null);

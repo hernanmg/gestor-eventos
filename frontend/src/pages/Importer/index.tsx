@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileSpreadsheet, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, X, Plus, Trash2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -156,8 +156,6 @@ function UploadStep({ onPreview }: { onPreview: (r: PreviewResult, file: File) =
 function HojaRow({ hoja }: { hoja: HojaPreview }) {
   const [open, setOpen] = useState(false);
 
-  const hasIssues = hoja.stats.omitidas > 0 || hoja.stats.advertencias > 0;
-
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <button
@@ -267,12 +265,10 @@ function HojaRow({ hoja }: { hoja: HojaPreview }) {
 
 function PreviewStep({
   preview,
-  filename,
   onBack,
   onSuccess,
 }: {
   preview:   PreviewResult;
-  filename:  string;
   onBack:    () => void;
   onSuccess: (eventoId: number, stats: any) => void;
 }) {
@@ -551,7 +547,6 @@ export default function ImporterPage() {
         {step === 'preview' && preview && (
           <PreviewStep
             preview={preview}
-            filename={filename}
             onBack={() => setStep('upload')}
             onSuccess={handleSuccess}
           />

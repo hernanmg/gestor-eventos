@@ -70,7 +70,6 @@ function AsignarDialog({
     }
   }, [open]);
 
-  const productosDisp = disponibilidad?.disponible ?? null;
   const enQuiebre     = disponibilidad ? disponibilidad.disponible < form.cantidad : false;
   const sugerencias   = sugData?.sugerencias ?? [];
 
@@ -315,8 +314,8 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
   const activas      = asignaciones.filter((a: AsignacionStock) => a.estado === 'ACTIVA');
 
   // Get any pending quiebre sugerencias for this event
-  const [sugActive, setSugActive] = useState<{ productoId: number; asig: AsignacionStock } | null>(null);
-  const { data: sugData } = useSugerencias({
+  const [sugActive] = useState<{ productoId: number; asig: AsignacionStock } | null>(null);
+  const { data: _sugData } = useSugerencias({
     producto_id: sugActive?.productoId,
     evento_id:   evento.id,
     fecha_desde: sugActive?.asig.fecha_salida.split('T')[0],

@@ -131,7 +131,7 @@ export function useConciliar(eventoId: number) {
   return useMutation({
     mutationFn: ({ movCajaId, movimientoId }: { movCajaId: number; movimientoId: number }) =>
       api.post(`/movimientos-caja/${movCajaId}/conciliar`, { movimiento_id: movimientoId }).then(r => r.data),
-    onSuccess: (_, { movCajaId }) => {
+    onSuccess: () => {
       // We don't know the cuentaId from here — invalidate all cuentas' movs for this event
       qc.invalidateQueries({ queryKey: ['cuentas'] });
       qc.invalidateQueries({ queryKey: sinConciliarKey(eventoId) });
