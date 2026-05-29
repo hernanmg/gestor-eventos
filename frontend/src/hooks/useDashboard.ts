@@ -134,8 +134,9 @@ export function useKPIsEvento(eventoId: number | null) {
 
 export function useAlertasDashboard() {
   return useQuery<AlertasDashboard>({
-    queryKey: ['dashboard', 'alertas'],
-    queryFn:  () => api.get('/dashboard/alertas').then(r => r.data),
+    queryKey:        ['dashboard', 'alertas'],
+    queryFn:         () => api.get('/dashboard/alertas').then(r => r.data),
+    placeholderData: { alertas: [] },
     refetchInterval: 5 * 60 * 1000,
   });
 }

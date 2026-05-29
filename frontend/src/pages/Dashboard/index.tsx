@@ -47,8 +47,8 @@ function BigNumber({ value, colored = false, moneda }: { value: number; colored?
 // ── Row 1: Metric Cards ───────────────────────────────────────────────────────
 
 function MetricsRow({ data }: { data: ResumenDashboard }) {
-  const arsData = data.por_moneda.find(p => p.moneda === 'ARS');
-  const usdData = data.por_moneda.find(p => p.moneda === 'USD');
+  const arsData = (data.por_moneda ?? []).find(p => p.moneda === 'ARS');
+  const usdData = (data.por_moneda ?? []).find(p => p.moneda === 'USD');
   const hasUSD  = usdData !== undefined;
 
   return (
@@ -198,7 +198,7 @@ function RecentEventsTable({ data }: { data: ResumenDashboard }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {data.eventos_recientes.map(e => (
+          {(data.eventos_recientes ?? []).map(e => (
             <tr
               key={e.id}
               onClick={() => navigate(`/eventos/${e.id}`)}
@@ -226,8 +226,8 @@ const numFmt = (v: number) =>
 function TabsBarChart({ pm }: { pm: PorMonedaKPI }) {
   const moneda = pm.moneda as Moneda;
   const data = [
-    ...pm.ingresos_por_tab.map(t => ({ nombre: t.nombre, Ingresos: t.saldo, Egresos: 0 })),
-    ...pm.egresos_por_tab.map(t => ({ nombre: t.nombre, Ingresos: 0, Egresos: t.saldo })),
+    ...(pm.ingresos_por_tab ?? []).map(t => ({ nombre: t.nombre, Ingresos: t.saldo, Egresos: 0 })),
+    ...(pm.egresos_por_tab ?? []).map(t => ({ nombre: t.nombre, Ingresos: 0, Egresos: t.saldo })),
   ];
   return (
     <ResponsiveContainer width="100%" height={260}>
@@ -246,7 +246,7 @@ function TabsBarChart({ pm }: { pm: PorMonedaKPI }) {
 
 function EvolucionLineChart({ porMoneda }: { porMoneda: PorMonedaKPI[] }) {
   const allDates = new Set<string>();
-  porMoneda.forEach(pm => pm.evolucion_saldo.forEach(p => allDates.add(p.fecha)));
+  (porMoneda ?? []).forEach(pm => (pm.evolucion_saldo ?? []).forEach(p => allDates.add(p.fecha)));
 
   if (allDates.size === 0) {
     return (
@@ -258,7 +258,7 @@ function EvolucionLineChart({ porMoneda }: { porMoneda: PorMonedaKPI[] }) {
 
   const lineData = [...allDates].sort().map(fecha => {
     const point: Record<string, string | number | null> = { fecha };
-    for (const pm of porMoneda) {
+    for (const pm of (porMoneda ?? [])) {
       const entry = pm.evolucion_saldo.find(p => p.fecha === fecha);
       point[pm.moneda] = entry?.saldo_acumulado ?? null;
     }
@@ -295,8 +295,8 @@ function EvolucionLineChart({ porMoneda }: { porMoneda: PorMonedaKPI[] }) {
 
 function SociosPieChart({ kpis }: { kpis: KPIsEvento }) {
   const monedaBase = kpis.evento.moneda_base as Moneda;
-  const pm = kpis.por_moneda.find(p => p.moneda === monedaBase) ?? kpis.por_moneda[0];
-  const socios = kpis.evento.socios;
+  const pm = (kpis.por_moneda ?? []).find(p => p.moneda === monedaBase) ?? (kpis.por_moneda ?? [])[0];
+  const socios = kpis.evento?.socios ?? [];
 
   if (!pm || socios.length === 0) return null;
 
@@ -343,15 +343,15 @@ function SociosPieChart({ kpis }: { kpis: KPIsEvento }) {
 }
 
 function EventKPIDetail({ kpis }: { kpis: KPIsEvento }) {
-  const [selectedMoneda, setSelectedMoneda] = useState(kpis.por_moneda[0]?.moneda ?? '');
-  const pm = kpis.por_moneda.find(p => p.moneda === selectedMoneda) ?? kpis.por_moneda[0];
+  const [selectedMoneda, setSelectedMoneda] = useState((kpis.por_moneda ?? [])[0]?.moneda ?? '');
+  const pm = (kpis.por_moneda ?? []).find(p => p.moneda === selectedMoneda) ?? (kpis.por_moneda ?? [])[0];
 
   return (
     <div className="space-y-4">
       {/* Moneda selector (if multiple) */}
-      {kpis.por_moneda.length > 1 && (
+      {(kpis.por_moneda ?? []).length > 1 && (
         <div className="flex gap-2">
-          {kpis.por_moneda.map(p => (
+          {(kpis.por_moneda ?? []).map(p => (
             <button
               key={p.moneda}
               onClick={() => setSelectedMoneda(p.moneda)}
@@ -377,11 +377,11 @@ function EventKPIDetail({ kpis }: { kpis: KPIsEvento }) {
             </Card>
             <Card title="Ingresos">
               <BigNumber value={pm.total_ingresos} moneda={pm.moneda as Moneda} />
-              <p className="text-xs text-muted-foreground mt-1">{pm.ingresos_por_tab.filter(t => t.saldo > 0).length} tabs con saldo</p>
+              <p className="text-xs text-muted-foreground mt-1">{(pm.ingresos_por_tab ?? []).filter(t => t.saldo > 0).length} tabs con saldo</p>
             </Card>
             <Card title="Egresos">
               <BigNumber value={pm.total_egresos} moneda={pm.moneda as Moneda} />
-              <p className="text-xs text-muted-foreground mt-1">{pm.egresos_por_tab.filter(t => t.saldo > 0).length} tabs con saldo</p>
+              <p className="text-xs text-muted-foreground mt-1">{(pm.egresos_por_tab ?? []).filter(t => t.saldo > 0).length} tabs con saldo</p>
             </Card>
             <Card title="Echeqs pendientes">
               <BigNumber value={kpis.echeqs.pendientes} />
