@@ -16,9 +16,9 @@ const COOKIE_NAME = 'token';
 function cookieOptions() {
   return {
     httpOnly: true,
-    sameSite: 'strict' as const,
+    secure:   true,
+    sameSite: 'none' as const,
     maxAge:   8 * 60 * 60 * 1000,
-    secure:   process.env.NODE_ENV === 'production',
     path:     '/',
   };
 }
@@ -110,7 +110,7 @@ export async function logout(req: Request, res: Response, _next: NextFunction): 
     ip:          req.ip,
     tx:          prisma as any,
   });
-  res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'strict', path: '/' });
+  res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'none', path: '/' });
   res.json({ message: 'Sesión cerrada' });
 }
 
