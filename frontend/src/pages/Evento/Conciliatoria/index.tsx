@@ -241,7 +241,7 @@ export default function ConciliatoriaPage({ eventoId }: Props) {
           <div>
             <span className="font-medium">{echeqs_pendientes.cantidad} echeq{echeqs_pendientes.cantidad !== 1 ? 's' : ''} pendiente{echeqs_pendientes.cantidad !== 1 ? 's' : ''}</span>
             {' — estos importes aún no impactaron en caja: '}
-            {echeqs_pendientes.total_por_moneda.map(t => (
+            {(echeqs_pendientes.total_por_moneda ?? []).map(t => (
               <span key={t.moneda} className="font-medium">
                 {formatCurrency(t.total, t.moneda as Moneda)}{' '}
               </span>
@@ -251,7 +251,7 @@ export default function ConciliatoriaPage({ eventoId }: Props) {
       )}
 
       {/* Por moneda */}
-      {por_moneda.map(pm => (
+      {(por_moneda ?? []).map(pm => (
         <ResumenMoneda key={pm.moneda} pm={pm} />
       ))}
 

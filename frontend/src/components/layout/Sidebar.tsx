@@ -21,7 +21,7 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
   const { data: alertasData }     = useAlertasDashboard();
   const { data: stockAlertasData } = useAlertasStock();
-  const errorCount      = alertasData?.alertas.filter(a => a.severidad === 'ERROR').length ?? 0;
+  const errorCount      = (alertasData?.alertas ?? []).filter(a => a.severidad === 'ERROR').length;
   const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
