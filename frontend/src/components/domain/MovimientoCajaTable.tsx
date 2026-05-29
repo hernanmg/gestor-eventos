@@ -256,7 +256,9 @@ function Row({
       <td className={cell}>
         <div className="flex items-center gap-1.5">
           {isTransfer && (
-            <ArrowLeftRight size={12} className="text-blue-500 shrink-0" title="Transferencia interna" />
+            <span title="Transferencia interna">
+              <ArrowLeftRight size={12} className="text-blue-500 shrink-0" />
+            </span>
           )}
           <span
             className={cn(!isTransfer && 'cursor-pointer select-none', mov.descripcion ? '' : 'text-muted-foreground/40')}

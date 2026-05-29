@@ -24,6 +24,7 @@ export interface MovimientoUpdatePayload {
   haber?:                number;
   moneda?:               'ARS' | 'USD';
   impuesto_subcategoria?: string | null;
+  proveedor_id?:         number | null;
 }
 
 function movKey(eventoId: number, tipo: Tipo, tabNumero: number) {

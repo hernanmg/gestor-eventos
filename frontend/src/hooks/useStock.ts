@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   Producto, AsignacionStock, Disponibilidad, AlertaStock,
-  SugerenciaStock, EventoStockResponse, CategoriaStock,
+  SugerenciaStock, EventoStockResponse, CategoriaStock, MovimientoStock,
 } from '@/types';
 
 // ── Keys ──────────────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ export function useProductos(params: { search?: string; categoria?: string } = {
 export function useProducto(id: number) {
   return useQuery({
     queryKey: [...PRODUCTOS_KEY, id],
-    queryFn:  () => api.get<Producto & { asignaciones: AsignacionStock[]; disponibilidad_hoy: Disponibilidad | null }>(`/stock/productos/${id}`).then(r => r.data),
+    queryFn:  () => api.get<Producto & { asignaciones: AsignacionStock[]; movimientos: MovimientoStock[]; disponibilidad_hoy: Disponibilidad | null }>(`/stock/productos/${id}`).then(r => r.data),
     enabled:  !!id,
   });
 }

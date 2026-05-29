@@ -235,7 +235,7 @@ function TabsBarChart({ pm }: { pm: PorMonedaKPI }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis dataKey="nombre" angle={-40} textAnchor="end" tick={{ fontSize: 10 }} interval={0} />
         <YAxis tickFormatter={numFmt} tick={{ fontSize: 10 }} width={55} />
-        <Tooltip formatter={(v: number) => formatCurrency(v, moneda)} />
+        <Tooltip formatter={(v: any) => formatCurrency(v, moneda)} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         <Bar dataKey="Ingresos" fill="#22c55e" radius={[2, 2, 0, 0]} />
         <Bar dataKey="Egresos"  fill="#ef4444" radius={[2, 2, 0, 0]} />
@@ -272,7 +272,7 @@ function EvolucionLineChart({ porMoneda }: { porMoneda: PorMonedaKPI[] }) {
         <XAxis dataKey="fecha" tick={{ fontSize: 10 }} />
         <YAxis tickFormatter={numFmt} tick={{ fontSize: 10 }} width={55} />
         <Tooltip
-          formatter={(v: number, name: string) =>
+          formatter={(v: any, name: any) =>
             [formatCurrency(v, name as Moneda), name]
           }
         />
@@ -321,7 +321,7 @@ function SociosPieChart({ kpis }: { kpis: KPIsEvento }) {
               cx="50%"
               cy="50%"
               outerRadius="70%"
-              label={({ nombre, porcentaje }) => `${nombre} ${porcentaje}%`}
+              label={({ nombre, porcentaje }: any) => `${nombre} ${porcentaje}%`}
               labelLine={false}
             >
               {pieData.map((_, i) => (
@@ -329,7 +329,7 @@ function SociosPieChart({ kpis }: { kpis: KPIsEvento }) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(v: number, _: string, props: any) => [
+              formatter={(v: any, _: any, props: any) => [
                 `${v}% — ${formatCurrency(props.payload.monto, monedaBase)}`,
                 props.payload.nombre,
               ]}
