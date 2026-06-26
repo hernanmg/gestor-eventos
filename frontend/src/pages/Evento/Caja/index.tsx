@@ -348,13 +348,13 @@ function EcheqsSection({
 
   return (
     <div className="mt-6">
-      <h3 className="text-sm font-semibold mb-3">Echeqs</h3>
+      <h3 className="text-sm font-semibold mb-1">Echeqs</h3>
 
       {/* Pendientes */}
       <div className="rounded-lg border border-border overflow-hidden mb-4">
-        <div className="bg-gray-50 px-3 py-2 border-b border-border">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Pendientes ({pendientes.length})
+        <div className="bg-amber-50 px-3 py-2 border-b border-amber-200">
+          <span className="text-xs font-semibold text-amber-800">
+            Echeqs pendientes de pago ({pendientes.length}) — Al registrar el pago se debitará de la cuenta seleccionada
           </span>
         </div>
         {pendientes.length === 0 ? (
@@ -366,12 +366,16 @@ function EcheqsSection({
                 <th className={thClass}>N°</th>
                 <th className={thClass}>Razón social</th>
                 <th className={cn(thClass, 'text-right')}>Importe</th>
-                <th className={thClass}>Fecha cobro est.</th>
+                <th className={thClass}>Cobro est.</th>
+                <th className={thClass}>Días</th>
                 <th className={thClass} />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pendientes.map(e => (
+              {pendientes.map(e => {
+                const dias = e.dias_para_vencimiento;
+                const diasCls = dias === null ? '' : dias < 0 ? 'text-red-600 font-medium' : dias <= 7 ? 'text-amber-600 font-medium' : 'text-muted-foreground';
+                return (
                 <tr key={e.id} className="group">
                   <td className={tdClass}>{e.numero}</td>
                   <td className={tdClass}>{e.razon_social}</td>
@@ -381,6 +385,9 @@ function EcheqsSection({
                   <td className={cn(tdClass, 'text-muted-foreground')}>
                     {formatDate(e.fecha_cobro_estimada)}
                   </td>
+                  <td className={cn(tdClass, diasCls)}>
+                    {dias === null ? '—' : dias < 0 ? `Vencido (${Math.abs(dias)}d)` : `${dias}d`}
+                  </td>
                   <td className={cn(tdClass, 'text-right')}>
                     <div className="flex items-center justify-end gap-1">
                       <Button
@@ -389,7 +396,7 @@ function EcheqsSection({
                         className="h-6 text-xs"
                         onClick={() => setCobrarTarget(e)}
                       >
-                        Cobrar
+                        Registrar pago
                       </Button>
                       <button
                         onClick={() => handleDelete(e.id)}
@@ -401,7 +408,7 @@ function EcheqsSection({
                     </div>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         )}

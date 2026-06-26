@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import Sidebar from './Sidebar';
+import HelpPanel from '@/components/ui/HelpPanel';
 
 export default function ProtectedLayout() {
   const { user, isLoading, logout } = useAuth();
@@ -34,6 +35,9 @@ export default function ProtectedLayout() {
       <main className="flex-1 overflow-auto min-w-0">
         <Outlet />
       </main>
+
+      {/* Help panel — rendered once at layout level */}
+      <HelpPanel />
     </div>
   );
 }

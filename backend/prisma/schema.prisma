@@ -61,6 +61,29 @@ enum OrigenTransfer {
   EVENTO
 }
 
+enum EstadoFactura {
+  RECIBIDA
+  APROBADA
+  PAGADA
+  ANULADA
+}
+
+enum MedioPago {
+  TRANSFERENCIA
+  ECHEQ
+  EFECTIVO
+  CHEQUE
+}
+
+enum CondicionPago {
+  CONTADO
+  DIAS_30
+  DIAS_60
+  DIAS_90
+  ECHEQ
+  OTRO
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model Usuario {
@@ -118,6 +141,7 @@ model Evento {
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
   asignaciones_prestadas AsignacionStock[] @relation("StockPrestado")
+  facturas               Factura[]
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -149,7 +173,8 @@ model Movimiento {
   created_by            Int?
   updated_by            Int?
 
-  echeq Echeq? @relation("EcheqMovimiento")
+  echeq        Echeq?       @relation("EcheqMovimiento")
+  pago_factura PagoFactura? @relation("PagoMovimiento")
 }
 
 // ─── CAJA ─────────────────────────────────────────────────────────────────────
@@ -212,6 +237,7 @@ model Proveedor {
 
   movimientos Movimiento[]
   echeqs      Echeq[]
+  facturas    Factura[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -244,6 +270,8 @@ model Echeq {
   deleted_at           DateTime?
   created_by           Int?
   updated_by           Int?
+
+  pago_factura PagoFactura? @relation("PagoEcheq")
 }
 
 // ─── ACCESO POR EVENTO ────────────────────────────────────────────────────────
@@ -337,6 +365,60 @@ model MovimientoStock {
   descripcion       String?
   created_at        DateTime         @default(now())
   created_by        Int?
+}
+
+// ─── FACTURAS (cuentas a pagar) ───────────────────────────────────────────────
+
+model Factura {
+  id                Int            @id @default(autoincrement())
+  numero_factura    String
+  tipo_factura      String         // "A", "B", "C", "X"
+  fecha_emision     DateTime
+  fecha_vencimiento DateTime?
+  proveedor_id      Int
+  proveedor         Proveedor      @relation(fields: [proveedor_id], references: [id])
+  evento_id         Int
+  evento            Evento         @relation(fields: [evento_id], references: [id])
+  tab_numero        Int?
+  tipo_movimiento   Tipo?
+  importe_total     Decimal        @db.Decimal(15, 2)
+  importe_pagado    Decimal        @default(0) @db.Decimal(15, 2)
+  importe_pendiente Decimal        @default(0) @db.Decimal(15, 2)
+  moneda            Moneda         @default(ARS)
+  condicion_pago    CondicionPago  @default(CONTADO)
+  estado            EstadoFactura  @default(RECIBIDA)
+  notas             String?
+  pdf_data          Bytes?
+  pdf_nombre        String?
+  pdf_mime_type     String?
+  pdf_tamanio       Int?
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+  updated_by        Int?
+
+  pagos PagoFactura[]
+}
+
+model PagoFactura {
+  id             Int          @id @default(autoincrement())
+  factura_id     Int
+  factura        Factura      @relation(fields: [factura_id], references: [id])
+  fecha_pago     DateTime
+  importe        Decimal      @db.Decimal(15, 2)
+  moneda         Moneda       @default(ARS)
+  medio_pago     MedioPago
+  referencia     String?
+  notas          String?
+  movimiento_id  Int?         @unique
+  movimiento     Movimiento?  @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
+  echeq_id       Int?         @unique
+  echeq          Echeq?       @relation("PagoEcheq", fields: [echeq_id], references: [id])
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+  deleted_at     DateTime?
+  created_by     Int?
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

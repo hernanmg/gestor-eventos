@@ -323,6 +323,180 @@ export async function remove(req: Request, res: Response) {
   res.json({ message: 'Movimiento eliminado correctamente' });
 }
 
+// ── movimientosSinProveedor ───────────────────────────────────────────────────
+
+export async function movimientosSinProveedor(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+
+  const [movs, tabs, totalMovimientos] = await Promise.all([
+    prisma.movimiento.findMany({
+      where:  { evento_id: eventoId, proveedor_id: null, deleted_at: null },
+      select: { id: true, concepto: true, tipo: true, tab_numero: true, debe: true, moneda: true },
+    }),
+    prisma.tabConfig.findMany({ select: { tipo: true, numero: true, codigo: true } }),
+    prisma.movimiento.count({ where: { evento_id: eventoId, deleted_at: null } }),
+  ]);
+
+  const totalSinProveedor = movs.length;
+  const tabMap = new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo]));
+
+  type GrupoAccum = {
+    concepto:        string;
+    movimientos_ids: number[];
+    tipos:           Set<string>;
+    tabs:            Set<string>;
+    monto_total:     number;
+    moneda:          string;
+  };
+
+  const grupos = new Map<string, GrupoAccum>();
+
+  for (const m of movs) {
+    const raw = (m.concepto ?? '').trim();
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+
+    if (!grupos.has(key)) {
+      grupos.set(key, {
+        concepto:        raw,
+        movimientos_ids: [],
+        tipos:           new Set(),
+        tabs:            new Set(),
+        monto_total:     0,
+        moneda:          m.moneda,
+      });
+    }
+
+    const g = grupos.get(key)!;
+    g.movimientos_ids.push(m.id);
+    g.tipos.add(m.tipo);
+    const cod = tabMap.get(`${m.tipo}-${m.tab_numero}`);
+    if (cod) g.tabs.add(cod);
+    g.monto_total += Number(m.debe);
+  }
+
+  const result = Array.from(grupos.values())
+    .map(g => ({
+      concepto:             g.concepto,
+      cantidad_movimientos: g.movimientos_ids.length,
+      movimientos_ids:      g.movimientos_ids,
+      tipos:                Array.from(g.tipos),
+      tabs:                 Array.from(g.tabs),
+      monto_total:          g.monto_total,
+      moneda:               g.moneda,
+    }))
+    .sort((a, b) => b.cantidad_movimientos - a.cantidad_movimientos);
+
+  res.json({
+    grupos:              result,
+    total_sin_proveedor: totalSinProveedor,
+    total_movimientos:   totalMovimientos,
+  });
+}
+
+// ── vincularProveedor ─────────────────────────────────────────────────────────
+
+const vincularSchema = z.object({
+  movimientos_ids: z.array(z.number().int().positive()).min(1),
+  proveedor_id:    z.number().int().positive().nullable(),
+  crear_proveedor: z.object({
+    nombre: z.string().min(1),
+    alias:  z.string().optional(),
+  }).optional(),
+}).refine(
+  d => d.proveedor_id !== null || !!d.crear_proveedor?.nombre,
+  { message: 'Se requiere crear_proveedor cuando proveedor_id es null', path: ['crear_proveedor'] },
+);
+
+export async function vincularProveedor(req: Request, res: Response) {
+  const parsed = vincularSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten() }); return;
+  }
+
+  const { movimientos_ids, proveedor_id, crear_proveedor } = parsed.data;
+
+  const movs = await prisma.movimiento.findMany({
+    where:  { id: { in: movimientos_ids }, deleted_at: null },
+    select: { id: true, evento_id: true },
+  });
+
+  if (movs.length !== movimientos_ids.length) {
+    res.status(404).json({ error: 'Uno o más movimientos no encontrados' }); return;
+  }
+
+  const eventoIds = new Set(movs.map(m => m.evento_id));
+  if (eventoIds.size > 1) {
+    res.status(400).json({ error: 'Todos los movimientos deben pertenecer al mismo evento' }); return;
+  }
+  const eventoId = movs[0].evento_id;
+
+  if (proveedor_id !== null) {
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, deleted_at: null } });
+    if (!prov) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
+  }
+
+  const result = await prisma.$transaction(async tx => {
+    let finalProveedorId: number;
+    let esNuevo = false;
+
+    if (proveedor_id !== null) {
+      finalProveedorId = proveedor_id;
+    } else {
+      const nombre    = crear_proveedor!.nombre.trim();
+      const existente = await tx.proveedor.findFirst({
+        where: { nombre: { equals: nombre, mode: 'insensitive' }, deleted_at: null },
+      });
+      if (existente) {
+        finalProveedorId = existente.id;
+      } else {
+        const nuevo = await tx.proveedor.create({
+          data: {
+            nombre,
+            alias:      crear_proveedor!.alias?.trim() ?? null,
+            created_by: req.user!.id,
+            updated_by: req.user!.id,
+          },
+        });
+        finalProveedorId = nuevo.id;
+        esNuevo          = true;
+      }
+    }
+
+    const proveedor = (await tx.proveedor.findUnique({ where: { id: finalProveedorId } }))!;
+
+    await tx.movimiento.updateMany({
+      where: { id: { in: movimientos_ids }, deleted_at: null },
+      data:  { proveedor_id: finalProveedorId, updated_by: req.user!.id },
+    });
+
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      accion:       'UPDATE',
+      entidad:      'Movimiento',
+      eventoId,
+      descripcion:  `Vinculación masiva de proveedor "${proveedor.nombre}" a ${movimientos_ids.length} movimiento${movimientos_ids.length !== 1 ? 's' : ''}`,
+      datosDespues: { proveedor_id: finalProveedorId, movimientos_ids },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+
+    return {
+      proveedor: {
+        id:       proveedor.id,
+        nombre:   proveedor.nombre,
+        alias:    proveedor.alias,
+        es_nuevo: esNuevo,
+      },
+      movimientos_actualizados: movimientos_ids.length,
+    };
+  });
+
+  res.json(result);
+}
+
+// ── reordenar ─────────────────────────────────────────────────────────────────
+
 export async function reordenar(req: Request, res: Response) {
   const id     = Number(req.params.id);
   const parsed = z.object({ orden: z.number().int().min(1) }).safeParse(req.body);

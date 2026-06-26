@@ -4,7 +4,8 @@ import ProtectedLayout      from '@/components/layout/ProtectedLayout';
 import LoginPage            from '@/pages/Login';
 import DashboardPage        from '@/pages/Dashboard';
 import EventosPage          from '@/pages/Eventos';
-import EventoPage           from '@/pages/Evento';
+import EventoPage                  from '@/pages/Evento';
+import VincularProveedoresPage     from '@/pages/Evento/VincularProveedores';
 import ConfiguracionPage    from '@/pages/Configuracion';
 import ImporterPage         from '@/pages/Importer';
 import ProveedoresPage      from '@/pages/Proveedores';
@@ -12,6 +13,8 @@ import ProveedorDetallePage from '@/pages/Proveedores/ProveedorDetalle';
 import AuditoriaPage        from '@/pages/Auditoria';
 import StockPage            from '@/pages/Stock';
 import ProductoDetallePage  from '@/pages/Stock/ProductoDetalle';
+import FacturasPage         from '@/pages/Facturas';
+import FacturaDetalle       from '@/pages/Facturas/FacturaDetalle';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,8 +34,9 @@ export default function App() {
 
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard"     element={<DashboardPage />} />
-            <Route path="/eventos"       element={<EventosPage />} />
-            <Route path="/eventos/:id"   element={<EventoPage />} />
+            <Route path="/eventos"                              element={<EventosPage />} />
+            <Route path="/eventos/:id"                         element={<EventoPage />} />
+            <Route path="/eventos/:id/vincular-proveedores"    element={<VincularProveedoresPage />} />
             <Route path="/configuracion"    element={<ConfiguracionPage />} />
             <Route path="/importer"         element={<ImporterPage />} />
             <Route path="/proveedores"      element={<ProveedoresPage />} />
@@ -40,6 +44,8 @@ export default function App() {
             <Route path="/auditoria"               element={<AuditoriaPage />} />
             <Route path="/stock"                   element={<StockPage />} />
             <Route path="/stock/productos/:id"     element={<ProductoDetallePage />} />
+            <Route path="/facturas"                element={<FacturasPage />} />
+            <Route path="/facturas/:id"            element={<FacturaDetalle />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

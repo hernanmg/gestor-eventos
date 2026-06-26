@@ -1,3 +1,4 @@
+// Stock module — activo en backend, oculto en UI (FEATURES.STOCK = false en frontend/src/lib/features.ts)
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';

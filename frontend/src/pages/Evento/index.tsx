@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useTabConfig } from '@/hooks/useTabConfig';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
+import { useSinProveedor } from '@/hooks/useVincularProveedores';
 import { useAuditoriaEvento } from '@/hooks/useAuditoria';
 import type { AuditoriaLog } from '@/types';
 import { format } from 'date-fns';
@@ -17,6 +18,8 @@ import CajaPage from './Caja';
 import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import EventoStockPage from './Stock';
+import EventoFacturas from './Facturas';
+import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
 import type { TabConfig, Tipo } from '@/types';
 
@@ -210,7 +213,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'AUDITORIA';
+type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
 
 const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'EGRESO',        label: 'Egresos'       },
@@ -218,7 +221,8 @@ const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'CAJA',          label: 'Caja'          },
   { key: 'CONCILIATORIA', label: 'Conciliatoria' },
   { key: 'ECHEQS',        label: 'Echeqs'        },
-  { key: 'STOCK',         label: 'Stock'         },
+  ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
+  { key: 'FACTURAS',      label: 'Facturas'      },
 ];
 
 export default function EventoPage() {
@@ -233,6 +237,9 @@ export default function EventoPage() {
   const { data: echeqs = [] }    = useEcheqs(eventoId);
   const { data: alertas }        = useAlertasEcheqs(eventoId);
   const alertasCount = (alertas?.vencidos.length ?? 0) + (alertas?.vencen_pronto.length ?? 0);
+
+  const { data: sinProveedor } = useSinProveedor(eventoId);
+  const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
   const [mainTab, setMainTab] = useState<MainTab>('EGRESO');
   const [subTab,  setSubTab]  = useState(1);
@@ -289,6 +296,22 @@ export default function EventoPage() {
         <EstadoBadge estado={evento.estado} />
         <ExportDropdown eventoId={eventoId} tabs={tabs} />
       </div>
+
+      {/* Banner sin proveedor */}
+      {countSinProveedor > 0 && (
+        <div className="flex items-center gap-2 px-6 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
+          <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+          <span className="text-sm text-amber-800">
+            {countSinProveedor} movimiento{countSinProveedor !== 1 ? 's' : ''} sin proveedor vinculado
+          </span>
+          <Link
+            to={`/eventos/${eventoId}/vincular-proveedores`}
+            className="ml-auto text-xs font-semibold text-amber-900 hover:underline whitespace-nowrap"
+          >
+            Vincular ahora →
+          </Link>
+        </div>
+      )}
 
       {/* Main tab navigation */}
       <div className="flex border-b border-border bg-white shrink-0 px-6">
@@ -363,8 +386,12 @@ export default function EventoPage() {
           <EcheqsPage eventoId={eventoId} canEdit={canEdit} />
         )}
 
-        {mainTab === 'STOCK' && (
+        {FEATURES.STOCK && mainTab === 'STOCK' && (
           <EventoStockPage evento={evento} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'FACTURAS' && (
+          <EventoFacturas eventoId={eventoId} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

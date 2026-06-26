@@ -1,7 +1,9 @@
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock } from '@/hooks/useStock';
+import { useAlertasFacturas } from '@/hooks/useFacturas';
+import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
 
@@ -19,10 +21,12 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 };
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
-  const { data: alertasData }     = useAlertasDashboard();
-  const { data: stockAlertasData } = useAlertasStock();
+  const { data: alertasData }        = useAlertasDashboard();
+  const { data: stockAlertasData }   = useAlertasStock();
+  const { data: facturasAlertas }    = useAlertasFacturas();
   const errorCount      = (alertasData?.alertas ?? []).filter(a => a.severidad === 'ERROR').length;
   const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
+  const facturasAlerts  = (facturasAlertas?.vencidas ?? 0) + (facturasAlertas?.vencen_pronto ?? 0);
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -100,7 +104,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           )}
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {FEATURES.STOCK && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
             <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
               <div className="relative shrink-0">
                 <Package size={18} />
@@ -114,6 +118,27 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   {stockQuiebres > 0 && (
                     <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                       {stockQuiebres > 99 ? '99+' : stockQuiebres}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          )}
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/facturas" title={!isOpen ? 'Facturas' : undefined} className={navItem}>
+              <div className="relative shrink-0">
+                <FileText size={18} />
+                {!isOpen && facturasAlerts > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
+                )}
+              </div>
+              {isOpen && (
+                <>
+                  <span className="flex-1">Facturas</span>
+                  {facturasAlerts > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+                      {facturasAlerts > 99 ? '99+' : facturasAlerts}
                     </span>
                   )}
                 </>

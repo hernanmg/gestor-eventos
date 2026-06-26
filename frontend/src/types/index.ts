@@ -1,6 +1,9 @@
 // Espejo de los enums del schema Prisma
 
-export type Rol          = 'ADMIN' | 'OPERADOR' | 'VIEWER';
+export type Rol           = 'ADMIN' | 'OPERADOR' | 'VIEWER';
+export type EstadoFactura = 'RECIBIDA' | 'APROBADA' | 'PAGADA' | 'ANULADA';
+export type MedioPago     = 'TRANSFERENCIA' | 'ECHEQ' | 'EFECTIVO' | 'CHEQUE';
+export type CondicionPago = 'CONTADO' | 'DIAS_30' | 'DIAS_60' | 'DIAS_90' | 'ECHEQ' | 'OTRO';
 export type Tipo         = 'EGRESO' | 'INGRESO';
 export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
 export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
@@ -381,6 +384,51 @@ export interface AuditoriaPage {
   limit: number;
   pages: number;
   data:  AuditoriaLog[];
+}
+
+// ── Facturas ──────────────────────────────────────────────────────────────────
+
+export interface Factura {
+  id:                number;
+  numero_factura:    string;
+  tipo_factura:      string;
+  fecha_emision:     string;
+  fecha_vencimiento: string | null;
+  proveedor_id:      number;
+  proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null };
+  evento_id:         number;
+  evento?:           { id: number; nombre: string };
+  tab_numero:        number | null;
+  importe_total:     number;
+  importe_pagado:    number;
+  importe_pendiente: number;
+  moneda:            Moneda;
+  condicion_pago:    CondicionPago;
+  estado:            EstadoFactura;
+  notas:             string | null;
+  pdf_nombre:        string | null;
+  pdf_tamanio:       number | null;
+  created_at:        string;
+  updated_at:        string;
+  deleted_at:        string | null;
+  pagos?:            PagoFactura[];
+}
+
+export interface PagoFactura {
+  id:            number;
+  factura_id:    number;
+  fecha_pago:    string;
+  importe:       number;
+  moneda:        Moneda;
+  medio_pago:    MedioPago;
+  referencia:    string | null;
+  notas:         string | null;
+  movimiento_id: number | null;
+  echeq_id:      number | null;
+  created_at:    string;
+  deleted_at:    string | null;
+  movimiento?:   { id: number; tipo: Tipo; tab_numero: number } | null;
+  echeq?:        { id: number; estado: EstadoEcheq; numero: string } | null;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

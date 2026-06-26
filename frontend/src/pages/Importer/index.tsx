@@ -270,7 +270,7 @@ function PreviewStep({
 }: {
   preview:   PreviewResult;
   onBack:    () => void;
-  onSuccess: (eventoId: number, stats: any) => void;
+  onSuccess: (eventoId: number, stats: any, movimientosSinProveedor: number) => void;
 }) {
   const [form, setForm] = useState<EventoForm>({
     nombre:       preview.configuracion_evento.nombre_sugerido,
@@ -305,7 +305,7 @@ function PreviewStep({
       });
       return data;
     },
-    onSuccess: (data) => onSuccess(data.evento_id, data.stats),
+    onSuccess: (data) => onSuccess(data.evento_id, data.stats, data.movimientos_sin_proveedor ?? 0),
     onError:   (err: any) => setError(err?.response?.data?.error ?? 'Error al importar'),
   });
 
@@ -469,9 +469,11 @@ function PreviewStep({
 function SuccessStep({
   eventoId,
   stats,
+  movimientosSinProveedor,
 }: {
-  eventoId: number;
-  stats:    { movimientos_creados: number; echeqs_creados: number; filas_omitidas: number };
+  eventoId:                 number;
+  stats:                    { movimientos_creados: number; echeqs_creados: number; filas_omitidas: number };
+  movimientosSinProveedor: number;
 }) {
   const navigate = useNavigate();
 
@@ -486,9 +488,40 @@ function SuccessStep({
           {stats.filas_omitidas > 0 && ` · ${stats.filas_omitidas} fila${stats.filas_omitidas !== 1 ? 's' : ''} omitida${stats.filas_omitidas !== 1 ? 's' : ''}`}
         </p>
       </div>
-      <Button onClick={() => navigate(`/eventos/${eventoId}`)}>
-        Ir al evento →
-      </Button>
+
+      {movimientosSinProveedor > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-left space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800">
+              <span className="font-medium">{movimientosSinProveedor} movimiento{movimientosSinProveedor !== 1 ? 's' : ''}</span>{' '}
+              importado{movimientosSinProveedor !== 1 ? 's' : ''} sin proveedor vinculado.
+              Podés vincularlos ahora o hacerlo después desde el evento.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => navigate(`/eventos/${eventoId}/vincular-proveedores`)}
+            >
+              Vincular proveedores ahora
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/eventos/${eventoId}`)}
+            >
+              Hacerlo después
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {movimientosSinProveedor === 0 && (
+        <Button onClick={() => navigate(`/eventos/${eventoId}`)}>
+          Ir al evento →
+        </Button>
+      )}
     </div>
   );
 }
@@ -498,11 +531,12 @@ function SuccessStep({
 type Step = 'upload' | 'preview' | 'success';
 
 export default function ImporterPage() {
-  const [step,      setStep]      = useState<Step>('upload');
-  const [preview,   setPreview]   = useState<PreviewResult | null>(null);
-  const [filename,  setFilename]  = useState('');
-  const [eventoId,  setEventoId]  = useState<number | null>(null);
-  const [stats,     setStats]     = useState<any>(null);
+  const [step,                    setStep]                    = useState<Step>('upload');
+  const [preview,                 setPreview]                 = useState<PreviewResult | null>(null);
+  const [filename,                setFilename]                = useState('');
+  const [eventoId,                setEventoId]               = useState<number | null>(null);
+  const [stats,                   setStats]                   = useState<any>(null);
+  const [movimientosSinProveedor, setMovimientosSinProveedor] = useState(0);
 
   const handlePreview = (result: PreviewResult, file: File) => {
     setPreview(result);
@@ -510,9 +544,10 @@ export default function ImporterPage() {
     setStep('preview');
   };
 
-  const handleSuccess = (id: number, s: any) => {
+  const handleSuccess = (id: number, s: any, msp: number) => {
     setEventoId(id);
     setStats(s);
+    setMovimientosSinProveedor(msp);
     setStep('success');
   };
 
@@ -552,7 +587,11 @@ export default function ImporterPage() {
           />
         )}
         {step === 'success' && eventoId !== null && stats && (
-          <SuccessStep eventoId={eventoId} stats={stats} />
+          <SuccessStep
+            eventoId={eventoId}
+            stats={stats}
+            movimientosSinProveedor={movimientosSinProveedor}
+          />
         )}
       </div>
     </div>

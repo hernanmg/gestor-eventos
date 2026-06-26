@@ -85,9 +85,9 @@ export function useDeleteEcheq(eventoId: number) {
 export function useCobrarEcheq(eventoId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, cuenta_id, fecha_cobro_real }: {
-      id: number; cuenta_id: number; fecha_cobro_real?: string | null;
-    }) => api.patch(`/echeqs/${id}/cobrar`, { cuenta_id, fecha_cobro_real }).then(r => r.data),
+    mutationFn: ({ id, cuenta_id, fecha_cobro_real, referencia }: {
+      id: number; cuenta_id: number; fecha_cobro_real?: string | null; referencia?: string | null;
+    }) => api.patch(`/echeqs/${id}/cobrar`, { cuenta_id, fecha_cobro_real, referencia }).then(r => r.data),
     onSuccess: (_data, { cuenta_id }) => {
       qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
       qc.invalidateQueries({ queryKey: movCajaKey(cuenta_id) });

@@ -3,11 +3,13 @@ import { auth } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso, requireEventoRole, byMovimientoId } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
-import { update, remove, reordenar } from '../controllers/movimientos.controller';
+import { update, remove, reordenar, vincularProveedor } from '../controllers/movimientos.controller';
 
 const router = Router();
 
 router.use(auth);
+
+router.post('/vincular-proveedor', requireRole('OPERADOR'), asyncHandler(vincularProveedor));
 
 router.put('/:id',         requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(update));
 router.delete('/:id',      requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(remove));

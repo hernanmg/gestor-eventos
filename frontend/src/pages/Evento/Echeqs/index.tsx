@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Search, Trash2, X, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import {
   useEcheqs, useAlertasEcheqs, useDeleteEcheq, useRechazarEcheq,
   type EcheqFilters,
@@ -93,6 +93,32 @@ function RechazarDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Info Banner (colapsable) ──────────────────────────────────────────────────
+
+function InfoBanner() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-blue-800 text-left"
+      >
+        <Info size={15} className="shrink-0" />
+        <span className="flex-1 font-medium">¿Cómo funcionan los echeqs?</span>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {open && (
+        <div className="px-4 pb-3 text-sm text-blue-800 space-y-1.5 border-t border-blue-200 pt-2">
+          <p><span className="font-medium">Creación:</span> los echeqs se generan desde la tab <strong>EG-EXTRA</strong> al cargar un gasto diferido.</p>
+          <p><span className="font-medium">Estado PENDIENTE:</span> el echeq fue emitido pero todavía no se pagó.</p>
+          <p><span className="font-medium">Registrar pago:</span> al "cobrar" un echeq estás registrando el <strong>pago efectivo</strong> — el dinero <strong>sale</strong> de una cuenta bancaria en esa fecha.</p>
+          <p><span className="font-medium">Estado COBRADO:</span> el pago fue realizado y se creó un movimiento de salida en la cuenta seleccionada.</p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -234,6 +260,7 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
 
   return (
     <div>
+      <InfoBanner />
       <AlertasBanner eventoId={eventoId} />
       <FilterPanel filters={filters} onChange={setFilters} />
 
@@ -297,7 +324,7 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
                               className="h-6 text-xs"
                               onClick={() => setCobrarTarget(e)}
                             >
-                              Cobrar
+                              Registrar pago
                             </Button>
                             <Button
                               variant="outline"

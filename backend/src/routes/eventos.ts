@@ -8,6 +8,7 @@ import {
   list as listMovimientos,
   listSinConciliar,
   create as createMovimiento,
+  movimientosSinProveedor,
 } from '../controllers/movimientos.controller';
 import { listCuentas, createCuenta, transferencia, posicionConsolidada } from '../controllers/caja.controller';
 import { listEcheqs, createEcheq, alertasEcheqs } from '../controllers/echeqs.controller';
@@ -44,5 +45,8 @@ router.get('/:id/posicion-consolidada',   requireEventoAcceso(), asyncHandler(po
 
 // Movimientos sin conciliar (para dialog de conciliación retroactiva)
 router.get('/:id/movimientos-sin-conciliar', requireEventoAcceso(), asyncHandler(listSinConciliar));
+
+// Movimientos sin proveedor vinculado (agrupados por concepto)
+router.get('/:id/movimientos/sin-proveedor', requireEventoAcceso(), asyncHandler(movimientosSinProveedor));
 
 export default router;

@@ -175,5 +175,6 @@ export async function confirmar(req: Request, res: Response) {
       echeqs_creados:      echeqsCreados,
       filas_omitidas:      filasOmitidas,
     },
+    movimientos_sin_proveedor: movimientosCreados,
   });
 }
