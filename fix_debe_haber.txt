@@ -1,0 +1,9 @@
+Resumen del fix:
+
+El bug estaba exclusivamente en MovimientoTable.tsx — el formulario de nueva fila tenía dos inputs libres (Debe y Haber) sin guía sobre cuál usar. Los usuarios naturalmente completaban el campo Debe (primero), y con la fórmula correcta saldo + debe - haber eso sumaba el monto en lugar de restarlo.
+
+El fix reemplazó los dos inputs separados por un único input de "Monto" que aparece en la columna correcta según el tipo:
+- EGRESO → el monto se muestra en la columna Haber (resta al saldo) · la columna Debe muestra "0.00" readonly
+- INGRESO → el monto se muestra en la columna Debe (suma al saldo) · la columna Haber muestra "0.00" readonly
+
+Las celdas editables de filas existentes (SortableRow) mantienen ambas columnas libres para cubrir casos edge como EG-PREST donde una fila puede tener debe y haber simultáneamente.

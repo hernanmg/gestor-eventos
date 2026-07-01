@@ -39,8 +39,7 @@ interface NewRowData {
   fecha:                 string;
   concepto:              string;
   descripcion:           string;
-  debe:                  string;
-  haber:                 string;
+  monto:                 string;   // va a HABER para EGRESO, a DEBE para INGRESO
   moneda:                Moneda;
   impuesto_subcategoria: string;
   impacta_caja:          boolean;
@@ -49,7 +48,7 @@ interface NewRowData {
 }
 
 const EMPTY_ROW: NewRowData = {
-  fecha: '', concepto: '', descripcion: '', debe: '', haber: '',
+  fecha: '', concepto: '', descripcion: '', monto: '',
   moneda: 'ARS', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
 };
 
@@ -408,8 +407,9 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
         fecha:                 newRowData.fecha      || null,
         concepto:              newRowData.concepto   || null,
         descripcion:           newRowData.descripcion || null,
-        debe:                  parseFloat(newRowData.debe)  || 0,
-        haber:                 parseFloat(newRowData.haber) || 0,
+        // EGRESO → haber (resta al saldo); INGRESO → debe (suma al saldo)
+        debe:                  tipo === 'INGRESO' ? (parseFloat(newRowData.monto) || 0) : 0,
+        haber:                 tipo === 'EGRESO'  ? (parseFloat(newRowData.monto) || 0) : 0,
         moneda:                newRowData.moneda,
         impuesto_subcategoria: isEgImp ? (newRowData.impuesto_subcategoria || null) : null,
         ...(newRowData.proveedor && { proveedor_id: newRowData.proveedor.id }),
@@ -523,21 +523,31 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                         </select>
                       </td>
                     )}
+                    {/* DEBE: activo para INGRESO, vacío para EGRESO */}
                     <td className="px-2 py-1">
-                      <input
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={newRowData.debe}
-                        onChange={e => setNewRowData(p => ({ ...p, debe: e.target.value }))}
-                        className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
+                      {tipo === 'INGRESO' ? (
+                        <input
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={newRowData.monto}
+                          onChange={e => setNewRowData(p => ({ ...p, monto: e.target.value }))}
+                          className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      ) : (
+                        <span className="block text-xs text-right text-muted-foreground px-1">0.00</span>
+                      )}
                     </td>
+                    {/* HABER: activo para EGRESO, vacío para INGRESO */}
                     <td className="px-2 py-1">
-                      <input
-                        type="number" min="0" step="0.01" placeholder="0.00"
-                        value={newRowData.haber}
-                        onChange={e => setNewRowData(p => ({ ...p, haber: e.target.value }))}
-                        className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
+                      {tipo === 'EGRESO' ? (
+                        <input
+                          type="number" min="0" step="0.01" placeholder="0.00"
+                          value={newRowData.monto}
+                          onChange={e => setNewRowData(p => ({ ...p, monto: e.target.value }))}
+                          className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      ) : (
+                        <span className="block text-xs text-right text-muted-foreground px-1">0.00</span>
+                      )}
                     </td>
                     <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
                     <td className="px-1 py-1">
