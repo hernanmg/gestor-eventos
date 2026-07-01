@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { HelpCircle, X, ChevronRight } from 'lucide-react';
-import { getHelpContent } from '@/lib/helpContent';
+import { HelpCircle, X, ChevronRight, Loader2 } from 'lucide-react';
+import { getHelpContent, type HelpLink } from '@/lib/helpContent';
+import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'help_panel_open';
+
+// Extrae el :id del pathname actual para resolver links con ":id"
+function resolveRuta(ruta: string, pathname: string): string {
+  const match = pathname.match(/\/eventos\/(\d+)/);
+  const id    = match?.[1];
+  return id ? ruta.replace(':id', id) : ruta.replace(/\/:id/, '');
+}
 
 export default function HelpPanel() {
   const location = useLocation();
@@ -13,6 +21,7 @@ export default function HelpPanel() {
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; }
   });
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, open ? 'true' : 'false'); } catch {}
@@ -20,8 +29,37 @@ export default function HelpPanel() {
 
   const content = getHelpContent(location.pathname);
 
-  // Hide on login
   if (location.pathname === '/login') return null;
+
+  // Maneja un link del panel: navega o dispara acción
+  const handleLink = async (link: HelpLink) => {
+    if (link.ruta) {
+      navigate(resolveRuta(link.ruta, location.pathname));
+      setOpen(false);
+      return;
+    }
+    if (!link.accion) return;
+
+    setLoadingAction(link.accion);
+    try {
+      switch (link.accion) {
+        case 'abrir_evento_ejemplo': {
+          const eventos = await api.get('/eventos').then(r => r.data as { id: number; estado: string; nombre: string }[]);
+          const ejemplo = eventos.find(e => e.estado === 'CERRADO') ?? eventos[0];
+          if (ejemplo) { navigate(`/eventos/${ejemplo.id}`); setOpen(false); }
+          break;
+        }
+        default:
+          // Eventos personalizados que cada página puede escuchar
+          window.dispatchEvent(new CustomEvent(`help:${link.accion}`));
+          setOpen(false);
+      }
+    } catch {
+      // silencioso — si falla la navegación al ejemplo, no mostrar error
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   return (
     <>
@@ -62,38 +100,66 @@ export default function HelpPanel() {
         <div className="overflow-y-auto h-[calc(100%-3.5rem)] p-4 space-y-5">
           {content ? (
             <>
-              <p className="text-base font-semibold text-foreground">{content.title}</p>
-              {content.sections.map((s, i) => (
-                <div key={i} className="space-y-1.5">
-                  <p className="text-sm font-medium text-foreground">{s.title}</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{s.body}</p>
-                  {s.links?.map(link => (
-                    <button
-                      key={link.to}
-                      onClick={() => { navigate(link.to); setOpen(false); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <ChevronRight size={12} />
-                      {link.label}
-                    </button>
-                  ))}
+              {/* Título + descripción */}
+              <div>
+                <p className="text-base font-semibold text-foreground">{content.titulo}</p>
+                {content.descripcion && (
+                  <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                    {content.descripcion}
+                  </p>
+                )}
+              </div>
+
+              {/* Secciones */}
+              {content.secciones.map((s, i) => (
+                <div key={i} className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">{s.titulo}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                    {s.contenido}
+                  </p>
                 </div>
               ))}
+
+              {/* Links rápidos */}
+              {content.links && content.links.length > 0 && (
+                <div className="pt-2 border-t border-border space-y-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Links rápidos
+                  </p>
+                  {content.links.map((link, i) => {
+                    const isLoading = loadingAction === link.accion;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => handleLink(link)}
+                        disabled={isLoading}
+                        className="flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50 disabled:cursor-wait"
+                      >
+                        {isLoading
+                          ? <Loader2 size={12} className="animate-spin shrink-0" />
+                          : <ChevronRight size={12} className="shrink-0" />}
+                        {link.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : (
+            /* Fallback cuando no hay contenido para la ruta actual */
             <div className="text-sm text-muted-foreground space-y-3">
               <p className="font-medium text-foreground">Bienvenido al sistema de gestión</p>
               <p>Navegá a cualquier sección para ver ayuda contextual.</p>
               <ul className="space-y-1 list-none">
                 {[
-                  { label: 'Eventos',    to: '/eventos'     },
-                  { label: 'Facturas',   to: '/facturas'    },
-                  { label: 'Stock',      to: '/stock'       },
-                  { label: 'Proveedores', to: '/proveedores' },
+                  { label: 'Eventos',     ruta: '/eventos'     },
+                  { label: 'Facturas',    ruta: '/facturas'    },
+                  { label: 'Proveedores', ruta: '/proveedores' },
+                  { label: 'Importar',    ruta: '/importer'    },
                 ].map(l => (
-                  <li key={l.to}>
+                  <li key={l.ruta}>
                     <button
-                      onClick={() => { navigate(l.to); setOpen(false); }}
+                      onClick={() => handleLink(l)}
                       className="flex items-center gap-1 text-primary hover:underline"
                     >
                       <ChevronRight size={12} />

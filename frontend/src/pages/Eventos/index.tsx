@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2 } from 'lucide-react';
 import { useEventos, useDeleteEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
@@ -34,6 +34,13 @@ export default function EventosPage() {
     setEditingEvento(null);
     setDialogOpen(true);
   };
+
+  // El panel de ayuda puede abrir este modal con el evento personalizado
+  useEffect(() => {
+    const handler = () => handleNew();
+    window.addEventListener('help:abrir_modal_nuevo_evento', handler);
+    return () => window.removeEventListener('help:abrir_modal_nuevo_evento', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEdit = (evento: Evento) => {
     setEditingEvento(evento);
