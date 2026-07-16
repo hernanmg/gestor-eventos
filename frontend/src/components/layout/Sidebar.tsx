@@ -1,8 +1,10 @@
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText, ChevronDown } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock } from '@/hooks/useStock';
 import { useAlertasFacturas } from '@/hooks/useFacturas';
+import { useAuth } from '@/hooks/useAuth';
 import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
@@ -21,6 +23,8 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 };
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
+  const { switchEmpresa, isSwitchingEmpresa } = useAuth();
+  const [empresaMenuOpen, setEmpresaMenuOpen] = useState(false);
   const { data: alertasData }        = useAlertasDashboard();
   const { data: stockAlertasData }   = useAlertasStock();
   const { data: facturasAlertas }    = useAlertasFacturas();
@@ -57,9 +61,28 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
         )}
       >
         {/* Header */}
-        <div className="flex h-14 items-center border-b border-border shrink-0 px-3">
+        <div className="relative flex h-14 items-center border-b border-border shrink-0 px-3">
           {isOpen && (
-            <span className="flex-1 text-sm font-semibold truncate mr-2">Admin Portal</span>
+            user.puedeCambiarEmpresa ? (
+              <button
+                onClick={() => setEmpresaMenuOpen(v => !v)}
+                disabled={isSwitchingEmpresa}
+                className="flex-1 flex items-center gap-1.5 mr-2 min-w-0 rounded px-1 py-1 hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: user.empresa?.color_primario ?? '#94a3b8' }}
+                />
+                <span className="text-sm font-semibold truncate">
+                  {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
+                </span>
+                <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+              </button>
+            ) : (
+              <span className="flex-1 text-sm font-semibold truncate mr-2">
+                {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
+              </span>
+            )
           )}
           <button
             onClick={onToggle}
@@ -68,6 +91,26 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           >
             {isOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
+
+          {isOpen && empresaMenuOpen && user.puedeCambiarEmpresa && (
+            <div className="absolute left-3 top-14 z-10 w-56 rounded-md border border-border bg-white py-1 shadow-md">
+              {(user.empresasDisponibles ?? []).map((empresa) => (
+                <button
+                  key={empresa.id}
+                  onClick={() => {
+                    setEmpresaMenuOpen(false);
+                    if (empresa.id !== user.empresaId) switchEmpresa(empresa.id);
+                  }}
+                  className={cn(
+                    'flex w-full items-center px-3 py-2 text-sm text-left hover:bg-accent transition-colors',
+                    empresa.id === user.empresaId && 'font-medium bg-accent/50',
+                  )}
+                >
+                  {empresa.nombre_corto ?? empresa.nombre}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Navegación */}
@@ -174,9 +217,19 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <div className="mb-2 px-1">
               <p className="text-sm font-medium truncate">{user.nombre}</p>
               <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-                {ROL_LABEL[user.rol]}
-              </span>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                  {ROL_LABEL[user.rol]}
+                </span>
+                {user.empresa && (
+                  <span
+                    className="inline-block text-xs px-2 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: user.empresa.color_primario ?? '#64748b' }}
+                  >
+                    {user.empresa.nombre_corto ?? user.empresa.nombre}
+                  </span>
+                )}
+              </div>
             </div>
           )}
           <button

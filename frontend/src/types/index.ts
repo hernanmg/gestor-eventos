@@ -434,6 +434,14 @@ export interface PagoFactura {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 // Subconjunto devuelto por GET /api/auth/me y POST /api/auth/login
 
+export type EmpresaResumen = {
+  id:             number;
+  nombre:         string;
+  nombre_corto:   string | null;
+  color_primario: string | null;
+  logo_url:       string | null;
+};
+
 export type MeResponse = {
   id:      number;
   nombre:  string;
@@ -441,6 +449,12 @@ export type MeResponse = {
   rol:     Rol;
   activo:  boolean;
   accesos: { evento_id: number; rol: Rol }[];
+  // Multitenancy — empresaId es null mientras hay una selección de empresa
+  // pendiente (usuario con acceso a 2+ empresas que todavía no eligió).
+  empresaId:            number | null;
+  empresa:              EmpresaResumen | null;
+  empresasDisponibles?: { id: number; nombre: string; nombre_corto: string | null }[];
+  puedeCambiarEmpresa:  boolean;
 };
 
 // ── Respuestas API ────────────────────────────────────────────────────────────

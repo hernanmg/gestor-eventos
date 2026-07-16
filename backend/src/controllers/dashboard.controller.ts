@@ -1,23 +1,25 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { withTenant } from '../lib/tenant';
 
 // ── GET /dashboard/resumen ────────────────────────────────────────────────────
 
-export async function getResumen(_req: Request, res: Response) {
+export async function getResumen(req: Request, res: Response) {
   const today  = new Date(); today.setHours(0, 0, 0, 0);
   const in7    = new Date(today); in7.setDate(in7.getDate() + 7);
+  const empresaId = req.empresaId!;
 
   const [eventos, movimientos, cuentas, echeqs, eventosRecientes] = await Promise.all([
     prisma.evento.findMany({
-      where:  { deleted_at: null },
+      where:  { deleted_at: null, ...withTenant(empresaId) },
       select: { estado: true },
     }),
     prisma.movimiento.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null, estado: 'ACTIVO' } },
+      where:  { deleted_at: null, evento: { deleted_at: null, estado: 'ACTIVO', ...withTenant(empresaId) } },
       select: { tipo: true, moneda: true, debe: true, haber: true },
     }),
     prisma.cuentaBancaria.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null } },
+      where:  { deleted_at: null, evento: { deleted_at: null, ...withTenant(empresaId) } },
       select: {
         moneda: true,
         saldo_inicial: true,
@@ -29,11 +31,11 @@ export async function getResumen(_req: Request, res: Response) {
       },
     }),
     prisma.echeq.findMany({
-      where:  { deleted_at: null, estado: 'PENDIENTE' },
+      where:  { deleted_at: null, estado: 'PENDIENTE', evento: withTenant(empresaId) },
       select: { moneda: true, importe: true, fecha_cobro_estimada: true },
     }),
     prisma.evento.findMany({
-      where:   { deleted_at: null },
+      where:   { deleted_at: null, ...withTenant(empresaId) },
       orderBy: { updated_at: 'desc' },
       take:    5,
       select:  { id: true, nombre: true, estado: true, moneda_base: true, updated_at: true },
@@ -111,8 +113,8 @@ export async function getKPIsEvento(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
   const [evento, tabs, movimientos, cuentas, echeqs] = await Promise.all([
-    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } }),
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } }),
+    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!), orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, deleted_at: null },
       orderBy: { orden: 'asc' },
@@ -239,13 +241,14 @@ export async function getKPIsEvento(req: Request, res: Response) {
 
 // ── GET /dashboard/alertas ───────────────────────────────────────────────────
 
-export async function getAlertas(_req: Request, res: Response) {
+export async function getAlertas(req: Request, res: Response) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const in7   = new Date(today); in7.setDate(in7.getDate() + 7);
+  const empresaId = req.empresaId!;
 
   const [echeqsPendientes, eventosActivos, allMovimientos, allEventos] = await Promise.all([
     prisma.echeq.findMany({
-      where:  { deleted_at: null, estado: 'PENDIENTE' },
+      where:  { deleted_at: null, estado: 'PENDIENTE', evento: withTenant(empresaId) },
       select: {
         id: true, numero: true, razon_social: true, importe: true, moneda: true,
         fecha_cobro_estimada: true, evento_id: true,
@@ -253,15 +256,15 @@ export async function getAlertas(_req: Request, res: Response) {
       },
     }),
     prisma.evento.findMany({
-      where:  { deleted_at: null, estado: 'ACTIVO' },
+      where:  { deleted_at: null, estado: 'ACTIVO', ...withTenant(empresaId) },
       select: { id: true, nombre: true, fecha_fin: true },
     }),
     prisma.movimiento.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null } },
+      where:  { deleted_at: null, evento: { deleted_at: null, ...withTenant(empresaId) } },
       select: { evento_id: true, tipo: true, moneda: true, debe: true, haber: true },
     }),
     prisma.evento.findMany({
-      where:  { deleted_at: null },
+      where:  { deleted_at: null, ...withTenant(empresaId) },
       select: { id: true, nombre: true },
     }),
   ]);

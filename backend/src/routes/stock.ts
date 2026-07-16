@@ -1,6 +1,7 @@
 // Stock module — activo en backend, oculto en UI (FEATURES.STOCK = false en frontend/src/lib/features.ts)
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso, requireEventoRole } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
@@ -15,6 +16,7 @@ import {
 
 const router = Router();
 router.use(auth);
+router.use(tenantMiddleware);
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 router.get('/productos',                   asyncHandler(listProductos));
@@ -46,5 +48,6 @@ export default router;
 // ── Nested under /api/eventos/:id ─────────────────────────────────────────────
 export const eventoStockRouter = Router({ mergeParams: true });
 eventoStockRouter.use(auth);
+eventoStockRouter.use(tenantMiddleware);
 eventoStockRouter.get('/',  requireEventoAcceso(), asyncHandler(getEventoStock));
 eventoStockRouter.post('/', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(asignarProducto));

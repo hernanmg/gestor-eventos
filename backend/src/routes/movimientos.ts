@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso, requireEventoRole, byMovimientoId } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
@@ -8,6 +9,7 @@ import { update, remove, reordenar, vincularProveedor } from '../controllers/mov
 const router = Router();
 
 router.use(auth);
+router.use(tenantMiddleware);
 
 router.post('/vincular-proveedor', requireRole('OPERADOR'), asyncHandler(vincularProveedor));
 

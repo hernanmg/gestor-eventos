@@ -28,7 +28,7 @@ export function useAuth() {
       api.post<MeResponse>('/auth/login', { email, password }).then(r => r.data),
     onSuccess: (data) => {
       queryClient.setQueryData(ME_QUERY_KEY, data);
-      navigate('/eventos', { replace: true });
+      navigate(data.empresaId === null ? '/seleccionar-empresa' : '/eventos', { replace: true });
     },
   });
 
@@ -39,6 +39,19 @@ export function useAuth() {
       // Limpia el caché y redirige independientemente del resultado del server
       queryClient.clear();
       navigate('/login', { replace: true });
+    },
+  });
+
+  // ── Cambio de empresa activa ──────────────────────────────────────────────
+  const switchEmpresaMutation = useMutation({
+    mutationFn: (empresaId: number) =>
+      api.post<MeResponse>('/auth/switch-empresa', { empresaId }).then(r => r.data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(ME_QUERY_KEY, data);
+      // Todos los datos cacheados pertenecen a la empresa anterior — se
+      // invalidan para que se vuelvan a pedir con la empresa nueva.
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'auth' });
+      navigate('/eventos', { replace: true });
     },
   });
 
@@ -63,6 +76,9 @@ export function useAuth() {
     logout:           logoutMutation.mutate,
     loginError:       loginMutation.error,
     isLoginLoading:   loginMutation.isPending,
+    switchEmpresa:    switchEmpresaMutation.mutateAsync,
+    isSwitchingEmpresa: switchEmpresaMutation.isPending,
+    switchEmpresaError: switchEmpresaMutation.error,
     hasEventoAcceso,
     getEventoRol,
   };

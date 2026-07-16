@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Tipo } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { withTenant } from '../lib/tenant';
 
 // ── GET /configuracion/tabs ───────────────────────────────────────────────────
 
@@ -9,7 +10,7 @@ export async function listTabs(req: Request, res: Response) {
   const inclInactivas = req.query.incluir_inactivas === 'true' && req.user?.rol === 'ADMIN';
 
   const tabs = await prisma.tabConfig.findMany({
-    where:   inclInactivas ? undefined : { activo: true },
+    where:   { ...withTenant(req.empresaId!), ...(inclInactivas ? {} : { activo: true }) },
     orderBy: [{ tipo: 'asc' }, { orden: 'asc' }],
   });
   res.json(tabs);
@@ -24,7 +25,7 @@ export async function updateTab(req: Request, res: Response) {
     res.status(400).json({ error: 'nombre es requerido' }); return;
   }
 
-  const tab = await prisma.tabConfig.findUnique({ where: { id } });
+  const tab = await prisma.tabConfig.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
   if (!tab) { res.status(404).json({ error: 'Pestaña no encontrada' }); return; }
 
   const updated = await prisma.tabConfig.update({
@@ -46,18 +47,19 @@ export async function createTab(req: Request, res: Response) {
   }
 
   const { tipo, nombre } = parsed.data;
+  const empresaId = req.empresaId!;
 
-  // Check max 10 tabs per tipo
-  const count = await prisma.tabConfig.count({ where: { tipo: tipo as Tipo } });
+  // Check max 10 tabs per tipo (por empresa)
+  const count = await prisma.tabConfig.count({ where: { tipo: tipo as Tipo, ...withTenant(empresaId) } });
   if (count >= 10) {
     res.status(400).json({ error: `Ya hay ${count} pestañas de tipo ${tipo}. Máximo permitido: 10` });
     return;
   }
 
-  // Auto-assign numero and orden
+  // Auto-assign numero and orden (por empresa)
   const [lastNum, lastOrd] = await Promise.all([
-    prisma.tabConfig.findFirst({ where: { tipo: tipo as Tipo }, orderBy: { numero: 'desc' }, select: { numero: true } }),
-    prisma.tabConfig.findFirst({ where: { tipo: tipo as Tipo }, orderBy: { orden: 'desc' },  select: { orden: true } }),
+    prisma.tabConfig.findFirst({ where: { tipo: tipo as Tipo, ...withTenant(empresaId) }, orderBy: { numero: 'desc' }, select: { numero: true } }),
+    prisma.tabConfig.findFirst({ where: { tipo: tipo as Tipo, ...withTenant(empresaId) }, orderBy: { orden: 'desc' },  select: { orden: true } }),
   ]);
   const numero = (lastNum?.numero ?? 0) + 1;
   const orden  = (lastOrd?.orden  ?? 0) + 1;
@@ -65,7 +67,7 @@ export async function createTab(req: Request, res: Response) {
   const codigo = `CUSTOM-${tipo}-${Date.now()}`;
 
   const tab = await prisma.tabConfig.create({
-    data: { tipo: tipo as Tipo, numero, nombre, codigo, orden, activo: true, es_sistema: false },
+    data: { ...withTenant(empresaId), tipo: tipo as Tipo, numero, nombre, codigo, orden, activo: true, es_sistema: false },
   });
   res.status(201).json(tab);
 }
@@ -74,16 +76,16 @@ export async function createTab(req: Request, res: Response) {
 
 export async function deleteTab(req: Request, res: Response) {
   const id  = Number(req.params.id);
-  const tab = await prisma.tabConfig.findUnique({ where: { id } });
+  const tab = await prisma.tabConfig.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
   if (!tab) { res.status(404).json({ error: 'Pestaña no encontrada' }); return; }
 
   if (tab.es_sistema) {
     res.status(400).json({ error: 'Las tabs del sistema no se pueden eliminar' }); return;
   }
 
-  // Check for associated movimientos
+  // Check for associated movimientos (vía evento, que ya está escopeado por empresa)
   const movCount = await prisma.movimiento.count({
-    where: { tipo: tab.tipo, tab_numero: tab.numero, deleted_at: null },
+    where: { tipo: tab.tipo, tab_numero: tab.numero, deleted_at: null, evento: withTenant(req.empresaId!) },
   });
 
   if (movCount === 0) {
@@ -108,9 +110,9 @@ export async function reorderTabs(req: Request, res: Response) {
 
   const { tipo, orden: items } = parsed.data;
 
-  // Validate all ids belong to this tipo
+  // Validate all ids belong to this tipo y a la empresa activa
   const ids     = items.map(i => i.id);
-  const tabsDB  = await prisma.tabConfig.findMany({ where: { id: { in: ids } }, select: { id: true, tipo: true } });
+  const tabsDB  = await prisma.tabConfig.findMany({ where: { id: { in: ids }, ...withTenant(req.empresaId!) }, select: { id: true, tipo: true } });
   const wrongType = tabsDB.some(t => t.tipo !== tipo);
   if (wrongType || tabsDB.length !== ids.length) {
     res.status(400).json({ error: 'Todos los ids deben pertenecer al mismo tipo' }); return;
@@ -128,7 +130,7 @@ export async function reorderTabs(req: Request, res: Response) {
   );
 
   const updated = await prisma.tabConfig.findMany({
-    where:   { tipo: tipo as Tipo },
+    where:   { tipo: tipo as Tipo, ...withTenant(req.empresaId!) },
     orderBy: { orden: 'asc' },
   });
   res.json(updated);
@@ -138,7 +140,7 @@ export async function reorderTabs(req: Request, res: Response) {
 
 export async function toggleTab(req: Request, res: Response) {
   const id  = Number(req.params.id);
-  const tab = await prisma.tabConfig.findUnique({ where: { id } });
+  const tab = await prisma.tabConfig.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
   if (!tab) { res.status(404).json({ error: 'Pestaña no encontrada' }); return; }
 
   if (tab.es_sistema) {

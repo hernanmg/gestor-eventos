@@ -11,6 +11,10 @@ const loginSchema = z.object({
   password: z.string().min(1, 'La contraseña es requerida'),
 });
 
+const switchEmpresaSchema = z.object({
+  empresaId: z.number().int().positive(),
+});
+
 const COOKIE_NAME = 'token';
 
 function cookieOptions() {
@@ -28,6 +32,31 @@ async function fetchAccesos(usuarioId: number) {
     where:  { usuario_id: usuarioId },
     select: { evento_id: true, rol: true },
   });
+}
+
+type UsuarioBasico = { id: number; rol: string; empresa_id: number | null };
+
+// Admin global: rol ADMIN sin empresa fija en su fila — puede ver/elegir cualquier empresa activa.
+function esAdminGlobal(usuario: UsuarioBasico): boolean {
+  return usuario.rol === 'ADMIN' && usuario.empresa_id === null;
+}
+
+// Empresas a las que el usuario puede acceder — todas (admin global) o las de su
+// UsuarioEmpresaAcceso (usuarios normales, incluso si hoy solo tienen una fila).
+async function resolveEmpresasAccesibles(usuario: UsuarioBasico) {
+  if (esAdminGlobal(usuario)) {
+    return prisma.empresa.findMany({ where: { activo: true }, orderBy: { id: 'asc' } });
+  }
+  const accesos = await prisma.usuarioEmpresaAcceso.findMany({
+    where:   { usuario_id: usuario.id },
+    include: { empresa: true },
+    orderBy: { id: 'asc' },
+  });
+  return accesos.map(a => a.empresa).filter(e => e.activo);
+}
+
+function mapEmpresa(e: { id: number; nombre: string; nombre_corto: string | null; color_primario: string | null; logo_url: string | null }) {
+  return { id: e.id, nombre: e.nombre, nombre_corto: e.nombre_corto, color_primario: e.color_primario, logo_url: e.logo_url };
 }
 
 export async function login(req: Request, res: Response, _next: NextFunction): Promise<void> {
@@ -76,8 +105,27 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     throw new AppError(401, 'Credenciales incorrectas');
   }
 
+  const empresas = await resolveEmpresasAccesibles(usuario);
+  if (empresas.length === 0) {
+    await registrarAuditoria({
+      usuarioId:   usuario.id,
+      accion:      'LOGIN',
+      entidad:     'Usuario',
+      entidadId:   usuario.id,
+      descripcion: `Intento de login fallido — usuario sin empresa asignada: ${body.email}`,
+      ip:          req.ip,
+      tx:          prisma as any,
+    });
+    throw new AppError(403, 'Tu usuario no tiene ninguna empresa asignada. Contactá al administrador');
+  }
+
+  // 1 sola empresa accesible → se resuelve automáticamente, sin pantalla de
+  // selección. 2+ → empresaId queda null (selección pendiente) hasta que el
+  // frontend llame a /auth/switch-empresa.
+  const empresaId = empresas.length === 1 ? empresas[0].id : null;
+
   const token = jwt.sign(
-    { id: usuario.id, rol: usuario.rol },
+    { id: usuario.id, rol: usuario.rol, empresaId },
     process.env.JWT_SECRET!,
     { expiresIn: '8h' },
   );
@@ -86,6 +134,7 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     fetchAccesos(usuario.id),
     registrarAuditoria({
       usuarioId:    usuario.id,
+      empresaId,
       accion:       'LOGIN',
       entidad:      'Usuario',
       entidadId:    usuario.id,
@@ -96,13 +145,22 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     }),
   ]);
 
+  const global = esAdminGlobal(usuario);
+
   res.cookie(COOKIE_NAME, token, cookieOptions());
-  res.json({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, accesos });
+  res.json({
+    id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, accesos,
+    empresaId,
+    empresa:              empresaId !== null ? mapEmpresa(empresas.find(e => e.id === empresaId)!) : null,
+    empresasDisponibles:  (global || empresaId === null) ? empresas.map(mapEmpresa) : undefined,
+    puedeCambiarEmpresa:  global,
+  });
 }
 
 export async function logout(req: Request, res: Response, _next: NextFunction): Promise<void> {
   await registrarAuditoria({
     usuarioId:   req.user?.id ?? null,
+    empresaId:   req.user?.empresaId ?? null,
     accion:      'LOGOUT',
     entidad:     'Usuario',
     entidadId:   req.user?.id,
@@ -117,13 +175,104 @@ export async function logout(req: Request, res: Response, _next: NextFunction): 
 export async function me(req: Request, res: Response, _next: NextFunction): Promise<void> {
   const raw = await prisma.usuario.findFirst({
     where:  { id: req.user!.id, deleted_at: null },
-    select: { id: true, nombre: true, email: true, rol: true, activo: true },
+    select: { id: true, nombre: true, email: true, rol: true, activo: true, empresa_id: true },
   });
 
   if (!raw || !raw.activo) {
     throw new AppError(401, 'Sesión inválida');
   }
 
-  const accesos = await fetchAccesos(req.user!.id);
-  res.json({ ...raw, accesos });
+  const accesos   = await fetchAccesos(req.user!.id);
+  const empresaId = req.user!.empresaId;
+  const global     = esAdminGlobal(raw);
+
+  let empresa: ReturnType<typeof mapEmpresa> | null = null;
+  let empresasDisponibles: ReturnType<typeof mapEmpresa>[] | undefined;
+
+  if (empresaId !== null) {
+    const e = await prisma.empresa.findFirst({ where: { id: empresaId } });
+    empresa = e ? mapEmpresa(e) : null;
+  }
+  // El admin global siempre necesita la lista completa (para el switcher del
+  // sidebar); un usuario normal solo la necesita mientras tiene selección
+  // pendiente (empresaId null).
+  if (global || empresaId === null) {
+    const empresas = await resolveEmpresasAccesibles(raw);
+    empresasDisponibles = empresas.map(mapEmpresa);
+  }
+
+  res.json({
+    id: raw.id, nombre: raw.nombre, email: raw.email, rol: raw.rol, activo: raw.activo,
+    accesos,
+    empresaId,
+    empresa,
+    empresasDisponibles,
+    puedeCambiarEmpresa: global,
+  });
+}
+
+// POST /auth/switch-empresa — cambia la empresa activa de la sesión.
+// Permitido para: admin global (siempre) o usuarios sin empresa aún elegida
+// (primera selección tras login con 2+ empresas accesibles). Un usuario
+// normal que ya tiene empresa fijada en la sesión no puede volver a cambiar
+// hasta cerrar sesión.
+export async function switchEmpresa(req: Request, res: Response): Promise<void> {
+  const parsed = switchEmpresaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'empresaId es requerido' }); return;
+  }
+
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null } });
+  if (!usuario || !usuario.activo) { res.status(401).json({ error: 'Sesión inválida' }); return; }
+
+  const global = esAdminGlobal(usuario);
+  if (!global && req.user!.empresaId !== null) {
+    res.status(403).json({ error: 'No podés cambiar de empresa en esta sesión' }); return;
+  }
+
+  let empresaDestino: { id: number; nombre: string; nombre_corto: string | null; color_primario: string | null; logo_url: string | null; activo: boolean } | null;
+
+  if (global) {
+    empresaDestino = await prisma.empresa.findFirst({ where: { id: parsed.data.empresaId, activo: true } });
+  } else {
+    const acceso = await prisma.usuarioEmpresaAcceso.findUnique({
+      where:   { usuario_id_empresa_id: { usuario_id: usuario.id, empresa_id: parsed.data.empresaId } },
+      include: { empresa: true },
+    });
+    empresaDestino = acceso && acceso.empresa.activo ? acceso.empresa : null;
+  }
+
+  if (!empresaDestino) { res.status(403).json({ error: 'No tenés acceso a esa empresa' }); return; }
+
+  const token = jwt.sign(
+    { id: usuario.id, rol: usuario.rol, empresaId: empresaDestino.id },
+    process.env.JWT_SECRET!,
+    { expiresIn: '8h' },
+  );
+  res.cookie(COOKIE_NAME, token, cookieOptions());
+
+  const accesos = await fetchAccesos(usuario.id);
+
+  await registrarAuditoria({
+    usuarioId:   usuario.id,
+    empresaId:   empresaDestino.id,
+    accion:      'SWITCH_EMPRESA',
+    entidad:     'Usuario',
+    entidadId:   usuario.id,
+    descripcion: `Cambió a la empresa "${empresaDestino.nombre}"`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  const empresasDisponibles = global
+    ? (await resolveEmpresasAccesibles(usuario)).map(mapEmpresa)
+    : undefined;
+
+  res.json({
+    id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, accesos,
+    empresaId:           empresaDestino.id,
+    empresa:             mapEmpresa(empresaDestino),
+    empresasDisponibles,
+    puedeCambiarEmpresa: global,
+  });
 }

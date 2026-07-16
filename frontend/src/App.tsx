@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ProtectedLayout      from '@/components/layout/ProtectedLayout';
 import LoginPage            from '@/pages/Login';
+import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
 import DashboardPage        from '@/pages/Dashboard';
 import EventosPage          from '@/pages/Eventos';
 import EventoPage                  from '@/pages/Evento';
@@ -31,6 +32,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/seleccionar-empresa" element={<SeleccionarEmpresaPage />} />
 
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard"     element={<DashboardPage />} />

@@ -1,10 +1,11 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { EstadoFactura, MedioPago, CondicionPago, Moneda, Tipo } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldos } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
 // ── Multer PDF ────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export async function list(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
   const { estado, moneda } = req.query;
 
-  const where: any = { evento_id: eventoId, deleted_at: null };
+  const where: any = { evento_id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) };
   if (estado) where.estado = estado;
   if (moneda) where.moneda = moneda;
 
@@ -112,7 +113,7 @@ export async function list(req: Request, res: Response) {
 export async function listGlobal(req: Request, res: Response) {
   const { evento_id, proveedor_id, estado, desde, hasta, vencen_en_dias, moneda } = req.query;
 
-  const where: any = { deleted_at: null };
+  const where: any = { deleted_at: null, ...withTenant(req.empresaId!) };
   if (evento_id)    where.evento_id    = Number(evento_id);
   if (proveedor_id) where.proveedor_id = Number(proveedor_id);
   if (estado)       where.estado       = estado;
@@ -145,7 +146,7 @@ export async function listGlobal(req: Request, res: Response) {
 
 // ── alertas ───────────────────────────────────────────────────────────────────
 
-export async function alertas(_req: Request, res: Response) {
+export async function alertas(req: Request, res: Response) {
   const ahora          = new Date();
   const en7dias        = new Date(ahora.getTime() + 7 * 86400000);
   const estadosActivos = [EstadoFactura.APROBADA];
@@ -153,6 +154,7 @@ export async function alertas(_req: Request, res: Response) {
   const [vencidas, vencen_pronto] = await Promise.all([
     prisma.factura.count({
       where: {
+        ...withTenant(req.empresaId!),
         deleted_at:        null,
         estado:            { in: estadosActivos },
         fecha_vencimiento: { lt: ahora },
@@ -160,6 +162,7 @@ export async function alertas(_req: Request, res: Response) {
     }),
     prisma.factura.count({
       where: {
+        ...withTenant(req.empresaId!),
         deleted_at:        null,
         estado:            { in: estadosActivos },
         fecha_vencimiento: { gte: ahora, lte: en7dias },
@@ -174,7 +177,7 @@ export async function alertas(_req: Request, res: Response) {
 export async function detail(req: Request, res: Response) {
   const id = Number(req.params.id);
   const f  = await prisma.factura.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: {
       proveedor: { select: { id: true, nombre: true, alias: true, cuit: true } },
       evento:    { select: { id: true, nombre: true, estado: true } },
@@ -197,7 +200,7 @@ export async function detail(req: Request, res: Response) {
 export async function getPDF(req: Request, res: Response) {
   const id = Number(req.params.id);
   const f  = await prisma.factura.findFirst({
-    where:  { id, deleted_at: null },
+    where:  { id, deleted_at: null, ...withTenant(req.empresaId!) },
     select: { pdf_data: true, pdf_mime_type: true, pdf_nombre: true, pdf_tamanio: true },
   });
   if (!f)           { res.status(404).json({ error: 'Factura no encontrada' }); return; }
@@ -247,10 +250,10 @@ export async function create(req: Request, res: Response) {
   }
   const d = parsed.data;
 
-  const proveedor = await prisma.proveedor.findFirst({ where: { id: d.proveedor_id, deleted_at: null } });
+  const proveedor = await prisma.proveedor.findFirst({ where: { id: d.proveedor_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(400).json({ error: 'Proveedor no encontrado' }); return; }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const pdfData: Buffer | undefined  = req.file?.buffer;
@@ -260,6 +263,7 @@ export async function create(req: Request, res: Response) {
 
   const factura = await prisma.factura.create({
     data: {
+      ...withTenant(req.empresaId!),
       numero_factura:    d.numero_factura,
       tipo_factura:      d.tipo_factura,
       fecha_emision:     new Date(d.fecha_emision),
@@ -289,7 +293,7 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null } });
+  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!f) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
 
   const parsed = facturaSchema.partial().safeParse(req.body);
@@ -324,7 +328,7 @@ export async function updatePDF(req: Request, res: Response) {
   const id = Number(req.params.id);
   if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo PDF' }); return; }
 
-  const f = await prisma.factura.findFirst({ where: { id, deleted_at: null } });
+  const f = await prisma.factura.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!f) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
 
   await prisma.factura.update({
@@ -344,7 +348,7 @@ export async function updatePDF(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null } });
+  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!f) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
 
   if (f.estado === EstadoFactura.PAGADA) {
@@ -362,7 +366,7 @@ export async function remove(req: Request, res: Response) {
 
 export async function aprobar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null } });
+  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!f) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
 
   if (f.estado !== EstadoFactura.RECIBIDA) {
@@ -380,7 +384,7 @@ export async function aprobar(req: Request, res: Response) {
 
 export async function anular(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null } });
+  const f  = await prisma.factura.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!f) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
 
   if (f.estado === EstadoFactura.PAGADA) {
@@ -406,7 +410,7 @@ export async function pagarFactura(req: Request, res: Response) {
   const { fecha_pago, importe, medio_pago, referencia, notas, echeq_numero, echeq_fecha_cobro_estimada } = parsed.data;
 
   const factura = await prisma.factura.findFirst({
-    where:   { id: facturaId, deleted_at: null },
+    where:   { id: facturaId, deleted_at: null, ...withTenant(req.empresaId!) },
     include: { proveedor: { select: { id: true, nombre: true } } },
   });
   if (!factura) { res.status(404).json({ error: 'Factura no encontrada' }); return; }
@@ -499,6 +503,7 @@ export async function pagarFactura(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'PagoFactura',
       entidadId:    pago.id,
@@ -520,7 +525,7 @@ export async function pagarFactura(req: Request, res: Response) {
 export async function anularPago(req: Request, res: Response) {
   const pagoId = Number(req.params.id);
   const pago   = await prisma.pagoFactura.findFirst({
-    where:   { id: pagoId, deleted_at: null },
+    where:   { id: pagoId, deleted_at: null, factura: withTenant(req.empresaId!) },
     include: { echeq: { select: { id: true, estado: true } } },
   });
   if (!pago) { res.status(404).json({ error: 'Pago no encontrado' }); return; }
@@ -564,6 +569,7 @@ export async function anularPago(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
       accion:      'DELETE',
       entidad:     'PagoFactura',
       entidadId:   pagoId,

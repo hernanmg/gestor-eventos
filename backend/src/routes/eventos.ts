@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso, requireEventoRole } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
@@ -16,6 +17,7 @@ import { listEcheqs, createEcheq, alertasEcheqs } from '../controllers/echeqs.co
 const router = Router();
 
 router.use(auth);
+router.use(tenantMiddleware);
 
 router.get('/',       asyncHandler(list));
 router.get('/:id',    requireEventoAcceso(), asyncHandler(detail));

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
@@ -33,6 +34,7 @@ function pdfMiddleware(req: any, res: any, next: any) {
 
 export const facturasRouter = Router();
 facturasRouter.use(auth);
+facturasRouter.use(tenantMiddleware);
 
 facturasRouter.get('/alertas',          asyncHandler(alertas));
 facturasRouter.get('/',                 asyncHandler(listGlobal));
@@ -49,11 +51,13 @@ facturasRouter.post('/:id/pagos',       requireRole('OPERADOR'), asyncHandler(pa
 
 export const pagosRouter = Router();
 pagosRouter.use(auth);
+pagosRouter.use(tenantMiddleware);
 pagosRouter.delete('/:id', requireRole('OPERADOR'), asyncHandler(anularPago));
 
 // ── Router /api/eventos (sub-rutas facturas) ──────────────────────────────────
 
 export const facturasEventoRouter = Router();
 facturasEventoRouter.use(auth);
+facturasEventoRouter.use(tenantMiddleware);
 facturasEventoRouter.get('/:id/facturas',  requireEventoAcceso(), asyncHandler(list));
 facturasEventoRouter.post('/:id/facturas', requireEventoAcceso(), requireRole('OPERADOR'), pdfMiddleware, asyncHandler(create));

@@ -84,6 +84,31 @@ enum CondicionPago {
   OTRO
 }
 
+// ─── EMPRESAS (multitenancy — row-level tenancy) ─────────────────────────────
+
+model Empresa {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  nombre_corto   String?
+  cuit           String?  @unique
+  domicilio      String?
+  logo_url       String?
+  color_primario String?
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  usuarios              Usuario[]
+  usuarioEmpresaAccesos UsuarioEmpresaAcceso[]
+  eventos               Evento[]
+  proveedores           Proveedor[]
+  tabConfigs            TabConfig[]
+  categoriasStock       CategoriaStock[]
+  productos             Producto[]
+  facturas              Factura[]
+  auditoriaLogs         AuditoriaLog[]
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model Usuario {
@@ -93,35 +118,61 @@ model Usuario {
   password_hash String
   rol           Rol       @default(OPERADOR)
   activo        Boolean   @default(true)
+  // Empresa activa de la sesión — null solo para el admin global (rol=ADMIN
+  // sin fila en UsuarioEmpresaAcceso), que puede cambiar de empresa libremente.
+  empresa_id    Int?
+  empresa       Empresa?  @relation(fields: [empresa_id], references: [id])
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
 
-  eventoAccesos EventoAcceso[]
-  auditoriaLogs AuditoriaLog[]
+  eventoAccesos   EventoAcceso[]
+  auditoriaLogs   AuditoriaLog[]
+  empresaAccesos  UsuarioEmpresaAcceso[]
 }
 
-// ─── CONFIGURACIÓN GLOBAL DE PESTAÑAS ────────────────────────────────────────
-// 5 egresos + 5 ingresos. `nombre` es editable por el admin desde la UI.
-// `codigo` es inmutable y lo usa el importer Excel para mapear hojas.
+// Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
+// EventoAcceso. Si un usuario tiene 1 sola fila, entra directo a esa empresa
+// sin selector. Si tiene 2+, elige al login y queda fijo esa sesión.
+model UsuarioEmpresaAcceso {
+  id         Int      @id @default(autoincrement())
+  usuario_id Int
+  usuario    Usuario  @relation(fields: [usuario_id], references: [id])
+  empresa_id Int
+  empresa    Empresa  @relation(fields: [empresa_id], references: [id])
+  created_at DateTime @default(now())
+  created_by Int?
+
+  @@unique([usuario_id, empresa_id])
+}
+
+// ─── CONFIGURACIÓN DE PESTAÑAS (por empresa) ─────────────────────────────────
+// 5 egresos + 5 ingresos por empresa. `nombre` es editable por el admin desde
+// la UI. `codigo` es inmutable dentro de cada empresa y lo usa el importer
+// Excel para mapear hojas.
 
 model TabConfig {
   id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
   tipo       Tipo
-  numero     Int     // identificador estable — nunca reasignado
+  numero     Int     // identificador estable dentro de la empresa — nunca reasignado
   nombre     String  // editable
-  codigo     String  @unique // inmutable
+  codigo     String  // inmutable dentro de la empresa
   orden      Int     // posición de visualización dentro del tipo (reordenable)
   activo     Boolean @default(true)
   es_sistema Boolean @default(false) // las 10 tabs originales no se pueden eliminar
 
-  @@unique([tipo, numero])
+  @@unique([tipo, numero, empresa_id])
+  @@unique([codigo, empresa_id])
 }
 
 // ─── EVENTOS ─────────────────────────────────────────────────────────────────
 
 model Evento {
   id           Int              @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa          @relation(fields: [empresa_id], references: [id])
   nombre       String
   fecha_inicio DateTime?
   fecha_fin    DateTime?
@@ -223,6 +274,8 @@ model MovimientoCaja {
 
 model Proveedor {
   id         Int       @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa   @relation(fields: [empresa_id], references: [id])
   nombre     String
   alias      String?
   cuit       String?   @unique
@@ -293,7 +346,9 @@ model EventoAcceso {
 
 model CategoriaStock {
   id          Int        @id @default(autoincrement())
-  nombre      String     @unique
+  empresa_id  Int
+  empresa     Empresa    @relation(fields: [empresa_id], references: [id])
+  nombre      String
   descripcion String?
   color       String?
   activo      Boolean    @default(true)
@@ -303,15 +358,19 @@ model CategoriaStock {
   created_by  Int?
 
   productos Producto[]
+
+  @@unique([nombre, empresa_id])
 }
 
 model Producto {
   id           Int             @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa         @relation(fields: [empresa_id], references: [id])
   nombre       String
   descripcion  String?
   categoria_id Int?
   categoria    CategoriaStock? @relation(fields: [categoria_id], references: [id])
-  codigo       String?         @unique
+  codigo       String?
   stock_total  Int
   stock_minimo Int             @default(0)
   unidad       String          @default("unidad")
@@ -325,6 +384,8 @@ model Producto {
 
   asignaciones AsignacionStock[]
   movimientos  MovimientoStock[]
+
+  @@unique([codigo, empresa_id])
 }
 
 model AsignacionStock {
@@ -371,6 +432,8 @@ model MovimientoStock {
 
 model Factura {
   id                Int            @id @default(autoincrement())
+  empresa_id        Int
+  empresa           Empresa        @relation(fields: [empresa_id], references: [id])
   numero_factura    String
   tipo_factura      String         // "A", "B", "C", "X"
   fecha_emision     DateTime
@@ -427,6 +490,8 @@ model AuditoriaLog {
   id            Int      @id @default(autoincrement())
   usuario_id    Int?
   usuario       Usuario? @relation(fields: [usuario_id], references: [id])
+  empresa_id    Int?
+  empresa       Empresa? @relation(fields: [empresa_id], references: [id])
   accion        String
   entidad       String
   entidad_id    Int?

@@ -39,6 +39,10 @@ function nextSaldo(prev: number, debe: number, haber: number): number {
   return prev + haber - debe;
 }
 
+// Datos de demo — siempre van a Enjoy Producciones (empresa sembrada con id=1
+// en la migración de multitenancy / prisma/seed.ts).
+const EMPRESA_ID = 1;
+
 // ── Helpers idempotentes ──────────────────────────────────────────────────────
 
 async function upsertProveedor(data: {
@@ -47,15 +51,16 @@ async function upsertProveedor(data: {
   cuit?: string;
   categoria: string;
 }) {
+  const payload = { ...data, empresa_id: EMPRESA_ID };
   if (data.cuit) {
     return prisma.proveedor.upsert({
       where:  { cuit: data.cuit },
       update: {},
-      create: data,
+      create: payload,
     });
   }
-  const existing = await prisma.proveedor.findFirst({ where: { nombre: data.nombre } });
-  return existing ?? prisma.proveedor.create({ data });
+  const existing = await prisma.proveedor.findFirst({ where: { nombre: data.nombre, empresa_id: EMPRESA_ID } });
+  return existing ?? prisma.proveedor.create({ data: payload });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,24 +79,40 @@ async function main() {
 
   const operador = await prisma.usuario.upsert({
     where:  { email: 'operador@demo.com' },
-    update: {},
+    update: { empresa_id: EMPRESA_ID },
     create: {
       email:         'operador@demo.com',
       nombre:        'Laura Gómez',
       password_hash: demoHash,
       rol:           Rol.OPERADOR,
+      empresa_id:    EMPRESA_ID,
     },
   });
 
   const viewer = await prisma.usuario.upsert({
     where:  { email: 'viewer@demo.com' },
-    update: {},
+    update: { empresa_id: EMPRESA_ID },
     create: {
       email:         'viewer@demo.com',
       nombre:        'Martín Sosa',
       password_hash: demoHash,
       rol:           Rol.VIEWER,
+      empresa_id:    EMPRESA_ID,
     },
+  });
+
+  // Acceso a la empresa — necesario para resolver empresaId en el login
+  // (usuarios no-admin se autorizan vía UsuarioEmpresaAcceso, no por
+  // Usuario.empresa_id directo, que es solo la "empresa activa" de la sesión).
+  await prisma.usuarioEmpresaAcceso.upsert({
+    where:  { usuario_id_empresa_id: { usuario_id: operador.id, empresa_id: EMPRESA_ID } },
+    update: {},
+    create: { usuario_id: operador.id, empresa_id: EMPRESA_ID },
+  });
+  await prisma.usuarioEmpresaAcceso.upsert({
+    where:  { usuario_id_empresa_id: { usuario_id: viewer.id, empresa_id: EMPRESA_ID } },
+    update: {},
+    create: { usuario_id: viewer.id, empresa_id: EMPRESA_ID },
   });
 
   console.log('✓ Usuarios: operador@demo.com (OPERADOR), viewer@demo.com (VIEWER)');
@@ -113,26 +134,26 @@ async function main() {
   // ── 3. CATEGORÍAS DE STOCK ───────────────────────────────────────────────────
   console.log('Creando categorías de stock...');
 
-  const catAudio     = await prisma.categoriaStock.upsert({ where: { nombre: 'Audio'       }, update: {}, create: { nombre: 'Audio',       color: '#3B82F6' } });
-  const catIlum      = await prisma.categoriaStock.upsert({ where: { nombre: 'Iluminación' }, update: {}, create: { nombre: 'Iluminación', color: '#F59E0B' } });
-  const catEsc       = await prisma.categoriaStock.upsert({ where: { nombre: 'Escenario'   }, update: {}, create: { nombre: 'Escenario',   color: '#8B5CF6' } });
-  const catMob       = await prisma.categoriaStock.upsert({ where: { nombre: 'Mobiliario'  }, update: {}, create: { nombre: 'Mobiliario',  color: '#10B981' } });
-  const catEnergia   = await prisma.categoriaStock.upsert({ where: { nombre: 'Energía'     }, update: {}, create: { nombre: 'Energía',     color: '#EF4444' } });
-  const catSegur     = await prisma.categoriaStock.upsert({ where: { nombre: 'Seguridad'   }, update: {}, create: { nombre: 'Seguridad',   color: '#6B7280' } });
+  const catAudio     = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Audio',       empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Audio',       color: '#3B82F6', empresa_id: EMPRESA_ID } });
+  const catIlum      = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Iluminación', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Iluminación', color: '#F59E0B', empresa_id: EMPRESA_ID } });
+  const catEsc       = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Escenario',   empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Escenario',   color: '#8B5CF6', empresa_id: EMPRESA_ID } });
+  const catMob       = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Mobiliario',  empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Mobiliario',  color: '#10B981', empresa_id: EMPRESA_ID } });
+  const catEnergia   = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Energía',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Energía',     color: '#EF4444', empresa_id: EMPRESA_ID } });
+  const catSegur     = await prisma.categoriaStock.upsert({ where: { nombre_empresa_id: { nombre: 'Seguridad',   empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Seguridad',   color: '#6B7280', empresa_id: EMPRESA_ID } });
 
   console.log('✓ Categorías: 6 creadas');
 
   // ── 4. PRODUCTOS DE STOCK ────────────────────────────────────────────────────
   console.log('Creando productos de stock...');
 
-  const prodParlante  = await prisma.producto.upsert({ where: { codigo: 'PAR-001'     }, update: {}, create: { nombre: 'Parlante JBL Line Array',   codigo: 'PAR-001',     stock_total: 20,  stock_minimo: 4,  categoria_id: catAudio.id   } });
-  const prodSub       = await prisma.producto.upsert({ where: { codigo: 'SUB-001'     }, update: {}, create: { nombre: 'Subwoofer DBX 18"',          codigo: 'SUB-001',     stock_total: 12,  stock_minimo: 2,  categoria_id: catAudio.id   } });
-  const prodMovHead   = await prisma.producto.upsert({ where: { codigo: 'MOV-001'     }, update: {}, create: { nombre: 'Moving Head LED 200W',       codigo: 'MOV-001',     stock_total: 30,  stock_minimo: 6,  categoria_id: catIlum.id    } });
-  const prodConsola   = await prisma.producto.upsert({ where: { codigo: 'CON-ILU-001' }, update: {}, create: { nombre: 'Consola de Iluminación MA2', codigo: 'CON-ILU-001', stock_total: 3,   stock_minimo: 1,  categoria_id: catIlum.id    } });
-  const prodEscMod    = await prisma.producto.upsert({ where: { codigo: 'ESC-001'     }, update: {}, create: { nombre: 'Módulo de Escenario 2x1m',  codigo: 'ESC-001',     stock_total: 50,  stock_minimo: 10, categoria_id: catEsc.id     } });
-  const prodGenerador = await prisma.producto.upsert({ where: { codigo: 'GEN-001'     }, update: {}, create: { nombre: 'Generador 100kva',           codigo: 'GEN-001',     stock_total: 4,   stock_minimo: 1,  categoria_id: catEnergia.id } });
-  const prodSilla     = await prisma.producto.upsert({ where: { codigo: 'SIL-001'     }, update: {}, create: { nombre: 'Silla Plástica Blanca',      codigo: 'SIL-001',     stock_total: 200, stock_minimo: 20, categoria_id: catMob.id     } });
-  const prodMolinete  = await prisma.producto.upsert({ where: { codigo: 'MOL-001'     }, update: {}, create: { nombre: 'Molinete Torniquete',        codigo: 'MOL-001',     stock_total: 8,   stock_minimo: 2,  categoria_id: catSegur.id   } });
+  const prodParlante  = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'PAR-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Parlante JBL Line Array',   codigo: 'PAR-001',     stock_total: 20,  stock_minimo: 4,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
+  const prodSub       = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'SUB-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Subwoofer DBX 18"',          codigo: 'SUB-001',     stock_total: 12,  stock_minimo: 2,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
+  const prodMovHead   = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'MOV-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Moving Head LED 200W',       codigo: 'MOV-001',     stock_total: 30,  stock_minimo: 6,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
+  const prodConsola   = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'CON-ILU-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Consola de Iluminación MA2', codigo: 'CON-ILU-001', stock_total: 3,   stock_minimo: 1,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
+  const prodEscMod    = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'ESC-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Módulo de Escenario 2x1m',  codigo: 'ESC-001',     stock_total: 50,  stock_minimo: 10, categoria_id: catEsc.id,     empresa_id: EMPRESA_ID } });
+  const prodGenerador = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'GEN-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Generador 100kva',           codigo: 'GEN-001',     stock_total: 4,   stock_minimo: 1,  categoria_id: catEnergia.id, empresa_id: EMPRESA_ID } });
+  const prodSilla     = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'SIL-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Silla Plástica Blanca',      codigo: 'SIL-001',     stock_total: 200, stock_minimo: 20, categoria_id: catMob.id,     empresa_id: EMPRESA_ID } });
+  const prodMolinete  = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'MOL-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Molinete Torniquete',        codigo: 'MOL-001',     stock_total: 8,   stock_minimo: 2,  categoria_id: catSegur.id,   empresa_id: EMPRESA_ID } });
 
   // Suprimir warnings de vars no usadas (quedan disponibles si se extiende el seed)
   void prodSub; void prodConsola; void prodSilla; void prodMolinete;
@@ -144,7 +165,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\nCreando Evento 1: Cosquín Rock 2024...');
 
-  const existeE1 = await prisma.evento.findFirst({ where: { nombre: 'Cosquín Rock 2024' } });
+  const existeE1 = await prisma.evento.findFirst({ where: { nombre: 'Cosquín Rock 2024', empresa_id: EMPRESA_ID } });
 
   if (existeE1) {
     console.log('  (ya existe, omitiendo)');
@@ -157,6 +178,7 @@ async function main() {
     await prisma.$transaction(async (tx) => {
       const e1 = await tx.evento.create({
         data: {
+          empresa_id:   EMPRESA_ID,
           nombre:       'Cosquín Rock 2024',
           fecha_inicio: e1Inicio,
           fecha_fin:    e1Fin,
@@ -455,7 +477,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\nCreando Evento 2: Festival de la Ciudad 2025...');
 
-  const existeE2 = await prisma.evento.findFirst({ where: { nombre: 'Festival de la Ciudad 2025' } });
+  const existeE2 = await prisma.evento.findFirst({ where: { nombre: 'Festival de la Ciudad 2025', empresa_id: EMPRESA_ID } });
 
   if (existeE2) {
     console.log('  (ya existe, omitiendo)');
@@ -465,6 +487,7 @@ async function main() {
     await prisma.$transaction(async (tx) => {
       const e2 = await tx.evento.create({
         data: {
+          empresa_id:   EMPRESA_ID,
           nombre:       'Festival de la Ciudad 2025',
           fecha_inicio: e2Inicio,
           fecha_fin:    daysFromNow(17),
@@ -716,7 +739,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\nCreando Evento 3: Córdoba Beat Festival...');
 
-  const existeE3 = await prisma.evento.findFirst({ where: { nombre: 'Córdoba Beat Festival' } });
+  const existeE3 = await prisma.evento.findFirst({ where: { nombre: 'Córdoba Beat Festival', empresa_id: EMPRESA_ID } });
 
   if (existeE3) {
     console.log('  (ya existe, omitiendo)');
@@ -724,6 +747,7 @@ async function main() {
     await prisma.$transaction(async (tx) => {
       const e3 = await tx.evento.create({
         data: {
+          empresa_id:   EMPRESA_ID,
           nombre:       'Córdoba Beat Festival',
           fecha_inicio: daysFromNow(16), // solapa 1 día con Evento 2
           fecha_fin:    daysFromNow(19),

@@ -1,17 +1,20 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { TipoCuenta, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
-let _tabCache: Map<string, string> | null = null;
-async function getTabMap(): Promise<Map<string, string>> {
-  if (!_tabCache) {
-    const tabs = await prisma.tabConfig.findMany();
-    _tabCache = new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo]));
+// Cache por empresa — TabConfig ahora es per-tenant, así que una única Map
+// global mezclaría tabs de distintas empresas entre requests.
+const _tabCacheByEmpresa = new Map<number, Map<string, string>>();
+async function getTabMap(empresaId: number): Promise<Map<string, string>> {
+  if (!_tabCacheByEmpresa.has(empresaId)) {
+    const tabs = await prisma.tabConfig.findMany({ where: withTenant(empresaId) });
+    _tabCacheByEmpresa.set(empresaId, new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo])));
   }
-  return _tabCache;
+  return _tabCacheByEmpresa.get(empresaId)!;
 }
 
 function mapCuenta(c: any) {
@@ -70,6 +73,9 @@ const updateMovCajaSchema = z.object({
 
 export async function listCuentas(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const cuentas  = await prisma.cuentaBancaria.findMany({
     where:   { evento_id: eventoId, deleted_at: null },
     orderBy: { id: 'asc' },
@@ -85,7 +91,7 @@ export async function createCuenta(req: Request, res: Response) {
     return;
   }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const cuenta = await prisma.$transaction(async tx => {
@@ -100,6 +106,7 @@ export async function createCuenta(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'CuentaBancaria',
       entidadId:    c.id,
@@ -123,7 +130,7 @@ export async function updateCuenta(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
   const { nombre, tipo, moneda, saldo_inicial } = parsed.data;
@@ -143,6 +150,7 @@ export async function updateCuenta(req: Request, res: Response) {
     }
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'CuentaBancaria',
       entidadId:    id,
@@ -161,13 +169,14 @@ export async function updateCuenta(req: Request, res: Response) {
 
 export async function deleteCuenta(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
   await prisma.$transaction(async tx => {
     await tx.cuentaBancaria.update({ where: { id }, data: { deleted_at: new Date() } });
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'CuentaBancaria',
       entidadId:  id,
@@ -186,6 +195,9 @@ export async function deleteCuenta(req: Request, res: Response) {
 
 export async function listMovimientosCaja(req: Request, res: Response) {
   const cuentaId = Number(req.params.id);
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+
   const [movs, tabMap] = await Promise.all([
     prisma.movimientoCaja.findMany({
       where:   { cuenta_id: cuentaId, deleted_at: null },
@@ -198,7 +210,7 @@ export async function listMovimientosCaja(req: Request, res: Response) {
         },
       },
     }),
-    getTabMap(),
+    getTabMap(req.empresaId!),
   ]);
   res.json(movs.map(m => mapMovCaja(m, tabMap)));
 }
@@ -211,7 +223,7 @@ export async function createMovimientoCaja(req: Request, res: Response) {
     return;
   }
 
-  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null } });
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
   const movId = await prisma.$transaction(async tx => {
@@ -235,6 +247,7 @@ export async function createMovimientoCaja(req: Request, res: Response) {
     await recalcularSaldosCaja(cuentaId, tx);
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'MovimientoCaja',
       entidadId:    mov.id,
@@ -260,7 +273,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
   }
 
   const existing = await prisma.movimientoCaja.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, cuenta: { evento: withTenant(req.empresaId!) } },
     include: { cuenta: { select: { evento_id: true, nombre: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
@@ -279,6 +292,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
     await recalcularSaldosCaja(existing.cuenta_id, tx);
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'MovimientoCaja',
       entidadId:    id,
@@ -299,7 +313,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
 export async function deleteMovimientoCaja(req: Request, res: Response) {
   const id       = Number(req.params.id);
   const existing = await prisma.movimientoCaja.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, cuenta: { evento: withTenant(req.empresaId!) } },
     include: { cuenta: { select: { evento_id: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
@@ -312,6 +326,7 @@ export async function deleteMovimientoCaja(req: Request, res: Response) {
     await recalcularSaldosCaja(existing.cuenta_id, tx);
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'MovimientoCaja',
       entidadId:  id,
@@ -349,6 +364,9 @@ export async function transferencia(req: Request, res: Response) {
   if (cuenta_origen_id === cuenta_destino_id) {
     res.status(400).json({ error: 'La cuenta origen y destino no pueden ser la misma' }); return;
   }
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const [cuentaOrigen, cuentaDestino] = await Promise.all([
     prisma.cuentaBancaria.findFirst({ where: { id: cuenta_origen_id,  evento_id: eventoId, deleted_at: null } }),
@@ -407,6 +425,7 @@ export async function transferencia(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Transferencia',
       eventoId,
@@ -441,10 +460,10 @@ export async function conciliar(req: Request, res: Response) {
     res.status(400).json({ error: 'movimiento_id es requerido' }); return;
   }
 
-  const movCaja = await prisma.movimientoCaja.findFirst({ where: { id: movCajaId, deleted_at: null } });
+  const movCaja = await prisma.movimientoCaja.findFirst({ where: { id: movCajaId, deleted_at: null, cuenta: { evento: withTenant(req.empresaId!) } } });
   if (!movCaja) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
 
-  const movimiento = await prisma.movimiento.findFirst({ where: { id: parsed.data.movimiento_id, deleted_at: null } });
+  const movimiento = await prisma.movimiento.findFirst({ where: { id: parsed.data.movimiento_id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!movimiento) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
   const cuenta = await prisma.cuentaBancaria.findUnique({ where: { id: movCaja.cuenta_id } });
@@ -472,7 +491,7 @@ export async function conciliar(req: Request, res: Response) {
 
   const [updatedCaja, tabs] = await Promise.all([
     prisma.movimientoCaja.findUnique({ where: { id: movCajaId } }),
-    getTabMap(),
+    getTabMap(req.empresaId!),
   ]);
 
   res.json({
@@ -485,6 +504,9 @@ export async function conciliar(req: Request, res: Response) {
 
 export async function posicionConsolidada(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const cuentas = await prisma.cuentaBancaria.findMany({
     where:   { evento_id: eventoId, deleted_at: null },

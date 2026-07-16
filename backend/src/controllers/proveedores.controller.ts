@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { withTenant } from '../lib/tenant';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ function mapProv(p: any) {
 export async function list(req: Request, res: Response) {
   const { q, categoria, activo } = req.query;
 
-  const where: any = { deleted_at: null };
+  const where: any = { ...withTenant(req.empresaId!), deleted_at: null };
 
   // Default: only active; unless activo=false is explicit
   if (activo === 'false') {
@@ -56,7 +57,7 @@ export async function list(req: Request, res: Response) {
 export async function getById(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null } });
+  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
   // Fetch last 20 movimientos
@@ -68,7 +69,7 @@ export async function getById(req: Request, res: Response) {
   });
 
   // Tab names for the movimientos
-  const tabConfigs = await prisma.tabConfig.findMany();
+  const tabConfigs = await prisma.tabConfig.findMany({ where: withTenant(req.empresaId!) });
   const tabMap = new Map(tabConfigs.map(t => [`${t.tipo}-${t.numero}`, t.nombre]));
 
   const movimientosFormatted = movimientos.map(m => ({
@@ -154,6 +155,7 @@ export async function create(req: Request, res: Response) {
 
   const proveedor = await prisma.proveedor.create({
     data: {
+      ...withTenant(req.empresaId!),
       nombre,
       alias:     alias     ?? null,
       cuit:      cuit      ?? null,
@@ -175,7 +177,7 @@ export async function update(req: Request, res: Response) {
     return;
   }
 
-  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null } });
+  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
   const { nombre, alias, cuit, categoria, notas } = parsed.data;
@@ -205,7 +207,7 @@ export async function update(req: Request, res: Response) {
 export async function remove(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null } });
+  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
   await prisma.proveedor.update({
@@ -223,6 +225,7 @@ export async function buscar(req: Request, res: Response) {
 
   const results = await prisma.proveedor.findMany({
     where: {
+      ...withTenant(req.empresaId!),
       activo:     true,
       deleted_at: null,
       OR: [
@@ -242,7 +245,7 @@ export async function buscar(req: Request, res: Response) {
 export async function toggleActivo(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null } });
+  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
   const updated = await prisma.proveedor.update({

@@ -19,8 +19,25 @@ import { facturasRouter, pagosRouter, facturasEventoRouter } from './routes/fact
 
 const app = express();
 
+// FRONTEND_URL (si está seteado) + puertos habituales de Vite en desarrollo
+// (Vite pasa al siguiente puerto libre — 5174, 5175... — cuando 5173 está
+// ocupado, por ejemplo por otra instancia del dev server corriendo en paralelo).
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:3000',
+].filter((o): o is string => Boolean(o));
+
 app.use(cors({
-  origin:      process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 app.use(express.json());

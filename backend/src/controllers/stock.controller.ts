@@ -1,7 +1,8 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 import type { UbicacionStock, EstadoAsignacion, OrigenTransfer, Prisma } from '@prisma/client';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -56,10 +57,11 @@ async function calcDisponibilidad(
   productoId: number,
   fechaDesde: Date,
   fechaHasta: Date,
+  empresaId: number,
   excludeAsignacionId?: number,
 ) {
   const producto = await prisma.producto.findFirst({
-    where: { id: productoId, deleted_at: null },
+    where: { id: productoId, deleted_at: null, ...withTenant(empresaId) },
     select: { id: true, nombre: true, stock_total: true, stock_minimo: true, unidad: true },
   });
   if (!producto) return null;
@@ -107,6 +109,7 @@ async function calcSugerencias(
   eventoDestinoId: number,
   fechaDesde: Date,
   _fechaHasta: Date,
+  empresaId: number,
 ) {
   // Find active assignments of this product in other events
   const candidatas = await prisma.asignacionStock.findMany({
@@ -115,6 +118,7 @@ async function calcSugerencias(
       estado:      'ACTIVA',
       deleted_at:  null,
       evento_id:   { not: eventoDestinoId },
+      producto:    withTenant(empresaId),
     },
     include: {
       evento: { select: { id: true, nombre: true, fecha_fin: true } },
@@ -167,7 +171,7 @@ export async function listProductos(req: Request, res: Response) {
   const search       = typeof req.query.search    === 'string' ? req.query.search    : undefined;
   const categoriaRaw = typeof req.query.categoria === 'string' ? req.query.categoria : undefined;
 
-  const where: Prisma.ProductoWhereInput = { deleted_at: null, activo: true };
+  const where: Prisma.ProductoWhereInput = { deleted_at: null, activo: true, ...withTenant(req.empresaId!) };
   if (search) {
     where.OR = [
       { nombre:    { contains: search, mode: 'insensitive' } },
@@ -194,7 +198,7 @@ export async function listProductos(req: Request, res: Response) {
   const now = new Date();
   const results = await Promise.all(
     productos.map(async p => {
-      const disp = await calcDisponibilidad(p.id, now, now);
+      const disp = await calcDisponibilidad(p.id, now, now, req.empresaId!);
       return {
         ...p,
         stock_total:           p.stock_total,
@@ -210,7 +214,7 @@ export async function listProductos(req: Request, res: Response) {
 export async function getProducto(req: Request, res: Response) {
   const id = Number(req.params.id);
   const producto = await prisma.producto.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: {
       categoria: true,
       asignaciones: {
@@ -227,7 +231,7 @@ export async function getProducto(req: Request, res: Response) {
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   const now  = new Date();
-  const disp = await calcDisponibilidad(id, now, now);
+  const disp = await calcDisponibilidad(id, now, now, req.empresaId!);
 
   res.json({ ...producto, disponibilidad_hoy: disp });
 }
@@ -240,25 +244,26 @@ export async function createProducto(req: Request, res: Response) {
   const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
 
   if (categoria_id) {
-    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null } });
+    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
   if (codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null } });
+    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
   }
 
   const producto = await prisma.$transaction(async tx => {
     const p = await tx.producto.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre, descripcion: descripcion ?? null, categoria_id: categoria_id ?? null,
         codigo: codigo ?? null, stock_total, stock_minimo, unidad: unidad ?? 'unidad',
         notas: notas ?? null, created_by: req.user!.id, updated_by: req.user!.id,
       },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'Producto', entidadId: p.id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'Producto', entidadId: p.id,
       descripcion: `Creó producto "${nombre}"`, datosDespues: { nombre, stock_total, stock_minimo },
       ip: req.ip, tx: tx as any,
     });
@@ -275,18 +280,18 @@ export async function updateProducto(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
 
   if (categoria_id !== undefined && categoria_id !== null) {
-    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null } });
+    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
   if (codigo && codigo !== existing.codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null } });
+    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
   }
 
@@ -305,7 +310,7 @@ export async function updateProducto(req: Request, res: Response) {
   const producto = await prisma.$transaction(async tx => {
     const p = await tx.producto.update({ where: { id }, data });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'Producto', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Producto', entidadId: id,
       descripcion: `Actualizó producto "${existing.nombre}"`,
       datosAntes: { nombre: existing.nombre, stock_total: existing.stock_total },
       datosDespues: parsed.data, ip: req.ip, tx: tx as any,
@@ -319,7 +324,7 @@ export async function updateProducto(req: Request, res: Response) {
 export async function deleteProducto(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   const activas = await prisma.asignacionStock.count({
@@ -335,7 +340,7 @@ export async function deleteProducto(req: Request, res: Response) {
       data:  { deleted_at: new Date(), activo: false, updated_by: req.user!.id },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'DELETE', entidad: 'Producto', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'Producto', entidadId: id,
       descripcion: `Eliminó producto "${existing.nombre}"`,
       datosAntes: { nombre: existing.nombre, stock_total: existing.stock_total },
       ip: req.ip, tx: tx as any,
@@ -356,7 +361,7 @@ export async function getDisponibilidad(req: Request, res: Response) {
     res.status(400).json({ error: 'Se requieren producto_id, fecha_desde, fecha_hasta' }); return;
   }
 
-  const disp = await calcDisponibilidad(productoId, toDate(desdeStr), toDate(hastaStr));
+  const disp = await calcDisponibilidad(productoId, toDate(desdeStr), toDate(hastaStr), req.empresaId!);
   if (!disp) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   res.json(disp);
@@ -364,9 +369,9 @@ export async function getDisponibilidad(req: Request, res: Response) {
 
 // ── Alertas ───────────────────────────────────────────────────────────────────
 
-export async function getAlertas(_req: Request, res: Response) {
+export async function getAlertas(req: Request, res: Response) {
   const productos = await prisma.producto.findMany({
-    where: { deleted_at: null, activo: true },
+    where: { deleted_at: null, activo: true, ...withTenant(req.empresaId!) },
     select: { id: true, nombre: true, categoria: true, stock_total: true, stock_minimo: true },
   });
 
@@ -376,14 +381,14 @@ export async function getAlertas(_req: Request, res: Response) {
 
   for (const p of productos) {
     // A) Quiebre actual
-    const hoyDisp = await calcDisponibilidad(p.id, now, now);
+    const hoyDisp = await calcDisponibilidad(p.id, now, now, req.empresaId!);
     if (!hoyDisp) continue;
 
     const disponible_actual = hoyDisp.disponible;
 
     if (disponible_actual < p.stock_minimo) {
       // Verificar si hay sugerencias disponibles
-      const sug = await calcSugerencias(p.id, -1, now, now);
+      const sug = await calcSugerencias(p.id, -1, now, now, req.empresaId!);
       alertas.push({
         tipo:              'QUIEBRE_ACTUAL',
         producto_id:       p.id,
@@ -419,7 +424,7 @@ export async function getAlertas(_req: Request, res: Response) {
     let quiebreFutura: Date | null = null;
     for (const f of futuras) {
       const fd = f.fecha_salida;
-      const dispFutura = await calcDisponibilidad(p.id, fd, fd);
+      const dispFutura = await calcDisponibilidad(p.id, fd, fd, req.empresaId!);
       if (dispFutura && dispFutura.disponible < p.stock_minimo) {
         quiebreFutura = fd;
         break;
@@ -427,8 +432,8 @@ export async function getAlertas(_req: Request, res: Response) {
     }
 
     if (quiebreFutura) {
-      const dispFuturaFull = await calcDisponibilidad(p.id, quiebreFutura, quiebreFutura);
-      const sug = await calcSugerencias(p.id, -1, quiebreFutura, quiebreFutura);
+      const dispFuturaFull = await calcDisponibilidad(p.id, quiebreFutura, quiebreFutura, req.empresaId!);
+      const sug = await calcSugerencias(p.id, -1, quiebreFutura, quiebreFutura, req.empresaId!);
       alertas.push({
         tipo:                    'QUIEBRE_PROYECTADO',
         producto_id:             p.id,
@@ -458,7 +463,7 @@ export async function getAlertas(_req: Request, res: Response) {
 export async function getEventoStock(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const asignaciones = await prisma.asignacionStock.findMany({
@@ -491,10 +496,10 @@ export async function asignarProducto(req: Request, res: Response) {
 
   const { producto_id, cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null } });
+  const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   const fechaSalidaDate  = toDate(fecha_salida);
@@ -504,6 +509,7 @@ export async function asignarProducto(req: Request, res: Response) {
     producto_id,
     fechaSalidaDate,
     fechaRetornoDate ?? fechaSalidaDate,
+    req.empresaId!,
   );
   if (!disp) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
@@ -538,7 +544,7 @@ export async function asignarProducto(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'AsignacionStock', entidadId: asignacion.id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'AsignacionStock', entidadId: asignacion.id,
       eventoId, descripcion: `Asignó ${cantidad} u. de "${producto.nombre}" al evento "${evento.nombre}"`,
       datosDespues: { producto_id, cantidad, fecha_salida, fecha_retorno },
       ip: req.ip, tx: tx as any,
@@ -550,7 +556,7 @@ export async function asignarProducto(req: Request, res: Response) {
   let advertencia: object | undefined;
   if (disp.disponible < cantidad) {
     const sugerencias = await calcSugerencias(
-      producto_id, eventoId, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate,
+      producto_id, eventoId, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate, req.empresaId!,
     );
     advertencia = {
       tipo:        'QUIEBRE',
@@ -571,7 +577,7 @@ export async function updateAsignacion(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.asignacionStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.asignacionStock.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
   if (existing.estado !== 'ACTIVA') {
     res.status(400).json({ error: 'Solo se pueden editar asignaciones ACTIVAS' }); return;
@@ -591,7 +597,7 @@ export async function updateAsignacion(req: Request, res: Response) {
       },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'AsignacionStock', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'AsignacionStock', entidadId: id,
       eventoId: existing.evento_id,
       descripcion: `Actualizó asignación #${id}`,
       datosAntes:   { cantidad: existing.cantidad, fecha_salida: existing.fecha_salida },
@@ -607,7 +613,7 @@ export async function cancelarAsignacion(req: Request, res: Response) {
   const id = Number(req.params.id);
 
   const existing = await prisma.asignacionStock.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
     include: { producto: { select: { nombre: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
@@ -635,7 +641,7 @@ export async function cancelarAsignacion(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'DELETE', entidad: 'AsignacionStock', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'AsignacionStock', entidadId: id,
       eventoId: existing.evento_id,
       descripcion: `Canceló asignación de "${existing.producto.nombre}" (${existing.cantidad} u.)`,
       datosAntes: { estado: 'ACTIVA', cantidad: existing.cantidad },
@@ -657,7 +663,7 @@ export async function transferencia(req: Request, res: Response) {
   const { asignacion_origen_id, evento_destino_id, cantidad, fecha_transferencia, notas } = parsed.data;
 
   const origen = await prisma.asignacionStock.findFirst({
-    where:   { id: asignacion_origen_id, deleted_at: null },
+    where:   { id: asignacion_origen_id, deleted_at: null, evento: withTenant(req.empresaId!) },
     include: { producto: true, evento: { select: { id: true, nombre: true } } },
   });
   if (!origen)           { res.status(400).json({ error: 'Asignación origen no encontrada' }); return; }
@@ -671,7 +677,7 @@ export async function transferencia(req: Request, res: Response) {
     res.status(400).json({ error: `Cantidad a transferir (${cantidad}) supera la asignación origen (${origen.cantidad})` }); return;
   }
 
-  const eventoDestino = await prisma.evento.findFirst({ where: { id: evento_destino_id, deleted_at: null } });
+  const eventoDestino = await prisma.evento.findFirst({ where: { id: evento_destino_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!eventoDestino) { res.status(400).json({ error: 'Evento destino no encontrado' }); return; }
 
   const fechaTransDate = toDate(fecha_transferencia);
@@ -723,7 +729,7 @@ export async function transferencia(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'TransferenciaStock',
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'TransferenciaStock',
       entidadId: nueva.id, eventoId: evento_destino_id,
       descripcion: `Transfirió ${cantidad} u. de "${origen.producto.nombre}" de "${origen.evento.nombre}" a "${eventoDestino.nombre}"`,
       datosDespues: { asignacion_origen_id, evento_destino_id, cantidad },
@@ -749,7 +755,7 @@ export async function getSugerencias(req: Request, res: Response) {
   }
 
   const sugerencias = await calcSugerencias(
-    productoId, eventoId, toDate(desdeStr), toDate(hastaStr),
+    productoId, eventoId, toDate(desdeStr), toDate(hastaStr), req.empresaId!,
   );
 
   res.json({ sugerencias });
@@ -757,9 +763,9 @@ export async function getSugerencias(req: Request, res: Response) {
 
 // ── Categorías de Stock ───────────────────────────────────────────────────────
 
-export async function listCategorias(_req: Request, res: Response) {
+export async function listCategorias(req: Request, res: Response) {
   const categorias = await prisma.categoriaStock.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...withTenant(req.empresaId!) },
     orderBy: { nombre: 'asc' },
     include: { _count: { select: { productos: { where: { deleted_at: null, activo: true } } } } },
   });
@@ -778,18 +784,19 @@ export async function createCategoria(req: Request, res: Response) {
   }
   const { nombre, descripcion, color } = parsed.data;
 
-  const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null } });
+  const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (dupe) { res.status(400).json({ error: 'Ya existe una categoría con ese nombre' }); return; }
 
   const categoria = await prisma.categoriaStock.create({
     data: {
+      ...withTenant(req.empresaId!),
       nombre, descripcion: descripcion ?? null, color: color ?? null,
       created_by: req.user!.id,
     },
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'CREATE', entidad: 'CategoriaStock', entidadId: categoria.id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'CategoriaStock', entidadId: categoria.id,
     descripcion: `Creó categoría de stock "${nombre}"`, datosDespues: { nombre, color }, ip: req.ip,
     tx: prisma,
   });
@@ -804,13 +811,13 @@ export async function updateCategoria(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
 
   const { nombre, descripcion, color } = parsed.data;
 
   if (nombre && nombre !== existing.nombre) {
-    const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null } });
+    const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (dupe) { res.status(400).json({ error: 'Ya existe una categoría con ese nombre' }); return; }
   }
 
@@ -827,7 +834,7 @@ export async function updateCategoria(req: Request, res: Response) {
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'CategoriaStock', entidadId: id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'CategoriaStock', entidadId: id,
     descripcion: `Actualizó categoría "${existing.nombre}"`,
     datosAntes: { nombre: existing.nombre, color: existing.color, activo: existing.activo },
     datosDespues: parsed.data, ip: req.ip, tx: prisma,
@@ -839,11 +846,11 @@ export async function updateCategoria(req: Request, res: Response) {
 export async function deleteCategoria(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
 
   const productosActivos = await prisma.producto.count({
-    where: { categoria_id: id, deleted_at: null, activo: true },
+    where: { categoria_id: id, deleted_at: null, activo: true, ...withTenant(req.empresaId!) },
   });
   if (productosActivos > 0) {
     res.status(400).json({
@@ -857,7 +864,7 @@ export async function deleteCategoria(req: Request, res: Response) {
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'DELETE', entidad: 'CategoriaStock', entidadId: id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'CategoriaStock', entidadId: id,
     descripcion: `Eliminó categoría de stock "${existing.nombre}"`,
     datosAntes: { nombre: existing.nombre }, ip: req.ip, tx: prisma,
   });

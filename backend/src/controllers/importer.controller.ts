@@ -5,6 +5,7 @@ import { EstadoEvento, Tipo, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseExcelFile } from '../lib/excelParser';
 import { recalcularSaldos } from '../lib/recalcularSaldos';
+import { withTenant } from '../lib/tenant';
 
 // ── Multer ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export async function preview(req: Request, res: Response) {
   }
   try {
     const tabs = await prisma.tabConfig.findMany({
-      where:   { activo: true },
+      where:   { activo: true, ...withTenant(req.empresaId!) },
       orderBy: [{ tipo: 'asc' }, { orden: 'asc' }],
       select:  { codigo: true, tipo: true, numero: true },
     });
@@ -101,6 +102,7 @@ export async function confirmar(req: Request, res: Response) {
   const eventoId = await prisma.$transaction(async tx => {
     const evento = await tx.evento.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre:       eventoData.nombre,
         estado:       EstadoEvento.IMPORTADO,
         moneda_base:  eventoData.moneda_base as Moneda,

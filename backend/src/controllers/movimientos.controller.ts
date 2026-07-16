@@ -1,9 +1,10 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Tipo, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldos, recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
@@ -55,12 +56,15 @@ const updateSchema = z.object({
 
 export async function listSinConciliar(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const [movs, tabs] = await Promise.all([
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, movimiento_caja_id: null, deleted_at: null },
       orderBy: [{ tipo: 'asc' }, { tab_numero: 'asc' }, { orden: 'asc' }],
     }),
-    prisma.tabConfig.findMany(),
+    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!) }),
   ]);
   const tabMap = new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo]));
   res.json(movs.map(m => ({
@@ -78,6 +82,9 @@ export async function list(req: Request, res: Response) {
     res.status(400).json({ error: 'Se requieren tipo (EGRESO|INGRESO) y tab (1-5)' });
     return;
   }
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const movs = await prisma.movimiento.findMany({
     where:   { evento_id: eventoId, tipo: tipo as Tipo, tab_numero: tab, deleted_at: null },
@@ -102,7 +109,7 @@ export async function create(req: Request, res: Response) {
   } = parsed.data;
 
   const tabCfg = await prisma.tabConfig.findFirst({
-    where: { tipo: tipo as Tipo, numero: tab_numero, activo: true },
+    where: { tipo: tipo as Tipo, numero: tab_numero, activo: true, ...withTenant(req.empresaId!) },
   });
   if (!tabCfg) {
     res.status(400).json({ error: `La pestaña ${tipo} nº${tab_numero} no existe o está inactiva` });
@@ -123,7 +130,7 @@ export async function create(req: Request, res: Response) {
     }
   }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   if (cuenta_id) {
@@ -134,7 +141,7 @@ export async function create(req: Request, res: Response) {
   }
 
   if (proveedor_id) {
-    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null } });
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
   }
 
@@ -197,6 +204,7 @@ export async function create(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Movimiento',
       entidadId:    mov.id,
@@ -225,13 +233,13 @@ export async function update(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
   const { fecha, concepto, descripcion, debe, haber, moneda, impuesto_subcategoria, proveedor_id } = parsed.data;
 
   if (proveedor_id !== undefined && proveedor_id !== null) {
-    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null } });
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
   }
 
@@ -269,6 +277,7 @@ export async function update(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Movimiento',
       entidadId:    id,
@@ -295,7 +304,7 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -306,6 +315,7 @@ export async function remove(req: Request, res: Response) {
     await recalcularSaldos(existing.evento_id, existing.tipo, existing.tab_numero, tx);
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'Movimiento',
       entidadId:  id,
@@ -328,12 +338,15 @@ export async function remove(req: Request, res: Response) {
 export async function movimientosSinProveedor(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const [movs, tabs, totalMovimientos] = await Promise.all([
     prisma.movimiento.findMany({
       where:  { evento_id: eventoId, proveedor_id: null, deleted_at: null },
       select: { id: true, concepto: true, tipo: true, tab_numero: true, debe: true, moneda: true },
     }),
-    prisma.tabConfig.findMany({ select: { tipo: true, numero: true, codigo: true } }),
+    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!), select: { tipo: true, numero: true, codigo: true } }),
     prisma.movimiento.count({ where: { evento_id: eventoId, deleted_at: null } }),
   ]);
 
@@ -417,7 +430,7 @@ export async function vincularProveedor(req: Request, res: Response) {
   const { movimientos_ids, proveedor_id, crear_proveedor } = parsed.data;
 
   const movs = await prisma.movimiento.findMany({
-    where:  { id: { in: movimientos_ids }, deleted_at: null },
+    where:  { id: { in: movimientos_ids }, deleted_at: null, evento: withTenant(req.empresaId!) },
     select: { id: true, evento_id: true },
   });
 
@@ -432,7 +445,7 @@ export async function vincularProveedor(req: Request, res: Response) {
   const eventoId = movs[0].evento_id;
 
   if (proveedor_id !== null) {
-    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, deleted_at: null } });
+    const prov = await prisma.proveedor.findFirst({ where: { id: proveedor_id, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!prov) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
   }
 
@@ -445,13 +458,14 @@ export async function vincularProveedor(req: Request, res: Response) {
     } else {
       const nombre    = crear_proveedor!.nombre.trim();
       const existente = await tx.proveedor.findFirst({
-        where: { nombre: { equals: nombre, mode: 'insensitive' }, deleted_at: null },
+        where: { nombre: { equals: nombre, mode: 'insensitive' }, deleted_at: null, ...withTenant(req.empresaId!) },
       });
       if (existente) {
         finalProveedorId = existente.id;
       } else {
         const nuevo = await tx.proveedor.create({
           data: {
+            ...withTenant(req.empresaId!),
             nombre,
             alias:      crear_proveedor!.alias?.trim() ?? null,
             created_by: req.user!.id,
@@ -472,6 +486,7 @@ export async function vincularProveedor(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Movimiento',
       eventoId,
@@ -505,7 +520,7 @@ export async function reordenar(req: Request, res: Response) {
     return;
   }
 
-  const moving = await prisma.movimiento.findFirst({ where: { id, deleted_at: null } });
+  const moving = await prisma.movimiento.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!moving) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
   const { orden: newOrden } = parsed.data;
@@ -537,6 +552,7 @@ export async function reordenar(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
       accion:      'UPDATE',
       entidad:     'Movimiento',
       entidadId:   id,

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
@@ -9,6 +10,7 @@ import {
 const router = Router();
 
 router.use(auth);
+router.use(tenantMiddleware);
 
 // buscar MUST be before /:id so Express doesn't match "buscar" as an id
 router.get('/buscar',    asyncHandler(buscar));

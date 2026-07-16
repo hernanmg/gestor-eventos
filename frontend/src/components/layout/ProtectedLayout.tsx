@@ -22,6 +22,10 @@ export default function ProtectedLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  if (user.empresaId === null) {
+    return <Navigate to="/seleccionar-empresa" replace />;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar

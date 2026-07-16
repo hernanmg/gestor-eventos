@@ -1,10 +1,11 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { Moneda, EstadoEcheq } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -60,6 +61,9 @@ export async function listEcheqs(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
   const { estado, moneda, desde, hasta, razon_social, vencen_en_dias } = req.query;
 
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const where: Prisma.EcheqWhereInput = { evento_id: eventoId, deleted_at: null };
 
   if (estado)       where.estado = estado as EstadoEcheq;
@@ -95,12 +99,12 @@ export async function createEcheq(req: Request, res: Response) {
     return;
   }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   let razonSocial = parsed.data.razon_social ?? null;
   if (parsed.data.proveedor_id) {
-    const prov = await prisma.proveedor.findFirst({ where: { id: parsed.data.proveedor_id, activo: true, deleted_at: null } });
+    const prov = await prisma.proveedor.findFirst({ where: { id: parsed.data.proveedor_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
     if (!razonSocial) razonSocial = prov.nombre;
   }
@@ -143,6 +147,7 @@ export async function createEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'CREATE',
     entidad:      'Echeq',
     entidadId:    echeq.id,
@@ -164,7 +169,7 @@ export async function updateEcheq(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (existing.estado === EstadoEcheq.COBRADO) {
     res.status(400).json({ error: 'No se puede modificar un echeq cobrado' }); return;
@@ -191,6 +196,7 @@ export async function updateEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
@@ -207,7 +213,7 @@ export async function updateEcheq(req: Request, res: Response) {
 
 export async function deleteEcheq(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (existing.estado === EstadoEcheq.COBRADO) {
     res.status(400).json({ error: 'No se puede eliminar un echeq cobrado' }); return;
@@ -220,6 +226,7 @@ export async function deleteEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:  req.user!.id,
+    empresaId:  req.empresaId,
     accion:     'DELETE',
     entidad:    'Echeq',
     entidadId:  id,
@@ -240,7 +247,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'cuenta_id es requerido' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden cobrar echeqs en estado PENDIENTE' }); return;
@@ -285,6 +292,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Echeq',
       entidadId:    id,
@@ -308,7 +316,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden rechazar echeqs en estado PENDIENTE' }); return;
@@ -325,6 +333,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
@@ -345,6 +354,9 @@ export async function alertasEcheqs(req: Request, res: Response) {
   today.setHours(0, 0, 0, 0);
   const en7Dias  = new Date(today);
   en7Dias.setDate(en7Dias.getDate() + 7);
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const [vencidos, vencen_pronto] = await Promise.all([
     prisma.echeq.findMany({

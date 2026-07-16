@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
@@ -9,6 +10,7 @@ import {
 const router = Router();
 
 router.use(auth);
+router.use(tenantMiddleware);
 router.get('/tabs',                  asyncHandler(listTabs));
 router.put('/tabs/:id',              requireRole('ADMIN'), asyncHandler(updateTab));
 router.post('/tabs',                 requireRole('ADMIN'), asyncHandler(createTab));

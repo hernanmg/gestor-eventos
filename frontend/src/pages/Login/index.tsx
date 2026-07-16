@@ -20,7 +20,7 @@ export default function LoginPage() {
   // Si ya hay sesión activa, redirige sin mostrar el formulario
   useEffect(() => {
     if (!isLoading && user) {
-      navigate('/eventos', { replace: true });
+      navigate(user.empresaId === null ? '/seleccionar-empresa' : '/eventos', { replace: true });
     }
   }, [user, isLoading, navigate]);
 

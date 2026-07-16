@@ -1,9 +1,17 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { Rol } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
+
+// Usuario no tiene empresa_id obligatorio (es la "empresa activa" de sesión,
+// nullable). El ABM de usuarios se escopea vía UsuarioEmpresaAcceso: solo
+// aparecen/son editables los usuarios con una fila de acceso a la empresa activa.
+const belongsToEmpresa = (empresaId: number) => ({
+  empresaAccesos: { some: { empresa_id: empresaId } },
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,18 +43,18 @@ const accesoSchema = z.object({
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 
-export async function list(_req: Request, res: Response) {
+export async function list(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...belongsToEmpresa(req.empresaId!) },
     orderBy: { created_at: 'asc' },
     select:  SAFE_SELECT,
   });
   res.json(usuarios);
 }
 
-export async function listWithAccesos(_req: Request, res: Response) {
+export async function listWithAccesos(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...belongsToEmpresa(req.empresaId!) },
     orderBy: { created_at: 'asc' },
     select:  {
       ...SAFE_SELECT,
@@ -72,11 +80,15 @@ export async function create(req: Request, res: Response) {
 
   const usuario = await prisma.$transaction(async tx => {
     const created = await tx.usuario.create({
-      data:   { nombre, email, password_hash, rol: rol as Rol },
+      data:   { nombre, email, password_hash, rol: rol as Rol, empresa_id: req.empresaId! },
       select: SAFE_SELECT,
+    });
+    await tx.usuarioEmpresaAcceso.create({
+      data: { usuario_id: created.id, empresa_id: req.empresaId!, created_by: req.user!.id },
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Usuario',
       entidadId:    created.id,
@@ -99,7 +111,7 @@ export async function update(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   if (parsed.data.rol && parsed.data.rol !== 'ADMIN' && req.user!.id === id) {
@@ -125,6 +137,7 @@ export async function update(req: Request, res: Response) {
     const result = await tx.usuario.update({ where: { id }, data, select: SAFE_SELECT });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Usuario',
       entidadId:    id,
@@ -147,13 +160,14 @@ export async function remove(req: Request, res: Response) {
     res.status(400).json({ error: 'No podés eliminar tu propio usuario' }); return;
   }
 
-  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
     await tx.usuario.update({ where: { id }, data: { deleted_at: new Date() } });
     await registrarAuditoria({
       usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
       accion:      'DELETE',
       entidad:     'Usuario',
       entidadId:   id,
@@ -171,7 +185,7 @@ export async function remove(req: Request, res: Response) {
 
 export async function listAccesos(req: Request, res: Response) {
   const usuarioId = Number(req.params.id);
-  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null } });
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   const accesos = await (prisma as any).eventoAcceso.findMany({
@@ -192,10 +206,10 @@ export async function createAcceso(req: Request, res: Response) {
     return;
   }
 
-  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null } });
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const existing = await (prisma as any).eventoAcceso.findUnique({
@@ -215,6 +229,7 @@ export async function createAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'CREATE',
     entidad:      'EventoAcceso',
     entidadId:    acceso.id,
@@ -238,6 +253,11 @@ export async function updateAcceso(req: Request, res: Response) {
     return;
   }
 
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const existing = await (prisma as any).eventoAcceso.findUnique({
     where: { usuario_id_evento_id: { usuario_id: usuarioId, evento_id: eventoId } },
   });
@@ -251,6 +271,7 @@ export async function updateAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'EventoAcceso',
     entidadId:    acceso.id,
@@ -269,6 +290,11 @@ export async function deleteAcceso(req: Request, res: Response) {
   const usuarioId = Number(req.params.id);
   const eventoId  = Number(req.params.eventoId);
 
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const existing = await (prisma as any).eventoAcceso.findUnique({
     where: { usuario_id_evento_id: { usuario_id: usuarioId, evento_id: eventoId } },
   });
@@ -280,6 +306,7 @@ export async function deleteAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
     accion:      'DELETE',
     entidad:     'EventoAcceso',
     eventoId,

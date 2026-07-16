@@ -1,8 +1,9 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Moneda, EstadoEvento, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
 const socioSchema = z.object({
   nombre:     z.string().min(1, 'Nombre requerido'),
@@ -49,7 +50,7 @@ function mapEvento(e: any) {
 
 export async function list(req: Request, res: Response) {
   const isAdmin = req.user!.rol === 'ADMIN';
-  const where: Prisma.EventoWhereInput = { deleted_at: null };
+  const where: Prisma.EventoWhereInput = { ...withTenant(req.empresaId!), deleted_at: null };
 
   if (!isAdmin) {
     const accesos = await (prisma as any).eventoAcceso.findMany({
@@ -70,7 +71,7 @@ export async function list(req: Request, res: Response) {
 export async function detail(req: Request, res: Response) {
   const id = Number(req.params.id);
   const evento = await prisma.evento.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: includeCount,
   });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
@@ -92,6 +93,7 @@ export async function create(req: Request, res: Response) {
   const evento = await prisma.$transaction(async tx => {
     const created = await tx.evento.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre,
         fecha_inicio: toDate(fecha_inicio) ?? null,
         fecha_fin:    toDate(fecha_fin) ?? null,
@@ -104,6 +106,7 @@ export async function create(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Evento',
       entidadId:    created.id,
@@ -126,7 +129,7 @@ export async function update(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const { nombre, fecha_inicio, fecha_fin, socios, moneda_base, estado } = parsed.data;
@@ -151,6 +154,7 @@ export async function update(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Evento',
       entidadId:    id,
@@ -169,7 +173,7 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -179,6 +183,7 @@ export async function remove(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'Evento',
       entidadId:  id,
@@ -198,11 +203,11 @@ export async function remove(req: Request, res: Response) {
 export async function conciliatoria(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const evento = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const [tabs, movimientos, cuentas, echeqsPendientes] = await Promise.all([
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!), orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
     prisma.movimiento.findMany({
       where:  { evento_id: id, deleted_at: null },
       select: { tipo: true, tab_numero: true, moneda: true, debe: true, haber: true },
