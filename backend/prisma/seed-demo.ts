@@ -1,17 +1,22 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import {
+  CategoriaEmpleado,
   EstadoAsignacion,
   EstadoEcheq,
   EstadoEvento,
+  EstadoJornada,
+  EstadoLiquidacion,
   Moneda,
   OrigenTransfer,
   Rol,
+  TipoAnticipo,
   TipoCuenta,
   Tipo,
   UbicacionStock,
 } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
+import { calcularHoras, round2 } from '../src/controllers/rrhh.controller';
 
 // ── Helpers de fecha ──────────────────────────────────────────────────────────
 
@@ -831,6 +836,155 @@ async function main() {
     totalMovimientos  += 2;
     totalAsignaciones += 1;
     console.log('✓ Evento 3 creado (2 movimientos, asignación con quiebre de stock)');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RRHH — empleados, jornadas, anticipos y una liquidación en borrador
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\nCreando datos de RRHH...');
+
+  const eventoE1 = await prisma.evento.findFirst({ where: { nombre: 'Cosquín Rock 2024', empresa_id: EMPRESA_ID } });
+  const eventoE2 = await prisma.evento.findFirst({ where: { nombre: 'Festival de la Ciudad 2025', empresa_id: EMPRESA_ID } });
+
+  async function upsertEmpleado(data: {
+    nombre: string; apellido: string; dni: string; categoria: CategoriaEmpleado;
+    valor_hora: number; valor_hora_extra: number; cbu?: string; alias?: string; banco?: string;
+  }) {
+    const existente = await prisma.empleado.findFirst({ where: { dni: data.dni, empresa_id: EMPRESA_ID } });
+    if (existente) return existente;
+    return prisma.empleado.create({
+      data: {
+        empresa_id:       EMPRESA_ID,
+        nombre:           data.nombre,
+        apellido:         data.apellido,
+        dni:              data.dni,
+        categoria:        data.categoria,
+        valor_hora:       data.valor_hora,
+        valor_hora_extra: data.valor_hora_extra,
+        cbu:              data.cbu ?? null,
+        alias:            data.alias ?? null,
+        banco:            data.banco ?? null,
+      },
+    });
+  }
+
+  const empCapitan = await upsertEmpleado({ nombre: 'Diego',  apellido: 'Rodríguez', dni: '30111222', categoria: CategoriaEmpleado.CAPITAN,        valor_hora: 5000, valor_hora_extra: 7500, banco: 'Banco Galicia',   alias: 'diego.rodriguez.mp' });
+  const empArmador = await upsertEmpleado({ nombre: 'Pablo',  apellido: 'Fernández',  dni: '30222333', categoria: CategoriaEmpleado.ARMADOR,        valor_hora: 3500, valor_hora_extra: 5250, banco: 'Banco Nación',    alias: 'pablo.fernandez.mp' });
+  const empChofer  = await upsertEmpleado({ nombre: 'Sergio', apellido: 'Gómez',      dni: '30333444', categoria: CategoriaEmpleado.CHOFER,         valor_hora: 3000, valor_hora_extra: 4500, banco: 'Banco Santander', alias: 'sergio.gomez.mp' });
+  const empAdmin   = await upsertEmpleado({ nombre: 'Lucía',  apellido: 'Torres',     dni: '30444555', categoria: CategoriaEmpleado.ADMINISTRATIVO, valor_hora: 2800, valor_hora_extra: 4200, banco: 'Banco Galicia',   alias: 'lucia.torres.mp' });
+  const empTecnico = await upsertEmpleado({ nombre: 'Ramiro', apellido: 'Medina',     dni: '30555666', categoria: CategoriaEmpleado.TECNICO,        valor_hora: 3200, valor_hora_extra: 4800, banco: 'Banco BBVA',      alias: 'ramiro.medina.mp' });
+
+  console.log('✓ Empleados: 5 creados/existentes');
+
+  function horaDe(fecha: Date, h: number, m = 0): Date {
+    return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), h, m);
+  }
+
+  async function upsertJornada(data: {
+    empleado_id: number; evento_id?: number | null; fecha: Date;
+    ingreso?: number; egreso?: number; estado: EstadoJornada; descripcion?: string; motivo_rechazo?: string;
+  }) {
+    const existente = await prisma.jornada.findFirst({ where: { empleado_id: data.empleado_id, fecha: data.fecha } });
+    if (existente) return existente;
+
+    const horaIngreso = data.ingreso !== undefined ? horaDe(data.fecha, data.ingreso) : null;
+    const horaEgreso  = data.egreso  !== undefined ? horaDe(data.fecha, data.egreso)  : null;
+    const { horas_normales, horas_extras } = calcularHoras(horaIngreso, horaEgreso);
+
+    return prisma.jornada.create({
+      data: {
+        empleado_id:    data.empleado_id,
+        empresa_id:     EMPRESA_ID,
+        evento_id:      data.evento_id ?? null,
+        fecha:          data.fecha,
+        hora_ingreso:   horaIngreso,
+        hora_egreso:    horaEgreso,
+        horas_normales,
+        horas_extras,
+        descripcion:    data.descripcion ?? null,
+        estado:         data.estado,
+        motivo_rechazo: data.motivo_rechazo ?? null,
+        aprobado_por:   data.estado !== EstadoJornada.PENDIENTE ? operador.id : null,
+        aprobado_at:    data.estado !== EstadoJornada.PENDIENTE ? new Date() : null,
+      },
+    });
+  }
+
+  const jornadasSeed = [
+    { empleado_id: empCapitan.id, evento_id: eventoE1?.id ?? null, fecha: daysAgo(10), ingreso: 8,  egreso: 20, estado: EstadoJornada.APROBADA, descripcion: 'Armado y sonido — día 1' },
+    { empleado_id: empCapitan.id, evento_id: eventoE1?.id ?? null, fecha: daysAgo(9),  ingreso: 8,  egreso: 18, estado: EstadoJornada.APROBADA, descripcion: 'Show — día 2' },
+    { empleado_id: empArmador.id, evento_id: eventoE1?.id ?? null, fecha: daysAgo(10), ingreso: 7,  egreso: 19, estado: EstadoJornada.APROBADA, descripcion: 'Armado de escenario' },
+    { empleado_id: empArmador.id, evento_id: eventoE2?.id ?? null, fecha: daysFromNow(14), ingreso: 9, egreso: 17, estado: EstadoJornada.PENDIENTE, descripcion: 'Armado previo al festival' },
+    { empleado_id: empChofer.id,  evento_id: null,                 fecha: daysAgo(5),  ingreso: 6,  egreso: 14, estado: EstadoJornada.APROBADA, descripcion: 'Traslado de equipos a depósito' },
+    { empleado_id: empChofer.id,  evento_id: eventoE2?.id ?? null, fecha: daysFromNow(14), ingreso: 5, egreso: 13, estado: EstadoJornada.PENDIENTE, descripcion: 'Flete equipo sonido' },
+    { empleado_id: empAdmin.id,   evento_id: null,                 fecha: daysAgo(3),  ingreso: 9,  egreso: 18, estado: EstadoJornada.APROBADA, descripcion: 'Administración y facturación' },
+    { empleado_id: empAdmin.id,   evento_id: null,                 fecha: daysAgo(2),  ingreso: 9,  egreso: 17, estado: EstadoJornada.PENDIENTE, descripcion: 'Cierre contable del mes' },
+    { empleado_id: empTecnico.id, evento_id: eventoE1?.id ?? null, fecha: daysAgo(9),  ingreso: 10, egreso: 23, estado: EstadoJornada.APROBADA, descripcion: 'Soporte técnico de audio' },
+    { empleado_id: empTecnico.id, evento_id: eventoE2?.id ?? null, fecha: daysFromNow(15), ingreso: 8, egreso: 16, estado: EstadoJornada.RECHAZADA, descripcion: 'Prueba de equipos', motivo_rechazo: 'Cargada con horario incorrecto, volver a cargar' },
+  ];
+
+  for (const j of jornadasSeed) {
+    await upsertJornada(j);
+  }
+  console.log(`✓ Jornadas: ${jornadasSeed.length} creadas/existentes (7 APROBADA, 2 PENDIENTE, 1 RECHAZADA)`);
+
+  async function upsertAnticipo(data: { empleado_id: number; tipo: TipoAnticipo; monto: number; fecha: Date; motivo: string }) {
+    const existente = await prisma.anticipo.findFirst({ where: { empleado_id: data.empleado_id, motivo: data.motivo } });
+    if (existente) return existente;
+    return prisma.anticipo.create({
+      data: {
+        empleado_id: data.empleado_id,
+        empresa_id:  EMPRESA_ID,
+        tipo:        data.tipo,
+        monto:       data.monto,
+        fecha:       data.fecha,
+        motivo:      data.motivo,
+      },
+    });
+  }
+
+  await upsertAnticipo({ empleado_id: empCapitan.id, tipo: TipoAnticipo.ADELANTO, monto: 30_000, fecha: daysAgo(8), motivo: 'Adelanto quincena — Cosquín Rock 2024' });
+  await upsertAnticipo({ empleado_id: empArmador.id, tipo: TipoAnticipo.VALE,     monto: 8_000,  fecha: daysAgo(6), motivo: 'Vale combustible' });
+
+  console.log('✓ Anticipos: 2 pendientes creados/existentes');
+
+  // Liquidación BORRADOR — capitán, jornadas APROBADA de Cosquín Rock 2024
+  const existeLiquidacion = await prisma.liquidacion.findFirst({
+    where: { empleado_id: empCapitan.id, empresa_id: EMPRESA_ID, estado: EstadoLiquidacion.BORRADOR },
+  });
+  if (!existeLiquidacion) {
+    const jornadasCapitan = await prisma.jornada.findMany({
+      where: { empleado_id: empCapitan.id, estado: EstadoJornada.APROBADA, deleted_at: null },
+    });
+    const horasNormales = jornadasCapitan.reduce((s, j) => s + Number(j.horas_normales), 0);
+    const horasExtras   = jornadasCapitan.reduce((s, j) => s + Number(j.horas_extras), 0);
+    const valorHora      = Number(empCapitan.valor_hora);
+    const valorHoraExtra = Number(empCapitan.valor_hora_extra);
+    const subtotal       = round2(horasNormales * valorHora + horasExtras * valorHoraExtra);
+    const totalAnticipos = 30_000; // el adelanto sembrado arriba, aún no descontado
+    const totalACobrar   = round2(subtotal - totalAnticipos);
+
+    await prisma.liquidacion.create({
+      data: {
+        empleado_id:      empCapitan.id,
+        empresa_id:       EMPRESA_ID,
+        evento_id:        eventoE1?.id ?? null,
+        fecha_desde:      daysAgo(10),
+        fecha_hasta:      daysAgo(9),
+        horas_normales:   horasNormales,
+        horas_extras:     horasExtras,
+        valor_hora:       valorHora,
+        valor_hora_extra: valorHoraExtra,
+        subtotal_horas:   subtotal,
+        total_anticipos:  totalAnticipos,
+        total_descuentos: 0,
+        total_a_cobrar:   totalACobrar,
+        estado:           EstadoLiquidacion.BORRADOR,
+      },
+    });
+    console.log('✓ Liquidación BORRADOR creada para Diego Rodríguez');
+  } else {
+    console.log('  (liquidación BORRADOR ya existe, omitiendo)');
   }
 
   // ── RESUMEN ───────────────────────────────────────────────────────────────────

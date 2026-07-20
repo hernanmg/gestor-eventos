@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { applyEmpresaTheme } from '@/lib/empresaTheme';
+import { useEmpresaActual } from '@/hooks/useEmpresas';
 import type { MeResponse, Rol } from '@/types';
 
 export const ME_QUERY_KEY = ['auth', 'me'] as const;
@@ -21,6 +24,16 @@ export function useAuth() {
     retry:     false,          // no reintentar ante 401
     staleTime: 5 * 60 * 1000, // 5 minutos en caché
   });
+
+  // ── Tema visual de la empresa activa ─────────────────────────────────────
+  // Se pide por separado (no viene en /auth/me) porque incluye color_secundario
+  // y el resto de la config de Módulo A que no hace falta en cada request.
+  const { data: empresaActual } = useEmpresaActual(user?.empresaId != null);
+
+  useEffect(() => {
+    if (empresaActual) applyEmpresaTheme(empresaActual.color_primario, empresaActual.color_secundario);
+    else if (user && user.empresaId == null) applyEmpresaTheme(null, null);
+  }, [empresaActual, user]);
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const loginMutation = useMutation({

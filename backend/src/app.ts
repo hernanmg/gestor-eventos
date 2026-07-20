@@ -16,6 +16,8 @@ import proveedoresRouter            from './routes/proveedores';
 import auditoriaRouter             from './routes/auditoria';
 import stockRouter, { eventoStockRouter } from './routes/stock';
 import { facturasRouter, pagosRouter, facturasEventoRouter } from './routes/facturas';
+import { empresasRouter, empresaActualRouter } from './routes/empresas';
+import rrhhRouter from './routes/rrhh';
 
 const app = express();
 
@@ -65,6 +67,9 @@ app.use('/api/eventos/:id/stock', eventoStockRouter);
 app.use('/api/facturas',          facturasRouter);
 app.use('/api/pagos',             pagosRouter);
 app.use('/api/eventos',           facturasEventoRouter);
+app.use('/api/empresas',          empresasRouter);
+app.use('/api/empresa',           empresaActualRouter);
+app.use('/api/rrhh',              rrhhRouter);
 
 app.use(errorHandler);
 

@@ -1,13 +1,34 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText, ChevronDown } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock } from '@/hooks/useStock';
 import { useAlertasFacturas } from '@/hooks/useFacturas';
 import { useAuth } from '@/hooks/useAuth';
+import { useLogoBlobUrl } from '@/hooks/useEmpresas';
 import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
+
+// Logo si existe, si no un badge con nombre_corto coloreado con color_primario.
+function EmpresaBrand({ empresaId, hasLogo, nombre, colorPrimario, size = 'header' }: {
+  empresaId:     number | undefined;
+  hasLogo:       boolean;
+  nombre:        string;
+  colorPrimario: string | null | undefined;
+  size?: 'header' | 'sm';
+}) {
+  const logoUrl = useLogoBlobUrl(empresaId ?? null, hasLogo);
+  if (logoUrl) {
+    return <img src={logoUrl} alt={nombre} className={cn('object-contain shrink-0', size === 'header' ? 'h-6 w-6' : 'h-4 w-4')} />;
+  }
+  return (
+    <span
+      className="h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: colorPrimario ?? '#94a3b8' }}
+    />
+  );
+}
 
 interface SidebarProps {
   isOpen:   boolean;
@@ -69,19 +90,35 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                 disabled={isSwitchingEmpresa}
                 className="flex-1 flex items-center gap-1.5 mr-2 min-w-0 rounded px-1 py-1 hover:bg-accent transition-colors disabled:opacity-50"
               >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: user.empresa?.color_primario ?? '#94a3b8' }}
+                <EmpresaBrand
+                  empresaId={user.empresa?.id}
+                  hasLogo={user.empresa?.tiene_logo ?? false}
+                  nombre={user.empresa?.nombre ?? 'Admin Portal'}
+                  colorPrimario={user.empresa?.color_primario}
                 />
-                <span className="text-sm font-semibold truncate">
+                <span
+                  className="text-sm font-semibold truncate"
+                  style={{ color: !user.empresa?.tiene_logo ? (user.empresa?.color_primario ?? undefined) : undefined }}
+                >
                   {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
                 </span>
                 <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
               </button>
             ) : (
-              <span className="flex-1 text-sm font-semibold truncate mr-2">
-                {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
-              </span>
+              <div className="flex-1 flex items-center gap-1.5 mr-2 min-w-0">
+                <EmpresaBrand
+                  empresaId={user.empresa?.id}
+                  hasLogo={user.empresa?.tiene_logo ?? false}
+                  nombre={user.empresa?.nombre ?? 'Admin Portal'}
+                  colorPrimario={user.empresa?.color_primario}
+                />
+                <span
+                  className="text-sm font-semibold truncate"
+                  style={{ color: !user.empresa?.tiene_logo ? (user.empresa?.color_primario ?? undefined) : undefined }}
+                >
+                  {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
+                </span>
+              </div>
             )
           )}
           <button
@@ -102,10 +139,17 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                     if (empresa.id !== user.empresaId) switchEmpresa(empresa.id);
                   }}
                   className={cn(
-                    'flex w-full items-center px-3 py-2 text-sm text-left hover:bg-accent transition-colors',
+                    'flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-accent transition-colors',
                     empresa.id === user.empresaId && 'font-medium bg-accent/50',
                   )}
                 >
+                  <EmpresaBrand
+                    empresaId={empresa.id}
+                    hasLogo={empresa.tiene_logo}
+                    nombre={empresa.nombre}
+                    colorPrimario={empresa.color_primario}
+                    size="sm"
+                  />
                   {empresa.nombre_corto ?? empresa.nombre}
                 </button>
               ))}
@@ -196,6 +240,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           )}
 
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.empleadoId != null) && (
+            <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
+              <Users size={18} className="shrink-0" />
+              {isOpen && <span>RRHH</span>}
+            </NavLink>
+          )}
+
           {user.rol === 'ADMIN' && (
             <NavLink to="/auditoria" title={!isOpen ? 'Auditoría' : undefined} className={navItem}>
               <ClipboardList size={18} className="shrink-0" />
@@ -207,6 +258,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/configuracion" title={!isOpen ? 'Configuración' : undefined} className={navItem}>
               <Settings size={18} className="shrink-0" />
               {isOpen && <span>Configuración</span>}
+            </NavLink>
+          )}
+
+          {user.puedeCambiarEmpresa && (
+            <NavLink to="/configuracion/empresa" title={!isOpen ? 'Config. de empresa' : undefined} className={navItem}>
+              <Palette size={18} className="shrink-0" />
+              {isOpen && <span>Config. de empresa</span>}
             </NavLink>
           )}
         </nav>

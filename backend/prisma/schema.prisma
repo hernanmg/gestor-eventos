@@ -84,6 +84,40 @@ enum CondicionPago {
   OTRO
 }
 
+enum CategoriaEmpleado {
+  CAPITAN
+  ARMADOR
+  CHOFER
+  ADMINISTRATIVO
+  TECNICO
+  OTRO
+}
+
+enum EstadoEmpleado {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+}
+
+enum EstadoJornada {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+enum EstadoLiquidacion {
+  BORRADOR
+  APROBADA
+  PAGADA
+  CANCELADA
+}
+
+enum TipoAnticipo {
+  ADELANTO
+  VALE
+  DESCUENTO
+}
+
 // ─── EMPRESAS (multitenancy — row-level tenancy) ─────────────────────────────
 
 model Empresa {
@@ -98,6 +132,23 @@ model Empresa {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  // ── Identidad visual (Módulo A — Configuración de empresa) ──────────────────
+  logo_data        Bytes? // logo guardado en DB (mismo patrón que PDF en facturas)
+  logo_nombre      String?
+  logo_mime        String?
+  color_secundario String?
+
+  // ── Datos fiscales y contacto ────────────────────────────────────────────────
+  razon_social String?
+  telefono     String?
+  email        String?
+  web          String?
+
+  // ── Configuración operativa ──────────────────────────────────────────────────
+  moneda_default Moneda @default(ARS)
+  timezone       String @default("America/Argentina/Buenos_Aires")
+  updated_by     Int?
+
   usuarios              Usuario[]
   usuarioEmpresaAccesos UsuarioEmpresaAcceso[]
   eventos               Evento[]
@@ -107,6 +158,10 @@ model Empresa {
   productos             Producto[]
   facturas              Factura[]
   auditoriaLogs         AuditoriaLog[]
+  empleados             Empleado[]
+  jornadas              Jornada[]
+  anticipos             Anticipo[]
+  liquidaciones         Liquidacion[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -126,9 +181,12 @@ model Usuario {
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
 
-  eventoAccesos   EventoAcceso[]
-  auditoriaLogs   AuditoriaLog[]
-  empresaAccesos  UsuarioEmpresaAcceso[]
+  eventoAccesos  EventoAcceso[]
+  auditoriaLogs  AuditoriaLog[]
+  empresaAccesos UsuarioEmpresaAcceso[]
+  // Empleado vinculado — permite que el usuario cargue sus propias jornadas
+  // (rol VIEWER + empleado no-null ⇒ vista de autoservicio RRHH).
+  empleado       Empleado?
 }
 
 // Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
@@ -156,10 +214,10 @@ model TabConfig {
   empresa_id Int
   empresa    Empresa @relation(fields: [empresa_id], references: [id])
   tipo       Tipo
-  numero     Int     // identificador estable dentro de la empresa — nunca reasignado
-  nombre     String  // editable
-  codigo     String  // inmutable dentro de la empresa
-  orden      Int     // posición de visualización dentro del tipo (reordenable)
+  numero     Int // identificador estable dentro de la empresa — nunca reasignado
+  nombre     String // editable
+  codigo     String // inmutable dentro de la empresa
+  orden      Int // posición de visualización dentro del tipo (reordenable)
   activo     Boolean @default(true)
   es_sistema Boolean @default(false) // las 10 tabs originales no se pueden eliminar
 
@@ -170,18 +228,18 @@ model TabConfig {
 // ─── EVENTOS ─────────────────────────────────────────────────────────────────
 
 model Evento {
-  id           Int              @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   empresa_id   Int
-  empresa      Empresa          @relation(fields: [empresa_id], references: [id])
+  empresa      Empresa      @relation(fields: [empresa_id], references: [id])
   nombre       String
   fecha_inicio DateTime?
   fecha_fin    DateTime?
-  estado       EstadoEvento     @default(ACTIVO)
+  estado       EstadoEvento @default(ACTIVO)
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
-  socios       Json             @default("[]")
-  moneda_base  Moneda           @default(ARS)
-  created_at   DateTime         @default(now())
-  updated_at   DateTime         @updatedAt
+  socios       Json         @default("[]")
+  moneda_base  Moneda       @default(ARS)
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
   deleted_at   DateTime?
   created_by   Int?
   updated_by   Int?
@@ -193,6 +251,8 @@ model Evento {
   asignaciones_stock     AsignacionStock[]
   asignaciones_prestadas AsignacionStock[] @relation("StockPrestado")
   facturas               Factura[]
+  jornadas               Jornada[]
+  liquidaciones          Liquidacion[]
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -203,16 +263,16 @@ model Movimiento {
   evento_id             Int
   evento                Evento          @relation(fields: [evento_id], references: [id])
   tipo                  Tipo
-  tab_numero            Int             // 1–5 dentro de su tipo
+  tab_numero            Int // 1–5 dentro de su tipo
   fecha                 DateTime?
-  concepto              String?         // opcional en ambos tipos
+  concepto              String? // opcional en ambos tipos
   descripcion           String?
   debe                  Decimal         @default(0) @db.Decimal(15, 2)
   haber                 Decimal         @default(0) @db.Decimal(15, 2)
   saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO
   moneda                Moneda          @default(ARS)
-  orden                 Int             // define la secuencia para recálculo de saldo
-  impuesto_subcategoria String?         // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
+  orden                 Int // define la secuencia para recálculo de saldo
+  impuesto_subcategoria String? // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
   proveedor_id          Int?
   proveedor             Proveedor?      @relation(fields: [proveedor_id], references: [id])
   // Vinculación opcional con un movimiento de caja
@@ -226,20 +286,21 @@ model Movimiento {
 
   echeq        Echeq?       @relation("EcheqMovimiento")
   pago_factura PagoFactura? @relation("PagoMovimiento")
+  liquidacion  Liquidacion?
 }
 
 // ─── CAJA ─────────────────────────────────────────────────────────────────────
 
 model CuentaBancaria {
-  id            Int              @id @default(autoincrement())
+  id            Int        @id @default(autoincrement())
   evento_id     Int
-  evento        Evento           @relation(fields: [evento_id], references: [id])
-  nombre        String           // "Efectivo", "Banco Galicia", etc.
+  evento        Evento     @relation(fields: [evento_id], references: [id])
+  nombre        String // "Efectivo", "Banco Galicia", etc.
   tipo          TipoCuenta
-  moneda        Moneda           @default(ARS)
-  saldo_inicial Decimal          @default(0) @db.Decimal(15, 2)
-  created_at    DateTime         @default(now())
-  updated_at    DateTime         @updatedAt
+  moneda        Moneda     @default(ARS)
+  saldo_inicial Decimal    @default(0) @db.Decimal(15, 2)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
   deleted_at    DateTime?
 
   movimientos MovimientoCaja[]
@@ -248,18 +309,18 @@ model CuentaBancaria {
 // Saldo corriente calculado por el backend — nunca editable directamente.
 
 model MovimientoCaja {
-  id              Int              @id @default(autoincrement())
-  cuenta_id       Int
-  cuenta          CuentaBancaria   @relation(fields: [cuenta_id], references: [id])
-  fecha           DateTime?
-  descripcion     String?
-  debe            Decimal          @default(0) @db.Decimal(15, 2)
-  haber           Decimal          @default(0) @db.Decimal(15, 2)
-  saldo_corriente Decimal          @default(0) @db.Decimal(15, 2) // CALCULADO
+  id                   Int            @id @default(autoincrement())
+  cuenta_id            Int
+  cuenta               CuentaBancaria @relation(fields: [cuenta_id], references: [id])
+  fecha                DateTime?
+  descripcion          String?
+  debe                 Decimal        @default(0) @db.Decimal(15, 2)
+  haber                Decimal        @default(0) @db.Decimal(15, 2)
+  saldo_corriente      Decimal        @default(0) @db.Decimal(15, 2) // CALCULADO
   orden                Int
   transferencia_par_id Int?
-  created_at           DateTime         @default(now())
-  updated_at           DateTime         @updatedAt
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
   deleted_at           DateTime?
   created_by           Int?
   updated_by           Int?
@@ -267,7 +328,7 @@ model MovimientoCaja {
   // Movimientos de egreso/ingreso que originaron este movimiento de caja
   movimientos_origen Movimiento[] @relation("MovimientoOrigenCaja")
   // Echeqs cobrados que liquidaron en este movimiento bancario
-  echeqs_cobrados    Echeq[]     @relation("EcheqCobradoCaja")
+  echeqs_cobrados    Echeq[]      @relation("EcheqCobradoCaja")
 }
 
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
@@ -309,7 +370,7 @@ model Echeq {
   proveedor_id         Int?
   proveedor            Proveedor?      @relation(fields: [proveedor_id], references: [id])
   numero               String
-  razon_social         String?         // auto-filled from proveedor.nombre when proveedor_id is set
+  razon_social         String? // auto-filled from proveedor.nombre when proveedor_id is set
   detalle              String?
   importe              Decimal         @db.Decimal(15, 2)
   moneda               Moneda          @default(ARS)
@@ -345,15 +406,15 @@ model EventoAcceso {
 // ─── STOCK ───────────────────────────────────────────────────────────────────
 
 model CategoriaStock {
-  id          Int        @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   empresa_id  Int
-  empresa     Empresa    @relation(fields: [empresa_id], references: [id])
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
   nombre      String
   descripcion String?
   color       String?
-  activo      Boolean    @default(true)
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
+  activo      Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
   deleted_at  DateTime?
   created_by  Int?
 
@@ -431,32 +492,32 @@ model MovimientoStock {
 // ─── FACTURAS (cuentas a pagar) ───────────────────────────────────────────────
 
 model Factura {
-  id                Int            @id @default(autoincrement())
+  id                Int           @id @default(autoincrement())
   empresa_id        Int
-  empresa           Empresa        @relation(fields: [empresa_id], references: [id])
+  empresa           Empresa       @relation(fields: [empresa_id], references: [id])
   numero_factura    String
-  tipo_factura      String         // "A", "B", "C", "X"
+  tipo_factura      String // "A", "B", "C", "X"
   fecha_emision     DateTime
   fecha_vencimiento DateTime?
   proveedor_id      Int
-  proveedor         Proveedor      @relation(fields: [proveedor_id], references: [id])
+  proveedor         Proveedor     @relation(fields: [proveedor_id], references: [id])
   evento_id         Int
-  evento            Evento         @relation(fields: [evento_id], references: [id])
+  evento            Evento        @relation(fields: [evento_id], references: [id])
   tab_numero        Int?
   tipo_movimiento   Tipo?
-  importe_total     Decimal        @db.Decimal(15, 2)
-  importe_pagado    Decimal        @default(0) @db.Decimal(15, 2)
-  importe_pendiente Decimal        @default(0) @db.Decimal(15, 2)
-  moneda            Moneda         @default(ARS)
-  condicion_pago    CondicionPago  @default(CONTADO)
-  estado            EstadoFactura  @default(RECIBIDA)
+  importe_total     Decimal       @db.Decimal(15, 2)
+  importe_pagado    Decimal       @default(0) @db.Decimal(15, 2)
+  importe_pendiente Decimal       @default(0) @db.Decimal(15, 2)
+  moneda            Moneda        @default(ARS)
+  condicion_pago    CondicionPago @default(CONTADO)
+  estado            EstadoFactura @default(RECIBIDA)
   notas             String?
   pdf_data          Bytes?
   pdf_nombre        String?
   pdf_mime_type     String?
   pdf_tamanio       Int?
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
   deleted_at        DateTime?
   created_by        Int?
   updated_by        Int?
@@ -465,23 +526,140 @@ model Factura {
 }
 
 model PagoFactura {
+  id            Int         @id @default(autoincrement())
+  factura_id    Int
+  factura       Factura     @relation(fields: [factura_id], references: [id])
+  fecha_pago    DateTime
+  importe       Decimal     @db.Decimal(15, 2)
+  moneda        Moneda      @default(ARS)
+  medio_pago    MedioPago
+  referencia    String?
+  notas         String?
+  movimiento_id Int?        @unique
+  movimiento    Movimiento? @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
+  echeq_id      Int?        @unique
+  echeq         Echeq?      @relation("PagoEcheq", fields: [echeq_id], references: [id])
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+}
+
+// ─── RRHH ─────────────────────────────────────────────────────────────────────
+
+model Empleado {
+  id               Int               @id @default(autoincrement())
+  empresa_id       Int
+  empresa          Empresa           @relation(fields: [empresa_id], references: [id])
+  // Datos personales
+  nombre           String
+  apellido         String
+  dni              String
+  cuit             String?
+  email            String?
+  telefono         String?
+  domicilio        String?
+  // Datos bancarios
+  cbu              String?
+  alias            String?
+  banco            String?
+  // Datos laborales
+  categoria        CategoriaEmpleado @default(OTRO)
+  valor_hora       Decimal           @default(0) @db.Decimal(10, 2)
+  valor_hora_extra Decimal           @default(0) @db.Decimal(10, 2)
+  estado           EstadoEmpleado    @default(ACTIVO)
+  notas            String?
+  // Usuario del sistema (opcional — si el empleado carga sus propias jornadas)
+  usuario_id       Int?              @unique
+  usuario          Usuario?          @relation(fields: [usuario_id], references: [id])
+  // audit
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+  deleted_at       DateTime?
+  created_by       Int?
+  // relations
+  jornadas         Jornada[]
+  anticipos        Anticipo[]
+  liquidaciones    Liquidacion[]
+}
+
+model Jornada {
+  id                Int           @id @default(autoincrement())
+  empleado_id       Int
+  empleado          Empleado      @relation(fields: [empleado_id], references: [id])
+  evento_id         Int? // opcional — puede ser trabajo en depósito
+  evento            Evento?       @relation(fields: [evento_id], references: [id])
+  empresa_id        Int // desnormalizado para filtrar por tenant fácilmente
+  empresa           Empresa       @relation(fields: [empresa_id], references: [id])
+  fecha             DateTime
+  hora_convocatoria DateTime? // hora a la que se pidió que llegue
+  hora_ingreso      DateTime? // hora real de ingreso
+  hora_egreso       DateTime? // hora real de salida
+  horas_normales    Decimal       @default(0) @db.Decimal(5, 2) // calculado
+  horas_extras      Decimal       @default(0) @db.Decimal(5, 2) // calculado
+  descripcion       String?
+  estado            EstadoJornada @default(PENDIENTE)
+  motivo_rechazo    String?
+  // audit
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+  aprobado_por      Int?
+  aprobado_at       DateTime?
+
+  @@unique([empleado_id, fecha])
+}
+
+model Anticipo {
   id             Int          @id @default(autoincrement())
-  factura_id     Int
-  factura        Factura      @relation(fields: [factura_id], references: [id])
-  fecha_pago     DateTime
-  importe        Decimal      @db.Decimal(15, 2)
-  moneda         Moneda       @default(ARS)
-  medio_pago     MedioPago
-  referencia     String?
-  notas          String?
-  movimiento_id  Int?         @unique
-  movimiento     Movimiento?  @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
-  echeq_id       Int?         @unique
-  echeq          Echeq?       @relation("PagoEcheq", fields: [echeq_id], references: [id])
+  empleado_id    Int
+  empleado       Empleado     @relation(fields: [empleado_id], references: [id])
+  empresa_id     Int
+  empresa        Empresa      @relation(fields: [empresa_id], references: [id])
+  tipo           TipoAnticipo @default(ADELANTO)
+  monto          Decimal      @db.Decimal(10, 2)
+  fecha          DateTime
+  motivo         String?
+  descontado     Boolean      @default(false) // true cuando se aplicó en una liquidación
+  liquidacion_id Int?
+  liquidacion    Liquidacion? @relation(fields: [liquidacion_id], references: [id])
+  // audit
   created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
-  deleted_at     DateTime?
   created_by     Int?
+}
+
+model Liquidacion {
+  id               Int               @id @default(autoincrement())
+  empleado_id      Int
+  empleado         Empleado          @relation(fields: [empleado_id], references: [id])
+  empresa_id       Int
+  empresa          Empresa           @relation(fields: [empresa_id], references: [id])
+  evento_id        Int? // si la liquidación es por evento específico
+  evento           Evento?           @relation(fields: [evento_id], references: [id])
+  // Período
+  fecha_desde      DateTime
+  fecha_hasta      DateTime
+  // Cálculo
+  horas_normales   Decimal           @db.Decimal(8, 2)
+  horas_extras     Decimal           @db.Decimal(8, 2)
+  valor_hora       Decimal           @db.Decimal(10, 2) // snapshot al momento de liquidar
+  valor_hora_extra Decimal           @db.Decimal(10, 2) // snapshot
+  subtotal_horas   Decimal           @db.Decimal(10, 2) // normales × valor + extras × valor_extra
+  total_anticipos  Decimal           @db.Decimal(10, 2) // suma de anticipos descontados
+  total_descuentos Decimal           @db.Decimal(10, 2) // otros descuentos
+  total_a_cobrar   Decimal           @db.Decimal(10, 2) // subtotal - anticipos - descuentos
+  estado           EstadoLiquidacion @default(BORRADOR)
+  observaciones    String?
+  // Al aprobar → genera Egreso automático
+  movimiento_id    Int?              @unique
+  movimiento       Movimiento?       @relation(fields: [movimiento_id], references: [id])
+  // audit
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+  aprobado_por     Int?
+  aprobado_at      DateTime?
+  anticipos        Anticipo[]
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

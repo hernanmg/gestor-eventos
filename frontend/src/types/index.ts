@@ -9,6 +9,11 @@ export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
 export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
 export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
 export type Moneda       = 'ARS' | 'USD';
+export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO' | 'OTRO';
+export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
+export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
 
@@ -440,6 +445,7 @@ export type EmpresaResumen = {
   nombre_corto:   string | null;
   color_primario: string | null;
   logo_url:       string | null;
+  tiene_logo:     boolean;
 };
 
 export type MeResponse = {
@@ -453,8 +459,11 @@ export type MeResponse = {
   // pendiente (usuario con acceso a 2+ empresas que todavía no eligió).
   empresaId:            number | null;
   empresa:              EmpresaResumen | null;
-  empresasDisponibles?: { id: number; nombre: string; nombre_corto: string | null }[];
+  empresasDisponibles?: EmpresaResumen[];
   puedeCambiarEmpresa:  boolean;
+  // Empleado de RRHH vinculado a este usuario (rol VIEWER + empleado ⇒
+  // autoservicio: sólo ve/carga sus propias jornadas).
+  empleadoId:           number | null;
 };
 
 // ── Respuestas API ────────────────────────────────────────────────────────────
@@ -469,4 +478,144 @@ export interface PaginatedResponse<T> {
   total: number;
   page:  number;
   limit: number;
+}
+
+// ── Empresa (Configuración de empresa) ────────────────────────────────────────
+
+export interface Empresa {
+  id:               number;
+  nombre:           string;
+  nombre_corto:     string | null;
+  razon_social:     string | null;
+  cuit:             string | null;
+  domicilio:        string | null;
+  telefono:         string | null;
+  email:            string | null;
+  web:              string | null;
+  logo_nombre:      string | null;
+  logo_mime:        string | null;
+  color_primario:   string | null;
+  color_secundario: string | null;
+  moneda_default:   Moneda;
+  timezone:         string;
+  activo:           boolean;
+  created_at:       string;
+  updated_at:       string;
+}
+
+export interface EmpresaActual extends Empresa {
+  usuarios_activos_count: number;
+  eventos_count:          number;
+}
+
+export interface EmpresaUpdatePayload {
+  nombre?:           string;
+  nombre_corto?:     string | null;
+  razon_social?:     string | null;
+  cuit?:             string | null;
+  domicilio?:        string | null;
+  telefono?:         string | null;
+  email?:            string | null;
+  web?:              string | null;
+  color_primario?:   string | null;
+  color_secundario?: string | null;
+  moneda_default?:   Moneda;
+  timezone?:         string;
+}
+
+// ── RRHH ──────────────────────────────────────────────────────────────────────
+
+export interface Empleado {
+  id:               number;
+  nombre:           string;
+  apellido:         string;
+  dni:              string;
+  cuit:             string | null;
+  email:            string | null;
+  telefono:         string | null;
+  domicilio:        string | null;
+  cbu:              string | null;
+  alias:            string | null;
+  banco:            string | null;
+  categoria:        CategoriaEmpleado;
+  valor_hora:       number;
+  valor_hora_extra: number;
+  estado:           EstadoEmpleado;
+  notas:            string | null;
+  usuario_id:       number | null;
+  created_at:       string;
+  updated_at:       string;
+  deleted_at:       string | null;
+}
+
+export interface EmpleadoConStats extends Empleado {
+  stats: {
+    horas_normales_totales:     number;
+    horas_extras_totales:       number;
+    anticipos_pendientes:       number;
+    anticipos_pendientes_count: number;
+    ultima_jornada:             Jornada | null;
+  };
+}
+
+export interface Jornada {
+  id:                number;
+  empleado_id:       number;
+  evento_id:         number | null;
+  fecha:             string;
+  hora_convocatoria: string | null;
+  hora_ingreso:      string | null;
+  hora_egreso:       string | null;
+  horas_normales:    number;
+  horas_extras:      number;
+  descripcion:       string | null;
+  estado:            EstadoJornada;
+  motivo_rechazo:    string | null;
+  aprobado_por:      number | null;
+  aprobado_at:       string | null;
+  empleado?: { id: number; nombre: string; apellido: string };
+  evento?:   { id: number; nombre: string } | null;
+}
+
+export interface Anticipo {
+  id:             number;
+  empleado_id:    number;
+  tipo:           TipoAnticipo;
+  monto:          number;
+  fecha:          string;
+  motivo:         string | null;
+  descontado:     boolean;
+  liquidacion_id: number | null;
+  created_at:     string;
+}
+
+export interface Liquidacion {
+  id:               number;
+  empleado_id:      number;
+  evento_id:        number | null;
+  fecha_desde:      string;
+  fecha_hasta:      string;
+  horas_normales:   number;
+  horas_extras:     number;
+  valor_hora:       number;
+  valor_hora_extra: number;
+  subtotal_horas:   number;
+  total_anticipos:  number;
+  total_descuentos: number;
+  total_a_cobrar:   number;
+  estado:           EstadoLiquidacion;
+  observaciones:    string | null;
+  movimiento_id:    number | null;
+  aprobado_por:     number | null;
+  aprobado_at:      string | null;
+  created_at:       string;
+  empleado?: { id: number; nombre: string; apellido: string };
+  evento?:   { id: number; nombre: string } | null;
+}
+
+export interface LiquidacionDetalle extends Liquidacion {
+  empleado:  Empleado;
+  anticipos: Anticipo[];
+  jornadas:  Jornada[];
+  movimiento?: { id: number; tipo: Tipo; tab_numero: number; evento_id: number } | null;
 }

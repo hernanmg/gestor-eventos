@@ -8,6 +8,9 @@ import EventosPage          from '@/pages/Eventos';
 import EventoPage                  from '@/pages/Evento';
 import VincularProveedoresPage     from '@/pages/Evento/VincularProveedores';
 import ConfiguracionPage    from '@/pages/Configuracion';
+import ConfiguracionEmpresaPage from '@/pages/ConfiguracionEmpresa';
+import RRHHPage             from '@/pages/RRHH';
+import RRHHImportarPage     from '@/pages/RRHH/Importar';
 import ImporterPage         from '@/pages/Importer';
 import ProveedoresPage      from '@/pages/Proveedores';
 import ProveedorDetallePage from '@/pages/Proveedores/ProveedorDetalle';
@@ -40,6 +43,9 @@ export default function App() {
             <Route path="/eventos/:id"                         element={<EventoPage />} />
             <Route path="/eventos/:id/vincular-proveedores"    element={<VincularProveedoresPage />} />
             <Route path="/configuracion"    element={<ConfiguracionPage />} />
+            <Route path="/configuracion/empresa" element={<ConfiguracionEmpresaPage />} />
+            <Route path="/rrhh"             element={<RRHHPage />} />
+            <Route path="/rrhh/importar"    element={<RRHHImportarPage />} />
             <Route path="/importer"         element={<ImporterPage />} />
             <Route path="/proveedores"      element={<ProveedoresPage />} />
             <Route path="/proveedores/:id"  element={<ProveedorDetallePage />} />

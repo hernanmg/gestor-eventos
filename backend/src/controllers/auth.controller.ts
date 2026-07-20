@@ -34,6 +34,13 @@ async function fetchAccesos(usuarioId: number) {
   });
 }
 
+// Empleado vinculado a este usuario, si existe (habilita la vista de
+// autoservicio de RRHH para roles VIEWER con carga propia de jornadas).
+async function fetchEmpleadoId(usuarioId: number): Promise<number | null> {
+  const empleado = await prisma.empleado.findFirst({ where: { usuario_id: usuarioId, deleted_at: null }, select: { id: true } });
+  return empleado?.id ?? null;
+}
+
 type UsuarioBasico = { id: number; rol: string; empresa_id: number | null };
 
 // Admin global: rol ADMIN sin empresa fija en su fila — puede ver/elegir cualquier empresa activa.
@@ -55,8 +62,11 @@ async function resolveEmpresasAccesibles(usuario: UsuarioBasico) {
   return accesos.map(a => a.empresa).filter(e => e.activo);
 }
 
-function mapEmpresa(e: { id: number; nombre: string; nombre_corto: string | null; color_primario: string | null; logo_url: string | null }) {
-  return { id: e.id, nombre: e.nombre, nombre_corto: e.nombre_corto, color_primario: e.color_primario, logo_url: e.logo_url };
+function mapEmpresa(e: { id: number; nombre: string; nombre_corto: string | null; color_primario: string | null; logo_url: string | null; logo_data?: Buffer | Uint8Array | null }) {
+  return {
+    id: e.id, nombre: e.nombre, nombre_corto: e.nombre_corto, color_primario: e.color_primario, logo_url: e.logo_url,
+    tiene_logo: !!e.logo_data,
+  };
 }
 
 export async function login(req: Request, res: Response, _next: NextFunction): Promise<void> {
@@ -130,8 +140,9 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     { expiresIn: '8h' },
   );
 
-  const [accesos] = await Promise.all([
+  const [accesos, empleadoId] = await Promise.all([
     fetchAccesos(usuario.id),
+    fetchEmpleadoId(usuario.id),
     registrarAuditoria({
       usuarioId:    usuario.id,
       empresaId,
@@ -154,6 +165,7 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     empresa:              empresaId !== null ? mapEmpresa(empresas.find(e => e.id === empresaId)!) : null,
     empresasDisponibles:  (global || empresaId === null) ? empresas.map(mapEmpresa) : undefined,
     puedeCambiarEmpresa:  global,
+    empleadoId,
   });
 }
 
@@ -182,7 +194,7 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     throw new AppError(401, 'Sesión inválida');
   }
 
-  const accesos   = await fetchAccesos(req.user!.id);
+  const [accesos, empleadoId] = await Promise.all([fetchAccesos(req.user!.id), fetchEmpleadoId(req.user!.id)]);
   const empresaId = req.user!.empresaId;
   const global     = esAdminGlobal(raw);
 
@@ -208,6 +220,7 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     empresa,
     empresasDisponibles,
     puedeCambiarEmpresa: global,
+    empleadoId,
   });
 }
 
@@ -251,7 +264,7 @@ export async function switchEmpresa(req: Request, res: Response): Promise<void> 
   );
   res.cookie(COOKIE_NAME, token, cookieOptions());
 
-  const accesos = await fetchAccesos(usuario.id);
+  const [accesos, empleadoId] = await Promise.all([fetchAccesos(usuario.id), fetchEmpleadoId(usuario.id)]);
 
   await registrarAuditoria({
     usuarioId:   usuario.id,
@@ -274,5 +287,6 @@ export async function switchEmpresa(req: Request, res: Response): Promise<void> 
     empresa:             mapEmpresa(empresaDestino),
     empresasDisponibles,
     puedeCambiarEmpresa: global,
+    empleadoId,
   });
 }

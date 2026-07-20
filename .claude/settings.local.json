@@ -11,7 +11,29 @@
       "mcp__plugin_engram_engram__mem_session_summary",
       "Bash(node -e \"const p=require\\('D:/Dev/admin-portal/backend/package.json'\\); console.log\\(JSON.stringify\\({...p.dependencies,...p.devDependencies},null,0\\)\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in {**d.get\\('dependencies',{}\\),**d.get\\('devDependencies',{}\\)}.items\\(\\)]\")",
-      "mcp__plugin_engram_engram__mem_context"
+      "mcp__plugin_engram_engram__mem_context",
+      "Bash(npx prisma *)",
+      "Bash(python3 -c ' *)",
+      "Bash(cd /tmp)",
+      "Bash(curl -s -b cookies.txt -X POST http://localhost:3001/api/rrhh/jornadas -H 'Content-Type: application/json' -d '{\"empleado_id\":4,\"fecha\":\"2026-01-05\",\"hora_ingreso\":\"2026-01-05T08:00:00\",\"hora_egreso\":\"2026-01-05T18:00:00\"}')",
+      "Bash(curl -s -b cookies.txt -X POST http://localhost:3001/api/rrhh/jornadas -H 'Content-Type: application/json' -d '{\"empleado_id\":4,\"fecha\":\"2026-01-06\",\"hora_ingreso\":\"2026-01-06T09:00:00\",\"hora_egreso\":\"2026-01-06T15:00:00\"}')",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -b cookies.txt -X POST http://localhost:3001/api/rrhh/jornadas -H 'Content-Type: application/json' -d '{\"empleado_id\":4,\"fecha\":\"2026-01-05\",\"hora_ingreso\":\"2026-01-05T10:00:00\",\"hora_egreso\":\"2026-01-05T12:00:00\"}')",
+      "Bash(curl -s -b cookies.txt -X PATCH http://localhost:3001/api/rrhh/jornadas/11/aprobar)",
+      "Bash(curl -s -b cookies.txt -X POST http://localhost:3001/api/rrhh/liquidaciones/generar -H 'Content-Type: application/json' -d '{\"empleado_id\":4,\"fecha_desde\":\"2026-01-01\",\"fecha_hasta\":\"2026-01-31\"}')",
+      "Bash(curl -s -b cookies.txt -X PATCH http://localhost:3001/api/rrhh/liquidaciones/2/aprobar)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" -b cookies.txt -X PATCH http://localhost:3001/api/rrhh/liquidaciones/2/aprobar)",
+      "Bash(curl -s -b cookies.txt -X POST http://localhost:3001/api/rrhh/liquidaciones/generar -H 'Content-Type: application/json' -d '{\"empleado_id\":1,\"fecha_desde\":\"2026-05-01\",\"fecha_hasta\":\"2026-08-01\",\"evento_id\":6}' -o gen_evento.json)",
+      "Bash(python3 -c \"import json;print\\(json.load\\(open\\('gen_evento.json'\\)\\)['id']\\)\")",
+      "Bash(curl -s -b cookies.txt -X PATCH http://localhost:3001/api/rrhh/liquidaciones/__TRACKED_VAR__/aprobar -o aprobado.json)",
+      "Bash(curl -s -b cookies.txt http://localhost:3001/api/rrhh/empleados/1/anticipos)",
+      "Bash(curl -s -b cookies.txt \"http://localhost:3001/api/movimientos/evento/6\")",
+      "Bash(curl -s -b cookies.txt \"http://localhost:3001/api/configuracion/tabs?incluir_inactivas=true\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(rm -f admincookies.txt)",
+      "Bash(curl -s -c admincookies.txt -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@adminportal.com\",\"password\":\"Admin123!\"}')",
+      "Bash(curl -s -b admincookies.txt -X PUT http://localhost:3001/api/empresas/1 -H 'Content-Type: application/json' -d '{\"color_primario\":\"#FF5733\",\"color_secundario\":\"#33C1FF\",\"razon_social\":\"Enjoy Producciones SRL\"}')",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -b admincookies.txt -X PUT http://localhost:3001/api/empresas/1 -H 'Content-Type: application/json' -d '{\"cuit\":\"invalido\"}')",
+      "mcp__plugin_engram_engram__mem_judge"
     ]
   }
 }

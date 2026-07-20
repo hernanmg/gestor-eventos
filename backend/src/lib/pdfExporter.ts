@@ -26,7 +26,7 @@ function getExecutablePath(): string {
 
 // ── Puppeteer render ──────────────────────────────────────────────────────────
 
-async function renderPDF(html: string, eventoNombre: string, seccionNombre: string): Promise<Buffer> {
+export async function renderPDF(html: string, eventoNombre: string, seccionNombre: string): Promise<Buffer> {
   const fechaStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const headerTemplate = `
