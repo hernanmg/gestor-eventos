@@ -257,9 +257,20 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           )}
 
           {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
-            <NavLink to="/importer" title={!isOpen ? 'Importar Excel' : undefined} className={navItem}>
+            <NavLink
+              to="/importer"
+              title={!isOpen ? 'Importar eventos históricos' : undefined}
+              className={navItem}
+            >
               <FileUp size={18} className="shrink-0" />
-              {isOpen && <span>Importar Excel</span>}
+              {isOpen && (
+                <div className="flex flex-col leading-tight">
+                  <span>Importar eventos históricos</span>
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    Migrar eventos desde el Excel original
+                  </span>
+                </div>
+              )}
             </NavLink>
           )}
 

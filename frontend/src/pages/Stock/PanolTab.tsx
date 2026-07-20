@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Plus, Wrench, AlertTriangle } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, Pencil, Trash2 } from 'lucide-react';
 import {
-  usePanolItems, useCreatePanolItem,
+  usePanolItems, useCreatePanolItem, useUpdatePanolItem, useDeletePanolItem,
   useMovimientosPanol, useCreateMovimientoPanol, useDevolverMovimientoPanol,
   useAlertasPanol,
 } from '@/hooks/usePanol';
 import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { PanolItem, MovimientoPanol } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -21,31 +21,54 @@ interface ItemFormData {
 }
 const EMPTY_ITEM: ItemFormData = { nombre: '', descripcion: '', tipo: 'HERRAMIENTA', stock_total: 0, valor: '', notas: '' };
 
-function NuevoItemDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const createItem = useCreatePanolItem();
+function itemToForm(item: PanolItem): ItemFormData {
+  return {
+    nombre:      item.nombre,
+    descripcion: item.descripcion ?? '',
+    tipo:        item.tipo,
+    stock_total: item.stock_total,
+    valor:       item.valor ?? '',
+    notas:       item.notas ?? '',
+  };
+}
+
+function PanolItemDialog({ open, item, onClose }: { open: boolean; item: PanolItem | null; onClose: () => void }) {
+  const isEdit      = !!item;
+  const createItem  = useCreatePanolItem();
+  const updateItem  = useUpdatePanolItem();
   const [form, setForm]   = useState<ItemFormData>(EMPTY_ITEM);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setForm(EMPTY_ITEM); setError(null); } }, [open]);
+  // Se re-ejecuta al abrir el dialog o cambiar el ítem a editar — el dialog
+  // queda montado entre aperturas, así que el useState inicial no alcanza.
+  useEffect(() => {
+    if (!open) return;
+    setForm(item ? itemToForm(item) : EMPTY_ITEM);
+    setError(null);
+  }, [open, item]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    const payload = {
+      nombre: form.nombre, descripcion: form.descripcion || null, tipo: form.tipo,
+      stock_total: form.stock_total, valor: form.valor ? Number(form.valor) : null, notas: form.notas || null,
+    } as Partial<PanolItem>;
     try {
-      await createItem.mutateAsync({
-        nombre: form.nombre, descripcion: form.descripcion || null, tipo: form.tipo,
-        stock_total: form.stock_total, valor: form.valor ? Number(form.valor) : null, notas: form.notas || null,
-      } as Partial<PanolItem>);
+      if (isEdit) await updateItem.mutateAsync({ id: item!.id, data: payload });
+      else        await createItem.mutateAsync(payload);
       onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Error al guardar');
+    } catch (err) {
+      setError(getApiErrorMessage(err));
     }
   };
+
+  const isPending = createItem.isPending || updateItem.isPending;
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nuevo ítem de pañol</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{isEdit ? 'Editar ítem de pañol' : 'Nuevo ítem de pañol'}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -75,7 +98,7 @@ function NuevoItemDialog({ open, onClose }: { open: boolean; onClose: () => void
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" size="sm" disabled={createItem.isPending}>{createItem.isPending ? 'Guardando…' : 'Guardar'}</Button>
+            <Button type="submit" size="sm" disabled={isPending}>{isPending ? 'Guardando…' : 'Guardar'}</Button>
           </div>
         </form>
       </DialogContent>
@@ -158,13 +181,20 @@ function RegistrarSalidaDialog({ item, onClose }: { item: PanolItem | null; onCl
 
 function InventarioSubTab() {
   const { data: items = [], isLoading } = usePanolItems();
-  const [nuevoOpen, setNuevoOpen]     = useState(false);
+  const deleteItem = useDeletePanolItem();
+  const [formOpen, setFormOpen]       = useState(false);
+  const [editing, setEditing]         = useState<PanolItem | null>(null);
   const [salidaItem, setSalidaItem]   = useState<PanolItem | null>(null);
+
+  const handleDelete = (it: PanolItem) => {
+    if (!window.confirm(`¿Eliminar el ítem "${it.nombre}"?`)) return;
+    deleteItem.mutate(it.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setNuevoOpen(true)}><Plus size={14} className="mr-1.5" /> Nuevo ítem</Button>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus size={14} className="mr-1.5" /> Nuevo ítem</Button>
       </div>
 
       {isLoading ? (
@@ -185,7 +215,7 @@ function InventarioSubTab() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Disponible</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Valor</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
-                <th className="px-3 py-2 w-32" />
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -201,10 +231,14 @@ function InventarioSubTab() {
                   </td>
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{it.valor ?? '-'}</td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{it.estado}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Button variant="outline" size="sm" disabled={it.stock_disponible === 0} onClick={() => setSalidaItem(it)}>
-                      Registrar salida
-                    </Button>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="outline" size="sm" disabled={it.stock_disponible === 0} onClick={() => setSalidaItem(it)}>
+                        Registrar salida
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => { setEditing(it); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(it)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -213,7 +247,7 @@ function InventarioSubTab() {
         </div>
       )}
 
-      <NuevoItemDialog open={nuevoOpen} onClose={() => setNuevoOpen(false)} />
+      <PanolItemDialog open={formOpen} item={editing} onClose={() => { setFormOpen(false); setEditing(null); }} />
       <RegistrarSalidaDialog item={salidaItem} onClose={() => setSalidaItem(null)} />
     </div>
   );

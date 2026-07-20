@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload } from 'lucide-react';
+import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload, Pencil, Trash2 } from 'lucide-react';
 import {
-  useProductos, useCreateProducto, useUpdateProducto, useAlertasStock, useSugerencias, useCategoriasStock,
+  useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto, useAlertasStock, useSugerencias, useCategoriasStock,
   useUploadFotoProducto, useFotoBlobUrl,
 } from '@/hooks/useStock';
 import { useAlertasPanol } from '@/hooks/usePanol';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { Producto, AlertaStock, SugerenciaStock, CategoriaStock } from '@/types';
 import CunasTab from './CunasTab';
 import CamionesTab from './CamionesTab';
@@ -253,6 +253,36 @@ function CriticoBadge({ esCritico }: { esCritico: boolean }) {
   return <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>;
 }
 
+// El importador real ya existe en el backend, pero el formato del archivo
+// todavía no está definido junto al cliente — por eso el frontend lo muestra
+// como "Próximamente" en vez de habilitarlo.
+function ImportarLayherDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Importar catálogo Layher</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 mt-1">
+          <div className="rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2.5 text-sm text-yellow-900">
+            ⚠️ Próximamente — Esta funcionalidad está en construcción.
+            El formato del archivo será definido junto al cliente.
+            Por ahora podés cargar los productos manualmente.
+          </div>
+          <div className="rounded-lg border-2 border-dashed cursor-not-allowed opacity-50 flex flex-col items-center justify-center gap-2 py-10 text-center">
+            <Upload size={28} className="text-muted-foreground" />
+            <p className="text-sm text-muted-foreground px-6">Arrastrá el archivo Excel del catálogo aquí</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
+            <Button type="button" size="sm" disabled>Importar</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProductosTab() {
   const navigate = useNavigate();
   const [search,       setSearch]       = useState('');
@@ -261,6 +291,7 @@ function ProductosTab() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing,    setEditing]    = useState<Producto | null>(null);
+  const [importarOpen, setImportarOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -277,6 +308,12 @@ function ProductosTab() {
   const { data: categorias = [] } = useCategoriasStock();
   const activeCats = categorias.filter(c => c.activo);
   const catalogos = Array.from(new Set(productos.map(p => p.catalogo_origen).filter((c): c is string => !!c)));
+  const deleteProducto = useDeleteProducto();
+
+  const handleDelete = (p: Producto) => {
+    if (!window.confirm(`¿Eliminar el producto "${p.nombre}"?`)) return;
+    deleteProducto.mutate(p.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
@@ -311,6 +348,10 @@ function ProductosTab() {
           <option value="">Todos los catálogos</option>
           {catalogos.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+          <Upload size={14} className="mr-1.5" /> Importar catálogo Layher
+          <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-800">Próximamente</span>
+        </Button>
         <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
           <Plus size={14} className="mr-1.5" /> Nuevo producto
         </Button>
@@ -335,6 +376,7 @@ function ProductosTab() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Disponible</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Mínimo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
                 <th className="px-3 py-2 w-6" />
               </tr>
             </thead>
@@ -367,6 +409,12 @@ function ProductosTab() {
                     <td className="px-3 py-2.5">
                       <DisponibleBadge disponible={disp} minimo={p.stock_minimo} />
                     </td>
+                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(p); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                      </div>
+                    </td>
                     <td className="px-3 py-2.5 text-muted-foreground">
                       <ChevronRight size={14} />
                     </td>
@@ -383,6 +431,7 @@ function ProductosTab() {
         producto={editing}
         onClose={() => { setDialogOpen(false); setEditing(null); }}
       />
+      <ImportarLayherDialog open={importarOpen} onClose={() => setImportarOpen(false)} />
     </div>
   );
 }

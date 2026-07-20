@@ -1,21 +1,31 @@
 import { useState, useEffect } from 'react';
-import { Plus, Boxes, Trash2 } from 'lucide-react';
+import { Plus, Boxes, Trash2, Pencil } from 'lucide-react';
 import {
-  useCunas, useCuna, useCreateCuna,
+  useCunas, useCuna, useCreateCuna, useUpdateCuna, useDeleteCuna,
   useAddProductoCuna, useRemoveProductoCuna,
 } from '@/hooks/useCunas';
 import { useProductos } from '@/hooks/useStock';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/utils';
 import type { Cuna } from '@/types';
 
-function NuevaCunaDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const createCuna = useCreateCuna();
+function CunaFormDialog({ open, cuna, onClose }: { open: boolean; cuna: Cuna | null; onClose: () => void }) {
+  const isEdit      = !!cuna;
+  const createCuna  = useCreateCuna();
+  const updateCuna  = useUpdateCuna();
   const [codigo, setCodigo]           = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [error, setError]             = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setCodigo(''); setDescripcion(''); setError(null); } }, [open]);
+  // Se re-ejecuta al abrir el dialog o cambiar la cuna a editar — el dialog
+  // queda montado entre aperturas, así que el useState inicial no alcanza.
+  useEffect(() => {
+    if (!open) return;
+    setCodigo(cuna?.codigo ?? '');
+    setDescripcion(cuna?.descripcion ?? '');
+    setError(null);
+  }, [open, cuna]);
 
   const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
   const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -24,17 +34,20 @@ function NuevaCunaDialog({ open, onClose }: { open: boolean; onClose: () => void
     e.preventDefault();
     setError(null);
     try {
-      await createCuna.mutateAsync({ codigo, descripcion: descripcion || null });
+      if (isEdit) await updateCuna.mutateAsync({ id: cuna!.id, data: { codigo, descripcion: descripcion || null } });
+      else        await createCuna.mutateAsync({ codigo, descripcion: descripcion || null });
       onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Error al guardar');
+    } catch (err) {
+      setError(getApiErrorMessage(err));
     }
   };
+
+  const isPending = createCuna.isPending || updateCuna.isPending;
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nueva cuna</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{isEdit ? 'Editar cuna' : 'Nueva cuna'}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div>
             <label className={labelCls}>Código *</label>
@@ -47,7 +60,7 @@ function NuevaCunaDialog({ open, onClose }: { open: boolean; onClose: () => void
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" size="sm" disabled={createCuna.isPending}>{createCuna.isPending ? 'Guardando…' : 'Guardar'}</Button>
+            <Button type="submit" size="sm" disabled={isPending}>{isPending ? 'Guardando…' : 'Guardar'}</Button>
           </div>
         </form>
       </DialogContent>
@@ -153,13 +166,20 @@ function CunaContenidoDialog({ cunaId, onClose }: { cunaId: number | null; onClo
 
 export default function CunasTab() {
   const { data: cunas = [], isLoading } = useCunas();
-  const [nuevaOpen, setNuevaOpen]     = useState(false);
+  const deleteCuna = useDeleteCuna();
+  const [formOpen, setFormOpen]       = useState(false);
+  const [editing, setEditing]         = useState<Cuna | null>(null);
   const [selectedId, setSelectedId]   = useState<number | null>(null);
+
+  const handleDelete = (c: Cuna) => {
+    if (!window.confirm(`¿Eliminar la cuna "${c.codigo}"?`)) return;
+    deleteCuna.mutate(c.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setNuevaOpen(true)}>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus size={14} className="mr-1.5" /> Nueva cuna
         </Button>
       </div>
@@ -180,6 +200,7 @@ export default function CunasTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Descripción</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Productos distintos</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Total unidades</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -189,6 +210,12 @@ export default function CunasTab() {
                   <td className="px-3 py-2.5 text-muted-foreground">{c.descripcion ?? '-'}</td>
                   <td className="px-3 py-2.5 text-right">{c.productos_distintos ?? 0}</td>
                   <td className="px-3 py-2.5 text-right">{c.total_unidades ?? 0}</td>
+                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,7 +223,7 @@ export default function CunasTab() {
         </div>
       )}
 
-      <NuevaCunaDialog open={nuevaOpen} onClose={() => setNuevaOpen(false)} />
+      <CunaFormDialog open={formOpen} cuna={editing} onClose={() => { setFormOpen(false); setEditing(null); }} />
       <CunaContenidoDialog cunaId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   );

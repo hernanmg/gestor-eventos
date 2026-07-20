@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Archive } from 'lucide-react';
-import { useActivos, useCreateActivo, useUpdateActivo } from '@/hooks/useActivos';
+import { Plus, Archive, Pencil, Trash2 } from 'lucide-react';
+import { useActivos, useCreateActivo, useUpdateActivo, useDeleteActivo } from '@/hooks/useActivos';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { Activo, EstadoActivo } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -25,33 +25,59 @@ const EMPTY: ActivoFormData = {
   fecha_compra: '', valor_compra: '', estado: 'BUENO', ubicacion: '', observaciones: '',
 };
 
-function NuevoActivoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const createActivo = useCreateActivo();
+function activoToForm(activo: Activo): ActivoFormData {
+  return {
+    nombre:        activo.nombre,
+    descripcion:   activo.descripcion ?? '',
+    categoria:     activo.categoria ?? '',
+    numero_serie:  activo.numero_serie ?? '',
+    fecha_compra:  activo.fecha_compra ? activo.fecha_compra.slice(0, 10) : '',
+    valor_compra:  activo.valor_compra ?? '',
+    estado:        activo.estado,
+    ubicacion:     activo.ubicacion ?? '',
+    observaciones: activo.observaciones ?? '',
+  };
+}
+
+function ActivoDialog({ open, activo, onClose }: { open: boolean; activo: Activo | null; onClose: () => void }) {
+  const isEdit        = !!activo;
+  const createActivo  = useCreateActivo();
+  const updateActivo  = useUpdateActivo();
   const [form, setForm]   = useState<ActivoFormData>(EMPTY);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setForm(EMPTY); setError(null); } }, [open]);
+  // Se re-ejecuta al abrir el dialog o cambiar el activo a editar — el dialog
+  // queda montado entre aperturas, así que el useState inicial no alcanza.
+  useEffect(() => {
+    if (!open) return;
+    setForm(activo ? activoToForm(activo) : EMPTY);
+    setError(null);
+  }, [open, activo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    const payload = {
+      nombre: form.nombre, descripcion: form.descripcion || null, categoria: form.categoria || null,
+      numero_serie: form.numero_serie || null, fecha_compra: form.fecha_compra || null,
+      valor_compra: form.valor_compra ? Number(form.valor_compra) : null,
+      estado: form.estado, ubicacion: form.ubicacion || null, observaciones: form.observaciones || null,
+    } as Partial<Activo>;
     try {
-      await createActivo.mutateAsync({
-        nombre: form.nombre, descripcion: form.descripcion || null, categoria: form.categoria || null,
-        numero_serie: form.numero_serie || null, fecha_compra: form.fecha_compra || null,
-        valor_compra: form.valor_compra ? Number(form.valor_compra) : null,
-        estado: form.estado, ubicacion: form.ubicacion || null, observaciones: form.observaciones || null,
-      } as Partial<Activo>);
+      if (isEdit) await updateActivo.mutateAsync({ id: activo!.id, data: payload });
+      else        await createActivo.mutateAsync(payload);
       onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Error al guardar');
+    } catch (err) {
+      setError(getApiErrorMessage(err));
     }
   };
+
+  const isPending = createActivo.isPending || updateActivo.isPending;
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nuevo activo</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{isEdit ? 'Editar activo' : 'Nuevo activo'}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -99,7 +125,7 @@ function NuevoActivoDialog({ open, onClose }: { open: boolean; onClose: () => vo
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" size="sm" disabled={createActivo.isPending}>{createActivo.isPending ? 'Guardando…' : 'Guardar'}</Button>
+            <Button type="submit" size="sm" disabled={isPending}>{isPending ? 'Guardando…' : 'Guardar'}</Button>
           </div>
         </form>
       </DialogContent>
@@ -151,9 +177,16 @@ function ObservacionesCell({ activo }: { activo: Activo }) {
 export default function ActivosTab() {
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro]       = useState('');
-  const [nuevoOpen, setNuevoOpen]             = useState(false);
+  const [formOpen, setFormOpen]               = useState(false);
+  const [editing, setEditing]                 = useState<Activo | null>(null);
   const { data: activos = [], isLoading } = useActivos({ categoria: categoriaFiltro || undefined, estado: estadoFiltro || undefined });
+  const deleteActivo = useDeleteActivo();
   const categorias = Array.from(new Set(activos.map(a => a.categoria).filter((c): c is string => !!c)));
+
+  const handleDelete = (a: Activo) => {
+    if (!window.confirm(`¿Eliminar el activo "${a.nombre}"?`)) return;
+    deleteActivo.mutate(a.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
@@ -171,7 +204,7 @@ export default function ActivosTab() {
             <option value="BAJA">Baja</option>
           </select>
         </div>
-        <Button size="sm" onClick={() => setNuevoOpen(true)}><Plus size={14} className="mr-1.5" /> Nuevo activo</Button>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus size={14} className="mr-1.5" /> Nuevo activo</Button>
       </div>
 
       {isLoading ? (
@@ -193,6 +226,7 @@ export default function ActivosTab() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Valor</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Ubicación</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Observaciones</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -205,6 +239,12 @@ export default function ActivosTab() {
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{a.valor_compra ?? '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{a.ubicacion ?? '-'}</td>
                   <td className="px-3 py-2.5 w-48"><ObservacionesCell activo={a} /></td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => { setEditing(a); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -212,7 +252,7 @@ export default function ActivosTab() {
         </div>
       )}
 
-      <NuevoActivoDialog open={nuevoOpen} onClose={() => setNuevoOpen(false)} />
+      <ActivoDialog open={formOpen} activo={editing} onClose={() => { setFormOpen(false); setEditing(null); }} />
     </div>
   );
 }

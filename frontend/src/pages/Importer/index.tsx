@@ -553,11 +553,17 @@ export default function ImporterPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-white shrink-0">
-        <h1 className="text-xl font-semibold">Importar Excel</h1>
-        {step !== 'upload' && (
-          <span className="text-sm text-muted-foreground">{filename}</span>
-        )}
+      <div className="flex flex-col gap-1 px-6 py-4 border-b border-border bg-white shrink-0">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold">Importar Excel</h1>
+          {step !== 'upload' && (
+            <span className="text-sm text-muted-foreground">{filename}</span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Importá eventos históricos desde el Excel original de gestión financiera.
+          Para importar el catálogo de productos Layher, ir a Stock → Productos.
+        </p>
       </div>
 
       {/* Progress */}

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Truck } from 'lucide-react';
-import { useCamiones, useCreateCamion, useUpdateCamion } from '@/hooks/useCamiones';
+import { Plus, Truck, Pencil, Trash2 } from 'lucide-react';
+import { useCamiones, useCreateCamion, useUpdateCamion, useDeleteCamion } from '@/hooks/useCamiones';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { Camion } from '@/types';
 
 interface CamionFormData {
@@ -91,8 +91,14 @@ function CamionDialog({ open, camion, onClose }: { open: boolean; camion: Camion
 export default function CamionesTab() {
   const { data: camiones = [], isLoading } = useCamiones();
   const updateCamion = useUpdateCamion();
+  const deleteCamion = useDeleteCamion();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing,    setEditing]    = useState<Camion | null>(null);
+
+  const handleDelete = (c: Camion) => {
+    if (!window.confirm(`¿Eliminar el camión "${c.codigo}"?`)) return;
+    deleteCamion.mutate(c.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
@@ -119,7 +125,7 @@ export default function CamionesTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Patente</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Activo</th>
-                <th className="px-3 py-2 w-16" />
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -137,8 +143,11 @@ export default function CamionesTab() {
                       {c.activo ? 'Activo' : 'Inactivo'}
                     </button>
                   </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Button variant="outline" size="sm" onClick={() => { setEditing(c); setDialogOpen(true); }}>Editar</Button>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                    </div>
                   </td>
                 </tr>
               ))}
