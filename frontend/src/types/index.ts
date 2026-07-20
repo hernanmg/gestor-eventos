@@ -222,7 +222,7 @@ export interface AlertasEcheqs {
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
-export type UbicacionStock   = 'DEPOSITO' | 'EN_EVENTO' | 'EN_TRANSITO' | 'BAJA';
+export type UbicacionStock   = 'DEPOSITO' | 'EN_TRANSITO' | 'EN_EVENTO' | 'EXCEDENTE' | 'ALQUILADO' | 'BAJA';
 export type EstadoAsignacion = 'ACTIVA' | 'TRANSFERIDA' | 'DEVUELTA' | 'CANCELADA';
 export type OrigenTransfer   = 'DEPOSITO' | 'EVENTO';
 export type TipoAlertaStock  = 'QUIEBRE_ACTUAL' | 'QUIEBRE_PROYECTADO';
@@ -241,44 +241,178 @@ export interface CategoriaStock {
 }
 
 export interface Producto {
-  id:           number;
-  nombre:       string;
-  descripcion:  string | null;
-  categoria_id: number | null;
-  categoria:    CategoriaStock | null;
-  codigo:       string | null;
-  stock_total:  number;
-  stock_minimo: number;
-  unidad:       string;
-  notas:        string | null;
-  activo:       boolean;
-  created_at:   string;
-  updated_at:   string;
-  deleted_at:   string | null;
+  id:              number;
+  nombre:          string;
+  descripcion:     string | null;
+  categoria_id:    number | null;
+  categoria:       CategoriaStock | null;
+  codigo_interno:  string | null;
+  codigo_externo:  string | null;
+  nombre_tecnico:  string | null;
+  nombre_interno:  string | null;
+  tiene_foto:      boolean;
+  valor_unitario:  string | null;
+  es_critico:      boolean;
+  catalogo_origen: string | null;
+  stock_total:     number;
+  stock_minimo:    number;
+  unidad:          string;
+  notas:           string | null;
+  activo:          boolean;
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
   // augmented by listProductos
   comprometido_hoy?: number;
   disponible_hoy?:   number;
+  // included in getProducto detail
+  asignaciones?: AsignacionStock[];
+  movimientos?:  MovimientoStock[];
+  cunas?:        { cantidad: number; cuna: { id: number; codigo: string; descripcion: string | null } }[];
 }
 
 export interface AsignacionStock {
+  id:                  number;
+  producto_id:         number;
+  evento_id:           number;
+  cantidad:            number;
+  fecha_salida:        string;
+  fecha_retorno:       string | null;
+  ubicacion:           UbicacionStock;
+  estado:              EstadoAsignacion;
+  origen:              OrigenTransfer;
+  evento_origen_id:    number | null;
+  notas:               string | null;
+  camion_id:           number | null;
+  cuna_id:             number | null;
+  cantidad_excedente:  number;
+  firmado_salida:      boolean;
+  firmado_salida_at:   string | null;
+  firmado_llegada:     boolean;
+  firmado_llegada_at:  string | null;
+  firmado_retorno:     boolean;
+  firmado_retorno_at:  string | null;
+  created_at:          string;
+  updated_at:          string;
+  deleted_at:          string | null;
+  // joined
+  producto?:      { id: number; nombre: string; codigo_interno: string | null; codigo_externo?: string | null; categoria: CategoriaStock | null; unidad: string };
+  evento_origen?: { id: number; nombre: string } | null;
+  evento?:        { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+  camion?:        { id: number; codigo: string; descripcion: string | null } | null;
+  cuna?:          { id: number; codigo: string; descripcion: string | null } | null;
+}
+
+// ── Camiones / Cunas (logística DOS57) ────────────────────────────────────────
+
+export interface Camion {
+  id:          number;
+  empresa_id:  number;
+  codigo:      string;
+  descripcion: string | null;
+  patente:     string | null;
+  tipo:        string | null;
+  activo:      boolean;
+  created_at:  string;
+  updated_at:  string;
+}
+
+export interface CunaProducto {
+  id:          number;
+  cuna_id:     number;
+  producto_id: number;
+  cantidad:    number;
+  producto?:   { id: number; nombre: string; unidad: string; codigo_interno?: string | null };
+}
+
+export interface Cuna {
+  id:                  number;
+  empresa_id:          number;
+  codigo:              string;
+  descripcion:         string | null;
+  activo:              boolean;
+  created_at:          string;
+  updated_at:          string;
+  productos?:          CunaProducto[];
+  productos_distintos?: number;
+  total_unidades?:     number;
+}
+
+// ── Pañol ─────────────────────────────────────────────────────────────────────
+
+export type TipoPanolItem   = 'HERRAMIENTA' | 'CONSUMIBLE';
+export type EstadoPanolItem = 'DISPONIBLE' | 'FUERA_DE_SERVICIO' | 'BAJA';
+export type TipoMovPanol    = 'SALIDA' | 'DEVOLUCION' | 'USO_INTERNO' | 'BAJA';
+
+export interface PanolItem {
   id:               number;
-  producto_id:      number;
-  evento_id:        number;
-  cantidad:         number;
-  fecha_salida:     string;
-  fecha_retorno:    string | null;
-  ubicacion:        UbicacionStock;
-  estado:           EstadoAsignacion;
-  origen:           OrigenTransfer;
-  evento_origen_id: number | null;
+  empresa_id:       number;
+  nombre:           string;
+  descripcion:      string | null;
+  tipo:             TipoPanolItem;
+  stock_total:      number;
+  stock_disponible: number;
+  valor:            string | null;
+  estado:           EstadoPanolItem;
   notas:            string | null;
   created_at:       string;
   updated_at:       string;
-  deleted_at:       string | null;
+  movimientos?:     MovimientoPanol[];
+}
+
+export interface MovimientoPanol {
+  id:                  number;
+  empresa_id:          number;
+  panol_item_id:       number;
+  tipo:                TipoMovPanol;
+  cantidad:            number;
+  evento_id:           number | null;
+  responsable_id:      number | null;
+  responsable_nombre:  string | null;
+  fecha:               string;
+  descripcion:         string | null;
+  cantidad_devuelta:   number | null;
+  cantidad_faltante:   number | null;
+  motivo_faltante:     string | null;
+  devolucion_at:       string | null;
+  created_at:          string;
+  updated_at:          string;
   // joined
-  producto?:      { id: number; nombre: string; codigo: string | null; categoria: CategoriaStock | null; unidad: string };
-  evento_origen?: { id: number; nombre: string } | null;
-  evento?:        { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+  panol_item?: { id: number; nombre: string; tipo: TipoPanolItem };
+  evento?:     { id: number; nombre: string; estado: EstadoEvento } | null;
+}
+
+export interface AlertaPanol {
+  movimiento_id:      number;
+  panol_item_id:      number;
+  panol_item_nombre:  string;
+  evento_id:          number | null;
+  evento_nombre?:     string;
+  dias_finalizado:    number | null;
+  responsable_id:     number | null;
+  responsable_nombre: string | null;
+  cantidad_pendiente: number;
+  fecha_salida:       string;
+}
+
+// ── Activos ───────────────────────────────────────────────────────────────────
+
+export type EstadoActivo = 'BUENO' | 'REGULAR' | 'DETERIORADO' | 'BAJA';
+
+export interface Activo {
+  id:            number;
+  empresa_id:    number;
+  nombre:        string;
+  descripcion:   string | null;
+  categoria:     string | null;
+  numero_serie:  string | null;
+  fecha_compra:  string | null;
+  valor_compra:  string | null;
+  estado:        EstadoActivo;
+  ubicacion:     string | null;
+  observaciones: string | null;
+  created_at:    string;
+  updated_at:    string;
 }
 
 export interface MovimientoStock {

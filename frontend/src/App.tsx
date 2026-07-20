@@ -17,6 +17,7 @@ import ProveedorDetallePage from '@/pages/Proveedores/ProveedorDetalle';
 import AuditoriaPage        from '@/pages/Auditoria';
 import StockPage            from '@/pages/Stock';
 import ProductoDetallePage  from '@/pages/Stock/ProductoDetalle';
+import FirmarMovimientoPage from '@/pages/Stock/FirmarMovimiento';
 import FacturasPage         from '@/pages/Facturas';
 import FacturaDetalle       from '@/pages/Facturas/FacturaDetalle';
 
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/auditoria"               element={<AuditoriaPage />} />
             <Route path="/stock"                   element={<StockPage />} />
             <Route path="/stock/productos/:id"     element={<ProductoDetallePage />} />
+            <Route path="/stock/firmar"            element={<FirmarMovimientoPage />} />
             <Route path="/facturas"                element={<FacturasPage />} />
             <Route path="/facturas/:id"            element={<FacturaDetalle />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

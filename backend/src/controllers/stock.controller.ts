@@ -1,5 +1,7 @@
 ﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import * as XLSX from 'xlsx';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
@@ -8,14 +10,20 @@ import type { UbicacionStock, EstadoAsignacion, OrigenTransfer, Prisma } from '@
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const productoCreateSchema = z.object({
-  nombre:       z.string().min(1),
-  descripcion:  z.string().nullable().optional(),
-  categoria_id: z.number().int().positive().nullable().optional(),
-  codigo:       z.string().nullable().optional(),
-  stock_total:  z.number().int().min(0),
-  stock_minimo: z.number().int().min(0).default(0),
-  unidad:       z.string().default('unidad'),
-  notas:        z.string().nullable().optional(),
+  nombre:          z.string().min(1),
+  descripcion:     z.string().nullable().optional(),
+  categoria_id:    z.number().int().positive().nullable().optional(),
+  codigo_interno:  z.string().nullable().optional(),
+  codigo_externo:  z.string().nullable().optional(),
+  nombre_tecnico:  z.string().nullable().optional(),
+  nombre_interno:  z.string().nullable().optional(),
+  valor_unitario:  z.number().nonnegative().nullable().optional(),
+  es_critico:      z.boolean().optional(),
+  catalogo_origen: z.string().nullable().optional(),
+  stock_total:     z.number().int().min(0),
+  stock_minimo:    z.number().int().min(0).default(0),
+  unidad:          z.string().default('unidad'),
+  notas:           z.string().nullable().optional(),
 });
 
 const categoriaSchema = z.object({
@@ -32,6 +40,8 @@ const asignarSchema = z.object({
   fecha_salida:  z.string(),
   fecha_retorno: z.string().nullable().optional(),
   notas:         z.string().nullable().optional(),
+  camion_id:     z.number().int().positive().nullable().optional(),
+  cuna_id:       z.number().int().positive().nullable().optional(),
 });
 
 const updateAsignacionSchema = z.object({
@@ -39,6 +49,8 @@ const updateAsignacionSchema = z.object({
   fecha_salida:  z.string().optional(),
   fecha_retorno: z.string().nullable().optional(),
   notas:         z.string().nullable().optional(),
+  camion_id:     z.number().int().positive().nullable().optional(),
+  cuna_id:       z.number().int().positive().nullable().optional(),
 });
 
 const transferenciaSchema = z.object({
@@ -167,15 +179,31 @@ async function calcSugerencias(
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 
+const PRODUCTO_SELECT = {
+  id: true, empresa_id: true, nombre: true, descripcion: true, categoria_id: true,
+  categoria: true, stock_total: true, stock_minimo: true, unidad: true, notas: true,
+  activo: true, created_at: true, updated_at: true, created_by: true, updated_by: true,
+  codigo_interno: true, codigo_externo: true, nombre_tecnico: true, nombre_interno: true,
+  foto_mime: true, foto_nombre: true, valor_unitario: true, es_critico: true, catalogo_origen: true,
+} satisfies Prisma.ProductoSelect;
+
+function mapProducto<T extends { foto_mime: string | null }>(p: T) {
+  return { ...p, tiene_foto: !!p.foto_mime };
+}
+
 export async function listProductos(req: Request, res: Response) {
-  const search       = typeof req.query.search    === 'string' ? req.query.search    : undefined;
-  const categoriaRaw = typeof req.query.categoria === 'string' ? req.query.categoria : undefined;
+  const search       = typeof req.query.search          === 'string' ? req.query.search          : undefined;
+  const categoriaRaw = typeof req.query.categoria        === 'string' ? req.query.categoria        : undefined;
+  const catalogoRaw  = typeof req.query.catalogo_origen  === 'string' ? req.query.catalogo_origen  : undefined;
 
   const where: Prisma.ProductoWhereInput = { deleted_at: null, activo: true, ...withTenant(req.empresaId!) };
   if (search) {
     where.OR = [
-      { nombre:    { contains: search, mode: 'insensitive' } },
-      { codigo:    { contains: search, mode: 'insensitive' } },
+      { nombre:         { contains: search, mode: 'insensitive' } },
+      { codigo_interno: { contains: search, mode: 'insensitive' } },
+      { codigo_externo: { contains: search, mode: 'insensitive' } },
+      { nombre_tecnico: { contains: search, mode: 'insensitive' } },
+      { nombre_interno: { contains: search, mode: 'insensitive' } },
       { categoria: { is: { nombre: { contains: search, mode: 'insensitive' } } } },
     ];
   }
@@ -188,11 +216,14 @@ export async function listProductos(req: Request, res: Response) {
       where.categoria = { is: { nombre: { contains: categoriaRaw, mode: 'insensitive' } } };
     }
   }
+  if (catalogoRaw) {
+    where.catalogo_origen = catalogoRaw;
+  }
 
   const productos = await prisma.producto.findMany({
     where,
     orderBy: { nombre: 'asc' },
-    include: { categoria: true },
+    select:  PRODUCTO_SELECT,
   });
 
   const now = new Date();
@@ -200,10 +231,9 @@ export async function listProductos(req: Request, res: Response) {
     productos.map(async p => {
       const disp = await calcDisponibilidad(p.id, now, now, req.empresaId!);
       return {
-        ...p,
-        stock_total:           p.stock_total,
-        comprometido_hoy:      disp?.cantidad_comprometida ?? 0,
-        disponible_hoy:        disp?.disponible ?? p.stock_total,
+        ...mapProducto(p),
+        comprometido_hoy: disp?.cantidad_comprometida ?? 0,
+        disponible_hoy:   disp?.disponible ?? p.stock_total,
       };
     }),
   );
@@ -214,18 +244,24 @@ export async function listProductos(req: Request, res: Response) {
 export async function getProducto(req: Request, res: Response) {
   const id = Number(req.params.id);
   const producto = await prisma.producto.findFirst({
-    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
-    include: {
-      categoria: true,
+    where:  { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: {
+      ...PRODUCTO_SELECT,
       asignaciones: {
         where:   { deleted_at: null },
-        include: { evento: { select: { id: true, nombre: true, fecha_inicio: true, fecha_fin: true } } },
+        include: {
+          evento:        { select: { id: true, nombre: true, fecha_inicio: true, fecha_fin: true } },
+          evento_origen: { select: { id: true, nombre: true } },
+          camion:        { select: { id: true, codigo: true, descripcion: true } },
+          cuna:          { select: { id: true, codigo: true, descripcion: true } },
+        },
         orderBy: { fecha_salida: 'desc' },
       },
       movimientos: {
         orderBy: { fecha: 'desc' },
         take:    100,
       },
+      cunas: { include: { cuna: { select: { id: true, codigo: true, descripcion: true } } } },
     },
   });
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
@@ -233,7 +269,52 @@ export async function getProducto(req: Request, res: Response) {
   const now  = new Date();
   const disp = await calcDisponibilidad(id, now, now, req.empresaId!);
 
-  res.json({ ...producto, disponibilidad_hoy: disp });
+  res.json({ ...mapProducto(producto), disponibilidad_hoy: disp });
+}
+
+// ── Foto de producto ──────────────────────────────────────────────────────────
+
+export const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Solo se aceptan imágenes JPEG, PNG o WEBP'));
+  },
+});
+
+export async function importarFoto(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (!req.file) { res.status(400).json({ error: 'Se requiere una imagen' }); return; }
+
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  await prisma.producto.update({
+    where: { id },
+    data: {
+      foto_data:   req.file.buffer,
+      foto_nombre: req.file.originalname,
+      foto_mime:   req.file.mimetype,
+      updated_by:  req.user!.id,
+    },
+  });
+
+  res.json({ message: 'Foto actualizada correctamente' });
+}
+
+export async function getFoto(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const producto = await prisma.producto.findFirst({
+    where:  { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: { foto_data: true, foto_mime: true, foto_nombre: true },
+  });
+  if (!producto)          { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+  if (!producto.foto_data) { res.status(404).json({ error: 'Este producto no tiene foto' }); return; }
+
+  res.setHeader('Content-Type', producto.foto_mime ?? 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${producto.foto_nombre ?? 'foto'}"`);
+  res.send(Buffer.from(producto.foto_data));
 }
 
 export async function createProducto(req: Request, res: Response) {
@@ -241,16 +322,23 @@ export async function createProducto(req: Request, res: Response) {
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
-  const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
+  const {
+    nombre, descripcion, categoria_id, codigo_interno, codigo_externo, nombre_tecnico, nombre_interno,
+    valor_unitario, es_critico, catalogo_origen, stock_total, stock_minimo, unidad, notas,
+  } = parsed.data;
 
   if (categoria_id) {
     const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
-  if (codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
-    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
+  if (codigo_interno) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_interno, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código interno' }); return; }
+  }
+  if (codigo_externo) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_externo, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código externo' }); return; }
   }
 
   const producto = await prisma.$transaction(async tx => {
@@ -258,7 +346,11 @@ export async function createProducto(req: Request, res: Response) {
       data: {
         ...withTenant(req.empresaId!),
         nombre, descripcion: descripcion ?? null, categoria_id: categoria_id ?? null,
-        codigo: codigo ?? null, stock_total, stock_minimo, unidad: unidad ?? 'unidad',
+        codigo_interno: codigo_interno ?? null, codigo_externo: codigo_externo ?? null,
+        nombre_tecnico: nombre_tecnico ?? null, nombre_interno: nombre_interno ?? null,
+        valor_unitario: valor_unitario ?? null, es_critico: es_critico ?? false,
+        catalogo_origen: catalogo_origen ?? null,
+        stock_total, stock_minimo, unidad: unidad ?? 'unidad',
         notas: notas ?? null, created_by: req.user!.id, updated_by: req.user!.id,
       },
     });
@@ -270,7 +362,7 @@ export async function createProducto(req: Request, res: Response) {
     return p;
   });
 
-  res.status(201).json(producto);
+  res.status(201).json(mapProducto(producto));
 }
 
 export async function updateProducto(req: Request, res: Response) {
@@ -283,27 +375,40 @@ export async function updateProducto(req: Request, res: Response) {
   const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
-  const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
+  const {
+    nombre, descripcion, categoria_id, codigo_interno, codigo_externo, nombre_tecnico, nombre_interno,
+    valor_unitario, es_critico, catalogo_origen, stock_total, stock_minimo, unidad, notas,
+  } = parsed.data;
 
   if (categoria_id !== undefined && categoria_id !== null) {
     const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
-  if (codigo && codigo !== existing.codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
-    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
+  if (codigo_interno && codigo_interno !== existing.codigo_interno) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_interno, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código interno' }); return; }
+  }
+  if (codigo_externo && codigo_externo !== existing.codigo_externo) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_externo, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código externo' }); return; }
   }
 
   const data: Prisma.ProductoUpdateInput = {
-    ...(nombre        !== undefined && { nombre }),
-    ...(descripcion   !== undefined && { descripcion }),
-    ...(categoria_id  !== undefined && { categoria: categoria_id ? { connect: { id: categoria_id } } : { disconnect: true } }),
-    ...(codigo        !== undefined && { codigo }),
-    ...(stock_total   !== undefined && { stock_total }),
-    ...(stock_minimo  !== undefined && { stock_minimo }),
-    ...(unidad        !== undefined && { unidad }),
-    ...(notas         !== undefined && { notas }),
+    ...(nombre          !== undefined && { nombre }),
+    ...(descripcion     !== undefined && { descripcion }),
+    ...(categoria_id    !== undefined && { categoria: categoria_id ? { connect: { id: categoria_id } } : { disconnect: true } }),
+    ...(codigo_interno  !== undefined && { codigo_interno }),
+    ...(codigo_externo  !== undefined && { codigo_externo }),
+    ...(nombre_tecnico  !== undefined && { nombre_tecnico }),
+    ...(nombre_interno  !== undefined && { nombre_interno }),
+    ...(valor_unitario  !== undefined && { valor_unitario }),
+    ...(es_critico      !== undefined && { es_critico }),
+    ...(catalogo_origen !== undefined && { catalogo_origen }),
+    ...(stock_total     !== undefined && { stock_total }),
+    ...(stock_minimo    !== undefined && { stock_minimo }),
+    ...(unidad          !== undefined && { unidad }),
+    ...(notas           !== undefined && { notas }),
     updated_by: req.user!.id,
   };
 
@@ -318,7 +423,7 @@ export async function updateProducto(req: Request, res: Response) {
     return p;
   });
 
-  res.json(producto);
+  res.json(mapProducto(producto));
 }
 
 export async function deleteProducto(req: Request, res: Response) {
@@ -469,8 +574,10 @@ export async function getEventoStock(req: Request, res: Response) {
   const asignaciones = await prisma.asignacionStock.findMany({
     where:   { evento_id: eventoId, deleted_at: null },
     include: {
-      producto:       { select: { id: true, nombre: true, codigo: true, categoria: true, unidad: true } },
+      producto:       { select: { id: true, nombre: true, codigo_interno: true, codigo_externo: true, categoria: true, unidad: true } },
       evento_origen:  { select: { id: true, nombre: true } },
+      camion:         { select: { id: true, codigo: true, descripcion: true } },
+      cuna:           { select: { id: true, codigo: true, descripcion: true } },
     },
     orderBy: { created_at: 'desc' },
   });
@@ -494,13 +601,22 @@ export async function asignarProducto(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const { producto_id, cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
+  const { producto_id, cantidad, fecha_salida, fecha_retorno, notas, camion_id, cuna_id } = parsed.data;
 
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  if (camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+  if (cuna_id) {
+    const cuna = await prisma.cuna.findFirst({ where: { id: cuna_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!cuna) { res.status(400).json({ error: 'Cuna no encontrada' }); return; }
+  }
 
   const fechaSalidaDate  = toDate(fecha_salida);
   const fechaRetornoDate = fecha_retorno ? toDate(fecha_retorno) : null;
@@ -525,6 +641,8 @@ export async function asignarProducto(req: Request, res: Response) {
         estado:        'ACTIVA' as EstadoAsignacion,
         origen:        'DEPOSITO' as OrigenTransfer,
         notas:         notas ?? null,
+        camion_id:     camion_id ?? null,
+        cuna_id:       cuna_id ?? null,
         created_by:    req.user!.id,
         updated_by:    req.user!.id,
       },
@@ -583,7 +701,16 @@ export async function updateAsignacion(req: Request, res: Response) {
     res.status(400).json({ error: 'Solo se pueden editar asignaciones ACTIVAS' }); return;
   }
 
-  const { cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
+  const { cantidad, fecha_salida, fecha_retorno, notas, camion_id, cuna_id } = parsed.data;
+
+  if (camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+  if (cuna_id) {
+    const cuna = await prisma.cuna.findFirst({ where: { id: cuna_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!cuna) { res.status(400).json({ error: 'Cuna no encontrada' }); return; }
+  }
 
   const asignacion = await prisma.$transaction(async tx => {
     const a = await tx.asignacionStock.update({
@@ -593,6 +720,8 @@ export async function updateAsignacion(req: Request, res: Response) {
         ...(fecha_salida  !== undefined && { fecha_salida: toDate(fecha_salida) }),
         ...(fecha_retorno !== undefined && { fecha_retorno: fecha_retorno ? toDate(fecha_retorno) : null }),
         ...(notas         !== undefined && { notas }),
+        ...(camion_id     !== undefined && { camion_id }),
+        ...(cuna_id       !== undefined && { cuna_id }),
         updated_by: req.user!.id,
       },
     });
@@ -870,4 +999,241 @@ export async function deleteCategoria(req: Request, res: Response) {
   });
 
   res.json({ message: 'Categoría eliminada correctamente' });
+}
+
+// ── Firmas digitales ─────────────────────────────────────────────────────────
+// Irreversibles — no hay endpoint para "desfirmar".
+
+const ASIGNACION_FIRMA_INCLUDE = {
+  producto: { select: { id: true, nombre: true, codigo_interno: true, unidad: true } },
+  evento:   { select: { id: true, nombre: true } },
+  camion:   { select: { id: true, codigo: true, descripcion: true } },
+  cuna:     { select: { id: true, codigo: true, descripcion: true } },
+} satisfies Prisma.AsignacionStockInclude;
+
+// GET /api/stock/asignaciones/pendientes-firma?paso=salida|llegada|retorno
+// Alimenta la vista mobile de firmas — lista tenant-wide (no hay campo de
+// responsable en AsignacionStock) de lo que está pendiente en cada paso.
+export async function getPendientesFirma(req: Request, res: Response) {
+  const paso = typeof req.query.paso === 'string' ? req.query.paso : undefined;
+  if (!paso || !['salida', 'llegada', 'retorno'].includes(paso)) {
+    res.status(400).json({ error: 'Se requiere paso=salida|llegada|retorno' }); return;
+  }
+
+  const where: Prisma.AsignacionStockWhereInput = {
+    estado: 'ACTIVA', deleted_at: null, evento: withTenant(req.empresaId!),
+    ...(paso === 'salida'  && { firmado_salida: false }),
+    ...(paso === 'llegada' && { firmado_salida: true, firmado_llegada: false }),
+    ...(paso === 'retorno' && { firmado_llegada: true, firmado_retorno: false }),
+  };
+
+  const asignaciones = await prisma.asignacionStock.findMany({
+    where,
+    include: ASIGNACION_FIRMA_INCLUDE,
+    orderBy: { fecha_salida: 'asc' },
+  });
+
+  res.json({ asignaciones });
+}
+
+export async function firmarSalida(req: Request, res: Response) {
+  const id = Number(req.params.id);
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (existing.firmado_salida) { res.status(400).json({ error: 'Ya se firmó la salida de esta asignación' }); return; }
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_salida:     true,
+        firmado_salida_at:  new Date(),
+        firmado_salida_por: req.user!.id,
+        ubicacion:          'EN_TRANSITO' as UbicacionStock,
+        updated_by:         req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_SALIDA', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de salida — ${existing.producto.nombre} × ${existing.cantidad}${existing.camion ? ` en ${existing.camion.codigo}` : ''}`,
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+const firmarLlegadaSchema = z.object({
+  cantidad_excedente: z.number().int().min(0).optional(),
+});
+
+export async function firmarLlegada(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = firmarLlegadaSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (!existing.firmado_salida) { res.status(400).json({ error: 'Primero debe firmarse la salida' }); return; }
+  if (existing.firmado_llegada) { res.status(400).json({ error: 'Ya se firmó la llegada de esta asignación' }); return; }
+
+  const cantidadExcedente = parsed.data.cantidad_excedente ?? 0;
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_llegada:     true,
+        firmado_llegada_at:  new Date(),
+        firmado_llegada_por: req.user!.id,
+        ubicacion:           (cantidadExcedente > 0 ? 'EXCEDENTE' : 'EN_EVENTO') as UbicacionStock,
+        cantidad_excedente:  cantidadExcedente,
+        updated_by:          req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_LLEGADA', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de llegada — ${existing.producto.nombre} × ${existing.cantidad} a "${existing.evento.nombre}"`
+        + (cantidadExcedente > 0 ? ` (excedente: ${cantidadExcedente})` : ''),
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+export async function firmarRetorno(req: Request, res: Response) {
+  const id = Number(req.params.id);
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (!existing.firmado_llegada) { res.status(400).json({ error: 'Primero debe firmarse la llegada' }); return; }
+  if (existing.firmado_retorno) { res.status(400).json({ error: 'Ya se firmó el retorno de esta asignación' }); return; }
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_retorno:     true,
+        firmado_retorno_at:  new Date(),
+        firmado_retorno_por: req.user!.id,
+        ubicacion:           'EN_TRANSITO' as UbicacionStock,
+        updated_by:          req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_RETORNO', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de retorno — ${existing.producto.nombre} × ${existing.cantidad}${existing.camion ? ` en ${existing.camion.codigo}` : ''}`,
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+// ── Importador catálogo Layher ────────────────────────────────────────────────
+
+export const uploadCatalogo = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.originalname.toLowerCase().endsWith('.xlsx')) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos .xlsx'));
+  },
+});
+
+export async function importarCatalogo(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+
+  const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) { res.status(400).json({ error: 'El archivo no contiene hojas' }); return; }
+
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
+
+  let creados = 0;
+  let actualizados = 0;
+  const errores: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const codigo        = String(row['CÓDIGO'] ?? row['CODIGO'] ?? '').trim();
+    const nombreTecnico = String(row['NOMBRE_TÉCNICO'] ?? row['NOMBRE_TECNICO'] ?? '').trim();
+    const descripcion   = row['DESCRIPCIÓN'] ?? row['DESCRIPCION'] ?? null;
+    const unidad         = row['UNIDAD'] ? String(row['UNIDAD']).trim() : 'unidad';
+    const categoriaNombre = row['CATEGORÍA'] ?? row['CATEGORIA'] ?? null;
+
+    if (!codigo || !nombreTecnico) {
+      errores.push(`Fila ${i + 2}: falta CÓDIGO o NOMBRE_TÉCNICO`);
+      continue;
+    }
+
+    let categoria_id: number | null = null;
+    if (categoriaNombre) {
+      const cat = await prisma.categoriaStock.findFirst({
+        where: { nombre: String(categoriaNombre), deleted_at: null, ...withTenant(req.empresaId!) },
+      });
+      categoria_id = cat?.id ?? null;
+    }
+
+    const existing = await prisma.producto.findFirst({
+      where: { codigo_externo: codigo, deleted_at: null, ...withTenant(req.empresaId!) },
+    });
+
+    if (existing) {
+      await prisma.producto.update({
+        where: { id: existing.id },
+        data: {
+          nombre_tecnico: nombreTecnico,
+          descripcion:    descripcion ? String(descripcion) : existing.descripcion,
+          updated_by:     req.user!.id,
+        },
+      });
+      actualizados++;
+    } else {
+      await prisma.producto.create({
+        data: {
+          ...withTenant(req.empresaId!),
+          nombre:          nombreTecnico,
+          nombre_tecnico:  nombreTecnico,
+          descripcion:     descripcion ? String(descripcion) : null,
+          codigo_externo:  codigo,
+          catalogo_origen: 'Layher',
+          categoria_id,
+          unidad,
+          stock_total:  0,
+          stock_minimo: 0,
+          created_by:   req.user!.id,
+          updated_by:   req.user!.id,
+        },
+      });
+      creados++;
+    }
+  }
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Producto',
+    descripcion: `Importó catálogo Layher — ${creados} creados, ${actualizados} actualizados, ${errores.length} errores`,
+    ip: req.ip, tx: prisma,
+  });
+
+  res.json({ creados, actualizados, errores });
 }

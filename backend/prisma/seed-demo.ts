@@ -2,17 +2,21 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import {
   CategoriaEmpleado,
+  EstadoActivo,
   EstadoAsignacion,
   EstadoEcheq,
   EstadoEvento,
   EstadoJornada,
   EstadoLiquidacion,
+  EstadoPanolItem,
   Moneda,
   OrigenTransfer,
   Rol,
   TipoAnticipo,
   TipoCuenta,
   Tipo,
+  TipoMovPanol,
+  TipoPanolItem,
   UbicacionStock,
 } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
@@ -47,6 +51,9 @@ function nextSaldo(prev: number, debe: number, haber: number): number {
 // Datos de demo — siempre van a Enjoy Producciones (empresa sembrada con id=1
 // en la migración de multitenancy / prisma/seed.ts).
 const EMPRESA_ID = 1;
+// DOS57 Estructuras — empresa sembrada con id=2 en prisma/seed.ts. Usada para
+// el módulo de stock refactorizado (camiones, catálogo Layher, cunas, pañol, activos).
+const EMPRESA_ID_DOS57 = 2;
 
 // ── Helpers idempotentes ──────────────────────────────────────────────────────
 
@@ -151,14 +158,14 @@ async function main() {
   // ── 4. PRODUCTOS DE STOCK ────────────────────────────────────────────────────
   console.log('Creando productos de stock...');
 
-  const prodParlante  = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'PAR-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Parlante JBL Line Array',   codigo: 'PAR-001',     stock_total: 20,  stock_minimo: 4,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
-  const prodSub       = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'SUB-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Subwoofer DBX 18"',          codigo: 'SUB-001',     stock_total: 12,  stock_minimo: 2,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
-  const prodMovHead   = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'MOV-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Moving Head LED 200W',       codigo: 'MOV-001',     stock_total: 30,  stock_minimo: 6,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
-  const prodConsola   = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'CON-ILU-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Consola de Iluminación MA2', codigo: 'CON-ILU-001', stock_total: 3,   stock_minimo: 1,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
-  const prodEscMod    = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'ESC-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Módulo de Escenario 2x1m',  codigo: 'ESC-001',     stock_total: 50,  stock_minimo: 10, categoria_id: catEsc.id,     empresa_id: EMPRESA_ID } });
-  const prodGenerador = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'GEN-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Generador 100kva',           codigo: 'GEN-001',     stock_total: 4,   stock_minimo: 1,  categoria_id: catEnergia.id, empresa_id: EMPRESA_ID } });
-  const prodSilla     = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'SIL-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Silla Plástica Blanca',      codigo: 'SIL-001',     stock_total: 200, stock_minimo: 20, categoria_id: catMob.id,     empresa_id: EMPRESA_ID } });
-  const prodMolinete  = await prisma.producto.upsert({ where: { codigo_empresa_id: { codigo: 'MOL-001',     empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Molinete Torniquete',        codigo: 'MOL-001',     stock_total: 8,   stock_minimo: 2,  categoria_id: catSegur.id,   empresa_id: EMPRESA_ID } });
+  const prodParlante  = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'PAR-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Parlante JBL Line Array', codigo_interno: 'PAR-001',     stock_total: 20,  stock_minimo: 4,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
+  const prodSub       = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'SUB-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Subwoofer DBX 18"', codigo_interno: 'SUB-001',     stock_total: 12,  stock_minimo: 2,  categoria_id: catAudio.id,   empresa_id: EMPRESA_ID } });
+  const prodMovHead   = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'MOV-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Moving Head LED 200W', codigo_interno: 'MOV-001',     stock_total: 30,  stock_minimo: 6,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
+  const prodConsola   = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'CON-ILU-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Consola de Iluminación MA2', codigo_interno: 'CON-ILU-001', stock_total: 3,   stock_minimo: 1,  categoria_id: catIlum.id,    empresa_id: EMPRESA_ID } });
+  const prodEscMod    = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'ESC-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Módulo de Escenario 2x1m', codigo_interno: 'ESC-001',     stock_total: 50,  stock_minimo: 10, categoria_id: catEsc.id,     empresa_id: EMPRESA_ID } });
+  const prodGenerador = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'GEN-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Generador 100kva', codigo_interno: 'GEN-001',     stock_total: 4,   stock_minimo: 1,  categoria_id: catEnergia.id, empresa_id: EMPRESA_ID } });
+  const prodSilla     = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'SIL-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Silla Plástica Blanca', codigo_interno: 'SIL-001',     stock_total: 200, stock_minimo: 20, categoria_id: catMob.id,     empresa_id: EMPRESA_ID } });
+  const prodMolinete  = await prisma.producto.upsert({ where: { codigo_interno_empresa_id: { codigo_interno: 'MOL-001', empresa_id: EMPRESA_ID } }, update: {}, create: { nombre: 'Molinete Torniquete', codigo_interno: 'MOL-001',     stock_total: 8,   stock_minimo: 2,  categoria_id: catSegur.id,   empresa_id: EMPRESA_ID } });
 
   // Suprimir warnings de vars no usadas (quedan disponibles si se extiende el seed)
   void prodSub; void prodConsola; void prodSilla; void prodMolinete;
@@ -985,6 +992,211 @@ async function main() {
     console.log('✓ Liquidación BORRADOR creada para Diego Rodríguez');
   } else {
     console.log('  (liquidación BORRADOR ya existe, omitiendo)');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DOS57 — CAMIONES, CATÁLOGO LAYHER, CUNAS, ASIGNACIÓN EN TRÁNSITO
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\nCreando datos de stock para DOS57 Estructuras...');
+
+  const camC1 = await prisma.camion.upsert({ where: { codigo_empresa_id: { codigo: 'C1', empresa_id: EMPRESA_ID_DOS57 } }, update: {}, create: { codigo: 'C1', descripcion: 'Mercedes Sprinter', empresa_id: EMPRESA_ID_DOS57 } });
+  await                prisma.camion.upsert({ where: { codigo_empresa_id: { codigo: 'C2', empresa_id: EMPRESA_ID_DOS57 } }, update: {}, create: { codigo: 'C2', descripcion: 'Camión Iveco',       empresa_id: EMPRESA_ID_DOS57 } });
+  await                prisma.camion.upsert({ where: { codigo_empresa_id: { codigo: 'C3', empresa_id: EMPRESA_ID_DOS57 } }, update: {}, create: { codigo: 'C3', descripcion: 'Van Transit',         empresa_id: EMPRESA_ID_DOS57 } });
+  console.log('✓ Camiones DOS57: 3 creados (C1, C2, C3)');
+
+  const layherData = [
+    { codigo_externo: 'L-2000', nombre_tecnico: 'Vertical 2.00m',      nombre_interno: 'Torre 2m',        stock_total: 200, es_critico: true  },
+    { codigo_externo: 'L-1500', nombre_tecnico: 'Vertical 1.50m',      nombre_interno: 'Torre 1.5m',       stock_total: 150, es_critico: true  },
+    { codigo_externo: 'L-1000', nombre_tecnico: 'Vertical 1.00m',      nombre_interno: 'Torre 1m',         stock_total: 180, es_critico: false },
+    { codigo_externo: 'H-2500', nombre_tecnico: 'Horizontal 2.50m',    nombre_interno: 'Travesaño 2.5m',   stock_total: 220, es_critico: true  },
+    { codigo_externo: 'H-1000', nombre_tecnico: 'Horizontal 1.00m',    nombre_interno: 'Travesaño 1m',     stock_total: 160, es_critico: false },
+    { codigo_externo: 'D-2000', nombre_tecnico: 'Diagonal 2.00m',      nombre_interno: 'Diagonal 2m',      stock_total: 120, es_critico: true  },
+    { codigo_externo: 'BASE-J', nombre_tecnico: 'Base Ajustable',      nombre_interno: 'Base regulable',   stock_total: 300, es_critico: true  },
+    { codigo_externo: 'PLT-40', nombre_tecnico: 'Plataforma 0.40m',    nombre_interno: 'Piso 40cm',        stock_total: 250, es_critico: false },
+    { codigo_externo: 'BAR-KL', nombre_tecnico: 'Barandilla Kliklock', nombre_interno: 'Baranda',          stock_total: 140, es_critico: false },
+    { codigo_externo: 'ESC-LY', nombre_tecnico: 'Escalera Interior',   nombre_interno: 'Escalera',         stock_total: 40,  es_critico: false },
+  ];
+
+  const layherProductos = [];
+  for (const d of layherData) {
+    const p = await prisma.producto.upsert({
+      where:  { codigo_externo_empresa_id: { codigo_externo: d.codigo_externo, empresa_id: EMPRESA_ID_DOS57 } },
+      update: {},
+      create: {
+        empresa_id:      EMPRESA_ID_DOS57,
+        nombre:          d.nombre_tecnico,
+        nombre_tecnico:  d.nombre_tecnico,
+        nombre_interno:  d.nombre_interno,
+        codigo_externo:  d.codigo_externo,
+        catalogo_origen: 'Layher',
+        stock_total:     d.stock_total,
+        stock_minimo:    Math.round(d.stock_total * 0.1),
+        es_critico:      d.es_critico,
+        unidad:          'unidad',
+      },
+    });
+    layherProductos.push(p);
+  }
+  console.log(`✓ Productos Layher DOS57: ${layherProductos.length} creados`);
+
+  const cunasData = [
+    { codigo: 'C-001', descripcion: 'Cuna torre estándar',    productos: [0, 3, 6] },
+    { codigo: 'C-002', descripcion: 'Cuna horizontal',        productos: [3, 4, 7] },
+    { codigo: 'C-003', descripcion: 'Cuna diagonales y base', productos: [5, 6, 1] },
+    { codigo: 'C-004', descripcion: 'Cuna plataformas',       productos: [7, 8, 2, 0] },
+    { codigo: 'C-005', descripcion: 'Cuna accesos',           productos: [9, 8, 6] },
+  ];
+
+  for (const c of cunasData) {
+    const cuna = await prisma.cuna.upsert({
+      where:  { codigo_empresa_id: { codigo: c.codigo, empresa_id: EMPRESA_ID_DOS57 } },
+      update: {},
+      create: { codigo: c.codigo, descripcion: c.descripcion, empresa_id: EMPRESA_ID_DOS57 },
+    });
+    for (const idx of c.productos) {
+      const producto = layherProductos[idx];
+      await prisma.cunaProducto.upsert({
+        where:  { cuna_id_producto_id: { cuna_id: cuna.id, producto_id: producto.id } },
+        update: {},
+        create: { cuna_id: cuna.id, producto_id: producto.id, cantidad: 10 },
+      });
+    }
+  }
+  console.log(`✓ Cunas DOS57: ${cunasData.length} creadas con contenido estandarizado`);
+
+  // Evento demo DOS57 con una asignación en tránsito (firma de salida ya hecha)
+  const existeEventoDos57 = await prisma.evento.findFirst({ where: { nombre: 'Montaje Escenario Techado — Predio Norte', empresa_id: EMPRESA_ID_DOS57 } });
+  if (existeEventoDos57) {
+    console.log('  (evento DOS57 ya existe, omitiendo)');
+  } else {
+    const eventoDos57 = await prisma.evento.create({
+      data: {
+        empresa_id:   EMPRESA_ID_DOS57,
+        nombre:       'Montaje Escenario Techado — Predio Norte',
+        fecha_inicio: daysFromNow(3),
+        fecha_fin:    daysFromNow(7),
+        estado:       EstadoEvento.ACTIVO,
+        moneda_base:  Moneda.ARS,
+      },
+    });
+
+    const asignacionDos57 = await prisma.asignacionStock.create({
+      data: {
+        producto_id:       layherProductos[0].id, // Vertical 2.00m
+        evento_id:         eventoDos57.id,
+        cantidad:           40,
+        fecha_salida:       new Date(),
+        ubicacion:          UbicacionStock.EN_TRANSITO,
+        estado:             EstadoAsignacion.ACTIVA,
+        origen:             OrigenTransfer.DEPOSITO,
+        camion_id:          camC1.id,
+        firmado_salida:     true,
+        firmado_salida_at:  new Date(),
+        notas:              'Camión C1 en tránsito hacia Predio Norte',
+      },
+    });
+    void asignacionDos57;
+    totalEventos++;
+    totalAsignaciones++;
+    console.log('✓ Evento DOS57 creado con asignación en tránsito (firma de salida hecha)');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PAÑOL — 5 ítems + 2 movimientos por empresa (Enjoy y DOS57)
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\nCreando pañol (herramientas y consumibles) para ambas empresas...');
+
+  const panolItemsData = [
+    { nombre: 'Taladro Bosch GSB 13 RE',   tipo: TipoPanolItem.HERRAMIENTA, stock_total: 6,  valor: 45000 },
+    { nombre: 'Amoladora Angular 4.5"',    tipo: TipoPanolItem.HERRAMIENTA, stock_total: 5,  valor: 32000 },
+    { nombre: 'Llave de impacto',          tipo: TipoPanolItem.HERRAMIENTA, stock_total: 4,  valor: 58000 },
+    { nombre: 'Cinta aisladora (rollo)',   tipo: TipoPanolItem.CONSUMIBLE,  stock_total: 50, valor: 800   },
+    { nombre: 'Precintos plásticos (caja)', tipo: TipoPanolItem.CONSUMIBLE, stock_total: 30, valor: 2500  },
+  ];
+
+  for (const empresaId of [EMPRESA_ID, EMPRESA_ID_DOS57]) {
+    const evento = await prisma.evento.findFirst({ where: { empresa_id: empresaId, deleted_at: null }, orderBy: { id: 'asc' } });
+    // Evento CERRADO, si existe — usado en el movimiento pendiente para que
+    // GET /panol/alertas tenga datos reales que mostrar (ítem no devuelto de
+    // un evento ya finalizado).
+    const eventoCerrado = await prisma.evento.findFirst({ where: { empresa_id: empresaId, estado: EstadoEvento.CERRADO, deleted_at: null } });
+
+    const items: Awaited<ReturnType<typeof prisma.panolItem.create>>[] = [];
+    for (const d of panolItemsData) {
+      const existing = await prisma.panolItem.findFirst({ where: { nombre: d.nombre, empresa_id: empresaId, deleted_at: null } });
+      const item = existing ?? await prisma.panolItem.create({
+        data: {
+          empresa_id:       empresaId,
+          nombre:           d.nombre,
+          tipo:             d.tipo,
+          stock_total:      d.stock_total,
+          stock_disponible: d.stock_total,
+          valor:            d.valor,
+          estado:           EstadoPanolItem.DISPONIBLE,
+        },
+      });
+      items.push(item);
+    }
+
+    // Movimiento 1 — salida con devolución completa
+    const mov1Existente = await prisma.movimientoPanol.findFirst({ where: { panol_item_id: items[0].id, empresa_id: empresaId, descripcion: 'Demo — devolución completa' } });
+    if (!mov1Existente) {
+      await prisma.$transaction(async tx => {
+        await tx.panolItem.update({ where: { id: items[0].id }, data: { stock_disponible: { decrement: 1 } } });
+        const mov = await tx.movimientoPanol.create({
+          data: {
+            empresa_id: empresaId, panol_item_id: items[0].id, tipo: TipoMovPanol.SALIDA, cantidad: 1,
+            evento_id: evento?.id ?? null, responsable_nombre: 'Equipo de armado', fecha: daysAgo(5),
+            descripcion: 'Demo — devolución completa',
+          },
+        });
+        await tx.panolItem.update({ where: { id: items[0].id }, data: { stock_disponible: { increment: 1 } } });
+        await tx.movimientoPanol.update({ where: { id: mov.id }, data: { cantidad_devuelta: 1, cantidad_faltante: 0, devolucion_at: daysAgo(3) } });
+      });
+    }
+
+    // Movimiento 2 — salida pendiente de devolución
+    const mov2Existente = await prisma.movimientoPanol.findFirst({ where: { panol_item_id: items[1].id, empresa_id: empresaId, descripcion: 'Demo — pendiente de devolución' } });
+    if (!mov2Existente) {
+      await prisma.$transaction(async tx => {
+        await tx.panolItem.update({ where: { id: items[1].id }, data: { stock_disponible: { decrement: 1 } } });
+        await tx.movimientoPanol.create({
+          data: {
+            empresa_id: empresaId, panol_item_id: items[1].id, tipo: TipoMovPanol.SALIDA, cantidad: 1,
+            evento_id: (eventoCerrado ?? evento)?.id ?? null, responsable_nombre: 'Equipo de armado', fecha: daysAgo(15),
+            descripcion: 'Demo — pendiente de devolución',
+          },
+        });
+      });
+    }
+
+    console.log(`✓ Pañol empresa #${empresaId}: 5 ítems, 2 movimientos`);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ACTIVOS — 3 por empresa (Enjoy y DOS57)
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\nCreando activos para ambas empresas...');
+
+  const activosData = [
+    { nombre: 'Notebook Dell Latitude',  categoria: 'Informático', estado: EstadoActivo.BUENO,   ubicacion: 'Oficina',          valor_compra: 850000 },
+    { nombre: 'Escritorio de oficina',   categoria: 'Mobiliario',  estado: EstadoActivo.REGULAR, ubicacion: 'Oficina',          valor_compra: 120000 },
+    { nombre: 'Camioneta Toro',          categoria: 'Vehículo',    estado: EstadoActivo.BUENO,   ubicacion: 'Depósito central', valor_compra: 12000000 },
+  ];
+
+  for (const empresaId of [EMPRESA_ID, EMPRESA_ID_DOS57]) {
+    for (const d of activosData) {
+      const existing = await prisma.activo.findFirst({ where: { nombre: d.nombre, empresa_id: empresaId, deleted_at: null } });
+      if (!existing) {
+        await prisma.activo.create({
+          data: {
+            empresa_id: empresaId, nombre: d.nombre, categoria: d.categoria,
+            estado: d.estado, ubicacion: d.ubicacion, valor_compra: d.valor_compra,
+          },
+        });
+      }
+    }
+    console.log(`✓ Activos empresa #${empresaId}: 3 creados`);
   }
 
   // ── RESUMEN ───────────────────────────────────────────────────────────────────

@@ -18,6 +18,8 @@ import stockRouter, { eventoStockRouter } from './routes/stock';
 import { facturasRouter, pagosRouter, facturasEventoRouter } from './routes/facturas';
 import { empresasRouter, empresaActualRouter } from './routes/empresas';
 import rrhhRouter from './routes/rrhh';
+import panolRouter from './routes/panol';
+import activosRouter from './routes/activos';
 
 const app = express();
 
@@ -70,6 +72,8 @@ app.use('/api/eventos',           facturasEventoRouter);
 app.use('/api/empresas',          empresasRouter);
 app.use('/api/empresa',           empresaActualRouter);
 app.use('/api/rrhh',              rrhhRouter);
+app.use('/api/panol',             panolRouter);
+app.use('/api/activos',           activosRouter);
 
 app.use(errorHandler);
 

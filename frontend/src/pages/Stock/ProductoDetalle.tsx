@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package } from 'lucide-react';
-import { useProducto } from '@/hooks/useStock';
+import { useProducto, useFotoBlobUrl } from '@/hooks/useStock';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { EstadoAsignacion } from '@/types';
@@ -29,6 +29,7 @@ export default function ProductoDetallePage() {
   const productoId = Number(id);
 
   const { data: producto, isLoading } = useProducto(productoId);
+  const fotoUrl = useFotoBlobUrl(producto?.id, producto?.tiene_foto ?? false);
 
   if (isLoading) {
     return <div className="p-6 text-sm text-muted-foreground">Cargando...</div>;
@@ -56,17 +57,33 @@ export default function ProductoDetallePage() {
         <button onClick={() => navigate('/stock')} className="text-muted-foreground hover:text-foreground mt-0.5">
           <ArrowLeft size={18} />
         </button>
+        {fotoUrl && (
+          <img src={fotoUrl} alt={producto.nombre} className="h-16 w-16 rounded border object-cover shrink-0" />
+        )}
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <Package size={20} className="text-muted-foreground" />
+            {!fotoUrl && <Package size={20} className="text-muted-foreground" />}
             <h1 className="text-2xl font-bold">{producto.nombre}</h1>
-            {producto.codigo && (
-              <span className="text-xs font-mono bg-secondary px-2 py-0.5 rounded">{producto.codigo}</span>
+            {producto.es_critico && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>
+            )}
+            {producto.codigo_interno && (
+              <span className="text-xs font-mono bg-secondary px-2 py-0.5 rounded" title="Código interno">{producto.codigo_interno}</span>
+            )}
+            {producto.codigo_externo && (
+              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded" title="Código externo (fabricante)">{producto.codigo_externo}</span>
             )}
             {producto.categoria && (
               <span className="text-xs text-muted-foreground">{producto.categoria.nombre}</span>
             )}
           </div>
+          {(producto.nombre_tecnico || producto.nombre_interno) && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {producto.nombre_tecnico && <>Técnico: <span className="text-foreground">{producto.nombre_tecnico}</span></>}
+              {producto.nombre_tecnico && producto.nombre_interno && ' · '}
+              {producto.nombre_interno && <>Interno: <span className="text-foreground">{producto.nombre_interno}</span></>}
+            </p>
+          )}
           {producto.descripcion && (
             <p className="text-sm text-muted-foreground mt-1">{producto.descripcion}</p>
           )}

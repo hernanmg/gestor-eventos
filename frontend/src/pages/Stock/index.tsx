@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, AlertTriangle, Plus, Search, ChevronRight, X } from 'lucide-react';
-import { useProductos, useCreateProducto, useUpdateProducto, useAlertasStock, useSugerencias, useCategoriasStock } from '@/hooks/useStock';
+import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload } from 'lucide-react';
+import {
+  useProductos, useCreateProducto, useUpdateProducto, useAlertasStock, useSugerencias, useCategoriasStock,
+  useUploadFotoProducto, useFotoBlobUrl,
+} from '@/hooks/useStock';
+import { useAlertasPanol } from '@/hooks/usePanol';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import type { Producto, AlertaStock, SugerenciaStock, CategoriaStock } from '@/types';
+import CunasTab from './CunasTab';
+import CamionesTab from './CamionesTab';
+import PanolTab from './PanolTab';
+import ActivosTab from './ActivosTab';
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -35,20 +43,50 @@ function CategoriaBadge({ categoria }: { categoria: CategoriaStock | null | unde
 }
 
 interface ProductoFormData {
-  nombre:       string;
-  descripcion:  string;
-  categoria_id: number | '';
-  codigo:       string;
-  stock_total:  number;
-  stock_minimo: number;
-  unidad:       string;
-  notas:        string;
+  nombre:          string;
+  descripcion:     string;
+  categoria_id:    number | '';
+  codigo_interno:  string;
+  codigo_externo:  string;
+  nombre_tecnico:  string;
+  nombre_interno:  string;
+  es_critico:      boolean;
+  stock_total:     number;
+  stock_minimo:    number;
+  unidad:          string;
+  notas:           string;
 }
 
 const EMPTY: ProductoFormData = {
-  nombre: '', descripcion: '', categoria_id: '', codigo: '',
+  nombre: '', descripcion: '', categoria_id: '', codigo_interno: '', codigo_externo: '',
+  nombre_tecnico: '', nombre_interno: '', es_critico: false,
   stock_total: 0, stock_minimo: 0, unidad: 'unidad', notas: '',
 };
+
+function FotoUpload({ producto }: { producto: Producto | null }) {
+  const uploadFoto = useUploadFotoProducto();
+  const fotoUrl     = useFotoBlobUrl(producto?.id, producto?.tiene_foto ?? false);
+  const inputRef    = useRef<HTMLInputElement>(null);
+
+  if (!producto) return null;
+
+  return (
+    <div className="col-span-2 flex items-center gap-3">
+      <div className="h-16 w-16 rounded border bg-muted/30 flex items-center justify-center overflow-hidden shrink-0">
+        {fotoUrl ? <img src={fotoUrl} alt={producto.nombre} className="h-full w-full object-cover" /> : <Package size={20} className="text-muted-foreground" />}
+      </div>
+      <div>
+        <input
+          ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) uploadFoto.mutate({ id: producto.id, file: f }); }}
+        />
+        <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()} disabled={uploadFoto.isPending}>
+          <Upload size={13} className="mr-1.5" /> {uploadFoto.isPending ? 'Subiendo…' : 'Subir foto'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function ProductoDialog({
   open, producto, onClose,
@@ -68,14 +106,18 @@ function ProductoDialog({
   useEffect(() => {
     setForm(producto
       ? {
-          nombre:       producto.nombre,
-          descripcion:  producto.descripcion ?? '',
-          categoria_id: producto.categoria_id ?? '',
-          codigo:       producto.codigo     ?? '',
-          stock_total:  producto.stock_total,
-          stock_minimo: producto.stock_minimo,
-          unidad:       producto.unidad,
-          notas:        producto.notas ?? '',
+          nombre:         producto.nombre,
+          descripcion:    producto.descripcion ?? '',
+          categoria_id:   producto.categoria_id ?? '',
+          codigo_interno: producto.codigo_interno ?? '',
+          codigo_externo: producto.codigo_externo ?? '',
+          nombre_tecnico: producto.nombre_tecnico ?? '',
+          nombre_interno: producto.nombre_interno ?? '',
+          es_critico:     producto.es_critico,
+          stock_total:    producto.stock_total,
+          stock_minimo:   producto.stock_minimo,
+          unidad:         producto.unidad,
+          notas:          producto.notas ?? '',
         }
       : EMPTY,
     );
@@ -89,14 +131,18 @@ function ProductoDialog({
     e.preventDefault();
     setError(null);
     const payload = {
-      nombre:       form.nombre       || undefined,
-      descripcion:  form.descripcion  || null,
-      categoria_id: form.categoria_id !== '' ? Number(form.categoria_id) : null,
-      codigo:       form.codigo       || null,
-      stock_total:  form.stock_total,
-      stock_minimo: form.stock_minimo,
-      unidad:       form.unidad       || 'unidad',
-      notas:        form.notas        || null,
+      nombre:         form.nombre         || undefined,
+      descripcion:    form.descripcion    || null,
+      categoria_id:   form.categoria_id !== '' ? Number(form.categoria_id) : null,
+      codigo_interno: form.codigo_interno || null,
+      codigo_externo: form.codigo_externo || null,
+      nombre_tecnico: form.nombre_tecnico || null,
+      nombre_interno: form.nombre_interno || null,
+      es_critico:     form.es_critico,
+      stock_total:    form.stock_total,
+      stock_minimo:   form.stock_minimo,
+      unidad:         form.unidad         || 'unidad',
+      notas:          form.notas          || null,
     };
     try {
       if (isEdit) {
@@ -120,13 +166,26 @@ function ProductoDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div className="grid grid-cols-2 gap-3">
+            <FotoUpload producto={producto} />
             <div className="col-span-2">
               <label className={labelCls}>Nombre *</label>
               <input value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={inputCls} required />
             </div>
             <div>
-              <label className={labelCls}>Código</label>
-              <input value={form.codigo} onChange={e => setForm(p => ({ ...p, codigo: e.target.value }))} className={inputCls} />
+              <label className={labelCls}>Código interno</label>
+              <input value={form.codigo_interno} onChange={e => setForm(p => ({ ...p, codigo_interno: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Código externo (fabricante)</label>
+              <input value={form.codigo_externo} onChange={e => setForm(p => ({ ...p, codigo_externo: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Nombre técnico</label>
+              <input value={form.nombre_tecnico} onChange={e => setForm(p => ({ ...p, nombre_tecnico: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Nombre interno (apodo)</label>
+              <input value={form.nombre_interno} onChange={e => setForm(p => ({ ...p, nombre_interno: e.target.value }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Categoría</label>
@@ -146,6 +205,12 @@ function ProductoDialog({
                   <a href="/configuracion" className="text-primary underline">Crear categoría</a>
                 </p>
               )}
+            </div>
+            <div className="flex items-end pb-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.es_critico} onChange={e => setForm(p => ({ ...p, es_critico: e.target.checked }))} />
+                Pieza crítica (sin ella no se puede armar)
+              </label>
             </div>
             <div>
               <label className={labelCls}>Stock total *</label>
@@ -183,10 +248,16 @@ function ProductoDialog({
 
 // ── Productos tab ─────────────────────────────────────────────────────────────
 
+function CriticoBadge({ esCritico }: { esCritico: boolean }) {
+  if (!esCritico) return null;
+  return <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>;
+}
+
 function ProductosTab() {
   const navigate = useNavigate();
   const [search,       setSearch]       = useState('');
   const [categoriaId,  setCategoriaId]  = useState('');
+  const [catalogoOrigen, setCatalogoOrigen] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing,    setEditing]    = useState<Producto | null>(null);
@@ -199,15 +270,17 @@ function ProductosTab() {
   }, [search]);
 
   const { data: productos = [], isLoading } = useProductos({
-    search:    debouncedSearch || undefined,
-    categoria: categoriaId    || undefined,
+    search:          debouncedSearch || undefined,
+    categoria:       categoriaId     || undefined,
+    catalogo_origen: catalogoOrigen  || undefined,
   });
   const { data: categorias = [] } = useCategoriasStock();
   const activeCats = categorias.filter(c => c.activo);
+  const catalogos = Array.from(new Set(productos.map(p => p.catalogo_origen).filter((c): c is string => !!c)));
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -230,6 +303,14 @@ function ProductosTab() {
           <option value="">Todas las categorías</option>
           {activeCats.map(c => <option key={c.id} value={String(c.id)}>{c.nombre}</option>)}
         </select>
+        <select
+          value={catalogoOrigen}
+          onChange={e => setCatalogoOrigen(e.target.value)}
+          className="border rounded px-2 py-1.5 text-sm"
+        >
+          <option value="">Todos los catálogos</option>
+          {catalogos.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
         <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
           <Plus size={14} className="mr-1.5" /> Nuevo producto
         </Button>
@@ -244,8 +325,10 @@ function ProductosTab() {
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código interno</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código externo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre interno</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Categoría</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Stock total</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Comprometido</th>
@@ -265,8 +348,15 @@ function ProductosTab() {
                     className="hover:bg-muted/20 cursor-pointer"
                     onClick={() => navigate(`/stock/productos/${p.id}`)}
                   >
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo ?? '-'}</td>
-                    <td className="px-3 py-2.5 font-medium">{p.nombre}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo_interno ?? '-'}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo_externo ?? '-'}</td>
+                    <td className="px-3 py-2.5 font-medium">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {p.nombre}
+                        <CriticoBadge esCritico={p.es_critico} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.nombre_interno ?? '-'}</td>
                     <td className="px-3 py-2.5"><CategoriaBadge categoria={p.categoria} /></td>
                     <td className="px-3 py-2.5 text-right">{p.stock_total} {p.unidad}</td>
                     <td className="px-3 py-2.5 text-right text-muted-foreground">{comp}</td>
@@ -418,12 +508,14 @@ function AlertasTab() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type StockTab = 'productos' | 'alertas';
+type StockTab = 'productos' | 'alertas' | 'cunas' | 'camiones' | 'panol' | 'activos';
 
 export default function StockPage() {
   const [tab, setTab] = useState<StockTab>('productos');
-  const { data: alertasData } = useAlertasStock();
-  const quiebresCount = (alertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
+  const { data: alertasData }      = useAlertasStock();
+  const { data: alertasPanolData } = useAlertasPanol();
+  const quiebresCount     = (alertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
+  const alertasPanolCount = (alertasPanolData?.alertas ?? []).length;
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
@@ -432,16 +524,20 @@ export default function StockPage() {
         Gestión de Stock
       </h1>
 
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border overflow-x-auto">
         {([
           { key: 'productos', label: 'Productos' },
-          { key: 'alertas',  label: `Alertas de stock${quiebresCount > 0 ? ` (${quiebresCount})` : ''}` },
+          { key: 'cunas',     label: 'Cunas' },
+          { key: 'camiones',  label: 'Camiones' },
+          { key: 'panol',     label: `Pañol${alertasPanolCount > 0 ? ` (${alertasPanolCount})` : ''}` },
+          { key: 'activos',   label: 'Activos' },
+          { key: 'alertas',   label: `Alertas de stock${quiebresCount > 0 ? ` (${quiebresCount})` : ''}` },
         ] as { key: StockTab; label: string }[]).map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
               tab === key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -453,6 +549,10 @@ export default function StockPage() {
       </div>
 
       {tab === 'productos' && <ProductosTab />}
+      {tab === 'cunas'     && <CunasTab />}
+      {tab === 'camiones'  && <CamionesTab />}
+      {tab === 'panol'     && <PanolTab />}
+      {tab === 'activos'   && <ActivosTab />}
       {tab === 'alertas'   && <AlertasTab />}
     </div>
   );

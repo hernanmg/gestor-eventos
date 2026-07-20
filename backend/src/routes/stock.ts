@@ -12,7 +12,17 @@ import {
   updateAsignacion, cancelarAsignacion,
   transferencia, getSugerencias,
   listCategorias, createCategoria, updateCategoria, deleteCategoria,
+  uploadFoto, importarFoto, getFoto,
+  uploadCatalogo, importarCatalogo,
+  getPendientesFirma, firmarSalida, firmarLlegada, firmarRetorno,
 } from '../controllers/stock.controller';
+import {
+  listCamiones, createCamion, updateCamion, deleteCamion,
+} from '../controllers/camion.controller';
+import {
+  listCunas, getCuna, createCuna, updateCuna, deleteCuna,
+  addProductoCuna, removeProductoCuna,
+} from '../controllers/cuna.controller';
 
 const router = Router();
 router.use(auth);
@@ -21,6 +31,7 @@ router.use(tenantMiddleware);
 // ── Productos ─────────────────────────────────────────────────────────────────
 router.get('/productos',                   asyncHandler(listProductos));
 router.get('/productos/:id',               asyncHandler(getProducto));
+router.get('/productos/:id/foto',          asyncHandler(getFoto));
 router.post('/productos',    requireRole('OPERADOR'), asyncHandler(createProducto));
 router.put('/productos/:id', requireRole('OPERADOR'), asyncHandler(updateProducto));
 router.delete('/productos/:id', requireRole('ADMIN'), asyncHandler(deleteProducto));
@@ -37,11 +48,36 @@ router.get('/alertas',         asyncHandler(getAlertas));
 router.get('/sugerencias',     asyncHandler(getSugerencias));
 
 // ── Asignaciones ─────────────────────────────────────────────────────────────
+router.get('/asignaciones/pendientes-firma', asyncHandler(getPendientesFirma));
 router.put('/asignaciones/:id',    requireRole('OPERADOR'), asyncHandler(updateAsignacion));
 router.delete('/asignaciones/:id', requireRole('OPERADOR'), asyncHandler(cancelarAsignacion));
 
+// ── Firmas digitales ─────────────────────────────────────────────────────────
+router.patch('/asignaciones/:id/firmar-salida',  requireRole('OPERADOR'), asyncHandler(firmarSalida));
+router.patch('/asignaciones/:id/firmar-llegada', requireRole('OPERADOR'), asyncHandler(firmarLlegada));
+router.patch('/asignaciones/:id/firmar-retorno', requireRole('OPERADOR'), asyncHandler(firmarRetorno));
+
 // ── Transferencia ─────────────────────────────────────────────────────────────
 router.post('/transferencia', requireRole('OPERADOR'), asyncHandler(transferencia));
+
+// ── Importador catálogo Layher / foto de producto ─────────────────────────────
+router.post('/importar/catalogo', requireRole('OPERADOR'), uploadCatalogo.single('archivo'), asyncHandler(importarCatalogo));
+router.post('/importar/foto/:id', requireRole('OPERADOR'), uploadFoto.single('foto'),        asyncHandler(importarFoto));
+
+// ── Camiones ──────────────────────────────────────────────────────────────────
+router.get('/camiones',           asyncHandler(listCamiones));
+router.post('/camiones',          requireRole('OPERADOR'), asyncHandler(createCamion));
+router.put('/camiones/:id',       requireRole('OPERADOR'), asyncHandler(updateCamion));
+router.delete('/camiones/:id',    requireRole('OPERADOR'), asyncHandler(deleteCamion));
+
+// ── Cunas ─────────────────────────────────────────────────────────────────────
+router.get('/cunas',                       asyncHandler(listCunas));
+router.get('/cunas/:id',                   asyncHandler(getCuna));
+router.post('/cunas',                      requireRole('OPERADOR'), asyncHandler(createCuna));
+router.put('/cunas/:id',                   requireRole('OPERADOR'), asyncHandler(updateCuna));
+router.post('/cunas/:id/productos',        requireRole('OPERADOR'), asyncHandler(addProductoCuna));
+router.delete('/cunas/:id/productos/:productoId', requireRole('OPERADOR'), asyncHandler(removeProductoCuna));
+router.delete('/cunas/:id',                requireRole('OPERADOR'), asyncHandler(deleteCuna));
 
 export default router;
 

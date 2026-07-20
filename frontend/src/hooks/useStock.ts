@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
@@ -13,13 +14,14 @@ export const CATEGORIAS_KEY  = ['stock', 'categorias']  as const;
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 
-export function useProductos(params: { search?: string; categoria?: string } = {}) {
+export function useProductos(params: { search?: string; categoria?: string; catalogo_origen?: string } = {}) {
   return useQuery({
     queryKey: [...PRODUCTOS_KEY, params],
     queryFn:  async () => {
       const p = new URLSearchParams();
-      if (params.search)    p.set('search',    params.search);
-      if (params.categoria) p.set('categoria', params.categoria);
+      if (params.search)          p.set('search',          params.search);
+      if (params.categoria)       p.set('categoria',        params.categoria);
+      if (params.catalogo_origen) p.set('catalogo_origen',  params.catalogo_origen);
       const { data } = await api.get<Producto[]>(`/stock/productos?${p}`);
       return data;
     },
@@ -56,6 +58,61 @@ export function useDeleteProducto() {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/stock/productos/${id}`),
     onSuccess:  () => qc.invalidateQueries({ queryKey: PRODUCTOS_KEY }),
+  });
+}
+
+// ── Foto de producto ──────────────────────────────────────────────────────────
+
+export function useUploadFotoProducto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => {
+      const formData = new FormData();
+      formData.append('foto', file);
+      return api.post(`/stock/importar/foto/${id}`, formData).then(r => r.data);
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: PRODUCTOS_KEY });
+      qc.invalidateQueries({ queryKey: [...PRODUCTOS_KEY, vars.id] });
+    },
+  });
+}
+
+// Mismo patrón que useLogoBlobUrl — fetch con blob y object URL revocada al desmontar.
+export function useFotoBlobUrl(productoId: number | null | undefined, tieneFoto: boolean): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!productoId || !tieneFoto) { setUrl(null); return; }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    api.get(`/stock/productos/${productoId}/foto`, { responseType: 'blob' }).then(res => {
+      if (cancelled) return;
+      objectUrl = URL.createObjectURL(res.data);
+      setUrl(objectUrl);
+    }).catch(() => { if (!cancelled) setUrl(null); });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [productoId, tieneFoto]);
+
+  return url;
+}
+
+// ── Importador catálogo Layher ────────────────────────────────────────────────
+
+export function useImportarCatalogo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      return api.post<{ creados: number; actualizados: number; errores: string[] }>('/stock/importar/catalogo', formData).then(r => r.data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: PRODUCTOS_KEY }),
   });
 }
 
@@ -209,5 +266,42 @@ export function useDeleteCategoria() {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/stock/categorias/${id}`),
     onSuccess:  () => qc.invalidateQueries({ queryKey: CATEGORIAS_KEY }),
+  });
+}
+
+// ── Firmas digitales ─────────────────────────────────────────────────────────
+
+export type PasoFirma = 'salida' | 'llegada' | 'retorno';
+
+export function usePendientesFirma(paso: PasoFirma) {
+  return useQuery({
+    queryKey: ['stock', 'pendientes-firma', paso],
+    queryFn:  () => api.get<{ asignaciones: AsignacionStock[] }>(`/stock/asignaciones/pendientes-firma?paso=${paso}`).then(r => r.data),
+    refetchInterval: 60 * 1000,
+  });
+}
+
+export function useFirmarSalida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.patch<AsignacionStock>(`/stock/asignaciones/${id}/firmar-salida`).then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['stock'] }),
+  });
+}
+
+export function useFirmarLlegada() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, cantidad_excedente }: { id: number; cantidad_excedente?: number }) =>
+      api.patch<AsignacionStock>(`/stock/asignaciones/${id}/firmar-llegada`, { cantidad_excedente }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['stock'] }),
+  });
+}
+
+export function useFirmarRetorno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.patch<AsignacionStock>(`/stock/asignaciones/${id}/firmar-retorno`).then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['stock'] }),
   });
 }

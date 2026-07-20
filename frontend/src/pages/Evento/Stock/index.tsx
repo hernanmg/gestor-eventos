@@ -145,7 +145,7 @@ function AsignarDialog({
             >
               <option value="">Seleccioná un producto…</option>
               {productos.map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}{p.codigo ? ` (${p.codigo})` : ''}</option>
+                <option key={p.id} value={p.id}>{p.nombre}{p.codigo_interno ? ` (${p.codigo_interno})` : ''}</option>
               ))}
             </select>
           </div>
@@ -358,7 +358,7 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                   <tr key={a.id}>
                     <td className="px-3 py-2.5">
                       <span className="font-medium">{a.producto?.nombre ?? `#${a.producto_id}`}</span>
-                      {a.producto?.codigo && <span className="ml-1.5 text-xs text-muted-foreground font-mono">{a.producto.codigo}</span>}
+                      {a.producto?.codigo_interno && <span className="ml-1.5 text-xs text-muted-foreground font-mono">{a.producto.codigo_interno}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right">{a.cantidad}</td>
                     <td className="px-3 py-2.5 text-xs">{format(new Date(a.fecha_salida), 'dd/MM/yy', { locale: es })}</td>
