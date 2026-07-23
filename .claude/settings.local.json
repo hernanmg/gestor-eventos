@@ -33,7 +33,9 @@
       "Bash(curl -s -c admincookies.txt -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@adminportal.com\",\"password\":\"Admin123!\"}')",
       "Bash(curl -s -b admincookies.txt -X PUT http://localhost:3001/api/empresas/1 -H 'Content-Type: application/json' -d '{\"color_primario\":\"#FF5733\",\"color_secundario\":\"#33C1FF\",\"razon_social\":\"Enjoy Producciones SRL\"}')",
       "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -b admincookies.txt -X PUT http://localhost:3001/api/empresas/1 -H 'Content-Type: application/json' -d '{\"cuit\":\"invalido\"}')",
-      "mcp__plugin_engram_engram__mem_judge"
+      "mcp__plugin_engram_engram__mem_judge",
+      "Bash(python3 -c \"import whisper; print\\(whisper.__file__\\)\")",
+      "Bash(python -c \"import whisper; print\\(whisper.__file__\\)\")"
     ]
   }
 }

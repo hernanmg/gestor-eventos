@@ -432,11 +432,22 @@ export async function deleteProducto(req: Request, res: Response) {
   const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
+  const cunaProductos = await prisma.cunaProducto.findMany({
+    where:   { producto_id: id },
+    include: { cuna: { select: { id: true, codigo: true } } },
+  });
+  if (cunaProductos.length > 0) {
+    const cunas = cunaProductos.map(cp => cp.cuna.codigo).join(', ');
+    res.status(400).json({
+      error: `No se puede eliminar este producto porque forma parte de ${cunaProductos.length} cuna(s): ${cunas}. Removelo de las cunas antes de eliminarlo.`,
+    }); return;
+  }
+
   const activas = await prisma.asignacionStock.count({
     where: { producto_id: id, estado: 'ACTIVA', deleted_at: null },
   });
   if (activas > 0) {
-    res.status(400).json({ error: 'No se puede eliminar un producto con asignaciones activas' }); return;
+    res.status(400).json({ error: `No se puede eliminar este producto porque tiene ${activas} asignación(es) activa(s).` }); return;
   }
 
   await prisma.$transaction(async tx => {
