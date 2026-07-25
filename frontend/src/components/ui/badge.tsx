@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -63,6 +63,30 @@ export function EcheqEstadoBadge({ estado }: { estado: EstadoEcheq }) {
   return (
     <Badge variant={ECHEQ_VARIANT[estado]}>
       {ECHEQ_LABEL[estado]}
+    </Badge>
+  );
+}
+
+const MOVIMIENTO_VARIANT: Record<EstadoMovimiento, VariantProps<typeof badgeVariants>['variant']> = {
+  PENDIENTE:  'muted',
+  COTIZANDO:  'warning',
+  CONFIRMADO: 'info',
+  PAGADO:     'success',
+  CANCELADO:  'destructive',
+};
+
+export const MOVIMIENTO_LABEL: Record<EstadoMovimiento, string> = {
+  PENDIENTE:  'Pendiente',
+  COTIZANDO:  'Cotizando',
+  CONFIRMADO: 'Confirmado',
+  PAGADO:     'Pagado',
+  CANCELADO:  'Cancelado',
+};
+
+export function MovimientoEstadoBadge({ estado }: { estado: EstadoMovimiento }) {
+  return (
+    <Badge variant={MOVIMIENTO_VARIANT[estado]} className={cn(estado === 'CANCELADO' && 'line-through')}>
+      {MOVIMIENTO_LABEL[estado]}
     </Badge>
   );
 }

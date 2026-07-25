@@ -25,6 +25,7 @@ export interface CreateFacturaPayload {
   fecha_vencimiento?: string | null;
   proveedor_id:      number;
   tab_numero?:       number | null;
+  rubro_id?:         number | null;
   importe_total:     number;
   moneda?:           Moneda;
   condicion_pago?:   string;

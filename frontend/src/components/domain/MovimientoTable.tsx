@@ -16,13 +16,14 @@ import {
   useDeleteMovimiento, useReordenarMovimiento,
 } from '@/hooks/useMovimientos';
 import { useCuentas } from '@/hooks/useCuentas';
+import { useUsuarios } from '@/hooks/useUsuarios';
 import ProveedorCombobox from './ProveedorCombobox';
 import { SaldoCell } from './SaldoCell';
-import { EcheqEstadoBadge } from '@/components/ui/badge';
+import { EcheqEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import type { Echeq, Movimiento, Tipo, Moneda, ProveedorBusqueda } from '@/types';
+import type { Echeq, Movimiento, Rubro, Moneda, ProveedorBusqueda, EstadoMovimiento } from '@/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -30,9 +31,28 @@ const SUBCATEGORIAS = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
 ] as const;
 
+const ESTADO_ORDEN: EstadoMovimiento[] = ['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'PAGADO'];
+
+function estadoOptions(actual: EstadoMovimiento): EstadoMovimiento[] {
+  if (actual === 'PAGADO')     return ['PAGADO', 'CANCELADO'];
+  if (actual === 'CANCELADO')  return ['CANCELADO', ...ESTADO_ORDEN];
+  const idx = ESTADO_ORDEN.indexOf(actual);
+  return [...ESTADO_ORDEN.slice(idx), 'CANCELADO'];
+}
+
+// Badge de color por estado — mismo mapeo que MovimientoEstadoBadge, aplicado
+// directamente al <select> para que la celda se vea como badge editable.
+const ESTADO_SELECT_CLASS: Record<EstadoMovimiento, string> = {
+  PENDIENTE:  'bg-gray-100 text-gray-700',
+  COTIZANDO:  'bg-yellow-100 text-yellow-800',
+  CONFIRMADO: 'bg-blue-100 text-blue-800',
+  PAGADO:     'bg-green-100 text-green-800',
+  CANCELADO:  'bg-red-100 text-red-700 line-through',
+};
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type EditableField = 'fecha' | 'concepto' | 'descripcion' | 'debe' | 'haber' | 'impuesto_subcategoria';
+type EditableField = 'fecha' | 'concepto' | 'descripcion' | 'debe' | 'haber' | 'impuesto_subcategoria' | 'presupuesto' | 'fecha_pago';
 interface EditCell  { id: number; field: EditableField; value: string; }
 
 interface NewRowData {
@@ -45,11 +65,16 @@ interface NewRowData {
   impacta_caja:          boolean;
   cuenta_id:             string;
   proveedor:             ProveedorBusqueda | null;
+  presupuesto:           string;
+  responsable_id:        string;
+  fecha_pago:            string;
+  avisado_proveedor:     boolean;
 }
 
 const EMPTY_ROW: NewRowData = {
   fecha: '', concepto: '', descripcion: '', monto: '',
   moneda: 'ARS', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
+  presupuesto: '', responsable_id: '', fecha_pago: '', avisado_proveedor: false,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,6 +87,8 @@ function getCellValue(mov: Movimiento, field: EditableField): string {
     case 'debe':                  return String(Number(mov.debe));
     case 'haber':                 return String(Number(mov.haber));
     case 'impuesto_subcategoria': return mov.impuesto_subcategoria ?? '';
+    case 'presupuesto':           return mov.presupuesto !== null ? String(mov.presupuesto) : '';
+    case 'fecha_pago':            return mov.fecha_pago ? mov.fecha_pago.split('T')[0] : '';
   }
 }
 
@@ -73,6 +100,8 @@ function buildUpdatePayload(field: EditableField, value: string) {
     case 'debe':                  return { debe:                  parseFloat(value) || 0 };
     case 'haber':                 return { haber:                 parseFloat(value) || 0 };
     case 'impuesto_subcategoria': return { impuesto_subcategoria: value || null };
+    case 'presupuesto':           return { presupuesto:           value ? parseFloat(value) : null };
+    case 'fecha_pago':            return { fecha_pago:            value || null };
   }
 }
 
@@ -124,7 +153,9 @@ function EditableCell({
 // ── SortableRow ───────────────────────────────────────────────────────────────
 
 function SortableRow({
-  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete, onCreateEcheq, echeqForRow, onNavigateToEcheqs, onProveedorChange,
+  mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete,
+  onCreateEcheq, echeqForRow, onNavigateToEcheqs, onProveedorChange, onEstadoChange, onResponsableChange,
+  onAvisadoChange, usuarios,
 }: {
   mov:                  Movimiento;
   isEgImp:              boolean;
@@ -139,6 +170,10 @@ function SortableRow({
   echeqForRow?:         Echeq;
   onNavigateToEcheqs?:  () => void;
   onProveedorChange:    (id: number, v: ProveedorBusqueda | null) => void;
+  onEstadoChange:       (id: number, estado: EstadoMovimiento) => void;
+  onResponsableChange:  (id: number, responsableId: number | null) => void;
+  onAvisadoChange:      (id: number, avisado: boolean) => void;
+  usuarios:             { id: number; nombre: string }[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: mov.id });
@@ -147,12 +182,25 @@ function SortableRow({
   const active = (f: EditableField) => editCell?.id === mov.id && editCell?.field === f;
 
   const cell = 'px-2 py-1.5 text-sm';
+  const cancelado = mov.estado_movimiento === 'CANCELADO';
+  const pagado    = mov.estado_movimiento === 'PAGADO';
+
+  // debe/haber: el monto real puede estar en cualquiera de los dos campos según
+  // el origen de la fila (alta manual vs. import histórico) — sumar ambos es
+  // robusto porque en la práctica solo uno es distinto de cero por movimiento.
+  const real = Number(mov.debe) + Number(mov.haber);
+  const diferencia = mov.presupuesto !== null ? parseFloat((mov.presupuesto - real).toFixed(2)) : null;
 
   return (
     <tr
       ref={setNodeRef}
       style={style}
-      className={cn('group border-b border-border', isDragging && 'opacity-50 bg-accent/50')}
+      className={cn(
+        'group border-b border-border',
+        isDragging && 'opacity-50 bg-accent/50',
+        cancelado && 'line-through opacity-50',
+        pagado && !cancelado && 'bg-green-50/60',
+      )}
     >
       {/* Drag handle */}
       <td className="w-6 px-1 py-1.5 text-center">
@@ -213,7 +261,7 @@ function SortableRow({
         />
       </td>
 
-      {/* Subcategoría — EG-IMP only */}
+      {/* Subcategoría — rubro Impuestos únicamente */}
       {isEgImp && (
         <td
           className={cn(cell, 'w-36 cursor-pointer')}
@@ -239,6 +287,52 @@ function SortableRow({
           )}
         </td>
       )}
+
+      {/* Estado */}
+      <td className={cn(cell, 'w-32')}>
+        <select
+          value={mov.estado_movimiento}
+          onChange={e => onEstadoChange(mov.id, e.target.value as EstadoMovimiento)}
+          className={cn(
+            'rounded-full px-2.5 py-0.5 text-xs font-medium border-none focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer',
+            ESTADO_SELECT_CLASS[mov.estado_movimiento],
+          )}
+        >
+          {estadoOptions(mov.estado_movimiento).map(e => (
+            <option key={e} value={e}>{MOVIMIENTO_LABEL[e]}</option>
+          ))}
+        </select>
+      </td>
+
+      {/* Presupuesto */}
+      <EditableCell
+        value={active('presupuesto') ? editCell!.value : getCellValue(mov, 'presupuesto')}
+        display={<span className="tabular-nums">{mov.presupuesto !== null ? formatCurrency(mov.presupuesto, mov.moneda) : <span className="text-muted-foreground/40">—</span>}</span>}
+        type="number"
+        editing={active('presupuesto')}
+        className={cn(cell, 'w-28 text-right')}
+        inputClassName="text-right"
+        onClick={() => onCellClick(mov.id, 'presupuesto', getCellValue(mov, 'presupuesto'))}
+        onChange={onCellChange}
+        onBlur={onCellSave}
+        onKeyDown={onKeyDown}
+      />
+
+      {/* Real */}
+      <td className={cn(cell, 'w-28 text-right tabular-nums text-muted-foreground')}>
+        {formatCurrency(real, mov.moneda)}
+      </td>
+
+      {/* Diferencia */}
+      <td className={cn(cell, 'w-28 text-right tabular-nums')}>
+        {diferencia === null ? (
+          <span className="text-muted-foreground/40">—</span>
+        ) : (
+          <span className={cn('font-medium', real > (mov.presupuesto ?? 0) ? 'text-destructive' : real < (mov.presupuesto ?? 0) ? 'text-green-600' : '')}>
+            {formatCurrency(diferencia, mov.moneda)}
+          </span>
+        )}
+      </td>
 
       {/* Debe */}
       <EditableCell
@@ -271,6 +365,41 @@ function SortableRow({
       {/* Saldo — read only */}
       <td className="px-2 py-1.5 w-32 text-right">
         <SaldoCell saldo={mov.saldo} moneda={mov.moneda} />
+      </td>
+
+      {/* Responsable */}
+      <td className={cn(cell, 'w-36')}>
+        <select
+          value={mov.responsable_id ?? ''}
+          onChange={e => onResponsableChange(mov.id, e.target.value ? Number(e.target.value) : null)}
+          className="w-full border-none bg-transparent text-xs focus:outline-none cursor-pointer"
+        >
+          <option value="">— Sin asignar</option>
+          {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+        </select>
+      </td>
+
+      {/* Fecha pago */}
+      <EditableCell
+        value={active('fecha_pago') ? editCell!.value : getCellValue(mov, 'fecha_pago')}
+        display={<span className={mov.fecha_pago ? '' : 'text-muted-foreground/40'}>{formatDate(mov.fecha_pago)}</span>}
+        type="date"
+        editing={active('fecha_pago')}
+        className={cn(cell, 'w-28')}
+        onClick={() => onCellClick(mov.id, 'fecha_pago', getCellValue(mov, 'fecha_pago'))}
+        onChange={onCellChange}
+        onBlur={onCellSave}
+        onKeyDown={onKeyDown}
+      />
+
+      {/* ¿Avisado? */}
+      <td className={cn(cell, 'w-14 text-center')}>
+        <input
+          type="checkbox"
+          checked={mov.avisado_proveedor}
+          onChange={e => onAvisadoChange(mov.id, e.target.checked)}
+          title="¿Proveedor avisado?"
+        />
       </td>
 
       {/* Actions */}
@@ -315,25 +444,25 @@ function SortableRow({
 
 interface Props {
   eventoId:            number;
-  tipo:                Tipo;
-  tabNumero:           number;
+  rubro:               Rubro;
   monedaBase?:         Moneda;
   onCreateEcheq?:      (movimientoId: number) => void;
   echeqs?:             Echeq[];
   onNavigateToEcheqs?: () => void;
 }
 
-export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase = 'ARS', onCreateEcheq, echeqs, onNavigateToEcheqs }: Props) {
-  const isEgImp   = tipo === 'EGRESO' && tabNumero === 4;
-  const isEgExtra = tipo === 'EGRESO' && tabNumero === 3;
+export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', onCreateEcheq, echeqs, onNavigateToEcheqs }: Props) {
+  const isEgImp   = rubro.codigo === 'EG-IMP';
+  const isEgExtra = rubro.codigo === 'EG-EXTRA';
 
-  const { data: movimientos = [], isLoading } = useMovimientos(eventoId, tipo, tabNumero);
+  const { data: movimientos = [], isLoading } = useMovimientos(eventoId, rubro.id);
   const { data: cuentas     = [] }            = useCuentas(eventoId);
+  const { data: usuarios    = [] }            = useUsuarios();
 
-  const createMov    = useCreateMovimiento(eventoId, tipo, tabNumero);
-  const updateMov    = useUpdateMovimiento(eventoId, tipo, tabNumero);
-  const deleteMov    = useDeleteMovimiento(eventoId, tipo, tabNumero);
-  const reordenarMov = useReordenarMovimiento(eventoId, tipo, tabNumero);
+  const createMov    = useCreateMovimiento(eventoId, rubro.id);
+  const updateMov    = useUpdateMovimiento(eventoId, rubro.id);
+  const deleteMov    = useDeleteMovimiento(eventoId, rubro.id);
+  const reordenarMov = useReordenarMovimiento(eventoId, rubro.id);
 
   const [editCell,    setEditCell]    = useState<EditCell | null>(null);
   const [newRow,      setNewRow]      = useState(false);
@@ -383,6 +512,20 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
     updateMov.mutate({ id, data: { proveedor_id: v?.id ?? null } });
   }, [updateMov]);
 
+  const handleEstadoChange = useCallback((id: number, estado: EstadoMovimiento) => {
+    updateMov.mutate({ id, data: { estado_movimiento: estado } }, {
+      onError: (err: any) => alert(err?.response?.data?.error ?? 'No se pudo cambiar el estado'),
+    });
+  }, [updateMov]);
+
+  const handleResponsableChange = useCallback((id: number, responsableId: number | null) => {
+    updateMov.mutate({ id, data: { responsable_id: responsableId } });
+  }, [updateMov]);
+
+  const handleAvisadoChange = useCallback((id: number, avisado: boolean) => {
+    updateMov.mutate({ id, data: { avisado_proveedor: avisado } });
+  }, [updateMov]);
+
   // New row
   const openNewRow = () => {
     setNewRowData({ ...EMPTY_ROW, moneda: monedaBase });
@@ -393,7 +536,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
   const handleNewRowSave = async () => {
     setNewRowError(null);
     if (isEgImp && !newRowData.impuesto_subcategoria) {
-      setNewRowError('Subcategoría obligatoria para EG-IMP');
+      setNewRowError('Subcategoría obligatoria para el rubro de Impuestos');
       return;
     }
     if (newRowData.impacta_caja && !newRowData.cuenta_id) {
@@ -402,16 +545,19 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
     }
     try {
       await createMov.mutateAsync({
-        tipo,
-        tab_numero:            tabNumero,
+        rubro_id:              rubro.id,
         fecha:                 newRowData.fecha      || null,
         concepto:              newRowData.concepto   || null,
         descripcion:           newRowData.descripcion || null,
         // EGRESO → haber (resta al saldo); INGRESO → debe (suma al saldo)
-        debe:                  tipo === 'INGRESO' ? (parseFloat(newRowData.monto) || 0) : 0,
-        haber:                 tipo === 'EGRESO'  ? (parseFloat(newRowData.monto) || 0) : 0,
+        debe:                  rubro.tipo === 'INGRESO' ? (parseFloat(newRowData.monto) || 0) : 0,
+        haber:                 rubro.tipo === 'EGRESO'  ? (parseFloat(newRowData.monto) || 0) : 0,
         moneda:                newRowData.moneda,
         impuesto_subcategoria: isEgImp ? (newRowData.impuesto_subcategoria || null) : null,
+        presupuesto:           newRowData.presupuesto ? parseFloat(newRowData.presupuesto) : null,
+        fecha_pago:            newRowData.fecha_pago || null,
+        avisado_proveedor:     newRowData.avisado_proveedor,
+        ...(newRowData.responsable_id && { responsable_id: Number(newRowData.responsable_id) }),
         ...(newRowData.proveedor && { proveedor_id: newRowData.proveedor.id }),
         ...(newRowData.impacta_caja && newRowData.cuenta_id && {
           impacta_caja: true,
@@ -431,7 +577,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
     setNewRowError(null);
   };
 
-  const colCount = 9 + (isEgImp ? 1 : 0);
+  const colCount = 16 + (isEgImp ? 1 : 0);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-muted-foreground">Cargando...</p>;
@@ -450,9 +596,16 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                 <th className="px-2 py-2 text-left">Descripción</th>
                 <th className="px-2 py-2 text-left w-32">Proveedor</th>
                 {isEgImp && <th className="px-2 py-2 text-left w-36">Subcategoría</th>}
+                <th className="px-2 py-2 text-left w-32">Estado</th>
+                <th className="px-2 py-2 text-right w-28">Presupuesto</th>
+                <th className="px-2 py-2 text-right w-28">Real</th>
+                <th className="px-2 py-2 text-right w-28">Diferencia</th>
                 <th className="px-2 py-2 text-right w-28">Debe</th>
                 <th className="px-2 py-2 text-right w-28">Haber</th>
                 <th className="px-2 py-2 text-right w-32">Saldo</th>
+                <th className="px-2 py-2 text-left w-36">Responsable</th>
+                <th className="px-2 py-2 text-left w-28">Fecha pago</th>
+                <th className="px-2 py-2 text-center w-14">¿Avisado?</th>
                 <th className="w-16" />
               </tr>
             </thead>
@@ -470,6 +623,10 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                   onKeyDown={handleKeyDown}
                   onDelete={handleDelete}
                   onProveedorChange={handleProveedorChange}
+                  onEstadoChange={handleEstadoChange}
+                  onResponsableChange={handleResponsableChange}
+                  onAvisadoChange={handleAvisadoChange}
+                  usuarios={usuarios}
                   onCreateEcheq={onCreateEcheq}
                   echeqForRow={echeqs?.find(e => e.movimiento_id === mov.id)}
                   onNavigateToEcheqs={onNavigateToEcheqs}
@@ -523,9 +680,24 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                         </select>
                       </td>
                     )}
+                    {/* Estado */}
+                    <td className="px-2 py-1 text-xs text-muted-foreground">Pendiente</td>
+                    {/* Presupuesto */}
+                    <td className="px-2 py-1">
+                      <input
+                        type="number" min="0" step="0.01" placeholder="0.00"
+                        value={newRowData.presupuesto}
+                        onChange={e => setNewRowData(p => ({ ...p, presupuesto: e.target.value }))}
+                        className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </td>
+                    {/* Real (n/a hasta guardar) */}
+                    <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
+                    {/* Diferencia */}
+                    <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
                     {/* DEBE: activo para INGRESO, vacío para EGRESO */}
                     <td className="px-2 py-1">
-                      {tipo === 'INGRESO' ? (
+                      {rubro.tipo === 'INGRESO' ? (
                         <input
                           type="number" min="0" step="0.01" placeholder="0.00"
                           value={newRowData.monto}
@@ -538,7 +710,7 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                     </td>
                     {/* HABER: activo para EGRESO, vacío para INGRESO */}
                     <td className="px-2 py-1">
-                      {tipo === 'EGRESO' ? (
+                      {rubro.tipo === 'EGRESO' ? (
                         <input
                           type="number" min="0" step="0.01" placeholder="0.00"
                           value={newRowData.monto}
@@ -550,6 +722,34 @@ export default function MovimientoTable({ eventoId, tipo, tabNumero, monedaBase 
                       )}
                     </td>
                     <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
+                    {/* Responsable */}
+                    <td className="px-2 py-1">
+                      <select
+                        value={newRowData.responsable_id}
+                        onChange={e => setNewRowData(p => ({ ...p, responsable_id: e.target.value }))}
+                        className="w-full border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        <option value="">— Sin asignar</option>
+                        {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </select>
+                    </td>
+                    {/* Fecha pago */}
+                    <td className="px-2 py-1">
+                      <input
+                        type="date"
+                        value={newRowData.fecha_pago}
+                        onChange={e => setNewRowData(p => ({ ...p, fecha_pago: e.target.value }))}
+                        className="w-full border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </td>
+                    {/* Avisado */}
+                    <td className="px-2 py-1 text-center">
+                      <input
+                        type="checkbox"
+                        checked={newRowData.avisado_proveedor}
+                        onChange={e => setNewRowData(p => ({ ...p, avisado_proveedor: e.target.checked }))}
+                      />
+                    </td>
                     <td className="px-1 py-1">
                       <div className="flex gap-0.5">
                         <button

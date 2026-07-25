@@ -17,7 +17,8 @@ TRUNCATE TABLE
   "EventoAcceso",
   "Evento",
   "Usuario",
-  "TabConfig"
+  "TabConfig",
+  "Rubro"
 RESTART IDENTITY CASCADE;
 
 SELECT 'Base de datos limpia' AS status;

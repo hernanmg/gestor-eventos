@@ -112,13 +112,14 @@ export async function createEcheq(req: Request, res: Response) {
 
   if (parsed.data.movimiento_id) {
     const mov = await prisma.movimiento.findFirst({
-      where: { id: parsed.data.movimiento_id, evento_id: eventoId, deleted_at: null },
+      where:   { id: parsed.data.movimiento_id, evento_id: eventoId, deleted_at: null },
+      include: { rubro: { select: { codigo: true } } },
     });
     if (!mov) {
       res.status(400).json({ error: 'Movimiento no encontrado en este evento' }); return;
     }
-    if (mov.tipo !== 'EGRESO' || mov.tab_numero !== 3) {
-      res.status(400).json({ error: 'Los echeqs solo se pueden crear desde EG-EXTRA (Egresos tab 3)' }); return;
+    if (mov.tipo !== 'EGRESO' || mov.rubro?.codigo !== 'EG-EXTRA') {
+      res.status(400).json({ error: 'Los echeqs solo se pueden crear desde el rubro de Gastos Extraordinarios' }); return;
     }
     const existing = await prisma.echeq.findFirst({
       where: { movimiento_id: parsed.data.movimiento_id, deleted_at: null },

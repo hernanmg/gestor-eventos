@@ -1,9 +1,9 @@
 ﻿import type { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { EstadoFactura, MedioPago, CondicionPago, Moneda, Tipo } from '@prisma/client';
+import { EstadoFactura, MedioPago, CondicionPago, Moneda, Tipo, TipoRubro } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { recalcularSaldos } from '../lib/recalcularSaldos';
+import { recalcularSaldos, recalcularSaldosRubro } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 
@@ -27,11 +27,21 @@ const facturaSchema = z.object({
   fecha_vencimiento: z.string().nullable().optional(),
   proveedor_id:      z.number().int().positive(),
   tab_numero:        z.number().int().min(1).max(5).nullable().optional(),
+  rubro_id:          z.number().int().positive().nullable().optional(),
   importe_total:     z.number().positive(),
   moneda:            z.enum(['ARS', 'USD']).default('ARS'),
   condicion_pago:    z.enum(['CONTADO', 'DIAS_30', 'DIAS_60', 'DIAS_90', 'ECHEQ', 'OTRO']).default('CONTADO'),
   notas:             z.string().nullable().optional(),
 });
+
+// Un rubro vinculado a una Factura debe existir en la empresa activa y ser de
+// tipo EGRESO (las facturas son siempre cuentas a pagar).
+async function validarRubroEgreso(rubroId: number, empresaId: number): Promise<string | null> {
+  const rubro = await prisma.rubro.findFirst({ where: { id: rubroId, ...withTenant(empresaId), deleted_at: null } });
+  if (!rubro) return 'El rubro no existe o no pertenece a esta empresa';
+  if (rubro.tipo !== TipoRubro.EGRESO) return 'El rubro debe ser de tipo EGRESO';
+  return null;
+}
 
 const pagoSchema = z.object({
   fecha_pago:                 z.string().min(1),
@@ -181,10 +191,16 @@ export async function detail(req: Request, res: Response) {
     include: {
       proveedor: { select: { id: true, nombre: true, alias: true, cuit: true } },
       evento:    { select: { id: true, nombre: true, estado: true } },
+      rubro:     { select: { id: true, nombre: true } },
       pagos:     {
         where:   { deleted_at: null },
         include: {
-          movimiento: { select: { id: true, tipo: true, tab_numero: true } },
+          movimiento: {
+            select: {
+              id: true, tipo: true, tab_numero: true, rubro_id: true,
+              rubro: { select: { id: true, nombre: true } },
+            },
+          },
           echeq:      { select: { id: true, estado: true, numero: true } },
         },
         orderBy: { fecha_pago: 'desc' },
@@ -230,6 +246,7 @@ export async function create(req: Request, res: Response) {
     fecha_vencimiento: b.fecha_vencimiento || null,
     proveedor_id:      b.proveedor_id  ? parseInt(b.proveedor_id)   : undefined,
     tab_numero:        b.tab_numero    ? parseInt(b.tab_numero)      : null,
+    rubro_id:          b.rubro_id      ? parseInt(b.rubro_id)        : null,
     importe_total:     b.importe_total ? parseFloat(b.importe_total) : undefined,
     moneda:            b.moneda        || 'ARS',
     condicion_pago:    b.condicion_pago || 'CONTADO',
@@ -256,6 +273,11 @@ export async function create(req: Request, res: Response) {
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
+  if (d.rubro_id) {
+    const rubroError = await validarRubroEgreso(d.rubro_id, req.empresaId!);
+    if (rubroError) { res.status(400).json({ error: rubroError }); return; }
+  }
+
   const pdfData: Buffer | undefined  = req.file?.buffer;
   const pdfNombre: string | undefined = req.file?.originalname;
   const pdfMime: string | undefined   = req.file?.mimetype;
@@ -272,6 +294,7 @@ export async function create(req: Request, res: Response) {
       evento_id:         eventoId,
       tab_numero:        d.tab_numero ?? null,
       tipo_movimiento:   d.tab_numero ? Tipo.EGRESO : null,
+      rubro_id:          d.rubro_id ?? null,
       importe_total:     d.importe_total,
       importe_pendiente: d.importe_total,
       moneda:            d.moneda as Moneda,
@@ -284,7 +307,7 @@ export async function create(req: Request, res: Response) {
       created_by:        req.user!.id,
       updated_by:        req.user!.id,
     },
-    include: { proveedor: { select: { id: true, nombre: true } }, evento: { select: { id: true, nombre: true } } },
+    include: { proveedor: { select: { id: true, nombre: true } }, evento: { select: { id: true, nombre: true } }, rubro: { select: { id: true, nombre: true } } },
   });
   res.status(201).json(mapFactura(factura));
 }
@@ -302,6 +325,11 @@ export async function update(req: Request, res: Response) {
   }
   const d = parsed.data;
 
+  if (d.rubro_id !== undefined && d.rubro_id !== null) {
+    const rubroError = await validarRubroEgreso(d.rubro_id, req.empresaId!);
+    if (rubroError) { res.status(400).json({ error: rubroError }); return; }
+  }
+
   const updated = await prisma.factura.update({
     where: { id },
     data: {
@@ -311,13 +339,14 @@ export async function update(req: Request, res: Response) {
       ...(d.fecha_vencimiento !== undefined && { fecha_vencimiento: d.fecha_vencimiento ? new Date(d.fecha_vencimiento) : null }),
       ...(d.proveedor_id      !== undefined && { proveedor_id:      d.proveedor_id }),
       ...(d.tab_numero        !== undefined && { tab_numero:        d.tab_numero }),
+      ...(d.rubro_id          !== undefined && { rubro_id:          d.rubro_id }),
       ...(d.importe_total     !== undefined && { importe_total:     d.importe_total }),
       ...(d.moneda            !== undefined && { moneda:            d.moneda as Moneda }),
       ...(d.condicion_pago    !== undefined && { condicion_pago:    d.condicion_pago as CondicionPago }),
       ...(d.notas             !== undefined && { notas:             d.notas }),
       updated_by: req.user!.id,
     },
-    include: { proveedor: { select: { id: true, nombre: true } } },
+    include: { proveedor: { select: { id: true, nombre: true } }, rubro: { select: { id: true, nombre: true } } },
   });
   res.json(mapFactura(updated));
 }
@@ -443,10 +472,13 @@ export async function pagarFactura(req: Request, res: Response) {
     let movimientoId: number | null = null;
     let echeqId:      number | null = null;
 
-    // 2. Crear Movimiento si hay tab configurada
-    if (factura.tab_numero) {
+    // 2. Crear Movimiento si hay tab o rubro configurado
+    if (factura.tab_numero || factura.rubro_id) {
       const lastOrder = await tx.movimiento.findFirst({
-        where:   { evento_id: factura.evento_id, tipo: Tipo.EGRESO, tab_numero: factura.tab_numero, deleted_at: null },
+        where: {
+          evento_id: factura.evento_id, tipo: Tipo.EGRESO, deleted_at: null,
+          ...(factura.rubro_id ? { rubro_id: factura.rubro_id } : { tab_numero: factura.tab_numero }),
+        },
         orderBy: { orden: 'desc' },
         select:  { orden: true },
       });
@@ -455,6 +487,8 @@ export async function pagarFactura(req: Request, res: Response) {
           evento_id:   factura.evento_id,
           tipo:        Tipo.EGRESO,
           tab_numero:  factura.tab_numero,
+          rubro_id:    factura.rubro_id,
+          estado_movimiento: 'PAGADO',
           fecha:       new Date(fecha_pago),
           concepto:    factura.proveedor.nombre,
           descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
@@ -468,7 +502,11 @@ export async function pagarFactura(req: Request, res: Response) {
         },
       });
       movimientoId = mov.id;
-      await recalcularSaldos(factura.evento_id, Tipo.EGRESO, factura.tab_numero, tx as any);
+      if (factura.rubro_id) {
+        await recalcularSaldosRubro(factura.evento_id, Tipo.EGRESO, factura.rubro_id, tx as any);
+      } else if (factura.tab_numero) {
+        await recalcularSaldos(factura.evento_id, Tipo.EGRESO, factura.tab_numero, tx as any);
+      }
     }
 
     // 3. Crear Echeq si medio_pago = ECHEQ
@@ -545,14 +583,18 @@ export async function anularPago(req: Request, res: Response) {
     if (pago.movimiento_id) {
       const mov = await tx.movimiento.findUnique({
         where:  { id: pago.movimiento_id },
-        select: { evento_id: true, tipo: true, tab_numero: true },
+        select: { evento_id: true, tipo: true, tab_numero: true, rubro_id: true },
       });
       if (mov) {
         await tx.movimiento.update({
           where: { id: pago.movimiento_id },
           data:  { deleted_at: new Date(), updated_by: req.user!.id },
         });
-        await recalcularSaldos(mov.evento_id, mov.tipo, mov.tab_numero, tx as any);
+        if (mov.rubro_id !== null) {
+          await recalcularSaldosRubro(mov.evento_id, mov.tipo, mov.rubro_id, tx as any);
+        } else if (mov.tab_numero !== null) {
+          await recalcularSaldos(mov.evento_id, mov.tipo, mov.tab_numero, tx as any);
+        }
       }
     }
 

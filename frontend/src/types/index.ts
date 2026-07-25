@@ -14,6 +14,7 @@ export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
 export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
 export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
 export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
+export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,21 @@ export interface TabConfig {
   es_sistema: boolean;
 }
 
+// ── Rubros (categorías configurables de egresos/ingresos) ─────────────────────
+
+export interface Rubro {
+  id:          number;
+  tipo:        Tipo;
+  nombre:      string;
+  codigo:      string | null;
+  descripcion: string | null;
+  orden:       number;
+  activo:      boolean;
+  es_sistema:  boolean;
+  created_at:  string;
+  updated_at:  string;
+}
+
 // ── Eventos ───────────────────────────────────────────────────────────────────
 
 export interface Socio {
@@ -106,7 +122,16 @@ export interface Movimiento {
   id:                    number;
   evento_id:             number;
   tipo:                  Tipo;
-  tab_numero:            number;
+  tab_numero:            number | null; // legado — RRHH / Facturas
+  rubro_id:              number | null;
+  rubro:                 { id: number; nombre: string; tipo: Tipo; codigo: string | null } | null;
+  estado_movimiento:     EstadoMovimiento;
+  presupuesto:           number | null;
+  costo_real:            number | null;
+  responsable_id:        number | null;
+  responsable:           { id: number; nombre: string; email: string } | null;
+  fecha_pago:            string | null;
+  avisado_proveedor:     boolean;
   fecha:                 string | null;
   concepto:              string | null;
   descripcion:           string | null;
@@ -126,6 +151,25 @@ export interface Movimiento {
   updated_by:            number | null;
 }
 
+export interface ResumenRubro {
+  rubro_id:             number;
+  rubro_nombre:         string;
+  tipo:                 Tipo;
+  presupuesto_total:    number;
+  costo_real_total:     number;
+  diferencia:           number;
+  diferencia_pct:       number;
+  cantidad_movimientos: number;
+  estados:              Record<EstadoMovimiento, number>;
+}
+
+export interface ResumenMovimientos {
+  por_rubro:      ResumenRubro[];
+  total_ingresos: number;
+  total_egresos:  number;
+  saldo:          number;
+}
+
 // ── Caja ──────────────────────────────────────────────────────────────────────
 
 export interface CuentaBancaria {
@@ -141,11 +185,14 @@ export interface CuentaBancaria {
 }
 
 export interface MovimientoOrigen {
-  id:         number;
-  tipo:       Tipo;
-  tab_numero: number;
-  tab_codigo: string | null;
-  concepto:   string | null;
+  id:                number;
+  tipo:              Tipo;
+  tab_numero:        number | null;
+  tab_codigo:        string | null;
+  concepto:          string | null;
+  rubro_id:          number | null;
+  rubro_nombre:      string | null;
+  estado_movimiento: EstadoMovimiento | null;
 }
 
 export interface MovimientoCaja {
@@ -538,6 +585,8 @@ export interface Factura {
   evento_id:         number;
   evento?:           { id: number; nombre: string };
   tab_numero:        number | null;
+  rubro_id:          number | null;
+  rubro?:            { id: number; nombre: string } | null;
   importe_total:     number;
   importe_pagado:    number;
   importe_pendiente: number;
@@ -566,7 +615,7 @@ export interface PagoFactura {
   echeq_id:      number | null;
   created_at:    string;
   deleted_at:    string | null;
-  movimiento?:   { id: number; tipo: Tipo; tab_numero: number } | null;
+  movimiento?:   { id: number; tipo: Tipo; tab_numero: number; rubro_id: number | null; rubro?: { id: number; nombre: string } | null } | null;
   echeq?:        { id: number; estado: EstadoEcheq; numero: string } | null;
 }
 

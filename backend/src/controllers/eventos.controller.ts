@@ -206,11 +206,11 @@ export async function conciliatoria(req: Request, res: Response) {
   const evento = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const [tabs, movimientos, cuentas, echeqsPendientes] = await Promise.all([
-    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!), orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+  const [rubros, movimientos, cuentas, echeqsPendientes] = await Promise.all([
+    prisma.rubro.findMany({ where: { ...withTenant(req.empresaId!), deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:  { evento_id: id, deleted_at: null },
-      select: { tipo: true, tab_numero: true, moneda: true, debe: true, haber: true },
+      select: { tipo: true, rubro_id: true, moneda: true, debe: true, haber: true },
     }),
     prisma.cuentaBancaria.findMany({
       where:   { evento_id: id, deleted_at: null },
@@ -232,26 +232,26 @@ export async function conciliatoria(req: Request, res: Response) {
   if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
   const monedas = [...monedasSet];
 
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
   const socios      = (evento.socios as { nombre: string; porcentaje: number }[]);
 
   const por_moneda = monedas.map(moneda => {
     const forMoneda = movimientos.filter(m => m.moneda === moneda);
 
-    const buildTabs = (tipo: 'INGRESO' | 'EGRESO', tabList: typeof ingresoTabs) =>
-      tabList.map(t => {
-        const rows        = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+    const buildRubros = (tipo: 'INGRESO' | 'EGRESO', rubroList: typeof ingresoRubros) =>
+      rubroList.map(r => {
+        const rows        = forMoneda.filter(m => m.tipo === tipo && m.rubro_id === r.id);
         const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
         const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
         const saldo = tipo === 'INGRESO'
           ? parseFloat((total_haber - total_debe).toFixed(2))
           : parseFloat((total_debe  - total_haber).toFixed(2));
-        return { tab_numero: t.numero, nombre: t.nombre, total_debe, total_haber, saldo };
+        return { rubro_id: r.id, nombre: r.nombre, total_debe, total_haber, saldo };
       });
 
-    const ingresos        = buildTabs('INGRESO', ingresoTabs);
-    const egresos         = buildTabs('EGRESO',  egresoTabs);
+    const ingresos        = buildRubros('INGRESO', ingresoRubros);
+    const egresos         = buildRubros('EGRESO',  egresoRubros);
     const total_ingresos  = parseFloat(ingresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
     const total_egresos   = parseFloat(egresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
     const saldo_final     = parseFloat((total_ingresos - total_egresos).toFixed(2));

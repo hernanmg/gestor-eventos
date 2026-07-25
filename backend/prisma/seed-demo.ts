@@ -8,6 +8,7 @@ import {
   EstadoEvento,
   EstadoJornada,
   EstadoLiquidacion,
+  EstadoMovimiento,
   EstadoPanolItem,
   Moneda,
   OrigenTransfer,
@@ -172,6 +173,21 @@ async function main() {
 
   console.log('✓ Productos: 8 creados');
 
+  // ── RUBROS — lookup por empresa (sembrados en prisma/seed.ts) ───────────────
+  const rubrosEnjoyDB = await prisma.rubro.findMany({ where: { empresa_id: EMPRESA_ID } });
+  const rubroEnjoy = (tipo: 'EGRESO' | 'INGRESO', nombre: string): number => {
+    const r = rubrosEnjoyDB.find(x => x.tipo === tipo && x.nombre === nombre);
+    if (!r) throw new Error(`Rubro no encontrado para Enjoy: ${tipo}/${nombre} — corré prisma/seed.ts primero`);
+    return r.id;
+  };
+
+  const rubrosDos57DB = await prisma.rubro.findMany({ where: { empresa_id: EMPRESA_ID_DOS57 } });
+  const rubroDos57 = (tipo: 'EGRESO' | 'INGRESO', nombre: string): number => {
+    const r = rubrosDos57DB.find(x => x.tipo === tipo && x.nombre === nombre);
+    if (!r) throw new Error(`Rubro no encontrado para DOS57: ${tipo}/${nombre} — corré prisma/seed.ts primero`);
+    return r.id;
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // EVENTO 1 — CERRADO (evento pasado con datos completos)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -220,7 +236,8 @@ async function main() {
           data: {
             evento_id:    e1.id,
             tipo:         Tipo.EGRESO,
-            tab_numero:   1,
+            rubro_id:     rubroEnjoy('EGRESO', 'Producción General'),
+            estado_movimiento: EstadoMovimiento.PAGADO,
             fecha:        r.fecha,
             concepto:     r.concepto,
             descripcion:  r.descripcion,
@@ -250,7 +267,8 @@ async function main() {
           data: {
             evento_id:             e1.id,
             tipo:                  Tipo.EGRESO,
-            tab_numero:            4,
+            rubro_id:              rubroEnjoy('EGRESO', 'Impuestos'),
+            estado_movimiento:     EstadoMovimiento.PAGADO,
             fecha:                 e1Inicio,
             concepto:              r.concepto,
             debe:                  r.debe,
@@ -264,12 +282,13 @@ async function main() {
         });
       }
 
-      // ── EG-PREST (tab 5) ────────────────────────────────────────────────────
+      // ── EG-PREST — Préstamos ────────────────────────────────────────────────
       await tx.movimiento.create({
         data: {
           evento_id:   e1.id,
           tipo:        Tipo.EGRESO,
-          tab_numero:  5,
+          rubro_id:    rubroEnjoy('EGRESO', 'Préstamos'),
+          estado_movimiento: EstadoMovimiento.PAGADO,
           fecha:       e1Inicio,
           concepto:    'Préstamo bancario',
           descripcion: 'Adelanto para producción',
@@ -281,7 +300,7 @@ async function main() {
         },
       });
 
-      // ── ING TICKETS (tab 1) ─────────────────────────────────────────────────
+      // ── ING TICKETS ─────────────────────────────────────────────────────────
       s = 0;
       const ingTickets = [
         { concepto: 'Venta anticipada', descripcion: 'Plataforma Ticketek', haber: 2_100_000 },
@@ -295,7 +314,8 @@ async function main() {
           data: {
             evento_id:   e1.id,
             tipo:        Tipo.INGRESO,
-            tab_numero:  1,
+            rubro_id:    rubroEnjoy('INGRESO', 'Tickets'),
+            estado_movimiento: EstadoMovimiento.PAGADO,
             fecha:       e1Inicio,
             concepto:    r.concepto,
             descripcion: r.descripcion,
@@ -308,7 +328,7 @@ async function main() {
         });
       }
 
-      // ── ING SPON (tab 2) ────────────────────────────────────────────────────
+      // ── ING SPON ────────────────────────────────────────────────────────────
       s = 0;
       const ingSpon = [
         { concepto: 'Sponsor principal', descripcion: 'Banco Galicia — logo escenario', haber: 800_000 },
@@ -321,7 +341,8 @@ async function main() {
           data: {
             evento_id:   e1.id,
             tipo:        Tipo.INGRESO,
-            tab_numero:  2,
+            rubro_id:    rubroEnjoy('INGRESO', 'Sponsors'),
+            estado_movimiento: EstadoMovimiento.PAGADO,
             fecha:       e1Inicio,
             concepto:    r.concepto,
             descripcion: r.descripcion,
@@ -334,7 +355,7 @@ async function main() {
         });
       }
 
-      // ── ING GASTRO (tab 4) ──────────────────────────────────────────────────
+      // ── ING GASTRO ──────────────────────────────────────────────────────────
       s = 0;
       const ingGastro = [
         { concepto: 'Porcentaje gastronómico', descripcion: '20% ventas food trucks', haber: 420_000 },
@@ -347,7 +368,8 @@ async function main() {
           data: {
             evento_id:   e1.id,
             tipo:        Tipo.INGRESO,
-            tab_numero:  4,
+            rubro_id:    rubroEnjoy('INGRESO', 'Gastronomía'),
+            estado_movimiento: EstadoMovimiento.PAGADO,
             fecha:       e1Inicio,
             concepto:    r.concepto,
             descripcion: r.descripcion,
@@ -512,12 +534,12 @@ async function main() {
         },
       });
 
-      // ── EG-TC ───────────────────────────────────────────────────────────────
+      // ── EG-TC — Producción General ──────────────────────────────────────────
       let s = 0;
       const rows = [
-        { concepto: 'Sonido Total S.A.', descripcion: 'Sistema de sonido',     debe: 920_000, pid: pSonido.id },
-        { concepto: 'Iluminación',       descripcion: 'Iluminación escenario', debe: 540_000, pid: null       },
-        { concepto: 'Seguridad',         descripcion: 'Personal de seguridad', debe: 320_000, pid: pSegur.id  },
+        { concepto: 'Sonido Total S.A.', descripcion: 'Sistema de sonido',     debe: 920_000, pid: pSonido.id, estado: EstadoMovimiento.CONFIRMADO },
+        { concepto: 'Iluminación',       descripcion: 'Iluminación escenario', debe: 540_000, pid: null,       estado: EstadoMovimiento.PENDIENTE  },
+        { concepto: 'Seguridad',         descripcion: 'Personal de seguridad', debe: 320_000, pid: pSegur.id,  estado: EstadoMovimiento.CONFIRMADO },
       ];
       let movSonidoE2Id = 0;
       for (let i = 0; i < rows.length; i++) {
@@ -527,7 +549,9 @@ async function main() {
           data: {
             evento_id:    e2.id,
             tipo:         Tipo.EGRESO,
-            tab_numero:   1,
+            rubro_id:     rubroEnjoy('EGRESO', 'Producción General'),
+            estado_movimiento: r.estado,
+            presupuesto:  r.debe,
             fecha:        new Date(),
             concepto:     r.concepto,
             descripcion:  r.descripcion,
@@ -542,7 +566,7 @@ async function main() {
         if (i === 0) movSonidoE2Id = m.id;
       }
 
-      // ── EG-IMP ──────────────────────────────────────────────────────────────
+      // ── EG-IMP — Impuestos ──────────────────────────────────────────────────
       s = 0;
       const impRows = [
         { concepto: 'PAYWAY', sub: 'PAYWAY', debe: 98_000 },
@@ -555,7 +579,8 @@ async function main() {
           data: {
             evento_id:             e2.id,
             tipo:                  Tipo.EGRESO,
-            tab_numero:            4,
+            rubro_id:              rubroEnjoy('EGRESO', 'Impuestos'),
+            estado_movimiento:     EstadoMovimiento.CONFIRMADO,
             fecha:                 new Date(),
             concepto:              r.concepto,
             debe:                  r.debe,
@@ -573,7 +598,8 @@ async function main() {
         data: {
           evento_id:   e2.id,
           tipo:        Tipo.INGRESO,
-          tab_numero:  1,
+          rubro_id:    rubroEnjoy('INGRESO', 'Tickets'),
+          estado_movimiento: EstadoMovimiento.CONFIRMADO,
           fecha:       new Date(),
           concepto:    'Venta anticipada',
           descripcion: 'Plataforma Ticketek — primer lote',
@@ -590,7 +616,8 @@ async function main() {
         data: {
           evento_id:   e2.id,
           tipo:        Tipo.INGRESO,
-          tab_numero:  2,
+          rubro_id:    rubroEnjoy('INGRESO', 'Sponsors'),
+          estado_movimiento: EstadoMovimiento.CONFIRMADO,
           fecha:       new Date(),
           concepto:    'Sponsor principal',
           descripcion: 'Banco Nación — confirmado',
@@ -772,12 +799,14 @@ async function main() {
         },
       });
 
-      // ── EG-TC — etapa inicial ────────────────────────────────────────────────
+      // ── Etapa inicial ────────────────────────────────────────────────────────
       await tx.movimiento.create({
         data: {
           evento_id:   e3.id,
           tipo:        Tipo.EGRESO,
-          tab_numero:  1,
+          rubro_id:    rubroEnjoy('EGRESO', 'Producción General'),
+          estado_movimiento: EstadoMovimiento.PENDIENTE,
+          presupuesto: 280_000,
           fecha:       new Date(),
           concepto:    'Producción general',
           debe:        280_000,
@@ -791,7 +820,9 @@ async function main() {
         data: {
           evento_id:   e3.id,
           tipo:        Tipo.EGRESO,
-          tab_numero:  1,
+          rubro_id:    rubroEnjoy('EGRESO', 'Transporte y Logística'),
+          estado_movimiento: EstadoMovimiento.PENDIENTE,
+          presupuesto: 95_000,
           fecha:       new Date(),
           concepto:    'Logística',
           debe:        95_000,
@@ -1096,9 +1127,46 @@ async function main() {
       },
     });
     void asignacionDos57;
+
+    // ── Movimientos demo — rubros DOS57 ─────────────────────────────────────
+    await prisma.movimiento.create({
+      data: {
+        evento_id:   eventoDos57.id,
+        tipo:        Tipo.EGRESO,
+        rubro_id:    rubroDos57('EGRESO', 'Materiales Layher'),
+        estado_movimiento: EstadoMovimiento.CONFIRMADO,
+        presupuesto: 350_000,
+        fecha:       new Date(),
+        concepto:    'Alquiler estructura Layher',
+        descripcion: '40 unidades Vertical 2.00m — Predio Norte',
+        debe:        350_000,
+        haber:       0,
+        saldo:       -350_000,
+        moneda:      Moneda.ARS,
+        orden:       1,
+      },
+    });
+    await prisma.movimiento.create({
+      data: {
+        evento_id:   eventoDos57.id,
+        tipo:        Tipo.INGRESO,
+        rubro_id:    rubroDos57('INGRESO', 'Alquiler de Estructuras'),
+        estado_movimiento: EstadoMovimiento.CONFIRMADO,
+        fecha:       new Date(),
+        concepto:    'Anticipo cliente',
+        descripcion: 'Anticipo — Montaje Escenario Techado Predio Norte',
+        debe:        0,
+        haber:       500_000,
+        saldo:       500_000,
+        moneda:      Moneda.ARS,
+        orden:       1,
+      },
+    });
+    totalMovimientos += 2;
+
     totalEventos++;
     totalAsignaciones++;
-    console.log('✓ Evento DOS57 creado con asignación en tránsito (firma de salida hecha)');
+    console.log('✓ Evento DOS57 creado con asignación en tránsito (firma de salida hecha) y 2 movimientos demo');
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

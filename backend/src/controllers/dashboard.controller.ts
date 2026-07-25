@@ -112,13 +112,13 @@ export async function getResumen(req: Request, res: Response) {
 export async function getKPIsEvento(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
-  const [evento, tabs, movimientos, cuentas, echeqs] = await Promise.all([
+  const [evento, rubros, movimientos, cuentas, echeqs] = await Promise.all([
     prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } }),
-    prisma.tabConfig.findMany({ where: withTenant(req.empresaId!), orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+    prisma.rubro.findMany({ where: { ...withTenant(req.empresaId!), deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, deleted_at: null },
       orderBy: { orden: 'asc' },
-      select:  { tipo: true, tab_numero: true, fecha: true, debe: true, haber: true, moneda: true },
+      select:  { tipo: true, rubro_id: true, fecha: true, debe: true, haber: true, moneda: true },
     }),
     prisma.cuentaBancaria.findMany({
       where:  { evento_id: eventoId, deleted_at: null },
@@ -137,8 +137,8 @@ export async function getKPIsEvento(req: Request, res: Response) {
     }),
   ]);
 
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
 
   const monedasSet = new Set(movimientos.map(m => m.moneda as string));
   if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
@@ -146,17 +146,17 @@ export async function getKPIsEvento(req: Request, res: Response) {
   const por_moneda = [...monedasSet].map(moneda => {
     const fm = movimientos.filter(m => m.moneda === moneda);
 
-    const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoTabs) =>
-      list.map(t => {
-        const ms    = fm.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+    const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoRubros) =>
+      list.map(r => {
+        const ms    = fm.filter(m => m.tipo === tipo && m.rubro_id === r.id);
         const debe  = ms.reduce((a, m) => a + Number(m.debe),  0);
         const haber = ms.reduce((a, m) => a + Number(m.haber), 0);
         const saldo = tipo === 'INGRESO' ? haber - debe : debe - haber;
-        return { tab_numero: t.numero, nombre: t.nombre, saldo: parseFloat(saldo.toFixed(2)) };
+        return { rubro_id: r.id, nombre: r.nombre, saldo: parseFloat(saldo.toFixed(2)) };
       });
 
-    const ingRows = buildRows('INGRESO', ingresoTabs);
-    const egrRows = buildRows('EGRESO',  egresoTabs);
+    const ingRows = buildRows('INGRESO', ingresoRubros);
+    const egrRows = buildRows('EGRESO',  egresoRubros);
 
     const total_ingresos = parseFloat(ingRows.reduce((a, r) => a + r.saldo, 0).toFixed(2));
     const total_egresos  = parseFloat(egrRows.reduce((a, r) => a + r.saldo, 0).toFixed(2));

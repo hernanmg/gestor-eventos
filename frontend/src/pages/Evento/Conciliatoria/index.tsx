@@ -43,7 +43,7 @@ function TabsTable({ title, rows, moneda }: { title: string; rows: TabResumen[];
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map(r => (
-              <tr key={r.tab_numero}>
+              <tr key={r.rubro_id}>
                 <td className={td}>{r.nombre}</td>
                 <td className={cn(td, 'text-right tabular-nums text-muted-foreground')}>
                   {formatCurrency(r.total_debe, moneda)}

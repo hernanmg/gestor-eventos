@@ -14,6 +14,9 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   useAllTabs, useUpdateTab, useCreateTab, useDeleteTab, useReorderTabs, useToggleTab,
 } from '@/hooks/useTabConfig';
+import {
+  useAllRubros, useUpdateRubro, useCreateRubro, useDeleteRubro, useReorderRubros, useToggleRubro,
+} from '@/hooks/useRubros';
 import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } from '@/hooks/useUsuarios';
 import { useEventoAccesos, useCreateAcceso, useUpdateAcceso, useDeleteAcceso } from '@/hooks/useEventoAccesos';
 import { useEventos } from '@/hooks/useEvento';
@@ -23,7 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock } from '@/types';
+import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro } from '@/types';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -265,6 +268,278 @@ function TabsSection() {
               <Button type="button" variant="outline" size="sm" onClick={closeAdd}>Cancelar</Button>
               <Button type="submit" size="sm" disabled={createTab.isPending}>
                 {createTab.isPending ? 'Creando…' : 'Crear'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Sortable rubro row ────────────────────────────────────────────────────────
+
+function SortableRubroRow({
+  rubro, onToggle, onDelete,
+}: {
+  rubro:    Rubro;
+  onToggle: (rubro: Rubro) => void;
+  onDelete: (rubro: Rubro) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(rubro.nombre);
+  const updateRubro = useUpdateRubro();
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rubro.id });
+
+  const style = {
+    transform:  CSS.Transform.toString(transform),
+    transition,
+    opacity:    isDragging ? 0.5 : 1,
+    zIndex:     isDragging ? 1 : undefined,
+  };
+
+  const startEdit  = () => { setEditValue(rubro.nombre); setIsEditing(true); };
+  const cancelEdit = () => setIsEditing(false);
+  const saveEdit   = () => {
+    const v = editValue.trim();
+    if (v && v !== rubro.nombre) updateRubro.mutate({ id: rubro.id, data: { nombre: v } });
+    setIsEditing(false);
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={cn('group', !rubro.activo && 'opacity-50 bg-gray-50/50')}
+    >
+      <td className="px-2 py-2 w-8">
+        <span
+          {...attributes}
+          {...listeners}
+          className="flex items-center justify-center cursor-grab text-muted-foreground hover:text-foreground p-0.5 rounded"
+          title="Arrastrar para reordenar"
+        >
+          <GripVertical size={14} />
+        </span>
+      </td>
+      <td className="px-3 py-2 w-32">
+        {rubro.es_sistema && (
+          <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded font-mono">
+            Sistema
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        {isEditing ? (
+          <input
+            autoFocus
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={saveEdit}
+            onKeyDown={e => {
+              if (e.key === 'Enter')  saveEdit();
+              if (e.key === 'Escape') cancelEdit();
+            }}
+            className="w-full border border-ring rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <span className={cn(!rubro.activo && 'line-through text-muted-foreground')}>
+              {rubro.nombre}
+            </span>
+            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
+              <button
+                onClick={startEdit}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                title="Editar nombre"
+              >
+                <Pencil size={13} />
+              </button>
+              {!rubro.es_sistema && (
+                <>
+                  <button
+                    onClick={() => onToggle(rubro)}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                    title={rubro.activo ? 'Desactivar' : 'Activar'}
+                  >
+                    {rubro.activo
+                      ? <ToggleRight size={16} className="text-primary" />
+                      : <ToggleLeft size={16} />
+                    }
+                  </button>
+                  <button
+                    onClick={() => onDelete(rubro)}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ── Draggable rubro group ─────────────────────────────────────────────────────
+
+function DraggableRubroGroup({
+  title, tipo, rubros,
+}: {
+  title: string;
+  tipo:  Tipo;
+  rubros: Rubro[];
+}) {
+  const [items, setItems] = useState<Rubro[]>(rubros);
+  const reorderRubros = useReorderRubros();
+  const toggleRubro   = useToggleRubro();
+  const deleteRubro   = useDeleteRubro();
+
+  useEffect(() => setItems(rubros), [rubros]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex(r => r.id === active.id);
+    const newIndex = items.findIndex(r => r.id === over.id);
+    const newItems = arrayMove(items, oldIndex, newIndex);
+    setItems(newItems);
+    reorderRubros.mutate({ tipo, orden: newItems.map((r, i) => ({ id: r.id, orden: i + 1 })) });
+  };
+
+  const handleToggle = (rubro: Rubro) => toggleRubro.mutate(rubro.id);
+
+  const handleDelete = (rubro: Rubro) => {
+    if (!window.confirm(`¿Eliminar el rubro "${rubro.nombre}"?`)) return;
+    deleteRubro.mutate(rubro.id, {
+      onError: (err: any) => alert(err?.response?.data?.error ?? 'Error al eliminar'),
+    });
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-2">{title}</h3>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={items.map(r => r.id)} strategy={verticalListSortingStrategy}>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-border">
+                <tr>
+                  <th className="px-2 py-2 w-8" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-32" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {items.length === 0 ? (
+                  <tr><td colSpan={3} className="px-3 py-4 text-center text-sm text-muted-foreground">Sin rubros configurados.</td></tr>
+                ) : items.map(rubro => (
+                  <SortableRubroRow
+                    key={rubro.id}
+                    rubro={rubro}
+                    onToggle={handleToggle}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+// ── Rubros section ────────────────────────────────────────────────────────────
+
+function RubrosSection() {
+  const { data: rubros = [] } = useAllRubros();
+  const createRubro = useCreateRubro();
+
+  const [addDialog, setAddDialog] = useState<{ open: boolean; tipo: Tipo }>({ open: false, tipo: 'EGRESO' });
+  const [addNombre, setAddNombre] = useState('');
+  const [addDescripcion, setAddDescripcion] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const egresoRubros  = [...rubros.filter(r => r.tipo === 'EGRESO')].sort((a, b) => a.orden - b.orden);
+  const ingresoRubros = [...rubros.filter(r => r.tipo === 'INGRESO')].sort((a, b) => a.orden - b.orden);
+
+  const openAdd  = (tipo: Tipo) => { setAddNombre(''); setAddDescripcion(''); setAddError(null); setAddDialog({ open: true, tipo }); };
+  const closeAdd = () => setAddDialog(p => ({ ...p, open: false }));
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addNombre.trim()) return;
+    setAddError(null);
+    try {
+      await createRubro.mutateAsync({ tipo: addDialog.tipo, nombre: addNombre.trim(), descripcion: addDescripcion.trim() || null });
+      closeAdd();
+    } catch (err: any) {
+      setAddError(err?.response?.data?.error ?? 'Error al crear el rubro');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <p className="text-xs text-muted-foreground max-w-md">
+          Los rubros del sistema no se pueden eliminar ni desactivar.
+          Arrastrá las filas para reordenar. Cada rubro activo aparece como una pestaña
+          dentro de Egresos o Ingresos en cada evento.
+        </p>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button size="sm" variant="outline" onClick={() => openAdd('EGRESO')}>
+            <Plus size={14} className="mr-1" /> Egreso
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => openAdd('INGRESO')}>
+            <Plus size={14} className="mr-1" /> Ingreso
+          </Button>
+        </div>
+      </div>
+
+      <DraggableRubroGroup title="Egresos"  tipo="EGRESO"  rubros={egresoRubros} />
+      <DraggableRubroGroup title="Ingresos" tipo="INGRESO" rubros={ingresoRubros} />
+
+      <Dialog open={addDialog.open} onOpenChange={open => !open && closeAdd()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Nuevo rubro de {addDialog.tipo === 'EGRESO' ? 'egresos' : 'ingresos'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAdd} className="space-y-3 mt-1">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-0.5">Nombre *</label>
+              <input
+                autoFocus
+                value={addNombre}
+                onChange={e => setAddNombre(e.target.value)}
+                className="w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-0.5">Descripción</label>
+              <input
+                value={addDescripcion}
+                onChange={e => setAddDescripcion(e.target.value)}
+                className="w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            {addError && <p className="text-xs text-destructive">{addError}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={closeAdd}>Cancelar</Button>
+              <Button type="submit" size="sm" disabled={createRubro.isPending}>
+                {createRubro.isPending ? 'Creando…' : 'Crear'}
               </Button>
             </div>
           </form>
@@ -854,14 +1129,14 @@ function CategoriasSection() {
 
 // ── ConfiguracionPage ─────────────────────────────────────────────────────────
 
-type ActiveTab = 'tabs' | 'usuarios' | 'categorias';
+type ActiveTab = 'rubros' | 'tabs' | 'usuarios' | 'categorias';
 
 export default function ConfiguracionPage() {
   const { user } = useAuth();
   if (!user) return null;
   if (user.rol !== 'ADMIN') return <Navigate to="/dashboard" replace />;
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('tabs');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('rubros');
 
   return (
     <div className="p-6">
@@ -869,6 +1144,7 @@ export default function ConfiguracionPage() {
 
       <div className="flex border-b border-border mb-6">
         {([
+          { key: 'rubros',     label: 'Rubros' },
           { key: 'tabs',       label: 'Pestañas del sistema' },
           { key: 'usuarios',   label: 'Usuarios' },
           { key: 'categorias', label: 'Categorías de Stock' },
@@ -888,6 +1164,7 @@ export default function ConfiguracionPage() {
         ))}
       </div>
 
+      {activeTab === 'rubros'     && <RubrosSection />}
       {activeTab === 'tabs'       && <TabsSection />}
       {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} />}
       {activeTab === 'categorias' && <CategoriasSection />}

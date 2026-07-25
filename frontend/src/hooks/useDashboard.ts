@@ -48,7 +48,7 @@ export interface ResumenDashboard {
 }
 
 export interface TabKPI {
-  tab_numero:           number;
+  rubro_id:             number;
   nombre:               string;
   saldo:                number;
   porcentaje_del_total: number;

@@ -10,6 +10,7 @@ import {
   listSinConciliar,
   create as createMovimiento,
   movimientosSinProveedor,
+  resumen as resumenMovimientos,
 } from '../controllers/movimientos.controller';
 import { listCuentas, createCuenta, transferencia, posicionConsolidada } from '../controllers/caja.controller';
 import { listEcheqs, createEcheq, alertasEcheqs } from '../controllers/echeqs.controller';
@@ -50,5 +51,8 @@ router.get('/:id/movimientos-sin-conciliar', requireEventoAcceso(), asyncHandler
 
 // Movimientos sin proveedor vinculado (agrupados por concepto)
 router.get('/:id/movimientos/sin-proveedor', requireEventoAcceso(), asyncHandler(movimientosSinProveedor));
+
+// Resumen presupuesto vs real por rubro
+router.get('/:id/movimientos/resumen', requireEventoAcceso(), asyncHandler(resumenMovimientos));
 
 export default router;

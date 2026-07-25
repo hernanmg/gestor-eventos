@@ -16,7 +16,6 @@ import {
   useUploadPDF,
   type PagoPayload,
 } from '@/hooks/useFacturas';
-import { useTabConfig } from '@/hooks/useTabConfig';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { EstadoFactura, MedioPago, PagoFactura } from '@/types';
@@ -172,6 +171,7 @@ function FilaPago({ pago, moneda }: { pago: PagoFactura; moneda: string }) {
       <td className="py-2 px-3 font-medium">{formatCurrency(pago.importe, moneda as any)}</td>
       <td className="py-2 px-3">{MEDIO_LABEL[pago.medio_pago] ?? pago.medio_pago}</td>
       <td className="py-2 px-3 text-muted-foreground">{pago.referencia ?? '—'}</td>
+      <td className="py-2 px-3 text-muted-foreground">{pago.movimiento?.rubro?.nombre ?? '—'}</td>
       <td className="py-2 px-3">
         {pago.echeq ? (
           <span className={cn('inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 font-medium',
@@ -239,7 +239,6 @@ export default function FacturaDetalle() {
   const [pdfError,    setPdfError]    = useState<string | null>(null);
 
   const { data: factura, isLoading, error } = useFactura(facturaId);
-  const { data: tabs = [] }                 = useTabConfig();
   const aprobarMut  = useAprobarFactura();
   const anularMut   = useAnularFactura();
   const uploadPDF   = useUploadPDF(facturaId);
@@ -250,9 +249,7 @@ export default function FacturaDetalle() {
   const meta    = ESTADO_META[factura.estado];
   const hasPdf  = !!factura.pdf_nombre;
 
-  const tabNombre = factura.tab_numero
-    ? (tabs.find(t => t.tipo === 'EGRESO' && t.numero === factura.tab_numero)?.nombre ?? `Tab ${factura.tab_numero}`)
-    : '— (sin egreso automático)';
+  const rubroNombre = factura.rubro?.nombre ?? '— (sin egreso automático)';
 
   const canApprove = factura.estado === 'RECIBIDA';
   const canPagar   = factura.estado === 'APROBADA' && factura.importe_pendiente > 0;
@@ -315,8 +312,13 @@ export default function FacturaDetalle() {
           <h1 className="text-xl font-semibold">
             Factura {factura.tipo_factura} {factura.numero_factura}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
             {factura.proveedor?.nombre} — {factura.evento?.nombre}
+            {factura.rubro && (
+              <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-secondary text-secondary-foreground">
+                {factura.rubro.nombre}
+              </span>
+            )}
           </p>
         </div>
         <span className={cn('inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1', meta.cls)}>
@@ -367,7 +369,7 @@ export default function FacturaDetalle() {
             <Row label="Vencimiento" value={fmt(factura.fecha_vencimiento)} />
             <Row label="Moneda"      value={factura.moneda} />
             <Row label="Condición"   value={factura.condicion_pago} />
-            <Row label="Tab egreso"  value={tabNombre} />
+            <Row label="Rubro"       value={rubroNombre} />
           </div>
 
           {/* Importes */}
@@ -490,6 +492,7 @@ export default function FacturaDetalle() {
                 <th className="text-left py-2 px-3">Importe</th>
                 <th className="text-left py-2 px-3">Medio</th>
                 <th className="text-left py-2 px-3">Referencia</th>
+                <th className="text-left py-2 px-3">Rubro</th>
                 <th className="text-left py-2 px-3">Echeq</th>
                 <th className="py-2 px-3" />
               </tr>

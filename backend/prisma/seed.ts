@@ -1,8 +1,46 @@
 import 'dotenv/config';
-import { PrismaClient, Tipo } from '@prisma/client';
+import { PrismaClient, Tipo, TipoRubro } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+
+// ── Rubros base por empresa (Módulo Egresos/Ingresos configurables) ──────────
+// codigo se usa para lógica de negocio estable (subcategoría impuestos,
+// echeqs sólo desde EG-EXTRA, liquidaciones de RRHH) independiente del nombre,
+// que el admin puede renombrar libremente.
+const RUBROS_ENJOY: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string }[] = [
+  { tipo: TipoRubro.EGRESO, orden: 1,  nombre: 'Producción General' },
+  { tipo: TipoRubro.EGRESO, orden: 2,  nombre: 'Sonido' },
+  { tipo: TipoRubro.EGRESO, orden: 3,  nombre: 'Iluminación' },
+  { tipo: TipoRubro.EGRESO, orden: 4,  nombre: 'Escenografía' },
+  { tipo: TipoRubro.EGRESO, orden: 5,  nombre: 'Seguridad' },
+  { tipo: TipoRubro.EGRESO, orden: 6,  nombre: 'Catering y Gastronomía' },
+  { tipo: TipoRubro.EGRESO, orden: 7,  nombre: 'Transporte y Logística' },
+  { tipo: TipoRubro.EGRESO, orden: 8,  nombre: 'Impuestos',              codigo: 'EG-IMP' },
+  { tipo: TipoRubro.EGRESO, orden: 9,  nombre: 'Préstamos' },
+  { tipo: TipoRubro.EGRESO, orden: 10, nombre: 'Gastos Extraordinarios', codigo: 'EG-EXTRA' },
+  { tipo: TipoRubro.EGRESO, orden: 11, nombre: 'RRHH',                   codigo: 'RRHH' },
+  { tipo: TipoRubro.INGRESO, orden: 1, nombre: 'Tickets' },
+  { tipo: TipoRubro.INGRESO, orden: 2, nombre: 'Sponsors' },
+  { tipo: TipoRubro.INGRESO, orden: 3, nombre: 'Corporativo' },
+  { tipo: TipoRubro.INGRESO, orden: 4, nombre: 'Gastronomía' },
+  { tipo: TipoRubro.INGRESO, orden: 5, nombre: 'Service Charge' },
+];
+
+const RUBROS_DOS57: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string }[] = [
+  { tipo: TipoRubro.EGRESO, orden: 1, nombre: 'Materiales Layher' },
+  { tipo: TipoRubro.EGRESO, orden: 2, nombre: 'Transporte y Logística' },
+  { tipo: TipoRubro.EGRESO, orden: 3, nombre: 'RRHH',                  codigo: 'RRHH' },
+  { tipo: TipoRubro.EGRESO, orden: 4, nombre: 'Combustible' },
+  { tipo: TipoRubro.EGRESO, orden: 5, nombre: 'Mantenimiento de Equipos' },
+  { tipo: TipoRubro.EGRESO, orden: 6, nombre: 'Impuestos',             codigo: 'EG-IMP' },
+  { tipo: TipoRubro.EGRESO, orden: 7, nombre: 'Gastos Generales' },
+  { tipo: TipoRubro.EGRESO, orden: 8, nombre: 'Préstamos' },
+  { tipo: TipoRubro.INGRESO, orden: 1, nombre: 'Alquiler de Estructuras' },
+  { tipo: TipoRubro.INGRESO, orden: 2, nombre: 'Mano de Obra' },
+  { tipo: TipoRubro.INGRESO, orden: 3, nombre: 'Transporte' },
+  { tipo: TipoRubro.INGRESO, orden: 4, nombre: 'Otros Ingresos' },
+];
 
 const TABS = [
   // Egresos — códigos fijos usados por el importer Excel
@@ -58,6 +96,26 @@ async function main() {
     }
   }
   console.log(`✓ TabConfig: ${TABS.length} tabs x 2 empresas cargadas`);
+
+  // ── Rubros — set base por empresa (configurable desde Configuración) ───────
+  for (const [empresa, rubros] of [[enjoy, RUBROS_ENJOY], [dos57, RUBROS_DOS57]] as const) {
+    for (const r of rubros) {
+      await prisma.rubro.upsert({
+        where:  { empresa_id_tipo_nombre: { empresa_id: empresa.id, tipo: r.tipo, nombre: r.nombre } },
+        update: { orden: r.orden, codigo: r.codigo ?? null, es_sistema: true, activo: true },
+        create: {
+          empresa_id: empresa.id,
+          tipo:       r.tipo,
+          nombre:     r.nombre,
+          codigo:     r.codigo ?? null,
+          orden:      r.orden,
+          es_sistema: true,
+          activo:     true,
+        },
+      });
+    }
+  }
+  console.log(`✓ Rubros: ${RUBROS_ENJOY.length} para Enjoy, ${RUBROS_DOS57.length} para DOS57`);
 
   // ── Usuario admin global ────────────────────────────────────────────────────
   // empresa_id queda null: es el admin global, puede cambiar de empresa

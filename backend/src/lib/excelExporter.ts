@@ -231,17 +231,18 @@ function addConcilSheet(wb: ExcelJS.Workbook, data: ConcilData) {
 // ── Main export function ──────────────────────────────────────────────────────
 
 export async function generateExcel(
-  eventoId:  number,
-  tabCodigo: string | undefined,
+  eventoId:      number,
+  rubroIdOrConc: string | undefined,
 ): Promise<{ buffer: Buffer; filename: string }> {
-  const [evento, tabs, movimientos, echeqs, cuentas] = await Promise.all([
-    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } }),
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+  const evento = await prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } });
+
+  const [rubros, movimientos, echeqs, cuentas] = await Promise.all([
+    prisma.rubro.findMany({ where: { empresa_id: evento.empresa_id, activo: true, deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, deleted_at: null },
       orderBy: { orden: 'asc' },
       select:  {
-        tipo: true, tab_numero: true, fecha: true, concepto: true,
+        tipo: true, rubro_id: true, fecha: true, concepto: true,
         descripcion: true, debe: true, haber: true, saldo: true,
         moneda: true, impuesto_subcategoria: true,
       },
@@ -263,9 +264,9 @@ export async function generateExcel(
   ]);
 
   // Helpers
-  const getMovs = (tipo: string, numero: number): MovRow[] =>
+  const getMovs = (rubroId: number): MovRow[] =>
     movimientos
-      .filter(m => m.tipo === tipo && m.tab_numero === numero)
+      .filter(m => m.rubro_id === rubroId)
       .map(m => ({
         fecha:                 m.fecha,
         concepto:              m.concepto,
@@ -291,25 +292,25 @@ export async function generateExcel(
   const buildConcilData = (): ConcilData => {
     const monedasSet = new Set(movimientos.map(m => m.moneda as string));
     if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
-    const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-    const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+    const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+    const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
     const socios = (evento.socios as { nombre: string; porcentaje: number }[]);
 
     const por_moneda = [...monedasSet].map(moneda => {
       const forMoneda = movimientos.filter(m => m.moneda === moneda);
-      const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoTabs) =>
-        list.map(t => {
-          const rows = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+      const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoRubros) =>
+        list.map(r => {
+          const rows = forMoneda.filter(m => m.tipo === tipo && m.rubro_id === r.id);
           const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
           const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
           const saldo = tipo === 'INGRESO'
             ? parseFloat((total_haber - total_debe).toFixed(2))
             : parseFloat((total_debe  - total_haber).toFixed(2));
-          return { nombre: t.nombre, total_debe, total_haber, saldo };
+          return { nombre: r.nombre, total_debe, total_haber, saldo };
         });
 
-      const ingresos       = buildRows('INGRESO', ingresoTabs);
-      const egresos        = buildRows('EGRESO',  egresoTabs);
+      const ingresos       = buildRows('INGRESO', ingresoRubros);
+      const egresos        = buildRows('EGRESO',  egresoRubros);
       const total_ingresos = parseFloat(ingresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
       const total_egresos  = parseFloat(egresos.reduce((a,  t) => a + t.saldo, 0).toFixed(2));
       const saldo_final    = parseFloat((total_ingresos - total_egresos).toFixed(2));
@@ -360,7 +361,7 @@ export async function generateExcel(
   wb.modified = new Date();
 
   // Single conciliatoria export
-  if (tabCodigo === 'CONCILIATORIA') {
+  if (rubroIdOrConc === 'CONCILIATORIA') {
     addConcilSheet(wb, buildConcilData());
     return {
       buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
@@ -368,24 +369,24 @@ export async function generateExcel(
     };
   }
 
-  // Single tab export
-  if (tabCodigo) {
-    const tab = tabs.find(t => t.codigo === tabCodigo);
-    if (!tab) throw Object.assign(new Error(`Tab no encontrado: ${tabCodigo}`), { status: 400 });
-    const isIMP   = tab.codigo === 'EG-IMP';
-    const isEXTRA = tab.codigo === 'EG-EXTRA';
-    addMovSheet(wb, tab.nombre, getMovs(tab.tipo, tab.numero), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
+  // Single rubro export
+  if (rubroIdOrConc) {
+    const rubro = rubros.find(r => String(r.id) === rubroIdOrConc);
+    if (!rubro) throw Object.assign(new Error(`Rubro no encontrado: ${rubroIdOrConc}`), { status: 400 });
+    const isIMP   = rubro.codigo === 'EG-IMP';
+    const isEXTRA = rubro.codigo === 'EG-EXTRA';
+    addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
     return {
       buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
-      filename: `${nameSlug}-${tab.codigo}-${dateStr}.xlsx`,
+      filename: `${nameSlug}-${rubro.nombre.replace(/[^a-zA-Z0-9]/g, '-')}-${dateStr}.xlsx`,
     };
   }
 
-  // Full export: all 10 tabs + conciliatoria
-  for (const tab of tabs) {
-    const isIMP   = tab.codigo === 'EG-IMP';
-    const isEXTRA = tab.codigo === 'EG-EXTRA';
-    addMovSheet(wb, tab.nombre, getMovs(tab.tipo, tab.numero), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
+  // Full export: una hoja por rubro activo + conciliatoria
+  for (const rubro of rubros) {
+    const isIMP   = rubro.codigo === 'EG-IMP';
+    const isEXTRA = rubro.codigo === 'EG-EXTRA';
+    addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
   }
   addConcilSheet(wb, buildConcilData());
 

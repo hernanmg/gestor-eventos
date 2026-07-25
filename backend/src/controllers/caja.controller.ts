@@ -23,12 +23,15 @@ function mapCuenta(c: any) {
 
 function mapMovCaja(m: any, tabMap?: Map<string, string>) {
   const raw = m.movimientos_origen?.[0] ?? null;
-  const movOrigen = raw && tabMap ? {
-    id:         raw.id,
-    tipo:       raw.tipo,
-    tab_numero: raw.tab_numero,
-    tab_codigo: tabMap.get(`${raw.tipo}-${raw.tab_numero}`) ?? null,
-    concepto:   raw.concepto,
+  const movOrigen = raw ? {
+    id:                raw.id,
+    tipo:              raw.tipo,
+    tab_numero:        raw.tab_numero,
+    tab_codigo:        tabMap ? (tabMap.get(`${raw.tipo}-${raw.tab_numero}`) ?? null) : null,
+    concepto:          raw.concepto,
+    rubro_id:          raw.rubro_id  ?? null,
+    rubro_nombre:      raw.rubro?.nombre ?? null,
+    estado_movimiento: raw.estado_movimiento ?? null,
   } : null;
 
   return {
@@ -205,7 +208,11 @@ export async function listMovimientosCaja(req: Request, res: Response) {
       include: {
         movimientos_origen: {
           where:  { deleted_at: null },
-          select: { id: true, tipo: true, tab_numero: true, concepto: true },
+          select: {
+            id: true, tipo: true, tab_numero: true, concepto: true,
+            rubro_id: true, estado_movimiento: true,
+            rubro: { select: { nombre: true } },
+          },
           take:   1,
         },
       },

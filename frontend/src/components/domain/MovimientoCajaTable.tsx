@@ -274,6 +274,16 @@ function Row({
                 onKeyDown={onKeyDown}
                 className="w-full border border-ring rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
+            ) : mov.movimiento_origen?.rubro_nombre ? (
+              <>
+                {mov.descripcion || mov.movimiento_origen.concepto || 'Pago'}
+                {' — '}
+                <span className="font-medium">{mov.movimiento_origen.rubro_nombre}</span>
+                {' '}
+                <span className="text-muted-foreground">
+                  ({mov.movimiento_origen.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'})
+                </span>
+              </>
             ) : (
               mov.descripcion || '—'
             )}
@@ -314,7 +324,7 @@ function Row({
             className="inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200"
             title={`${mov.movimiento_origen.tipo} — ${mov.movimiento_origen.concepto ?? '—'}`}
           >
-            {mov.movimiento_origen.tab_codigo}
+            {mov.movimiento_origen.rubro_nombre ?? mov.movimiento_origen.tab_codigo}
           </span>
         ) : !isTransfer && canEdit ? (
           <button

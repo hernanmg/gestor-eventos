@@ -145,6 +145,19 @@ enum EstadoActivo {
   BAJA
 }
 
+enum TipoRubro {
+  EGRESO
+  INGRESO
+}
+
+enum EstadoMovimiento {
+  PENDIENTE
+  COTIZANDO
+  CONFIRMADO
+  PAGADO
+  CANCELADO
+}
+
 // ─── EMPRESAS (multitenancy — row-level tenancy) ─────────────────────────────
 
 model Empresa {
@@ -194,6 +207,7 @@ model Empresa {
   panolItems            PanolItem[]
   movimientosPanol      MovimientoPanol[]
   activos               Activo[]
+  rubros                Rubro[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -219,6 +233,7 @@ model Usuario {
   // Empleado vinculado — permite que el usuario cargue sus propias jornadas
   // (rol VIEWER + empleado no-null ⇒ vista de autoservicio RRHH).
   empleado       Empleado?
+  movimientosResponsable Movimiento[]
 }
 
 // Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
@@ -288,6 +303,30 @@ model Evento {
   movimientosPanol       MovimientoPanol[]
 }
 
+// ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
+
+model Rubro {
+  id                Int          @id @default(autoincrement())
+  empresa_id        Int
+  empresa           Empresa      @relation(fields: [empresa_id], references: [id])
+  tipo              TipoRubro
+  nombre            String // "Sonido", "Iluminación", "Tickets", "Sponsors"
+  codigo            String? // código interno opcional/estable: "EG-IMP", "EG-EXTRA", "RRHH"
+  descripcion       String?
+  orden             Int // define el orden de visualización
+  activo            Boolean      @default(true)
+  es_sistema        Boolean      @default(false) // rubros predefinidos no borrables
+  // audit
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+
+  @@unique([empresa_id, tipo, nombre])
+  movimientos       Movimiento[]
+  facturas          Factura[]
+}
+
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
 // Saldo calculado por el backend — el usuario nunca lo escribe directamente.
 
@@ -296,7 +335,18 @@ model Movimiento {
   evento_id             Int
   evento                Evento          @relation(fields: [evento_id], references: [id])
   tipo                  Tipo
-  tab_numero            Int // 1–5 dentro de su tipo
+  tab_numero            Int? // legado — 1–5 dentro de su tipo. Nullable: los movimientos
+                              // nuevos usan rubro_id; se mantiene sólo por compatibilidad
+                              // con movimientos de RRHH (TabConfig codigo='RRHH').
+  rubro_id              Int?
+  rubro                 Rubro?          @relation(fields: [rubro_id], references: [id])
+  estado_movimiento     EstadoMovimiento @default(PENDIENTE)
+  presupuesto           Decimal?        @db.Decimal(15, 2)
+  costo_real            Decimal?        @db.Decimal(15, 2)
+  responsable_id        Int?
+  responsable           Usuario?        @relation(fields: [responsable_id], references: [id])
+  fecha_pago            DateTime?
+  avisado_proveedor     Boolean         @default(false)
   fecha                 DateTime?
   concepto              String? // opcional en ambos tipos
   descripcion           String?
@@ -305,7 +355,7 @@ model Movimiento {
   saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO
   moneda                Moneda          @default(ARS)
   orden                 Int // define la secuencia para recálculo de saldo
-  impuesto_subcategoria String? // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
+  impuesto_subcategoria String? // solo para EG-IMP (rubro.codigo = 'EG-IMP')
   proveedor_id          Int?
   proveedor             Proveedor?      @relation(fields: [proveedor_id], references: [id])
   // Vinculación opcional con un movimiento de caja
@@ -689,6 +739,8 @@ model Factura {
   evento            Evento        @relation(fields: [evento_id], references: [id])
   tab_numero        Int?
   tipo_movimiento   Tipo?
+  rubro_id          Int?
+  rubro             Rubro?        @relation(fields: [rubro_id], references: [id])
   importe_total     Decimal       @db.Decimal(15, 2)
   importe_pagado    Decimal       @default(0) @db.Decimal(15, 2)
   importe_pendiente Decimal       @default(0) @db.Decimal(15, 2)

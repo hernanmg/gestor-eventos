@@ -1,9 +1,9 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { Tipo, EstadoJornada, EstadoLiquidacion } from '@prisma/client';
+import { Tipo, TipoRubro, EstadoJornada, EstadoLiquidacion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
-import { recalcularSaldos } from '../lib/recalcularSaldos';
+import { recalcularSaldosRubro } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacion } from '../lib/pdfTemplates/liquidacion';
@@ -53,6 +53,34 @@ async function getOrCreateTabRRHH(empresaId: number, tx: any): Promise<number> {
     },
   });
   return tab.numero;
+}
+
+// Rubro de egresos usado para las liquidaciones de RRHH — análogo a
+// getOrCreateTabRRHH pero para el modelo de rubros configurables, que es el
+// que ahora determinan los tabs de Egresos en el frontend. Se crea la primera
+// vez que se aprueba una liquidación en una empresa que no tenga ya un rubro
+// con codigo='RRHH' (normalmente ya sembrado por prisma/seed.ts).
+async function getOrCreateRubroRRHH(empresaId: number, tx: any): Promise<number> {
+  const existente = await tx.rubro.findFirst({
+    where: { empresa_id: empresaId, tipo: TipoRubro.EGRESO, codigo: 'RRHH', deleted_at: null },
+  });
+  if (existente) return existente.id;
+
+  const lastOrd = await tx.rubro.findFirst({
+    where: { empresa_id: empresaId, tipo: TipoRubro.EGRESO }, orderBy: { orden: 'desc' }, select: { orden: true },
+  });
+  const rubro = await tx.rubro.create({
+    data: {
+      empresa_id: empresaId,
+      tipo:       TipoRubro.EGRESO,
+      nombre:     'RRHH',
+      codigo:     'RRHH',
+      orden:      (lastOrd?.orden ?? 0) + 1,
+      activo:     true,
+      es_sistema: true,
+    },
+  });
+  return rubro.id;
 }
 
 // Empleado vinculado a la sesión actual (usuario con empleado_id asociado).
@@ -648,8 +676,9 @@ export async function aprobarLiquidacion(req: Request, res: Response) {
 
     if (liquidacion.evento_id) {
       const tabNumero = await getOrCreateTabRRHH(req.empresaId!, tx);
+      const rubroId   = await getOrCreateRubroRRHH(req.empresaId!, tx);
       const lastOrder = await tx.movimiento.findFirst({
-        where:   { evento_id: liquidacion.evento_id, tipo: Tipo.EGRESO, tab_numero: tabNumero, deleted_at: null },
+        where:   { evento_id: liquidacion.evento_id, tipo: Tipo.EGRESO, rubro_id: rubroId, deleted_at: null },
         orderBy: { orden: 'desc' },
         select:  { orden: true },
       });
@@ -658,6 +687,8 @@ export async function aprobarLiquidacion(req: Request, res: Response) {
           evento_id:   liquidacion.evento_id,
           tipo:        Tipo.EGRESO,
           tab_numero:  tabNumero,
+          rubro_id:    rubroId,
+          estado_movimiento: 'PAGADO',
           fecha:       new Date(),
           concepto:    `Liquidación ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre}`,
           descripcion: `Período ${liquidacion.fecha_desde.toISOString().slice(0, 10)} a ${liquidacion.fecha_hasta.toISOString().slice(0, 10)}`,
@@ -669,7 +700,7 @@ export async function aprobarLiquidacion(req: Request, res: Response) {
         },
       });
       movimientoId = mov.id;
-      await recalcularSaldos(liquidacion.evento_id, Tipo.EGRESO, tabNumero, tx as any);
+      await recalcularSaldosRubro(liquidacion.evento_id, Tipo.EGRESO, rubroId, tx as any);
     }
 
     // 3. Marcar anticipos no descontados de este empleado como aplicados a esta liquidación

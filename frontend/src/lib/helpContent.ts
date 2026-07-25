@@ -48,7 +48,7 @@ const help: Record<string, HelpContent> = {
       },
       {
         titulo: 'Crear un evento',
-        contenido: 'Click en "Nuevo evento" → completá nombre y fechas → configurá los socios con sus porcentajes (deben sumar exactamente 100%) → Guardar. El sistema va a crear automáticamente las 10 categorías de movimientos (5 de egresos y 5 de ingresos).',
+        contenido: 'Click en "Nuevo evento" → completá nombre y fechas → configurá los socios con sus porcentajes (deben sumar exactamente 100%) → Guardar. Los movimientos del evento se organizan en los rubros de egresos e ingresos configurados para tu empresa (ver Configuración > Rubros).',
       },
       {
         titulo: 'Estados del evento',
@@ -56,11 +56,11 @@ const help: Record<string, HelpContent> = {
       },
       {
         titulo: 'Flujo de trabajo recomendado',
-        contenido: '1. Creá el evento con sus socios\n2. Cargá los egresos por categoría (EG-TC, EG-IMP, etc.)\n3. Cargá los ingresos (Tickets, Sponsors, etc.)\n4. Configurá las cuentas de Caja\n5. Registrá los echeqs desde EG-EXTRA\n6. Mirá la Conciliatoria para ver el resultado final\n7. Exportá a Excel para compartir',
+        contenido: '1. Creá el evento con sus socios\n2. Cargá los egresos por rubro (Producción General, Impuestos, etc.)\n3. Cargá los ingresos (Tickets, Sponsors, etc.)\n4. Configurá las cuentas de Caja\n5. Registrá los echeqs desde el rubro de Gastos Extraordinarios\n6. Mirá el Resumen o la Conciliatoria para ver el resultado final\n7. Exportá a Excel para compartir',
       },
       {
         titulo: 'Importar desde Excel',
-        contenido: 'Si ya tenés eventos cargados en el Excel original, podés importarlos directamente desde el menú "Importar Excel". El sistema mapea automáticamente las 10 hojas y crea todos los movimientos.',
+        contenido: 'Si ya tenés eventos cargados en el Excel original, podés importarlos directamente desde el menú "Importar Excel". El sistema mapea automáticamente las 10 hojas del formato histórico a los rubros configurados y crea todos los movimientos.',
       },
     ],
     links: [
@@ -74,15 +74,19 @@ const help: Record<string, HelpContent> = {
   // ── Evento > Egresos ────────────────────────────────────────────────────────
   '/eventos/:id/egresos': {
     titulo: 'Egresos',
-    descripcion: 'Registrá todos los gastos del evento organizados en 5 categorías.',
+    descripcion: 'Registrá todos los gastos del evento organizados en rubros configurables.',
     secciones: [
       {
         titulo: '¿Cómo cargar un egreso?',
-        contenido: 'Click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna HABER → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
+        contenido: 'Elegí la pestaña del rubro correspondiente → click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna HABER → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
       },
       {
-        titulo: 'Categorías de egresos',
-        contenido: '• EG-TC: Costos generales del evento (sonido, iluminación, escenario, etc.)\n• EG-RET SOC: Retiros y gastos de socios\n• EG-EXTRA: Gastos extraordinarios. Desde acá se crean los echeqs.\n• EG-IMP: Impuestos. Cada fila tiene una subcategoría fija (PAYWAY, IIBB, IVA, etc.)\n• EG-PREST: Préstamos recibidos para financiar el evento',
+        titulo: 'Rubros de egresos',
+        contenido: 'Cada pestaña de Egresos es un rubro configurable desde Configuración > Rubros (ej: Producción General, Sonido, Impuestos, Gastos Extraordinarios). El rubro de Impuestos requiere elegir una subcategoría fija (PAYWAY, IIBB, IVA, etc.) en cada fila. Los echeqs solo se pueden crear desde el rubro de Gastos Extraordinarios.',
+      },
+      {
+        titulo: 'Estado y presupuesto',
+        contenido: 'Cada movimiento tiene un estado (Pendiente → Cotizando → Confirmado → Pagado, o Cancelado) y un presupuesto opcional. La columna Diferencia compara el presupuesto contra el monto real cargado — en rojo si el real superó lo presupuestado.',
       },
       {
         titulo: 'Vincular proveedor',
@@ -94,24 +98,44 @@ const help: Record<string, HelpContent> = {
       },
     ],
     links: [
+      { label: 'Ver Resumen',              ruta:   '/eventos/:id/resumen' },
       { label: 'Ver Conciliatoria',        ruta:   '/eventos/:id/conciliatoria' },
       { label: 'Ver Caja',                 ruta:   '/eventos/:id/caja' },
-      { label: 'Ir a EG-EXTRA (Echeqs)',   accion: 'navegar_tab_egreso_3' },
     ],
   },
 
   // ── Evento > Ingresos ───────────────────────────────────────────────────────
   '/eventos/:id/ingresos': {
     titulo: 'Ingresos',
-    descripcion: 'Registrá todas las fuentes de ingreso del evento en 5 categorías.',
+    descripcion: 'Registrá todas las fuentes de ingreso del evento en rubros configurables.',
     secciones: [
       {
         titulo: '¿Cómo cargar un ingreso?',
-        contenido: 'Mismo proceso que egresos — click en +, completar fecha y concepto, monto en columna HABER.',
+        contenido: 'Mismo proceso que egresos — elegí la pestaña del rubro, click en +, completar fecha y concepto, monto en columna HABER.',
       },
       {
-        titulo: 'Categorías de ingresos',
-        contenido: '• Tickets: Venta de entradas (anticipadas, en puerta, plataformas)\n• Sponsors: Auspicios y patrocinios\n• Corporativo: Eventos corporativos o privados\n• Gastronomía: Porcentaje de ventas de food & beverage\n• Service Charge: Cargo por servicio',
+        titulo: 'Rubros de ingresos',
+        contenido: 'Cada pestaña de Ingresos es un rubro configurable desde Configuración > Rubros (ej: Tickets, Sponsors, Corporativo, Gastronomía, Service Charge). Podés renombrarlos, reordenarlos o agregar rubros nuevos según necesites.',
+      },
+    ],
+    links: [
+      { label: 'Ver Resumen',       ruta: '/eventos/:id/resumen' },
+      { label: 'Ver Conciliatoria', ruta: '/eventos/:id/conciliatoria' },
+    ],
+  },
+
+  // ── Evento > Resumen ────────────────────────────────────────────────────────
+  '/eventos/:id/resumen': {
+    titulo: 'Resumen',
+    descripcion: 'Vista rápida de presupuesto vs. costo real por rubro.',
+    secciones: [
+      {
+        titulo: '¿Qué muestra?',
+        contenido: 'Por cada rubro con movimientos cargados: el presupuesto total, el monto real (debe/haber según corresponda), la diferencia en pesos y en porcentaje, y un estado general calculado a partir del estado de sus movimientos.',
+      },
+      {
+        titulo: 'Estado general del rubro',
+        contenido: 'Si todos los movimientos del rubro están Pagados → Pagado. Si hay alguno Pendiente → Pendiente. Si no hay movimientos activos (todos Cancelados) → Cancelado.',
       },
     ],
     links: [
@@ -339,8 +363,8 @@ const help: Record<string, HelpContent> = {
     descripcion: 'Ajustes globales del sistema.',
     secciones: [
       {
-        titulo: 'Tabs de egresos e ingresos',
-        contenido: 'Configurá los nombres de las 5 pestañas de egreso (EG-TC, EG-SOC, etc.) y las 5 de ingreso. Los cambios afectan a todos los eventos.',
+        titulo: 'Rubros de egresos e ingresos',
+        contenido: 'Creá, renombrá, reordená (arrastrando) o desactivá los rubros de egresos e ingresos de tu empresa. Cada rubro activo aparece como una pestaña en todos los eventos. Los rubros del sistema no se pueden eliminar ni desactivar.',
       },
       {
         titulo: 'Usuarios',

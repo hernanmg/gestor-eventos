@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
-import { useTabConfig } from '@/hooks/useTabConfig';
+import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
 import { useSinProveedor } from '@/hooks/useVincularProveedores';
@@ -19,13 +19,14 @@ import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import EventoStockPage from './Stock';
 import EventoFacturas from './Facturas';
+import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo } from '@/types';
+import type { Rubro } from '@/types';
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
 
-function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[] }) {
+function ExportDropdown({ eventoId, rubros }: { eventoId: number; rubros: Rubro[] }) {
   const { exportar: exportExcel } = useExportarExcel();
   const { exportar: exportPDF }   = useExportarPDF();
   const [open,        setOpen]        = useState(false);
@@ -52,8 +53,8 @@ function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[
     try { await exportPDF(eventoId, seccion); } finally { setIsExporting(false); }
   };
 
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
 
   const itemClass = 'w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50';
   const sectionLabel = 'px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-gray-50';
@@ -82,15 +83,15 @@ function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[
             Evento completo
           </button>
           <hr className="my-0.5 border-border" />
-          {egresoTabs.map(t => (
-            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
-              {t.nombre}
+          {egresoRubros.map(r => (
+            <button key={r.id} onClick={() => handleExcel(String(r.id))} className={itemClass}>
+              {r.nombre}
             </button>
           ))}
           <hr className="my-0.5 border-border" />
-          {ingresoTabs.map(t => (
-            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
-              {t.nombre}
+          {ingresoRubros.map(r => (
+            <button key={r.id} onClick={() => handleExcel(String(r.id))} className={itemClass}>
+              {r.nombre}
             </button>
           ))}
           <hr className="my-0.5 border-border" />
@@ -213,9 +214,10 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
 
 const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
+  { key: 'RESUMEN',       label: 'Resumen'       },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -231,8 +233,8 @@ export default function EventoPage() {
   const eventoId   = Number(id);
   const { user }   = useAuth();
 
-  const { data: evento,   isLoading: loadingEvento } = useEvento(eventoId);
-  const { data: tabs = [], isLoading: loadingTabs }  = useTabConfig();
+  const { data: evento,    isLoading: loadingEvento } = useEvento(eventoId);
+  const { data: rubros = [], isLoading: loadingRubros } = useRubros();
 
   const { data: echeqs = [] }    = useEcheqs(eventoId);
   const { data: alertas }        = useAlertasEcheqs(eventoId);
@@ -241,8 +243,8 @@ export default function EventoPage() {
   const { data: sinProveedor } = useSinProveedor(eventoId);
   const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
-  const [mainTab, setMainTab] = useState<MainTab>('EGRESO');
-  const [subTab,  setSubTab]  = useState(1);
+  const [mainTab, setMainTab] = useState<MainTab>('RESUMEN');
+  const [subTab,  setSubTab]  = useState<number | null>(null);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
 
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
@@ -251,16 +253,22 @@ export default function EventoPage() {
     ? [...MAIN_TABS_BASE, { key: 'AUDITORIA' as MainTab, label: 'Auditoría' }]
     : MAIN_TABS_BASE;
 
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const subTabs     = mainTab === 'EGRESO' ? egresoTabs : ingresoTabs;
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const subRubros     = mainTab === 'EGRESO' ? egresoRubros : ingresoRubros;
 
   const handleMainTab = (key: MainTab) => {
     setMainTab(key);
-    setSubTab(1);
+    setSubTab(null);
   };
 
-  if (loadingEvento || loadingTabs) {
+  useEffect(() => {
+    if (subRubros.length > 0 && !subRubros.some(r => r.id === subTab)) {
+      setSubTab(subRubros[0].id);
+    }
+  }, [subRubros, subTab]);
+
+  if (loadingEvento || loadingRubros) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
         Cargando...
@@ -294,7 +302,7 @@ export default function EventoPage() {
           <h1 className="text-xl font-semibold truncate">{evento.nombre}</h1>
         </div>
         <EstadoBadge estado={evento.estado} />
-        <ExportDropdown eventoId={eventoId} tabs={tabs} />
+        <ExportDropdown eventoId={eventoId} rubros={rubros} />
       </div>
 
       {/* Banner sin proveedor */}
@@ -337,20 +345,20 @@ export default function EventoPage() {
       </div>
 
       {/* Sub-tab navigation (Egresos / Ingresos) */}
-      {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subTabs.length > 0 && (
+      {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subRubros.length > 0 && (
         <div className="flex border-b border-border bg-gray-50 shrink-0 px-6 overflow-x-auto">
-          {subTabs.map(tab => (
+          {subRubros.map(rubro => (
             <button
-              key={tab.numero}
-              onClick={() => setSubTab(tab.numero)}
+              key={rubro.id}
+              onClick={() => setSubTab(rubro.id)}
               className={cn(
                 'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
-                subTab === tab.numero
+                subTab === rubro.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
-              {tab.nombre}
+              {rubro.nombre}
             </button>
           ))}
         </div>
@@ -358,16 +366,25 @@ export default function EventoPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
+        {mainTab === 'RESUMEN' && (
+          <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} />
+        )}
+
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (
-          <MovimientoTable
-            eventoId={eventoId}
-            tipo={mainTab as Tipo}
-            tabNumero={subTab}
-            monedaBase={evento.moneda_base}
-            onCreateEcheq={canEdit && mainTab === 'EGRESO' ? setEcheqMovimientoId : undefined}
-            echeqs={mainTab === 'EGRESO' ? echeqs : undefined}
-            onNavigateToEcheqs={() => handleMainTab('ECHEQS')}
-          />
+          subRubros.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-10 text-center">
+              No hay rubros de {mainTab === 'EGRESO' ? 'egresos' : 'ingresos'} configurados. Creá uno desde Configuración.
+            </p>
+          ) : subTab !== null && (
+            <MovimientoTable
+              eventoId={eventoId}
+              rubro={subRubros.find(r => r.id === subTab)!}
+              monedaBase={evento.moneda_base}
+              onCreateEcheq={canEdit && mainTab === 'EGRESO' ? setEcheqMovimientoId : undefined}
+              echeqs={mainTab === 'EGRESO' ? echeqs : undefined}
+              onNavigateToEcheqs={() => handleMainTab('ECHEQS')}
+            />
+          )
         )}
 
         {mainTab === 'CAJA' && (
