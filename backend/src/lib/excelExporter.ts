@@ -395,3 +395,79 @@ export async function generateExcel(
     filename: `${nameSlug}-${dateStr}.xlsx`,
   };
 }
+
+// ── Vista Macro (cross-evento, cross-empresa) ─────────────────────────────────
+
+export interface MacroExcelRow {
+  empresa_nombre:     string | null;
+  evento_nombre:      string | null;
+  rubro_nombre:        string | null;
+  tipo:                string;
+  fecha:               Date | string | null;
+  concepto:            string | null;
+  debe:                number;
+  haber:               number;
+  presupuesto:         number | null;
+  moneda:              string;
+  estado_movimiento:   string;
+  responsable_nombre:  string | null;
+  avisado_proveedor:   boolean;
+  fecha_pago:          Date | string | null;
+}
+
+function addMacroSheet(wb: ExcelJS.Workbook, name: string, rows: MacroExcelRow[]) {
+  const ws = wb.addWorksheet(safeName(name));
+  ws.columns = [
+    { width: 26 }, { width: 18 }, { width: 12 }, { width: 12 }, { width: 30 },
+    { width: 16 }, { width: 16 }, { width: 16 }, { width: 8 }, { width: 14 },
+    { width: 20 }, { width: 10 }, { width: 14 },
+  ];
+  const headers = [
+    'EVENTO', 'RUBRO', 'TIPO', 'FECHA', 'CONCEPTO',
+    'DEBE', 'HABER', 'PRESUPUESTO', 'MONEDA', 'ESTADO',
+    'RESPONSABLE', 'AVISADO', 'FECHA PAGO',
+  ];
+  applyHeaderStyle(ws.addRow(headers), headers.length);
+
+  let totalDebe = 0, totalHaber = 0, totalPresupuesto = 0;
+  for (const r of rows) {
+    totalDebe        += r.debe;
+    totalHaber       += r.haber;
+    totalPresupuesto += r.presupuesto ?? 0;
+    const row = ws.addRow([
+      r.evento_nombre ?? '', r.rubro_nombre ?? '', r.tipo, fmtDate(r.fecha), r.concepto ?? '',
+      r.debe, r.haber, r.presupuesto ?? '', r.moneda, r.estado_movimiento,
+      r.responsable_nombre ?? '', r.avisado_proveedor ? 'Sí' : 'No', fmtDate(r.fecha_pago),
+    ]);
+    for (const c of [6, 7, 8]) row.getCell(c).numFmt = NUM_FMT;
+  }
+
+  const totalsRow = ws.addRow(['TOTAL', '', '', '', '', totalDebe, totalHaber, totalPresupuesto, '', '', '', '', '']);
+  totalsRow.font = BOLD;
+  for (const c of [6, 7, 8]) totalsRow.getCell(c).numFmt = NUM_FMT;
+}
+
+export async function generateMacroExcel(rows: MacroExcelRow[]): Promise<{ buffer: Buffer; filename: string }> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const empresas = [...new Set(rows.map(r => r.empresa_nombre).filter((n): n is string => !!n))];
+
+  if (empresas.length > 1) {
+    for (const empresa of empresas) {
+      addMacroSheet(wb, empresa, rows.filter(r => r.empresa_nombre === empresa));
+    }
+  } else {
+    addMacroSheet(wb, 'MOVIMIENTOS', rows);
+  }
+
+  const today   = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `macro-${dateStr}.xlsx`,
+  };
+}

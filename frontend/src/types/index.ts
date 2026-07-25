@@ -170,6 +170,92 @@ export interface ResumenMovimientos {
   saldo:          number;
 }
 
+// ── Vista Macro (cross-evento, cross-empresa) ──────────────────────────────────
+
+export interface MovimientoMacro {
+  id:                 number;
+  evento_id:          number;
+  evento_nombre:      string | null;
+  evento_estado:      EstadoEvento | null;
+  empresa_id:         number | null;
+  empresa_nombre:     string | null;
+  tipo:               Tipo;
+  rubro_id:           number | null;
+  rubro_nombre:       string | null;
+  fecha:              string | null;
+  concepto:           string | null;
+  descripcion:        string | null;
+  debe:               number;
+  haber:              number;
+  saldo:              number;
+  presupuesto:        number | null;
+  costo_real:         number | null;
+  estado_movimiento:  EstadoMovimiento;
+  responsable_id:     number | null;
+  responsable_nombre: string | null;
+  proveedor_id:       number | null;
+  proveedor_nombre:   string | null;
+  avisado_proveedor:  boolean;
+  fecha_pago:         string | null;
+  moneda:             Moneda;
+  created_at:         string;
+}
+
+export interface MacroTotalPorEmpresa {
+  empresa_id:         number;
+  empresa_nombre:     string;
+  total_debe:         number;
+  total_haber:        number;
+  total_egresos:      number;
+  total_ingresos:     number;
+  total_presupuesto:  number;
+  saldo:              number;
+}
+
+export interface MacroTotalPorRubro {
+  rubro_id:     number;
+  rubro_nombre: string;
+  total_debe:   number;
+  total_haber:  number;
+}
+
+export interface MacroTotales {
+  total_debe:        number;
+  total_haber:       number;
+  total_egresos:     number;
+  total_ingresos:    number;
+  saldo:             number;
+  total_presupuesto: number;
+  total_costo_real:  number;
+  por_empresa:       MacroTotalPorEmpresa[];
+  por_rubro:         MacroTotalPorRubro[];
+  por_estado:        Record<EstadoMovimiento, number>;
+}
+
+export interface MacroResponse {
+  data:       MovimientoMacro[];
+  pagination: { total: number; page: number; limit: number; totalPages: number };
+  totales:    MacroTotales;
+}
+
+export interface MacroFiltros {
+  empresa_id?:         number;
+  evento_id?:          number;
+  rubro_id?:           number;
+  tipo?:               Tipo;
+  estado?:             EstadoMovimiento;
+  responsable_id?:     number;
+  proveedor_id?:       number;
+  desde?:              string;
+  hasta?:              string;
+  con_presupuesto?:    boolean;
+  avisado_proveedor?:  boolean;
+  page?:               number;
+  limit?:              number;
+  sort?:               'fecha' | 'monto' | 'rubro';
+  order?:              'asc' | 'desc';
+}
+
 // ── Caja ──────────────────────────────────────────────────────────────────────
 
 export interface CuentaBancaria {

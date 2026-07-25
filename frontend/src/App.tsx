@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ProtectedLayout      from '@/components/layout/ProtectedLayout';
 import LoginPage            from '@/pages/Login';
 import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
+import MacroPage            from '@/pages/Macro';
 import DashboardPage        from '@/pages/Dashboard';
 import EventosPage          from '@/pages/Eventos';
 import EventoPage                  from '@/pages/Evento';
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/seleccionar-empresa" element={<SeleccionarEmpresaPage />} />
 
           <Route element={<ProtectedLayout />}>
+            <Route path="/macro"         element={<MacroPage />} />
             <Route path="/dashboard"     element={<DashboardPage />} />
             <Route path="/eventos"                              element={<EventosPage />} />
             <Route path="/eventos/:id"                         element={<EventoPage />} />

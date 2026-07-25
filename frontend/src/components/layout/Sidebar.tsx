@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -163,6 +163,12 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
         {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
+          {/* Macro — vista cross-evento, primer ítem, visible para todos los roles */}
+          <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
+            <LayoutGrid size={18} className="shrink-0" />
+            {isOpen && <span>Macro</span>}
+          </NavLink>
+
           {/* Dashboard — visible for all roles */}
           <NavLink to="/dashboard" title={!isOpen ? 'Dashboard' : undefined} className={navItem}>
             <div className="relative shrink-0">

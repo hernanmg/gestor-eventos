@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { recalcularSaldos, recalcularSaldosRubro, recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { generateMacroExcel } from '../lib/excelExporter';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
@@ -99,6 +100,301 @@ const updateSchema = z.object({
   fecha_pago:            z.string().nullable().optional(),
   avisado_proveedor:     z.boolean().optional(),
 });
+
+// ── Vista Macro (cross-evento, cross-empresa para admin global) ───────────────
+// GET /api/movimientos — a diferencia del resto del archivo (scoped a un
+// evento vía :id), esta vista lista movimientos de todos los eventos. Un
+// admin global (Usuario.empresa_id === null) puede ver todas las empresas o
+// filtrar por una puntual; el resto de los usuarios queda fijo a su empresa
+// activa de sesión (req.user.empresaId) sin importar qué manden en el query.
+
+const ESTADOS_MOVIMIENTO = ['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'PAGADO', 'CANCELADO'] as const;
+
+const macroQuerySchema = z.object({
+  empresa_id:        z.coerce.number().int().positive().optional(),
+  evento_id:         z.coerce.number().int().positive().optional(),
+  rubro_id:          z.coerce.number().int().positive().optional(),
+  tipo:              z.enum(['EGRESO', 'INGRESO']).optional(),
+  estado:            z.enum(ESTADOS_MOVIMIENTO).optional(),
+  responsable_id:    z.coerce.number().int().positive().optional(),
+  proveedor_id:      z.coerce.number().int().positive().optional(),
+  desde:             z.string().optional(),
+  hasta:             z.string().optional(),
+  con_presupuesto:   z.enum(['true', 'false']).optional(),
+  avisado_proveedor: z.enum(['true', 'false']).optional(),
+  page:              z.coerce.number().int().positive().default(1),
+  limit:             z.coerce.number().int().positive().max(200).default(50),
+  sort:              z.enum(['fecha', 'monto', 'rubro']).default('fecha'),
+  order:             z.enum(['asc', 'desc']).default('desc'),
+});
+
+type MacroQuery = z.infer<typeof macroQuerySchema>;
+
+const EVENTO_SELECT_MACRO = {
+  select: {
+    id: true, nombre: true, estado: true, empresa_id: true,
+    empresa: { select: { id: true, nombre: true } },
+  },
+} as const;
+
+type MacroWhereResult =
+  | { ok: true; where: Prisma.MovimientoWhereInput; q: MacroQuery }
+  | { ok: false };
+
+// Resuelve el where compartido por listMacro y exportarMacro: valida el
+// query, decide el alcance de empresa según el usuario, y — para roles no
+// ADMIN — restringe a los eventos con EventoAcceso (mismo criterio que
+// eventos.controller.list).
+async function resolveMacroWhere(req: Request, res: Response): Promise<MacroWhereResult> {
+  const parsed = macroQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Filtros inválidos', detail: parsed.error.flatten().fieldErrors });
+    return { ok: false };
+  }
+  const q = parsed.data;
+
+  const usuario = await prisma.usuario.findFirst({
+    where:  { id: req.user!.id, deleted_at: null },
+    select: { empresa_id: true },
+  });
+  if (!usuario) { res.status(401).json({ error: 'Sesión inválida' }); return { ok: false }; }
+
+  const esAdminGlobal = req.user!.rol === 'ADMIN' && usuario.empresa_id === null;
+
+  let empresaFiltro: number | undefined;
+  if (esAdminGlobal) {
+    empresaFiltro = q.empresa_id; // undefined ⇒ todas las empresas
+  } else {
+    if (req.user!.empresaId == null) {
+      res.status(401).json({ error: 'Sin empresa activa. Seleccioná una empresa.' });
+      return { ok: false };
+    }
+    empresaFiltro = req.user!.empresaId; // empresa_id del query se ignora
+  }
+
+  const where: Prisma.MovimientoWhereInput = {
+    deleted_at: null,
+    evento:     { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) },
+  };
+  if (q.evento_id       !== undefined) where.evento_id      = q.evento_id;
+  if (q.rubro_id         !== undefined) where.rubro_id       = q.rubro_id;
+  if (q.tipo)                           where.tipo           = q.tipo;
+  if (q.estado)                         where.estado_movimiento = q.estado;
+  if (q.responsable_id  !== undefined) where.responsable_id = q.responsable_id;
+  if (q.proveedor_id     !== undefined) where.proveedor_id   = q.proveedor_id;
+  if (q.avisado_proveedor !== undefined) where.avisado_proveedor = q.avisado_proveedor === 'true';
+  if (q.con_presupuesto === 'true')     where.presupuesto    = { not: null };
+  if (q.desde || q.hasta) {
+    where.fecha = {
+      ...(q.desde ? { gte: new Date(q.desde) } : {}),
+      ...(q.hasta ? { lte: new Date(q.hasta) } : {}),
+    };
+  }
+
+  if (req.user!.rol !== 'ADMIN') {
+    const accesos = await (prisma as any).eventoAcceso.findMany({
+      where:  { usuario_id: req.user!.id },
+      select: { evento_id: true },
+    });
+    const idsAccesibles: number[] = accesos.map((a: any) => a.evento_id);
+    if (q.evento_id !== undefined) {
+      if (!idsAccesibles.includes(q.evento_id)) where.evento_id = -1; // sin acceso ⇒ vacío
+    } else {
+      where.evento_id = { in: idsAccesibles };
+    }
+  }
+
+  return { ok: true, where, q };
+}
+
+function mapMacroRow(m: any) {
+  return {
+    id:                 m.id,
+    evento_id:          m.evento_id,
+    evento_nombre:      m.evento?.nombre ?? null,
+    evento_estado:      m.evento?.estado ?? null,
+    empresa_id:         m.evento?.empresa_id ?? null,
+    empresa_nombre:     m.evento?.empresa?.nombre ?? null,
+    tipo:               m.tipo,
+    rubro_id:           m.rubro_id,
+    rubro_nombre:       m.rubro?.nombre ?? null,
+    fecha:              m.fecha,
+    concepto:           m.concepto,
+    descripcion:        m.descripcion,
+    debe:               Number(m.debe),
+    haber:              Number(m.haber),
+    saldo:              Number(m.saldo),
+    presupuesto:        m.presupuesto !== null && m.presupuesto !== undefined ? Number(m.presupuesto) : null,
+    costo_real:         m.costo_real  !== null && m.costo_real  !== undefined ? Number(m.costo_real)  : null,
+    estado_movimiento:  m.estado_movimiento,
+    responsable_id:     m.responsable_id,
+    responsable_nombre: m.responsable?.nombre ?? null,
+    proveedor_id:       m.proveedor_id,
+    proveedor_nombre:   m.proveedor?.nombre ?? null,
+    avisado_proveedor:  m.avisado_proveedor,
+    fecha_pago:         m.fecha_pago,
+    moneda:             m.moneda,
+    created_at:         m.created_at,
+  };
+}
+
+function macroOrderBy(sort: MacroQuery['sort'], order: MacroQuery['order']): Prisma.MovimientoOrderByWithRelationInput[] {
+  if (sort === 'monto') return [{ debe: order }, { haber: order }];
+  if (sort === 'rubro') return [{ rubro: { nombre: order } }];
+  return [{ fecha: order }];
+}
+
+export async function listMacro(req: Request, res: Response) {
+  const resolved = await resolveMacroWhere(req, res);
+  if (!resolved.ok) return;
+  const { where, q } = resolved;
+  const skip = (q.page - 1) * q.limit;
+
+  const [total, movs, agg] = await Promise.all([
+    prisma.movimiento.count({ where }),
+    prisma.movimiento.findMany({
+      where,
+      orderBy: macroOrderBy(q.sort, q.order),
+      skip, take: q.limit,
+      include: {
+        evento:      EVENTO_SELECT_MACRO,
+        rubro:       { select: RUBRO_SELECT },
+        responsable: { select: RESPONSABLE_SELECT },
+        proveedor:   { select: PROVEEDOR_SELECT },
+      },
+    }),
+    // Set completo (sin paginar) sólo con los campos necesarios para agregar
+    // los totales — misma estrategia que resumen()/conciliatoria() para un
+    // evento, aplicada acá al alcance cross-evento del filtro activo.
+    prisma.movimiento.findMany({
+      where,
+      select: {
+        tipo: true, debe: true, haber: true, presupuesto: true, costo_real: true, estado_movimiento: true,
+        rubro_id: true, rubro: { select: { nombre: true } },
+        evento: { select: { empresa_id: true, empresa: { select: { nombre: true } } } },
+      },
+    }),
+  ]);
+
+  let totalDebe = 0, totalHaber = 0, totalEgresos = 0, totalIngresos = 0, totalPresupuesto = 0, totalCostoReal = 0;
+  const porEmpresaMap = new Map<number, {
+    empresa_id: number; empresa_nombre: string;
+    total_debe: number; total_haber: number; total_egresos: number; total_ingresos: number; total_presupuesto: number;
+  }>();
+  const porRubroMap = new Map<number, { rubro_id: number; rubro_nombre: string; total_debe: number; total_haber: number }>();
+  const porEstado: Record<string, number> = Object.fromEntries(ESTADOS_MOVIMIENTO.map(e => [e, 0]));
+
+  for (const m of agg) {
+    const debe        = Number(m.debe);
+    const haber       = Number(m.haber);
+    const presupuesto = Number(m.presupuesto ?? 0);
+    // El monto real de un movimiento depende de cómo se cargó la fila (ver
+    // comentario en resumen()) — sumar debe+haber es lo robusto acá también.
+    const monto = debe + haber;
+
+    totalDebe        += debe;
+    totalHaber       += haber;
+    totalPresupuesto += presupuesto;
+    totalCostoReal   += m.costo_real !== null ? Number(m.costo_real) : monto;
+    if (m.tipo === 'EGRESO')  totalEgresos  += monto;
+    if (m.tipo === 'INGRESO') totalIngresos += monto;
+    porEstado[m.estado_movimiento] = (porEstado[m.estado_movimiento] ?? 0) + 1;
+
+    const empId = m.evento?.empresa_id;
+    if (empId != null) {
+      const cur = porEmpresaMap.get(empId) ?? {
+        empresa_id: empId, empresa_nombre: m.evento?.empresa?.nombre ?? '',
+        total_debe: 0, total_haber: 0, total_egresos: 0, total_ingresos: 0, total_presupuesto: 0,
+      };
+      cur.total_debe  += debe;
+      cur.total_haber += haber;
+      cur.total_presupuesto += presupuesto;
+      if (m.tipo === 'EGRESO')  cur.total_egresos  += monto;
+      if (m.tipo === 'INGRESO') cur.total_ingresos += monto;
+      porEmpresaMap.set(empId, cur);
+    }
+
+    if (m.rubro_id !== null) {
+      const cur = porRubroMap.get(m.rubro_id) ?? { rubro_id: m.rubro_id, rubro_nombre: m.rubro?.nombre ?? '', total_debe: 0, total_haber: 0 };
+      cur.total_debe  += debe;
+      cur.total_haber += haber;
+      porRubroMap.set(m.rubro_id, cur);
+    }
+  }
+
+  res.json({
+    data: movs.map(mapMacroRow),
+    pagination: {
+      total, page: q.page, limit: q.limit,
+      totalPages: Math.max(1, Math.ceil(total / q.limit)),
+    },
+    totales: {
+      total_debe:        parseFloat(totalDebe.toFixed(2)),
+      total_haber:       parseFloat(totalHaber.toFixed(2)),
+      total_egresos:     parseFloat(totalEgresos.toFixed(2)),
+      total_ingresos:    parseFloat(totalIngresos.toFixed(2)),
+      saldo:             parseFloat((totalIngresos - totalEgresos).toFixed(2)),
+      total_presupuesto: parseFloat(totalPresupuesto.toFixed(2)),
+      total_costo_real:  parseFloat(totalCostoReal.toFixed(2)),
+      por_empresa: [...porEmpresaMap.values()].map(e => ({
+        ...e,
+        total_debe:        parseFloat(e.total_debe.toFixed(2)),
+        total_haber:       parseFloat(e.total_haber.toFixed(2)),
+        total_egresos:     parseFloat(e.total_egresos.toFixed(2)),
+        total_ingresos:    parseFloat(e.total_ingresos.toFixed(2)),
+        total_presupuesto: parseFloat(e.total_presupuesto.toFixed(2)),
+        saldo:             parseFloat((e.total_ingresos - e.total_egresos).toFixed(2)),
+      })),
+      por_rubro:  [...porRubroMap.values()],
+      por_estado: porEstado,
+    },
+  });
+}
+
+const MACRO_EXPORT_MAX_ROWS = 20000;
+
+export async function exportarMacro(req: Request, res: Response) {
+  const resolved = await resolveMacroWhere(req, res);
+  if (!resolved.ok) return;
+  const { where, q } = resolved;
+
+  const total = await prisma.movimiento.count({ where });
+  if (total > MACRO_EXPORT_MAX_ROWS) {
+    res.status(400).json({ error: `Demasiados movimientos (${total}) para exportar. Acotá los filtros (máximo ${MACRO_EXPORT_MAX_ROWS}).` });
+    return;
+  }
+
+  const movs = await prisma.movimiento.findMany({
+    where,
+    orderBy: macroOrderBy(q.sort, q.order),
+    include: {
+      evento:      EVENTO_SELECT_MACRO,
+      rubro:       { select: RUBRO_SELECT },
+      responsable: { select: RESPONSABLE_SELECT },
+      proveedor:   { select: PROVEEDOR_SELECT },
+    },
+  });
+
+  const { buffer, filename } = await generateMacroExcel(movs.map(mapMacroRow));
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId ?? null,
+    accion:       'EXPORT',
+    entidad:      'Movimiento',
+    descripcion:  `Exportó Excel de la vista macro (${movs.length} movimientos)`,
+    datosDespues: { formato: 'excel', filtros: req.query },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
+  res.set({
+    'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length':      String(buffer.length),
+  });
+  res.end(buffer);
+}
 
 export async function listSinConciliar(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
