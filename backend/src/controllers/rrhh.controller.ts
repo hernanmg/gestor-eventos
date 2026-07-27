@@ -7,6 +7,7 @@ import { recalcularSaldosRubro } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacion } from '../lib/pdfTemplates/liquidacion';
+import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
 
 // ── Helpers numéricos ─────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ async function getOrCreateTabRRHH(empresaId: number, tx: any): Promise<number> {
 // con codigo='RRHH' (normalmente ya sembrado por prisma/seed.ts).
 async function getOrCreateRubroRRHH(empresaId: number, tx: any): Promise<number> {
   const existente = await tx.rubro.findFirst({
-    where: { empresa_id: empresaId, tipo: TipoRubro.EGRESO, codigo: 'RRHH', deleted_at: null },
+    where: { empresa_id: empresaId, tipo: TipoRubro.EGRESO, codigo: RUBROS_SISTEMA.RRHH, deleted_at: null },
   });
   if (existente) return existente.id;
 
@@ -74,7 +75,7 @@ async function getOrCreateRubroRRHH(empresaId: number, tx: any): Promise<number>
       empresa_id: empresaId,
       tipo:       TipoRubro.EGRESO,
       nombre:     'RRHH',
-      codigo:     'RRHH',
+      codigo:     RUBROS_SISTEMA.RRHH,
       orden:      (lastOrd?.orden ?? 0) + 1,
       activo:     true,
       es_sistema: true,

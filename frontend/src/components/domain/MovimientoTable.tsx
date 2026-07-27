@@ -23,6 +23,7 @@ import { EcheqEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import { RUBROS_SISTEMA } from '@/lib/rubrosConstants';
 import type { Echeq, Movimiento, Rubro, Moneda, ProveedorBusqueda, EstadoMovimiento } from '@/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -452,8 +453,8 @@ interface Props {
 }
 
 export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', onCreateEcheq, echeqs, onNavigateToEcheqs }: Props) {
-  const isEgImp   = rubro.codigo === 'EG-IMP';
-  const isEgExtra = rubro.codigo === 'EG-EXTRA';
+  const isEgImp   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
+  const isEgExtra = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
 
   const { data: movimientos = [], isLoading } = useMovimientos(eventoId, rubro.id);
   const { data: cuentas     = [] }            = useCuentas(eventoId);

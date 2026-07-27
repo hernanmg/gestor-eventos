@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -118,7 +119,7 @@ export async function createEcheq(req: Request, res: Response) {
     if (!mov) {
       res.status(400).json({ error: 'Movimiento no encontrado en este evento' }); return;
     }
-    if (mov.tipo !== 'EGRESO' || mov.rubro?.codigo !== 'EG-EXTRA') {
+    if (mov.tipo !== 'EGRESO' || mov.rubro?.codigo !== RUBROS_SISTEMA.GASTOS_EXTRA) {
       res.status(400).json({ error: 'Los echeqs solo se pueden crear desde el rubro de Gastos Extraordinarios' }); return;
     }
     const existing = await prisma.echeq.findFirst({

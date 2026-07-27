@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { prisma } from './prisma';
+import { RUBROS_SISTEMA } from './rubrosConstants';
 
 // ── Style constants ───────────────────────────────────────────────────────────
 
@@ -373,8 +374,8 @@ export async function generateExcel(
   if (rubroIdOrConc) {
     const rubro = rubros.find(r => String(r.id) === rubroIdOrConc);
     if (!rubro) throw Object.assign(new Error(`Rubro no encontrado: ${rubroIdOrConc}`), { status: 400 });
-    const isIMP   = rubro.codigo === 'EG-IMP';
-    const isEXTRA = rubro.codigo === 'EG-EXTRA';
+    const isIMP   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
+    const isEXTRA = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
     addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
     return {
       buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
@@ -384,8 +385,8 @@ export async function generateExcel(
 
   // Full export: una hoja por rubro activo + conciliatoria
   for (const rubro of rubros) {
-    const isIMP   = rubro.codigo === 'EG-IMP';
-    const isEXTRA = rubro.codigo === 'EG-EXTRA';
+    const isIMP   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
+    const isEXTRA = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
     addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
   }
   addConcilSheet(wb, buildConcilData());

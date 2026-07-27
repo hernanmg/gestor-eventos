@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { EstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import MovimientoTable from '@/components/domain/MovimientoTable';
 import EcheqFormDialog from '@/components/domain/EcheqFormDialog';
 import CajaPage from './Caja';
@@ -257,6 +258,13 @@ export default function EventoPage() {
   const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
   const subRubros     = mainTab === 'EGRESO' ? egresoRubros : ingresoRubros;
 
+  // Rubros técnicos (codigo != null: RRHH, Impuestos, Gastos Extraordinarios)
+  // van al final del combobox, separados de los operativos por un divider.
+  const subRubroOptions: ComboboxOption[] = [
+    ...subRubros.filter(r => !r.codigo).map(r => ({ value: String(r.id), label: r.nombre, group: 'operativo' })),
+    ...subRubros.filter(r =>  r.codigo).map(r => ({ value: String(r.id), label: r.nombre, group: 'tecnico' })),
+  ];
+
   const handleMainTab = (key: MainTab) => {
     setMainTab(key);
     setSubTab(null);
@@ -344,23 +352,18 @@ export default function EventoPage() {
         ))}
       </div>
 
-      {/* Sub-tab navigation (Egresos / Ingresos) */}
+      {/* Sub-selector de rubro (Egresos / Ingresos) */}
       {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subRubros.length > 0 && (
-        <div className="flex border-b border-border bg-gray-50 shrink-0 px-6 overflow-x-auto">
-          {subRubros.map(rubro => (
-            <button
-              key={rubro.id}
-              onClick={() => setSubTab(rubro.id)}
-              className={cn(
-                'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
-                subTab === rubro.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {rubro.nombre}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 border-b border-border bg-gray-50 shrink-0 px-6 py-2">
+          <Combobox
+            className="w-full sm:w-64"
+            options={subRubroOptions}
+            value={subTab !== null ? String(subTab) : null}
+            onChange={v => setSubTab(Number(v))}
+            placeholder="Seleccionar rubro..."
+            searchPlaceholder="Buscar rubro..."
+            emptyMessage="Ningún rubro coincide."
+          />
         </div>
       )}
 

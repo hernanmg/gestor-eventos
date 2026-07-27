@@ -7,6 +7,7 @@ import { recalcularSaldos, recalcularSaldosRubro, recalcularSaldosCaja } from '.
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { generateMacroExcel } from '../lib/excelExporter';
+import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
@@ -463,7 +464,7 @@ export async function create(req: Request, res: Response) {
 
   const tipo = rubro.tipo as unknown as Tipo;
 
-  const isEgImp = rubro.codigo === 'EG-IMP';
+  const isEgImp = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
   if (isEgImp) {
     if (!impuesto_subcategoria) {
       res.status(400).json({ error: 'impuesto_subcategoria es requerido para el rubro de Impuestos' });
@@ -609,7 +610,7 @@ export async function update(req: Request, res: Response) {
   }
 
   if (
-    existing.rubro?.codigo === 'EG-IMP' &&
+    existing.rubro?.codigo === RUBROS_SISTEMA.IMPUESTOS &&
     impuesto_subcategoria !== undefined &&
     impuesto_subcategoria !== null
   ) {
