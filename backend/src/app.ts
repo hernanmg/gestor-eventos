@@ -21,6 +21,7 @@ import rrhhRouter from './routes/rrhh';
 import panolRouter from './routes/panol';
 import activosRouter from './routes/activos';
 import rubrosRouter from './routes/rubros';
+import { fichaEventoRouter, rubrosEventoRouter, pedidoItemsRouter } from './routes/fichaEvento';
 
 const app = express();
 
@@ -44,6 +45,10 @@ app.use(cors({
     }
   },
   credentials: true,
+  // Sin esto, el navegador bloquea la lectura de este header en las
+  // respuestas cross-origin — los hooks de descarga (Excel/PDF) no pueden
+  // leer el filename real y caen siempre a su nombre por defecto.
+  exposedHeaders: ['Content-Disposition'],
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -76,6 +81,9 @@ app.use('/api/rrhh',              rrhhRouter);
 app.use('/api/panol',             panolRouter);
 app.use('/api/activos',           activosRouter);
 app.use('/api/rubros',            rubrosRouter);
+app.use('/api/eventos/:id/ficha', fichaEventoRouter);
+app.use('/api/rubros-evento',     rubrosEventoRouter);
+app.use('/api/pedido-items',      pedidoItemsRouter);
 
 app.use(errorHandler);
 

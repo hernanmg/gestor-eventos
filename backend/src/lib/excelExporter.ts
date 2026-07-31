@@ -6,10 +6,10 @@ import { RUBROS_SISTEMA } from './rubrosConstants';
 
 const BLUE_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0070C0' } };
 const BOLD_WHITE: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-const BOLD: Partial<ExcelJS.Font>       = { bold: true };
-const NUM_FMT = '#,##0.00';
+export const BOLD: Partial<ExcelJS.Font> = { bold: true };
+export const NUM_FMT = '#,##0.00';
 
-function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
+export function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
   for (let c = 1; c <= cols; c++) {
     const cell = row.getCell(c);
     cell.fill = BLUE_FILL;
@@ -20,7 +20,7 @@ function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
   row.height = 18;
 }
 
-function fmtDate(d: Date | string | null | undefined): string {
+export function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return '';
@@ -29,7 +29,7 @@ function fmtDate(d: Date | string | null | undefined): string {
   return `${dd}/${mm}/${date.getFullYear()}`;
 }
 
-function safeName(s: string): string {
+export function safeName(s: string): string {
   return s.replace(/[/\\?*[\]:]/g, '-').substring(0, 31);
 }
 

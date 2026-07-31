@@ -95,3 +95,19 @@ export const byEcheqId: GetEventoIdFn = async (req) => {
   });
   return e?.evento_id ?? null;
 };
+
+export const byRubroEventoId: GetEventoIdFn = async (req) => {
+  const re = await (prisma as any).rubroEvento.findFirst({
+    where:  { id: Number(req.params.id) },
+    select: { evento_id: true },
+  });
+  return re?.evento_id ?? null;
+};
+
+export const byPedidoItemId: GetEventoIdFn = async (req) => {
+  const pi = await (prisma as any).pedidoItem.findFirst({
+    where:   { id: Number(req.params.id) },
+    include: { rubro_evento: { select: { evento_id: true } } },
+  });
+  return pi?.rubro_evento?.evento_id ?? null;
+};

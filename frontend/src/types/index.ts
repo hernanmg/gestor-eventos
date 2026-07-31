@@ -39,6 +39,7 @@ export interface Proveedor {
   alias:      string | null;
   cuit:       string | null;
   categoria:  string | null;
+  telefono:   string | null;
   notas:      string | null;
   activo:     boolean;
   created_at: string;
@@ -54,6 +55,7 @@ export interface ProveedorBusqueda {
   alias:     string | null;
   cuit:      string | null;
   categoria: string | null;
+  telefono?: string | null;
 }
 
 // ── Configuración de pestañas ─────────────────────────────────────────────────
@@ -82,6 +84,61 @@ export interface Rubro {
   es_sistema:  boolean;
   created_at:  string;
   updated_at:  string;
+}
+
+// ── Ficha de Evento (Enjoy) ────────────────────────────────────────────────────
+
+export type EstadoRubroEvento = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'NO_VA' | 'CANCELADO';
+
+export interface PedidoItem {
+  id:              number;
+  rubro_evento_id: number;
+  cantidad:        number | null;
+  unidad:          string | null;
+  descripcion:     string;
+  dias_uso:        number | null;
+  horario_llegada: string | null;
+  horario_retiro:  string | null;
+  observaciones:   string | null;
+  orden:           number;
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+}
+
+export interface RubroEvento {
+  id:         number;
+  evento_id:  number;
+  rubro_id:   number;
+  empresa_id: number;
+  proveedor_id: number | null;
+  estado:       EstadoRubroEvento;
+  contacto_nombre:   string | null;
+  contacto_telefono: string | null;
+  contacto_cargo:    string | null;
+  coordina_nombre:   string | null;
+  fecha_ingreso: string | null;
+  fecha_retiro:  string | null;
+  presupuesto:   number | null;
+  moneda:        Moneda;
+  notas:         string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  rubro:        { id: number; nombre: string; orden: number };
+  proveedor:    ProveedorBusqueda | null;
+  pedido_items: PedidoItem[];
+}
+
+// Vista liviana de GET /ficha/resumen — sin pedido_items
+export interface RubroEventoResumen {
+  id: number;
+  estado: EstadoRubroEvento;
+  coordina_nombre: string | null;
+  contacto_nombre: string | null;
+  contacto_telefono: string | null;
+  rubro:     { id: number; nombre: string; orden: number };
+  proveedor: { id: number; nombre: string } | null;
 }
 
 // ── Eventos ───────────────────────────────────────────────────────────────────

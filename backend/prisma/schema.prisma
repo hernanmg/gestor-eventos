@@ -219,6 +219,7 @@ model Empresa {
   movimientosPanol      MovimientoPanol[]
   activos               Activo[]
   rubros                Rubro[]
+  rubrosEvento          RubroEvento[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -312,6 +313,7 @@ model Evento {
   jornadas               Jornada[]
   liquidaciones          Liquidacion[]
   movimientosPanol       MovimientoPanol[]
+  rubros_evento          RubroEvento[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -336,6 +338,78 @@ model Rubro {
   @@unique([empresa_id, tipo, nombre])
   movimientos       Movimiento[]
   facturas          Factura[]
+  rubros_evento     RubroEvento[]
+}
+
+// ─── FICHA DE EVENTO (Enjoy) ──────────────────────────────────────────────────
+// Instancia por evento del catálogo de Rubro: para este evento puntual, qué
+// proveedor cubre cada rubro, si está confirmado, quién coordina, y el pedido
+// técnico detallado. Reemplaza el armado manual de Festival_KM_-_Pedidos_de_
+// material.xlsx / Ficha_de_evento.xlsx / Planilla_Produccion_Expo_Village.xlsx.
+
+enum EstadoRubroEvento {
+  PENDIENTE  // no asignado todavía
+  COTIZANDO  // en negociación con proveedor
+  CONFIRMADO // proveedor confirmado
+  NO_VA      // rubro no aplica a este evento
+  CANCELADO  // se canceló después de confirmado
+}
+
+model RubroEvento {
+  id         Int     @id @default(autoincrement())
+  evento_id  Int
+  evento     Evento  @relation(fields: [evento_id], references: [id])
+  rubro_id   Int
+  rubro      Rubro   @relation(fields: [rubro_id], references: [id])
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  // Asignación
+  proveedor_id Int?
+  proveedor    Proveedor?        @relation(fields: [proveedor_id], references: [id])
+  estado       EstadoRubroEvento @default(PENDIENTE)
+  // Contacto del proveedor para este evento (puede diferir del proveedor genérico)
+  contacto_nombre   String?
+  contacto_telefono String?
+  contacto_cargo    String?
+  // Coordinación interna
+  coordina_nombre String? // quién de Enjoy coordina este rubro
+  // Fechas clave
+  fecha_ingreso DateTime? // cuándo entra el proveedor al evento
+  fecha_retiro  DateTime? // cuándo se va
+  // Presupuesto
+  presupuesto Decimal? @db.Decimal(12, 2)
+  moneda      Moneda   @default(ARS)
+  // Notas generales del rubro en este evento
+  notas String?
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+  // Pedido técnico detallado (una o más líneas por rubro)
+  pedido_items PedidoItem[]
+
+  @@unique([evento_id, rubro_id])
+}
+
+model PedidoItem {
+  id              Int         @id @default(autoincrement())
+  rubro_evento_id Int
+  rubro_evento    RubroEvento @relation(fields: [rubro_evento_id], references: [id])
+  // El pedido técnico: qué se le pide al proveedor
+  cantidad        Decimal? @db.Decimal(10, 2)
+  unidad          String? // "unidades", "metros", "días", "personas"
+  descripcion     String  // "Sistema de sonido line array", "Generador 100kva", etc.
+  dias_uso        Int?
+  horario_llegada String? // texto libre: "08:00", "día anterior al evento"
+  horario_retiro  String?
+  observaciones   String?
+  orden           Int      @default(0)
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -439,6 +513,7 @@ model Proveedor {
   alias      String?
   cuit       String?   @unique
   categoria  String?
+  telefono   String?
   notas      String?
   activo     Boolean   @default(true)
   created_at DateTime  @default(now())
@@ -447,9 +522,10 @@ model Proveedor {
   created_by Int?
   updated_by Int?
 
-  movimientos Movimiento[]
-  echeqs      Echeq[]
-  facturas    Factura[]
+  movimientos   Movimiento[]
+  echeqs        Echeq[]
+  facturas      Factura[]
+  rubros_evento RubroEvento[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────

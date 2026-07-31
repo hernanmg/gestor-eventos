@@ -143,6 +143,29 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Evento > Ficha ──────────────────────────────────────────────────────────
+  '/eventos/:id/ficha': {
+    titulo: 'Ficha de Evento',
+    descripcion: 'La Ficha de Evento centraliza todos los proveedores y pedidos del evento. Inicializá la ficha para ver los 84 rubros y asignales proveedor, estado y detalle del pedido. Al exportar generás el documento que antes se hacía a mano.',
+    secciones: [
+      {
+        titulo: '¿Cómo empiezo?',
+        contenido: 'Hacé clic en "Inicializar ficha" — se crean automáticamente todos los rubros de egresos configurados para tu empresa, en estado Pendiente. A partir de ahí asignales proveedor, estado, contacto y quién coordina cada uno.',
+      },
+      {
+        titulo: 'Pedido técnico',
+        contenido: 'Cada rubro puede tener uno o más ítems de pedido (cantidad, material, días de uso, horarios de llegada y retiro). Hacé clic en "Pedido" para expandir y cargar el detalle — se guarda automáticamente al salir de cada campo.',
+      },
+      {
+        titulo: 'Exportar',
+        contenido: 'El botón "Exportar Excel" genera un archivo con una hoja resumen de todos los proveedores y una hoja adicional por cada rubro Confirmado con su pedido técnico completo.',
+      },
+    ],
+    links: [
+      { label: 'Ver Resumen', ruta: '/eventos/:id/resumen' },
+    ],
+  },
+
   // ── Evento > Caja ───────────────────────────────────────────────────────────
   '/eventos/:id/caja': {
     titulo: 'Caja',
@@ -382,6 +405,7 @@ export function getHelpContent(pathname: string): HelpContent | null {
 
   // Event sub-paths — orden de más específico a menos
   if (/^\/eventos\/\d+\/vincular-proveedores/.test(pathname)) return help['/eventos/:id/vincular-proveedores'] ?? null;
+  if (/^\/eventos\/\d+\/ficha/.test(pathname))                return help['/eventos/:id/ficha']                ?? null;
   if (/^\/eventos\/\d+\/egresos/.test(pathname))              return help['/eventos/:id/egresos']              ?? null;
   if (/^\/eventos\/\d+\/ingresos/.test(pathname))             return help['/eventos/:id/ingresos']             ?? null;
   if (/^\/eventos\/\d+\/caja/.test(pathname))                 return help['/eventos/:id/caja']                 ?? null;

@@ -16,6 +16,7 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import MovimientoTable from '@/components/domain/MovimientoTable';
 import EcheqFormDialog from '@/components/domain/EcheqFormDialog';
 import CajaPage from './Caja';
+import FichaEventoPage from './Ficha';
 import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import EventoStockPage from './Stock';
@@ -215,10 +216,11 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
 
 const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
+  { key: 'FICHA',         label: 'Ficha'         },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -371,6 +373,10 @@ export default function EventoPage() {
       <div className="flex-1 overflow-auto p-4">
         {mainTab === 'RESUMEN' && (
           <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} />
+        )}
+
+        {mainTab === 'FICHA' && (
+          <FichaEventoPage eventoId={eventoId} canEdit={canEdit} monedaBase={evento.moneda_base} />
         )}
 
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (

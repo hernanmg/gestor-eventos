@@ -12,6 +12,7 @@ const proveedorSchema = z.object({
   alias:     z.string().optional(),
   cuit:      z.string().regex(CUIT_REGEX, 'Formato de CUIT inválido (XX-XXXXXXXX-X)').optional(),
   categoria: z.string().optional(),
+  telefono:  z.string().nullable().optional(),
   notas:     z.string().optional(),
 });
 
@@ -144,7 +145,7 @@ export async function create(req: Request, res: Response) {
     return;
   }
 
-  const { nombre, alias, cuit, categoria, notas } = parsed.data;
+  const { nombre, alias, cuit, categoria, telefono, notas } = parsed.data;
 
   if (cuit) {
     const existing = await prisma.proveedor.findFirst({ where: { cuit, deleted_at: null } });
@@ -160,6 +161,7 @@ export async function create(req: Request, res: Response) {
       alias:     alias     ?? null,
       cuit:      cuit      ?? null,
       categoria: categoria ?? null,
+      telefono:  telefono  ?? null,
       notas:     notas     ?? null,
       created_by: req.user!.id,
       updated_by: req.user!.id,
@@ -180,7 +182,7 @@ export async function update(req: Request, res: Response) {
   const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
-  const { nombre, alias, cuit, categoria, notas } = parsed.data;
+  const { nombre, alias, cuit, categoria, telefono, notas } = parsed.data;
 
   if (cuit && cuit !== proveedor.cuit) {
     const dup = await prisma.proveedor.findFirst({ where: { cuit, deleted_at: null, id: { not: id } } });
@@ -196,6 +198,7 @@ export async function update(req: Request, res: Response) {
       ...(alias     !== undefined && { alias }),
       ...(cuit      !== undefined && { cuit }),
       ...(categoria !== undefined && { categoria }),
+      ...(telefono  !== undefined && { telefono }),
       ...(notas     !== undefined && { notas }),
       updated_by: req.user!.id,
     },
@@ -234,7 +237,7 @@ export async function buscar(req: Request, res: Response) {
         { cuit:      { contains: q, mode: 'insensitive' } },
       ],
     },
-    select:  { id: true, nombre: true, alias: true, cuit: true, categoria: true },
+    select:  { id: true, nombre: true, alias: true, cuit: true, categoria: true, telefono: true },
     orderBy: { nombre: 'asc' },
     take:    10,
   });
