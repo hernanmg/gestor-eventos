@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 
 type GetEventoIdFn = (req: Request) => Promise<number | null>;
 
+const ROL_LEVEL: Record<'VIEWER' | 'OPERADOR' | 'ADMIN', number> = { VIEWER: 1, OPERADOR: 2, ADMIN: 3 };
+
 export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // Global ADMIN always has access
@@ -15,7 +17,11 @@ export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler
       : Number(req.params.id) || null;
 
     if (!eventoId) {
-      res.status(400).json({ error: 'Evento no identificado' });
+      // Recurso sin evento asociado (ej: cuenta de caja de empresa, sin
+      // evento_id) — no hay ACL de evento que aplicar. El controlador se
+      // encarga de validar tenant/existencia; requireEventoRole cae al rol
+      // global del usuario en ese caso.
+      next();
       return;
     }
 
@@ -33,12 +39,23 @@ export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler
   };
 }
 
-// Call after requireEventoAcceso — blocks VIEWER event roles from write operations
+// Call after requireEventoAcceso — blocks VIEWER event roles from write operations.
+// Si no hay ACL de evento (recurso de empresa sin evento_id), usa el rol global.
 export function requireEventoRole(minRol: 'OPERADOR' | 'ADMIN'): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.user!.rol === 'ADMIN') { next(); return; }
-    if (minRol === 'OPERADOR' && req.eventoRol === 'VIEWER') {
-      res.status(403).json({ error: 'Sin permisos de escritura en este evento' });
+
+    if (req.eventoRol) {
+      if (minRol === 'OPERADOR' && req.eventoRol === 'VIEWER') {
+        res.status(403).json({ error: 'Sin permisos de escritura en este evento' });
+        return;
+      }
+      next();
+      return;
+    }
+
+    if (ROL_LEVEL[req.user!.rol] < ROL_LEVEL[minRol]) {
+      res.status(403).json({ error: 'Sin permisos suficientes' });
       return;
     }
     next();

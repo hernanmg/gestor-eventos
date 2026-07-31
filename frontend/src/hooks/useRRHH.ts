@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
-  Empleado, EmpleadoConStats, Jornada, Anticipo, Liquidacion, LiquidacionDetalle,
-  CategoriaEmpleado, EstadoEmpleado, EstadoJornada, EstadoLiquidacion, TipoAnticipo,
+  Empleado, EmpleadoConStats, Jornada, Anticipo, Liquidacion, LiquidacionDetalle, LiquidacionPreview,
+  CategoriaEmpleado, EstadoEmpleado, EstadoJornada, EstadoLiquidacion, TipoAnticipo, TipoLiquidacion,
 } from '@/types';
 
 const EMPLEADOS_KEY     = ['rrhh', 'empleados'];
@@ -50,6 +50,28 @@ export interface EmpleadoPayload {
   valor_hora_extra:   number;
   estado?:            EstadoEmpleado;
   notas?:             string | null;
+
+  tipo_liquidacion?:         TipoLiquidacion;
+  valor_jornada_completa?:   number | null;
+  valor_media_jornada?:      number | null;
+  umbral_horas_jornada?:     number | null;
+  umbral_horas_media?:       number | null;
+  valor_hora_extra_jornada?: number | null;
+  valor_viaje?:              number | null;
+
+  apodo?:                      string | null;
+  fecha_nacimiento?:           string | null;
+  grupo_sanguineo?:            string | null;
+  contacto_emergencia_nombre?: string | null;
+  contacto_emergencia_tel?:    string | null;
+  escalafon?:                  number | null;
+  art?:                        string | null;
+  licencia_conducir?:          boolean;
+  equipamiento_asignado?:      string | null;
+  talle_pantalon?:             string | null;
+  talle_remera?:               string | null;
+  talle_buzo?:                 string | null;
+  talle_calzado?:              string | null;
 }
 
 export function useCreateEmpleado() {
@@ -112,6 +134,10 @@ export interface JornadaPayload {
   hora_ingreso?:      string | null;
   hora_egreso?:       string | null;
   descripcion?:       string | null;
+  cantidad_viajes?:   number | null;
+  convocatoria?:      string | null;
+  lugar_trabajo?:     string | null;
+  camion_id?:         number | null;
 }
 
 function invalidateJornadas(qc: ReturnType<typeof useQueryClient>) {
@@ -231,6 +257,15 @@ export interface GenerarLiquidacionPayload {
   fecha_desde: string;
   fecha_hasta: string;
   evento_id?:  number | null;
+}
+
+export function usePreviewLiquidacion(params: { empleado_id?: number; fecha_desde?: string; fecha_hasta?: string }) {
+  const { empleado_id, fecha_desde, fecha_hasta } = params;
+  return useQuery<LiquidacionPreview>({
+    queryKey: [...LIQUIDACIONES_KEY, 'preview', params],
+    queryFn:  () => api.get('/rrhh/liquidaciones/preview', { params: { empleado_id, fecha_desde, fecha_hasta } }).then(r => r.data),
+    enabled:  !!empleado_id && !!fecha_desde && !!fecha_hasta,
+  });
 }
 
 export function useGenerarLiquidacion() {

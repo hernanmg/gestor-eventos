@@ -11,6 +11,33 @@ export const sinConciliarKey    = (eventoId: number) => ['eventos', eventoId, 'm
 
 // ── Cuentas ────────────────────────────────���─────────────────────────��────────
 
+// ── Cuentas de empresa (Caja Global — con o sin evento) ───────────────────────
+
+export const cuentasEmpresaKey = (params?: { evento_id?: number | null; tipo?: string; moneda?: string }) =>
+  ['cuentas-empresa', params ?? {}];
+
+export function useCuentasEmpresa(params?: { evento_id?: number | null; tipo?: string; moneda?: string }) {
+  return useQuery<CuentaBancaria[]>({
+    queryKey: cuentasEmpresaKey(params),
+    queryFn:  () => {
+      const p = new URLSearchParams();
+      if (params?.evento_id) p.set('evento_id', String(params.evento_id));
+      if (params?.tipo)      p.set('tipo',      params.tipo);
+      if (params?.moneda)    p.set('moneda',    params.moneda);
+      return api.get(`/cuentas?${p}`).then(r => r.data);
+    },
+  });
+}
+
+export function useCreateCuentaEmpresa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { nombre: string; tipo: string; moneda: string; saldo_inicial: number }) =>
+      api.post('/cuentas', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuentas-empresa'] }),
+  });
+}
+
 export function useCuentas(eventoId: number) {
   return useQuery<CuentaBancaria[]>({
     queryKey: cuentasKey(eventoId),

@@ -92,6 +92,11 @@ enum CategoriaEmpleado {
   CHOFER
   ADMINISTRATIVO
   TECNICO
+  JORNALERO
+  FOFI
+  NESTORAS
+  EXTRANJERO
+  SERENO
   OTRO
 }
 
@@ -112,6 +117,11 @@ enum EstadoLiquidacion {
   APROBADA
   PAGADA
   CANCELADA
+}
+
+enum TipoLiquidacion {
+  LINEAL  // horas_normales × valor_hora — modelo actual (Enjoy)
+  JORNADA // por umbral de horas, con jornada completa/media — DOS57
 }
 
 enum TipoAnticipo {
@@ -195,6 +205,7 @@ model Empresa {
   proveedores           Proveedor[]
   tabConfigs            TabConfig[]
   categoriasStock       CategoriaStock[]
+  cuentasBancarias      CuentaBancaria[]
   productos             Producto[]
   facturas              Factura[]
   auditoriaLogs         AuditoriaLog[]
@@ -375,9 +386,13 @@ model Movimiento {
 // ─── CAJA ─────────────────────────────────────────────────────────────────────
 
 model CuentaBancaria {
-  id            Int        @id @default(autoincrement())
-  evento_id     Int
-  evento        Evento     @relation(fields: [evento_id], references: [id])
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  // Nullable — una cuenta puede no pertenecer a ningún evento (caja chica por
+  // persona, caja de reserva, caja general mensual de empresa: caso DOS57).
+  evento_id     Int?
+  evento        Evento?    @relation(fields: [evento_id], references: [id])
   nombre        String // "Efectivo", "Banco Galicia", etc.
   tipo          TipoCuenta
   moneda        Moneda     @default(ARS)
@@ -536,6 +551,13 @@ model Producto {
   valor_unitario  Decimal? @db.Decimal(10, 2) // para cálculo de amortización
   es_critico      Boolean  @default(false) // sin esta pieza no se puede armar
   catalogo_origen String? // "Layher", "Liger", "propio" — solo relevante para DOS57
+  peso_unitario   Decimal? @db.Decimal(8, 3) // kg por unidad — catálogo Layher (DOS57)
+  espacio         String? // ubicación física en depósito ("DEPO 1", "ALTILLO ENTREPISO") — solo Enjoy
+
+  // ── Stock Enjoy (importador de depósito por espacio) ─────────────────────────
+  // [{ periodo: "abr-23", cantidad: 14|null, fecha_aproximada: "2023-04-01" }, ...]
+  historial_stock   Json?
+  informe_situacion String? // Col H del Excel de Enjoy: "VER FALTANTE", "Reparar", "COMPRAR", etc.
 
   asignaciones AsignacionStock[]
   movimientos  MovimientoStock[]
@@ -543,6 +565,7 @@ model Producto {
 
   @@unique([codigo_interno, empresa_id])
   @@unique([codigo_externo, empresa_id])
+  @@unique([empresa_id, nombre, espacio])
 }
 
 model AsignacionStock {
@@ -619,6 +642,7 @@ model Camion {
   deleted_at  DateTime?
 
   asignaciones AsignacionStock[]
+  jornadas     Jornada[]
 
   @@unique([codigo, empresa_id])
 }
@@ -805,6 +829,33 @@ model Empleado {
   valor_hora_extra Decimal           @default(0) @db.Decimal(10, 2)
   estado           EstadoEmpleado    @default(ACTIVO)
   notas            String?
+
+  // ── Modelo de liquidación ────────────────────────────────────────────────────
+  // LINEAL (Enjoy): horas_normales × valor_hora + horas_extras × valor_hora_extra.
+  // JORNADA (DOS57): tarifa por día con umbral de horas — ver calcularLiquidacion.ts.
+  tipo_liquidacion         TipoLiquidacion @default(LINEAL)
+  valor_jornada_completa   Decimal?  @db.Decimal(10, 2)
+  valor_media_jornada      Decimal?  @db.Decimal(10, 2)
+  umbral_horas_jornada     Decimal?  @db.Decimal(5, 2) // horas a partir de las cuales se cobra jornada completa
+  umbral_horas_media       Decimal?  @db.Decimal(5, 2) // horas mínimas para cobrar media jornada
+  valor_hora_extra_jornada Decimal?  @db.Decimal(10, 2) // valor de cada hora extra sobre umbral_horas_jornada
+  valor_viaje              Decimal?  @db.Decimal(10, 2) // adicional fijo por viaje (choferes)
+
+  // ── Legajo ────────────────────────────────────────────────────────────────────
+  apodo                      String? // distinto de `alias`, que es el alias bancario/CBU
+  fecha_nacimiento           DateTime?
+  grupo_sanguineo            String?
+  contacto_emergencia_nombre String?
+  contacto_emergencia_tel    String?
+  escalafon                  Int? // nivel numérico — significado a confirmar con el cliente
+  art                        String? // aseguradora ART
+  licencia_conducir          Boolean @default(false)
+  equipamiento_asignado      String? // celular/notebook/etc.
+  talle_pantalon             String?
+  talle_remera               String?
+  talle_buzo                 String?
+  talle_calzado              String?
+
   // Usuario del sistema (opcional — si el empleado carga sus propias jornadas)
   usuario_id       Int?              @unique
   usuario          Usuario?          @relation(fields: [usuario_id], references: [id])
@@ -836,6 +887,15 @@ model Jornada {
   descripcion       String?
   estado            EstadoJornada @default(PENDIENTE)
   motivo_rechazo    String?
+
+  // ── Despacho diario (relevamiento DOS57) ──────────────────────────────────────
+  cantidad_viajes   Int? // para choferes: viajes realizados ese día
+  convocatoria      String? // nombre del evento/cliente ("SANTIAGO.E", "POLO", etc.) —
+                            // puede no coincidir con un Evento formal del sistema
+  lugar_trabajo     String? // "Polo", "Santiago del Estero", "Depósito", etc.
+  camion_id         Int?
+  camion            Camion? @relation(fields: [camion_id], references: [id])
+
   // audit
   created_at        DateTime      @default(now())
   updated_at        DateTime      @updatedAt
@@ -877,6 +937,9 @@ model Liquidacion {
   fecha_desde      DateTime
   fecha_hasta      DateTime
   // Cálculo
+  // Snapshot del tipo de cálculo usado — no cambia si luego se edita el
+  // empleado, para que el historial de liquidaciones ya aprobadas sea estable.
+  tipo_liquidacion TipoLiquidacion   @default(LINEAL)
   horas_normales   Decimal           @db.Decimal(8, 2)
   horas_extras     Decimal           @db.Decimal(8, 2)
   valor_hora       Decimal           @db.Decimal(10, 2) // snapshot al momento de liquidar

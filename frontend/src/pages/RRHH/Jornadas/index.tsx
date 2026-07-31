@@ -5,6 +5,7 @@ import {
   type JornadaFiltros, type JornadaPayload,
 } from '@/hooks/useRRHH';
 import { useEventos } from '@/hooks/useEvento';
+import { useCamiones } from '@/hooks/useCamiones';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,22 @@ const ESTADO_LABEL: Record<EstadoJornada, string> = { PENDIENTE: 'Pendiente', AP
 const ESTADO_VARIANT: Record<EstadoJornada, 'warning' | 'success' | 'destructive'> = {
   PENDIENTE: 'warning', APROBADA: 'success', RECHAZADA: 'destructive',
 };
+
+// Para empleados con tipo_liquidacion=JORNADA, horas_normales/horas_extras ya
+// vienen partidas por el umbral del empleado (no por la regla fija de 8hs) —
+// esto traduce esa partición a la indicación visual que pidió el cliente.
+function getJornadaBadge(j: Jornada): { label: string; variant: 'success' | 'warning' | 'muted' } | null {
+  const emp = j.empleado;
+  if (!emp || emp.tipo_liquidacion !== 'JORNADA') return null;
+
+  const horasTrabajadas = j.horas_normales + j.horas_extras;
+  const umbralJornada    = emp.umbral_horas_jornada ?? 0;
+  const umbralMedia      = emp.umbral_horas_media   ?? 0;
+
+  if (horasTrabajadas >= umbralJornada) return { label: 'Jornada completa', variant: 'success' };
+  if (horasTrabajadas >= umbralMedia)   return { label: 'Media jornada',    variant: 'warning' };
+  return { label: 'Sin jornal', variant: 'muted' };
+}
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -35,18 +52,25 @@ function soloHora(iso: string | null): string {
 function JornadaDialog({ open, onClose, empleadoIdFijo }: { open: boolean; onClose: () => void; empleadoIdFijo?: number }) {
   const { data: empleados = [] } = useEmpleados();
   const { data: eventos = [] }   = useEventos();
+  const { data: camiones = [] }  = useCamiones();
   const createMut = useCreateJornada();
   const [error, setError] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
 
-  const [form, setForm] = useState({
+  const EMPTY_FORM = {
     empleado_id: empleadoIdFijo ?? '', evento_id: '', fecha: today,
     hora_convocatoria: '', hora_ingreso: '', hora_egreso: '', descripcion: '',
-  });
+    convocatoria: '', lugar_trabajo: '', camion_id: '', cantidad_viajes: '',
+  };
+  const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
-    if (open) { setForm({ empleado_id: empleadoIdFijo ?? '', evento_id: '', fecha: today, hora_convocatoria: '', hora_ingreso: '', hora_egreso: '', descripcion: '' }); setError(null); }
+    if (open) { setForm(EMPTY_FORM); setError(null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, empleadoIdFijo]);
+
+  const empleadoActivo = empleados.find(e => e.id === Number(empleadoIdFijo ?? form.empleado_id));
+  const mostrarViajes  = !!empleadoActivo?.valor_viaje;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +83,10 @@ function JornadaDialog({ open, onClose, empleadoIdFijo }: { open: boolean; onClo
       hora_ingreso:      combineFechaHora(form.fecha, form.hora_ingreso),
       hora_egreso:       combineFechaHora(form.fecha, form.hora_egreso),
       descripcion:       form.descripcion || null,
+      convocatoria:      form.convocatoria || null,
+      lugar_trabajo:     form.lugar_trabajo || null,
+      camion_id:         form.camion_id ? Number(form.camion_id) : null,
+      cantidad_viajes:   form.cantidad_viajes ? Number(form.cantidad_viajes) : null,
     };
     try {
       await createMut.mutateAsync(payload);
@@ -89,9 +117,25 @@ function JornadaDialog({ open, onClose, empleadoIdFijo }: { open: boolean; onClo
               {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
             </select>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Convocatoria</label><input value={form.convocatoria} onChange={e => setForm(p => ({ ...p, convocatoria: e.target.value }))} className={inputCls} placeholder="ej: SANTIAGO.E, POLO…" /></div>
+            <div><label className={labelCls}>Lugar de trabajo</label><input value={form.lugar_trabajo} onChange={e => setForm(p => ({ ...p, lugar_trabajo: e.target.value }))} className={inputCls} placeholder="ej: Depósito, Santiago del Estero…" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Camión / Vehículo</label>
+              <select value={form.camion_id} onChange={e => setForm(p => ({ ...p, camion_id: e.target.value }))} className={inputCls}>
+                <option value="">Sin asignar</option>
+                {camiones.map(c => <option key={c.id} value={c.id}>{c.codigo}{c.descripcion ? ` — ${c.descripcion}` : ''}</option>)}
+              </select>
+            </div>
+            {mostrarViajes && (
+              <div><label className={labelCls}>Cantidad de viajes</label><input type="number" min="0" step="1" value={form.cantidad_viajes} onChange={e => setForm(p => ({ ...p, cantidad_viajes: e.target.value }))} className={inputCls} /></div>
+            )}
+          </div>
           <div><label className={labelCls}>Fecha *</label><input type="date" value={form.fecha} onChange={e => setForm(p => ({ ...p, fecha: e.target.value }))} className={inputCls} required /></div>
           <div className="grid grid-cols-3 gap-3">
-            <div><label className={labelCls}>Convocatoria</label><input type="time" value={form.hora_convocatoria} onChange={e => setForm(p => ({ ...p, hora_convocatoria: e.target.value }))} className={inputCls} /></div>
+            <div><label className={labelCls}>Hora convocatoria</label><input type="time" value={form.hora_convocatoria} onChange={e => setForm(p => ({ ...p, hora_convocatoria: e.target.value }))} className={inputCls} /></div>
             <div><label className={labelCls}>Ingreso</label><input type="time" value={form.hora_ingreso} onChange={e => setForm(p => ({ ...p, hora_ingreso: e.target.value }))} className={inputCls} /></div>
             <div><label className={labelCls}>Egreso</label><input type="time" value={form.hora_egreso} onChange={e => setForm(p => ({ ...p, hora_egreso: e.target.value }))} className={inputCls} /></div>
           </div>
@@ -229,14 +273,17 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Egreso</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Hs. norm.</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Hs. extra</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo jornal</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {jornadas.length === 0 ? (
-                <tr><td colSpan={11} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay jornadas cargadas.</td></tr>
-              ) : jornadas.map(j => (
+                <tr><td colSpan={12} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay jornadas cargadas.</td></tr>
+              ) : jornadas.map(j => {
+                const badge = getJornadaBadge(j);
+                return (
                 <tr key={j.id} className="hover:bg-muted/20">
                   <td className="px-2 py-2">
                     {j.estado === 'PENDIENTE' && (
@@ -251,6 +298,9 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
                   <td className="px-3 py-2.5">{soloHora(j.hora_egreso)}</td>
                   <td className="px-3 py-2.5 text-right">{j.horas_normales}</td>
                   <td className="px-3 py-2.5 text-right">{j.horas_extras}</td>
+                  <td className="px-3 py-2.5">
+                    {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : <span className="text-muted-foreground">-</span>}
+                  </td>
                   <td className="px-3 py-2.5">
                     <span title={j.estado === 'RECHAZADA' ? j.motivo_rechazo ?? undefined : undefined}>
                       <Badge variant={ESTADO_VARIANT[j.estado]}>{ESTADO_LABEL[j.estado]}</Badge>
@@ -272,7 +322,8 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -9,10 +9,12 @@ export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
 export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
 export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
 export type Moneda       = 'ARS' | 'USD';
-export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO' | 'OTRO';
+export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO'
+  | 'JORNALERO' | 'FOFI' | 'NESTORAS' | 'EXTRANJERO' | 'SERENO' | 'OTRO';
 export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
 export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
 export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+export type TipoLiquidacion   = 'LINEAL' | 'JORNADA';
 export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
 export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
 
@@ -260,11 +262,15 @@ export interface MacroFiltros {
 
 export interface CuentaBancaria {
   id:            number;
-  evento_id:     number;
+  // Nullable — cuenta de empresa (caja chica, reserva, etc.) sin evento asociado.
+  evento_id:     number | null;
+  evento?:       { id: number; nombre: string } | null;
   nombre:        string;
   tipo:          TipoCuenta;
   moneda:        Moneda;
   saldo_inicial: number;
+  // Solo presente en /api/cuentas (listado de empresa) — saldo actual calculado.
+  saldo_actual?: number;
   created_at:    string;
   updated_at:    string;
   deleted_at:    string | null;
@@ -812,6 +818,31 @@ export interface Empleado {
   estado:           EstadoEmpleado;
   notas:            string | null;
   usuario_id:       number | null;
+
+  // ── Modelo de liquidación ────────────────────────────────────────────────────
+  tipo_liquidacion:         TipoLiquidacion;
+  valor_jornada_completa:   number | null;
+  valor_media_jornada:      number | null;
+  umbral_horas_jornada:     number | null;
+  umbral_horas_media:       number | null;
+  valor_hora_extra_jornada: number | null;
+  valor_viaje:              number | null;
+
+  // ── Legajo ────────────────────────────────────────────────────────────────────
+  apodo:                      string | null;
+  fecha_nacimiento:           string | null;
+  grupo_sanguineo:            string | null;
+  contacto_emergencia_nombre: string | null;
+  contacto_emergencia_tel:    string | null;
+  escalafon:                  number | null;
+  art:                        string | null;
+  licencia_conducir:          boolean;
+  equipamiento_asignado:      string | null;
+  talle_pantalon:             string | null;
+  talle_remera:               string | null;
+  talle_buzo:                 string | null;
+  talle_calzado:              string | null;
+
   created_at:       string;
   updated_at:       string;
   deleted_at:       string | null;
@@ -840,10 +871,20 @@ export interface Jornada {
   descripcion:       string | null;
   estado:            EstadoJornada;
   motivo_rechazo:    string | null;
+  cantidad_viajes:   number | null;
+  convocatoria:      string | null;
+  lugar_trabajo:     string | null;
+  camion_id:         number | null;
   aprobado_por:      number | null;
   aprobado_at:       string | null;
-  empleado?: { id: number; nombre: string; apellido: string };
+  empleado?: {
+    id: number; nombre: string; apellido: string;
+    tipo_liquidacion?:     TipoLiquidacion;
+    umbral_horas_jornada?: number | null;
+    umbral_horas_media?:   number | null;
+  };
   evento?:   { id: number; nombre: string } | null;
+  camion?:   { id: number; codigo: string; descripcion: string | null } | null;
 }
 
 export interface Anticipo {
@@ -864,6 +905,7 @@ export interface Liquidacion {
   evento_id:        number | null;
   fecha_desde:      string;
   fecha_hasta:      string;
+  tipo_liquidacion: TipoLiquidacion;
   horas_normales:   number;
   horas_extras:     number;
   valor_hora:       number;
@@ -880,6 +922,29 @@ export interface Liquidacion {
   created_at:       string;
   empleado?: { id: number; nombre: string; apellido: string };
   evento?:   { id: number; nombre: string } | null;
+}
+
+export interface DesgloseJornadaLiquidacion {
+  jornada_id:       number;
+  fecha:            string;
+  convocatoria:     string | null;
+  tipo_calculo:     TipoLiquidacion;
+  horas_trabajadas: number;
+  horas_normales:   number;
+  horas_extras:     number;
+  monto_base:       number;
+  monto_extras:     number;
+  monto_viaje:      number;
+  dif_hs_jornal:    number;
+  total:            number;
+}
+
+export interface LiquidacionPreview {
+  tipo_liquidacion: TipoLiquidacion;
+  horas_normales:   number;
+  horas_extras:     number;
+  subtotal_horas:   number;
+  jornadas:         DesgloseJornadaLiquidacion[];
 }
 
 export interface LiquidacionDetalle extends Liquidacion {

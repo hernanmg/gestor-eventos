@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom';
 import { Plus, Download, FileText } from 'lucide-react';
 import {
   useLiquidaciones, useEmpleados, useAprobarLiquidacion, useCancelarLiquidacion,
-  useGenerarLiquidacion, useJornadas, descargarLiquidacionPDF,
+  useGenerarLiquidacion, usePreviewLiquidacion, descargarLiquidacionPDF,
   type LiquidacionFiltros, type GenerarLiquidacionPayload,
 } from '@/hooks/useRRHH';
 import { useEventos } from '@/hooks/useEvento';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { getApiErrorMessage } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoLiquidacion } from '@/types';
 
 const ESTADO_LABEL: Record<EstadoLiquidacion, string> = { BORRADOR: 'Borrador', APROBADA: 'Aprobada', PAGADA: 'Pagada', CANCELADA: 'Cancelada' };
@@ -21,26 +21,68 @@ const ESTADO_VARIANT: Record<EstadoLiquidacion, 'muted' | 'success' | 'info' | '
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
-// ── Preview de horas dentro del dialog de generar ─────────────────────────────
+// ── Preview de liquidación dentro del dialog de generar ───────────────────────
+// Desglose real por jornada — usa el mismo cálculo (LINEAL u JORNADA) que
+// aplicará el backend al generar, para que el preview nunca diverja del total final.
 
-function PreviewHoras({ empleadoId, fechaDesde, fechaHasta, valorHora, valorHoraExtra }: {
-  empleadoId: number | null; fechaDesde: string; fechaHasta: string; valorHora: number; valorHoraExtra: number;
+function PreviewLiquidacion({ empleadoId, fechaDesde, fechaHasta }: {
+  empleadoId: number | null; fechaDesde: string; fechaHasta: string;
 }) {
-  const { data: jornadas = [] } = useJornadas(
-    empleadoId ? { empleado_id: empleadoId, estado: 'APROBADA', desde: fechaDesde || undefined, hasta: fechaHasta || undefined } : {},
-  );
-  if (!empleadoId || !fechaDesde || !fechaHasta) return null;
+  const { data: preview, isLoading } = usePreviewLiquidacion({
+    empleado_id: empleadoId ?? undefined,
+    fecha_desde: fechaDesde || undefined,
+    fecha_hasta: fechaHasta || undefined,
+  });
 
-  const horasNormales = jornadas.reduce((s, j) => s + j.horas_normales, 0);
-  const horasExtras   = jornadas.reduce((s, j) => s + j.horas_extras, 0);
-  const total = horasNormales * valorHora + horasExtras * valorHoraExtra;
+  if (!empleadoId || !fechaDesde || !fechaHasta) return null;
+  if (isLoading || !preview) return <p className="text-xs text-muted-foreground">Calculando preview…</p>;
+
+  const thCls = 'text-left px-1.5 py-1 font-medium';
+  const tdCls = 'px-1.5 py-1';
 
   return (
-    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1">
-      <p className="text-xs font-medium text-muted-foreground mb-1">Preview ({jornadas.length} jornada(s) aprobada(s) en el período)</p>
-      <div className="flex justify-between"><span>Horas normales</span><span>{horasNormales}</span></div>
-      <div className="flex justify-between"><span>Horas extras</span><span>{horasExtras}</span></div>
-      <div className="flex justify-between font-semibold pt-1 border-t border-border"><span>Subtotal estimado</span><span>${total.toLocaleString('es-AR')}</span></div>
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">
+        Preview ({preview.jornadas.length} jornada(s) aprobada(s) —
+        {preview.tipo_liquidacion === 'JORNADA' ? ' por jornada' : ' lineal'})
+      </p>
+
+      {preview.jornadas.length > 0 && (
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-xs">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className={thCls}>Fecha</th>
+                <th className={thCls}>Convocatoria</th>
+                <th className={cn(thCls, 'text-right')}>Hs.</th>
+                <th className={thCls}>Cálculo</th>
+                <th className={cn(thCls, 'text-right')}>Base</th>
+                <th className={cn(thCls, 'text-right')}>Extras</th>
+                <th className={cn(thCls, 'text-right')}>Viajes</th>
+                <th className={cn(thCls, 'text-right')}>Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {preview.jornadas.map(j => (
+                <tr key={j.jornada_id}>
+                  <td className={tdCls}>{j.fecha.slice(0, 10)}</td>
+                  <td className={tdCls}>{j.convocatoria ?? '-'}</td>
+                  <td className={cn(tdCls, 'text-right')}>{j.horas_trabajadas}</td>
+                  <td className={tdCls}>{j.tipo_calculo === 'JORNADA' ? 'Jornada' : 'Lineal'}</td>
+                  <td className={cn(tdCls, 'text-right')}>${j.monto_base.toLocaleString('es-AR')}</td>
+                  <td className={cn(tdCls, 'text-right')}>${j.monto_extras.toLocaleString('es-AR')}</td>
+                  <td className={cn(tdCls, 'text-right')}>${j.monto_viaje.toLocaleString('es-AR')}</td>
+                  <td className={cn(tdCls, 'text-right font-medium')}>${j.total.toLocaleString('es-AR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="flex justify-between font-semibold pt-1 border-t border-border">
+        <span>Total general</span><span>${preview.subtotal_horas.toLocaleString('es-AR')}</span>
+      </div>
     </div>
   );
 }
@@ -105,12 +147,10 @@ function GenerarDialog({ open, onClose, empleadoIdFijo }: { open: boolean; onClo
           </div>
 
           {empleadoSel && (
-            <PreviewHoras
+            <PreviewLiquidacion
               empleadoId={empleadoSel.id}
               fechaDesde={form.fecha_desde}
               fechaHasta={form.fecha_hasta}
-              valorHora={empleadoSel.valor_hora}
-              valorHoraExtra={empleadoSel.valor_hora_extra}
             />
           )}
 

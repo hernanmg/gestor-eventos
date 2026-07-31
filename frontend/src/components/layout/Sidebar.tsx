@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -193,6 +193,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <Calendar size={18} className="shrink-0" />
             {isOpen && <span>Eventos</span>}
           </NavLink>
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/caja" title={!isOpen ? 'Caja Global' : undefined} className={navItem}>
+              <Wallet size={18} className="shrink-0" />
+              {isOpen && <span>Caja Global</span>}
+            </NavLink>
+          )}
 
           {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
             <NavLink to="/proveedores" title={!isOpen ? 'Proveedores' : undefined} className={navItem}>

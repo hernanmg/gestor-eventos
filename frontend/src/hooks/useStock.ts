@@ -102,7 +102,25 @@ export function useFotoBlobUrl(productoId: number | null | undefined, tieneFoto:
   return url;
 }
 
-// ── Importador catálogo Layher ────────────────────────────────────────────────
+// ── Importador de stock (catálogo Layher / DOS57, o depósito Enjoy) ───────────
+
+export interface ImportLayherResult {
+  creados:      number;
+  actualizados: number;
+  omitidos:     number;
+  errores:      { fila: number; motivo: string }[];
+}
+
+export interface ImportEnjoyResult {
+  hojas_procesadas: number;
+  creados:          number;
+  actualizados:     number;
+  omitidos:         number;
+  por_hoja:         { hoja: string; creados: number; actualizados: number; codigos_generados: string[] }[];
+  errores:          { hoja: string; fila: number; motivo: string }[];
+}
+
+export type ImportCatalogoResult = ImportLayherResult | ImportEnjoyResult;
 
 export function useImportarCatalogo() {
   const qc = useQueryClient();
@@ -110,7 +128,7 @@ export function useImportarCatalogo() {
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('archivo', file);
-      return api.post<{ creados: number; actualizados: number; errores: string[] }>('/stock/importar/catalogo', formData).then(r => r.data);
+      return api.post<ImportCatalogoResult>('/stock/importar/catalogo', formData).then(r => r.data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: PRODUCTOS_KEY }),
   });

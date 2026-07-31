@@ -385,6 +385,7 @@ async function main() {
       // ── CUENTAS BANCARIAS ───────────────────────────────────────────────────
       const ctaGalicia = await tx.cuentaBancaria.create({
         data: {
+          empresa_id:    EMPRESA_ID,
           evento_id:     e1.id,
           nombre:        'Banco Galicia Cta Cte',
           tipo:          TipoCuenta.BANCO,
@@ -395,6 +396,7 @@ async function main() {
 
       const ctaEfectivo = await tx.cuentaBancaria.create({
         data: {
+          empresa_id:    EMPRESA_ID,
           evento_id:     e1.id,
           nombre:        'Efectivo Caja',
           tipo:          TipoCuenta.EFECTIVO,
@@ -632,6 +634,7 @@ async function main() {
       // ── CUENTA BANCARIA ─────────────────────────────────────────────────────
       await tx.cuentaBancaria.create({
         data: {
+          empresa_id:    EMPRESA_ID,
           evento_id:     e2.id,
           nombre:        'Banco Nación Cta Cte',
           tipo:          TipoCuenta.BANCO,
@@ -1034,6 +1037,35 @@ async function main() {
   await                prisma.camion.upsert({ where: { codigo_empresa_id: { codigo: 'C2', empresa_id: EMPRESA_ID_DOS57 } }, update: {}, create: { codigo: 'C2', descripcion: 'Camión Iveco',       empresa_id: EMPRESA_ID_DOS57 } });
   await                prisma.camion.upsert({ where: { codigo_empresa_id: { codigo: 'C3', empresa_id: EMPRESA_ID_DOS57 } }, update: {}, create: { codigo: 'C3', descripcion: 'Van Transit',         empresa_id: EMPRESA_ID_DOS57 } });
   console.log('✓ Camiones DOS57: 3 creados (C1, C2, C3)');
+
+  // ── Cajas de empresa DOS57 (sin evento) ──────────────────────────────────────
+  // DOS57 opera con caja chica por persona + caja general mensual, no atadas
+  // a un evento puntual (a diferencia de Enjoy, 100% por evento).
+  const cajasEmpresaDos57 = [
+    { nombre: 'Caja General DOS57', saldo_inicial: 1_000_000 },
+    { nombre: 'Caja Reserva',       saldo_inicial:   500_000 },
+    { nombre: 'Caja Pollo',         saldo_inicial:         0 },
+    { nombre: 'Caja Jazmín',        saldo_inicial:         0 },
+  ];
+  let cajasDos57Creadas = 0;
+  for (const c of cajasEmpresaDos57) {
+    const existe = await prisma.cuentaBancaria.findFirst({
+      where: { nombre: c.nombre, empresa_id: EMPRESA_ID_DOS57, evento_id: null },
+    });
+    if (existe) continue;
+    await prisma.cuentaBancaria.create({
+      data: {
+        empresa_id:    EMPRESA_ID_DOS57,
+        evento_id:     null,
+        nombre:        c.nombre,
+        tipo:          TipoCuenta.EFECTIVO,
+        moneda:        Moneda.ARS,
+        saldo_inicial: c.saldo_inicial,
+      },
+    });
+    cajasDos57Creadas++;
+  }
+  console.log(`✓ Cajas de empresa DOS57: ${cajasDos57Creadas} creadas/existentes (${cajasEmpresaDos57.map(c => c.nombre).join(', ')})`);
 
   const layherData = [
     { codigo_externo: 'L-2000', nombre_tecnico: 'Vertical 2.00m',      nombre_interno: 'Torre 2m',        stock_total: 200, es_critico: true  },

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload, Pencil, Trash2 } from 'lucide-react';
 import {
   useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto, useAlertasStock, useSugerencias, useCategoriasStock,
-  useUploadFotoProducto, useFotoBlobUrl,
+  useUploadFotoProducto, useFotoBlobUrl, useImportarCatalogo,
+  type ImportCatalogoResult,
 } from '@/hooks/useStock';
 import { useAlertasPanol } from '@/hooks/usePanol';
 import { Button } from '@/components/ui/button';
@@ -253,31 +254,134 @@ function CriticoBadge({ esCritico }: { esCritico: boolean }) {
   return <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>;
 }
 
-// El importador real ya existe en el backend, pero el formato del archivo
-// todavía no está definido junto al cliente — por eso el frontend lo muestra
-// como "Próximamente" en vez de habilitarlo.
-function ImportarLayherDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function isEnjoyResult(r: ImportCatalogoResult): r is Extract<ImportCatalogoResult, { hojas_procesadas: number }> {
+  return 'hojas_procesadas' in r;
+}
+
+function ImportResultView({ result, onClose }: { result: ImportCatalogoResult; onClose: () => void }) {
+  const totalErrores = result.errores.length;
+  const enjoy = isEnjoyResult(result);
+
+  return (
+    <div className="space-y-3 mt-1">
+      <div className={cn(
+        'rounded-md border px-3 py-2.5 text-sm',
+        totalErrores > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-900' : 'border-green-300 bg-green-50 text-green-900',
+      )}>
+        {enjoy ? (
+          <>
+            <p className="font-medium">✓ {result.hojas_procesadas} espacios procesados</p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              {result.por_hoja.map(h => (
+                <li key={h.hoja}>· {h.hoja}: {h.creados + h.actualizados} productos ({h.creados} nuevos, {h.actualizados} actualizados)</li>
+              ))}
+              <li className="pt-1 font-medium">
+                · Total: {result.creados} creados, {result.actualizados} actualizados
+                {result.omitidos > 0 ? `, ${result.omitidos} omitidos` : ''}, {totalErrores} errores
+              </li>
+            </ul>
+          </>
+        ) : (
+          <>
+            <p className="font-medium">✓ {result.creados + result.actualizados} productos importados</p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              <li>· {result.creados} creados nuevos</li>
+              <li>· {result.actualizados} actualizados</li>
+              {result.omitidos > 0 && <li>· {result.omitidos} omitidos</li>}
+              <li>· {totalErrores} errores</li>
+            </ul>
+          </>
+        )}
+      </div>
+
+      {totalErrores > 0 && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-xs text-red-800 max-h-40 overflow-y-auto space-y-1">
+          {result.errores.map((e, i) => (
+            <p key={i}>{'hoja' in e ? `${e.hoja} — ` : ''}fila {e.fila}: {e.motivo}</p>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" size="sm" onClick={onClose}>Cerrar</Button>
+      </div>
+    </div>
+  );
+}
+
+function ImportarCatalogoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [file, setFile]         = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [result, setResult]     = useState<ImportCatalogoResult | null>(null);
+  const [error, setError]       = useState<string | null>(null);
+  const importar  = useImportarCatalogo();
+  const inputRef  = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) { setFile(null); setResult(null); setError(null); }
+  }, [open]);
+
+  const handleFile = (f: File | null) => {
+    setError(null);
+    if (f && !f.name.toLowerCase().endsWith('.xlsx')) { setError('Solo se aceptan archivos .xlsx'); return; }
+    setFile(f);
+  };
+
+  const handleAnalizar = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      const data = await importar.mutateAsync(file);
+      setResult(data);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Importar catálogo Layher</DialogTitle>
+          <DialogTitle>Importar catálogo de stock</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 mt-1">
-          <div className="rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2.5 text-sm text-yellow-900">
-            ⚠️ Próximamente — Esta funcionalidad está en construcción.
-            El formato del archivo será definido junto al cliente.
-            Por ahora podés cargar los productos manualmente.
+
+        {result ? (
+          <ImportResultView result={result} onClose={onClose} />
+        ) : (
+          <div className="space-y-3 mt-1">
+            <div
+              className={cn(
+                'rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 py-10 text-center cursor-pointer transition-colors',
+                dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/30',
+              )}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false);
+                handleFile(e.dataTransfer.files?.[0] ?? null);
+              }}
+            >
+              <Upload size={28} className="text-muted-foreground" />
+              {file ? (
+                <p className="text-sm font-medium">{file.name} <span className="text-muted-foreground">({(file.size / 1024).toFixed(0)} KB)</span></p>
+              ) : (
+                <p className="text-sm text-muted-foreground px-6">Arrastrá el archivo Excel aquí, o hacé clic para elegirlo</p>
+              )}
+              <input
+                ref={inputRef} type="file" accept=".xlsx" className="hidden"
+                onChange={e => handleFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+              <Button type="button" size="sm" onClick={handleAnalizar} disabled={!file || importar.isPending}>
+                {importar.isPending ? 'Analizando…' : 'Analizar archivo'}
+              </Button>
+            </div>
           </div>
-          <div className="rounded-lg border-2 border-dashed cursor-not-allowed opacity-50 flex flex-col items-center justify-center gap-2 py-10 text-center">
-            <Upload size={28} className="text-muted-foreground" />
-            <p className="text-sm text-muted-foreground px-6">Arrastrá el archivo Excel del catálogo aquí</p>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
-            <Button type="button" size="sm" disabled>Importar</Button>
-          </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -349,8 +453,7 @@ function ProductosTab() {
           {catalogos.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
-          <Upload size={14} className="mr-1.5" /> Importar catálogo Layher
-          <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-800">Próximamente</span>
+          <Upload size={14} className="mr-1.5" /> Importar catálogo
         </Button>
         <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
           <Plus size={14} className="mr-1.5" /> Nuevo producto
@@ -431,7 +534,7 @@ function ProductosTab() {
         producto={editing}
         onClose={() => { setDialogOpen(false); setEditing(null); }}
       />
-      <ImportarLayherDialog open={importarOpen} onClose={() => setImportarOpen(false)} />
+      <ImportarCatalogoDialog open={importarOpen} onClose={() => setImportarOpen(false)} />
     </div>
   );
 }

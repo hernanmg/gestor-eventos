@@ -19,7 +19,13 @@ export async function getResumen(req: Request, res: Response) {
       select: { tipo: true, moneda: true, debe: true, haber: true },
     }),
     prisma.cuentaBancaria.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null, ...withTenant(empresaId) } },
+      where: {
+        deleted_at: null,
+        ...withTenant(empresaId),
+        // Incluye cajas de empresa sin evento (caja chica, reserva, etc.) y
+        // cuentas de eventos que no estén soft-deleteados.
+        OR: [{ evento_id: null }, { evento: { deleted_at: null } }],
+      },
       select: {
         moneda: true,
         saldo_inicial: true,

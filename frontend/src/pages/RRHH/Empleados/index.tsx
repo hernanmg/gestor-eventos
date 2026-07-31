@@ -8,12 +8,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn, getApiErrorMessage, getApiFieldErrors } from '@/lib/utils';
-import type { Empleado, CategoriaEmpleado, EstadoEmpleado } from '@/types';
+import type { Empleado, CategoriaEmpleado, EstadoEmpleado, TipoLiquidacion } from '@/types';
 
 const CATEGORIA_LABEL: Record<CategoriaEmpleado, string> = {
   CAPITAN: 'Capitán', ARMADOR: 'Armador', CHOFER: 'Chofer',
-  ADMINISTRATIVO: 'Administrativo', TECNICO: 'Técnico', OTRO: 'Otro',
+  ADMINISTRATIVO: 'Administrativo', TECNICO: 'Técnico',
+  JORNALERO: 'Jornalero', FOFI: 'Fofi', NESTORAS: 'Nestoras', EXTRANJERO: 'Extranjero', SERENO: 'Sereno',
+  OTRO: 'Otro',
 };
+
+const TIPO_LIQUIDACION_LABEL: Record<TipoLiquidacion, string> = {
+  LINEAL:  'Lineal (por hora)',
+  JORNADA: 'Por jornada',
+};
+
+const GRUPOS_SANGUINEOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', '0+', '0-'];
 
 const ESTADO_LABEL: Record<EstadoEmpleado, string> = { ACTIVO: 'Activo', INACTIVO: 'Inactivo', SUSPENDIDO: 'Suspendido' };
 const ESTADO_VARIANT: Record<EstadoEmpleado, 'success' | 'muted' | 'destructive'> = {
@@ -28,6 +37,14 @@ const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 const EMPTY: EmpleadoPayload = {
   nombre: '', apellido: '', dni: '', cuit: '', email: '', telefono: '', domicilio: '',
   cbu: '', alias: '', banco: '', categoria: 'OTRO', valor_hora: 0, valor_hora_extra: 0, estado: 'ACTIVO', notas: '',
+  tipo_liquidacion: 'LINEAL',
+  valor_jornada_completa: null, valor_media_jornada: null,
+  umbral_horas_jornada: null, umbral_horas_media: null,
+  valor_hora_extra_jornada: null, valor_viaje: null,
+  apodo: '', fecha_nacimiento: '', grupo_sanguineo: '',
+  contacto_emergencia_nombre: '', contacto_emergencia_tel: '',
+  escalafon: null, art: '', licencia_conducir: false, equipamiento_asignado: '',
+  talle_pantalon: '', talle_remera: '', talle_buzo: '', talle_calzado: '',
 };
 
 function empleadoToForm(empleado: Empleado): EmpleadoPayload {
@@ -47,6 +64,26 @@ function empleadoToForm(empleado: Empleado): EmpleadoPayload {
     valor_hora_extra: empleado.valor_hora_extra,
     estado:           empleado.estado,
     notas:            empleado.notas ?? '',
+    tipo_liquidacion:         empleado.tipo_liquidacion,
+    valor_jornada_completa:   empleado.valor_jornada_completa,
+    valor_media_jornada:      empleado.valor_media_jornada,
+    umbral_horas_jornada:     empleado.umbral_horas_jornada,
+    umbral_horas_media:       empleado.umbral_horas_media,
+    valor_hora_extra_jornada: empleado.valor_hora_extra_jornada,
+    valor_viaje:              empleado.valor_viaje,
+    apodo:                      empleado.apodo ?? '',
+    fecha_nacimiento:           empleado.fecha_nacimiento ? empleado.fecha_nacimiento.slice(0, 10) : '',
+    grupo_sanguineo:            empleado.grupo_sanguineo ?? '',
+    contacto_emergencia_nombre: empleado.contacto_emergencia_nombre ?? '',
+    contacto_emergencia_tel:    empleado.contacto_emergencia_tel ?? '',
+    escalafon:                  empleado.escalafon,
+    art:                        empleado.art ?? '',
+    licencia_conducir:          empleado.licencia_conducir,
+    equipamiento_asignado:      empleado.equipamiento_asignado ?? '',
+    talle_pantalon:             empleado.talle_pantalon ?? '',
+    talle_remera:               empleado.talle_remera ?? '',
+    talle_buzo:                 empleado.talle_buzo ?? '',
+    talle_calzado:              empleado.talle_calzado ?? '',
   };
 }
 
@@ -81,6 +118,12 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
   const fieldError = (key: keyof EmpleadoPayload) =>
     fieldErrors?.[key] ? <p className="text-xs text-destructive mt-0.5">{fieldErrors[key]}</p> : null;
 
+  const numOrNull = (v: unknown): number | null => {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -89,6 +132,14 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
       ...form,
       valor_hora:       Number(form.valor_hora) || 0,
       valor_hora_extra: Number(form.valor_hora_extra) || 0,
+      valor_jornada_completa:   numOrNull(form.valor_jornada_completa),
+      valor_media_jornada:      numOrNull(form.valor_media_jornada),
+      umbral_horas_jornada:     numOrNull(form.umbral_horas_jornada),
+      umbral_horas_media:       numOrNull(form.umbral_horas_media),
+      valor_hora_extra_jornada: numOrNull(form.valor_hora_extra_jornada),
+      valor_viaje:              numOrNull(form.valor_viaje),
+      escalafon:                numOrNull(form.escalafon),
+      fecha_nacimiento:         form.fecha_nacimiento || null,
     };
     try {
       if (isEdit) await updateMut.mutateAsync({ id: empleado!.id, data: payload });
@@ -135,10 +186,74 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
                 {Object.entries(ESTADO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <div><label className={labelCls}>Valor hora</label><input type="number" step="0.01" min="0" {...f('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
-            <div><label className={labelCls}>Valor hora extra</label><input type="number" step="0.01" min="0" {...f('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
           </div>
+
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Datos de liquidación</p>
+            <div className="mb-3">
+              <label className={labelCls}>Tipo de liquidación</label>
+              <select {...f('tipo_liquidacion')} className={inputCls}>
+                {Object.entries(TIPO_LIQUIDACION_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+
+            {form.tipo_liquidacion === 'LINEAL' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={labelCls}>Valor hora</label><input type="number" step="0.01" min="0" {...f('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
+                <div><label className={labelCls}>Valor hora extra</label><input type="number" step="0.01" min="0" {...f('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={labelCls}>Valor jornada completa ($)</label><input type="number" step="0.01" min="0" {...f('valor_jornada_completa')} className={inputCls} />{fieldError('valor_jornada_completa')}</div>
+                <div><label className={labelCls}>Umbral horas jornada completa</label><input type="number" step="0.5" min="0" {...f('umbral_horas_jornada')} className={inputCls} placeholder="ej: 10" />{fieldError('umbral_horas_jornada')}</div>
+                <div><label className={labelCls}>Valor media jornada ($)</label><input type="number" step="0.01" min="0" {...f('valor_media_jornada')} className={inputCls} />{fieldError('valor_media_jornada')}</div>
+                <div><label className={labelCls}>Umbral horas media jornada</label><input type="number" step="0.5" min="0" {...f('umbral_horas_media')} className={inputCls} placeholder="ej: 5" />{fieldError('umbral_horas_media')}</div>
+                <div><label className={labelCls}>Valor hora extra sobre jornada ($)</label><input type="number" step="0.01" min="0" {...f('valor_hora_extra_jornada')} className={inputCls} />{fieldError('valor_hora_extra_jornada')}</div>
+                {form.categoria === 'CHOFER' && (
+                  <div><label className={labelCls}>Valor por viaje ($)</label><input type="number" step="0.01" min="0" {...f('valor_viaje')} className={inputCls} />{fieldError('valor_viaje')}</div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div><label className={labelCls}>Notas</label><input {...f('notas')} className={inputCls} />{fieldError('notas')}</div>
+
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Datos del legajo</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={labelCls}>Apodo</label><input {...f('apodo')} className={inputCls} />{fieldError('apodo')}</div>
+              <div><label className={labelCls}>Fecha de nacimiento</label><input type="date" {...f('fecha_nacimiento')} className={inputCls} />{fieldError('fecha_nacimiento')}</div>
+              <div>
+                <label className={labelCls}>Grupo sanguíneo</label>
+                <select {...f('grupo_sanguineo')} className={inputCls}>
+                  <option value="">-</option>
+                  {GRUPOS_SANGUINEOS.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div><label className={labelCls}>ART</label><input {...f('art')} className={inputCls} />{fieldError('art')}</div>
+              <div><label className={labelCls}>Contacto de emergencia — nombre</label><input {...f('contacto_emergencia_nombre')} className={inputCls} />{fieldError('contacto_emergencia_nombre')}</div>
+              <div><label className={labelCls}>Contacto de emergencia — teléfono</label><input {...f('contacto_emergencia_tel')} className={inputCls} />{fieldError('contacto_emergencia_tel')}</div>
+              <div><label className={labelCls}>Escalafón</label><input type="number" step="1" {...f('escalafon')} className={inputCls} />{fieldError('escalafon')}</div>
+              <div><label className={labelCls}>Equipamiento asignado</label><input {...f('equipamiento_asignado')} className={inputCls} placeholder="Celular, notebook…" />{fieldError('equipamiento_asignado')}</div>
+              <div className="flex items-end pb-1.5">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.licencia_conducir ?? false}
+                    onChange={e => setForm(p => ({ ...p, licencia_conducir: e.target.checked }))}
+                  />
+                  Licencia de conducir
+                </label>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-3 mt-3">
+              <div><label className={labelCls}>Talle pantalón</label><input {...f('talle_pantalon')} className={inputCls} />{fieldError('talle_pantalon')}</div>
+              <div><label className={labelCls}>Talle remera</label><input {...f('talle_remera')} className={inputCls} />{fieldError('talle_remera')}</div>
+              <div><label className={labelCls}>Talle buzo/campera</label><input {...f('talle_buzo')} className={inputCls} />{fieldError('talle_buzo')}</div>
+              <div><label className={labelCls}>Talle calzado</label><input {...f('talle_calzado')} className={inputCls} />{fieldError('talle_calzado')}</div>
+            </div>
+          </div>
+
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>

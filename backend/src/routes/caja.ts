@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso, requireEventoRole, byCuentaId, byMovCajaId } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
+  listCuentasEmpresa, createCuentaEmpresa,
   updateCuenta, deleteCuenta,
   listMovimientosCaja, createMovimientoCaja,
   updateMovimientoCaja, deleteMovimientoCaja,
@@ -14,6 +15,9 @@ import {
 export const cuentasRouter = Router();
 cuentasRouter.use(auth);
 cuentasRouter.use(tenantMiddleware);
+// ── Cuentas de empresa (sin evento) ───────────────────────────────────────────
+cuentasRouter.get('/',                 asyncHandler(listCuentasEmpresa));
+cuentasRouter.post('/',                requireRole('OPERADOR'), asyncHandler(createCuentaEmpresa));
 cuentasRouter.put('/:id',              requireEventoAcceso(byCuentaId), requireEventoRole('OPERADOR'), asyncHandler(updateCuenta));
 cuentasRouter.delete('/:id',           requireEventoAcceso(byCuentaId), requireEventoRole('OPERADOR'), asyncHandler(deleteCuenta));
 cuentasRouter.get('/:id/movimientos',  requireEventoAcceso(byCuentaId), asyncHandler(listMovimientosCaja));

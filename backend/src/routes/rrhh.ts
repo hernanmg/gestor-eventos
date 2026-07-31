@@ -8,7 +8,7 @@ import {
   listEmpleados, getEmpleado, createEmpleado, updateEmpleado, deleteEmpleado,
   listJornadas, listJornadasEmpleado, createJornada, updateJornada, aprobarJornada, rechazarJornada, deleteJornada,
   listAnticiposEmpleado, createAnticipo, deleteAnticipo,
-  listLiquidaciones, getLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
+  listLiquidaciones, getLiquidacion, previewLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
   exportarLiquidacionPDF,
 } from '../controllers/rrhh.controller';
 import { importarEmpleados, importarJornadas } from '../controllers/rrhhImporter.controller';
@@ -45,6 +45,7 @@ router.delete('/anticipos/:id',          requireRole('OPERADOR'), asyncHandler(d
 
 // ── Liquidaciones ─────────────────────────────────────────────────────────────
 router.get('/liquidaciones',             asyncHandler(listLiquidaciones));
+router.get('/liquidaciones/preview',     asyncHandler(previewLiquidacion));
 router.get('/liquidaciones/:id',         asyncHandler(getLiquidacion));
 router.get('/liquidaciones/:id/pdf',     asyncHandler(exportarLiquidacionPDF));
 router.post('/liquidaciones/generar',    requireRole('OPERADOR'), asyncHandler(generarLiquidacion));

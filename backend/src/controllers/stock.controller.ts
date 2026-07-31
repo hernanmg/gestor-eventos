@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { EMPRESAS } from '../lib/empresasConstants';
 import type { UbicacionStock, EstadoAsignacion, OrigenTransfer, Prisma } from '@prisma/client';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -1174,69 +1175,80 @@ export const uploadCatalogo = multer({
 export async function importarCatalogo(req: Request, res: Response) {
   if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
 
-  const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) { res.status(400).json({ error: 'El archivo no contiene hojas' }); return; }
+  const empresaId = req.empresaId!;
+  const workbook   = XLSX.read(req.file.buffer, { type: 'buffer' });
 
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
+  if (empresaId === EMPRESAS.DOS57) {
+    await importarLayher(workbook, empresaId, req, res);
+  } else {
+    await importarEnjoy(workbook, empresaId, req, res);
+  }
+}
+
+// Fila de la hoja "RENTAL COSTS (IMP.)" del catálogo Layher (DOS57):
+// B=NRO ITEM, C=CODIGO OFICIAL, D=DETALLE, E=PESO X UNID, F=CANTIDAD, G=COSTO UNITARIO (no se importa)
+async function importarLayher(workbook: XLSX.WorkBook, empresaId: number, req: Request, res: Response) {
+  const sheet = workbook.Sheets['RENTAL COSTS (IMP.)'];
+  if (!sheet) { res.status(400).json({ error: 'El archivo no contiene la hoja "RENTAL COSTS (IMP.)"' }); return; }
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, blankrows: false });
 
   let creados = 0;
   let actualizados = 0;
-  const errores: string[] = [];
+  let omitidos = 0;
+  const errores: { fila: number; motivo: string }[] = [];
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const codigo        = String(row['CÓDIGO'] ?? row['CODIGO'] ?? '').trim();
-    const nombreTecnico = String(row['NOMBRE_TÉCNICO'] ?? row['NOMBRE_TECNICO'] ?? '').trim();
-    const descripcion   = row['DESCRIPCIÓN'] ?? row['DESCRIPCION'] ?? null;
-    const unidad         = row['UNIDAD'] ? String(row['UNIDAD']).trim() : 'unidad';
-    const categoriaNombre = row['CATEGORÍA'] ?? row['CATEGORIA'] ?? null;
+  for (let i = 3; i < rows.length; i++) {
+    const row       = rows[i] as unknown[];
+    const filaExcel = i + 1;
 
-    if (!codigo || !nombreTecnico) {
-      errores.push(`Fila ${i + 2}: falta CÓDIGO o NOMBRE_TÉCNICO`);
-      continue;
-    }
+    const codigoOficial = row[2] != null ? String(row[2]).trim() : '';
+    const detalle        = row[3] != null ? String(row[3]).trim() : '';
 
-    let categoria_id: number | null = null;
-    if (categoriaNombre) {
-      const cat = await prisma.categoriaStock.findFirst({
-        where: { nombre: String(categoriaNombre), deleted_at: null, ...withTenant(req.empresaId!) },
+    // Filas de headers/totales: sin código o sin detalle. Los últimos 5 ítems
+    // sin NRO ITEM (Col B) igual tienen código y detalle, así que se importan.
+    if (!codigoOficial || !detalle) { omitidos++; continue; }
+
+    const pesoRaw     = row[4];
+    const cantidadRaw = row[5];
+    const peso        = pesoRaw != null && !isNaN(Number(pesoRaw)) ? Number(pesoRaw) : null;
+    const cantidadNum = cantidadRaw != null ? parseInt(String(cantidadRaw), 10) : NaN;
+    const cantidad    = !isNaN(cantidadNum) ? cantidadNum : 0;
+
+    try {
+      const existing = await prisma.producto.findFirst({
+        where: { codigo_externo: codigoOficial, deleted_at: null, ...withTenant(empresaId) },
       });
-      categoria_id = cat?.id ?? null;
-    }
 
-    const existing = await prisma.producto.findFirst({
-      where: { codigo_externo: codigo, deleted_at: null, ...withTenant(req.empresaId!) },
-    });
-
-    if (existing) {
-      await prisma.producto.update({
-        where: { id: existing.id },
-        data: {
-          nombre_tecnico: nombreTecnico,
-          descripcion:    descripcion ? String(descripcion) : existing.descripcion,
-          updated_by:     req.user!.id,
-        },
-      });
-      actualizados++;
-    } else {
-      await prisma.producto.create({
-        data: {
-          ...withTenant(req.empresaId!),
-          nombre:          nombreTecnico,
-          nombre_tecnico:  nombreTecnico,
-          descripcion:     descripcion ? String(descripcion) : null,
-          codigo_externo:  codigo,
-          catalogo_origen: 'Layher',
-          categoria_id,
-          unidad,
-          stock_total:  0,
-          stock_minimo: 0,
-          created_by:   req.user!.id,
-          updated_by:   req.user!.id,
-        },
-      });
-      creados++;
+      if (existing) {
+        await prisma.producto.update({
+          where: { id: existing.id },
+          data: {
+            nombre_tecnico: detalle,
+            peso_unitario:  peso,
+            updated_by:     req.user!.id,
+          },
+        });
+        actualizados++;
+      } else {
+        await prisma.producto.create({
+          data: {
+            ...withTenant(empresaId),
+            nombre:          detalle,
+            nombre_tecnico:  detalle,
+            codigo_externo:  codigoOficial,
+            peso_unitario:   peso,
+            stock_total:     cantidad,
+            catalogo_origen: 'Layher',
+            es_critico:      false,
+            created_by:      req.user!.id,
+            updated_by:      req.user!.id,
+          },
+        });
+        creados++;
+      }
+    } catch (err) {
+      errores.push({ fila: filaExcel, motivo: err instanceof Error ? err.message : 'Error desconocido' });
     }
   }
 
@@ -1246,5 +1258,178 @@ export async function importarCatalogo(req: Request, res: Response) {
     ip: req.ip, tx: prisma,
   });
 
-  res.json({ creados, actualizados, errores });
+  res.json({ creados, actualizados, omitidos, errores });
+}
+
+// Una hoja por espacio físico del depósito de Enjoy. DEPO MATIAS es personal — nunca se importa.
+const ENJOY_HOJAS = [
+  'DEPO 1', 'DEPO 2', 'ALTILLO ENTREPISO', 'TANQUE',
+  'PECERA', 'SALA DE REUNIONES', 'ESCALERA', 'DEPO ADMINISTRACIÓN',
+] as const;
+
+// Prefijo de codigo_interno autogenerado por espacio, usado para identificar
+// y rastrear productos de Enjoy que no vienen de un catálogo con código propio.
+const ENJOY_PREFIJOS: Record<string, string> = {
+  'DEPO 1':              'D1-',
+  'DEPO 2':              'D2-',
+  'ALTILLO ENTREPISO':   'ALT-',
+  TANQUE:                'TAN-',
+  PECERA:                'PEC-',
+  'SALA DE REUNIONES':   'SR-',
+  ESCALERA:              'ESC-',
+  'DEPO ADMINISTRACIÓN': 'DA-',
+};
+
+// Columnas de historial de stock del Excel de Enjoy — una por período de control semestral.
+const ENJOY_PERIODOS = [
+  { periodo: 'abr-23', col: 1, fecha_aproximada: '2023-04-01' },
+  { periodo: 'dic-23', col: 2, fecha_aproximada: '2023-12-01' },
+  { periodo: 'jun-24', col: 3, fecha_aproximada: '2024-06-01' },
+  { periodo: 'oct-24', col: 4, fecha_aproximada: '2024-10-01' },
+  { periodo: 'jun-25', col: 5, fecha_aproximada: '2025-06-01' },
+  { periodo: 'ene-26', col: 6, fecha_aproximada: '2026-01-01' },
+] as const;
+
+function parseCantidadEnjoy(raw: unknown): number | null {
+  if (raw == null || String(raw).trim() === '-' || String(raw).trim() === '') return null;
+  const parsed = parseInt(String(raw), 10);
+  return !isNaN(parsed) ? parsed : null;
+}
+
+// codigo_interno es único por empresa (no por espacio) — así que el próximo
+// número no puede basarse solo en cuántos productos tiene el espacio, hay que
+// evitar colisión con cualquier código existente en la empresa que use el
+// mismo prefijo (ej: datos de demo/otro catálogo que casualmente coincidan).
+async function siguienteNumeroDisponible(empresaId: number, prefijo: string): Promise<number> {
+  const existentes = await prisma.producto.findMany({
+    where: { empresa_id: empresaId, codigo_interno: { startsWith: prefijo } },
+    select: { codigo_interno: true },
+  });
+  const patron = new RegExp(`^${prefijo.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(\\d+)$`);
+  let max = 0;
+  for (const p of existentes) {
+    const m = p.codigo_interno?.match(patron);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max;
+}
+
+function buildHistorialStock(row: unknown[]) {
+  return ENJOY_PERIODOS.map(p => ({
+    periodo:          p.periodo,
+    cantidad:         parseCantidadEnjoy(row[p.col]),
+    fecha_aproximada: p.fecha_aproximada,
+  }));
+}
+
+// Títulos de sección visuales (ej: "ENERGIA - CABLES - TABLEROS") que ocupan
+// la Col A pero no son productos — se detectan por falta total de datos de
+// stock, o por un patrón de encabezado (mayúsculas/guiones, largo) sin ningún
+// valor numérico en toda la fila.
+function esTituloDeSeccion(row: unknown[], elemento: string): boolean {
+  if (row[6] == null && row[1] == null && row[2] == null) return true;
+
+  const pareceEncabezado = /^[A-ZÁÉÍÓÚÑ\s-]+$/.test(elemento) && elemento.length > 15;
+  if (pareceEncabezado) {
+    const tieneNumero = [1, 2, 3, 4, 5, 6].some(i => parseCantidadEnjoy(row[i]) != null);
+    if (!tieneNumero) return true;
+  }
+  return false;
+}
+
+async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Request, res: Response) {
+  let creados = 0;
+  let actualizados = 0;
+  let omitidos = 0;
+  let hojasProcesadas = 0;
+  const porHoja: { hoja: string; creados: number; actualizados: number; codigos_generados: string[] }[] = [];
+  const errores: { hoja: string; fila: number; motivo: string }[] = [];
+
+  for (const hoja of ENJOY_HOJAS) {
+    const sheet = workbook.Sheets[hoja];
+    if (!sheet) { errores.push({ hoja, fila: 0, motivo: 'Hoja no encontrada en el archivo' }); continue; }
+
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, blankrows: false });
+    let hojaCreados = 0;
+    let hojaActualizados = 0;
+    const codigosGenerados: string[] = [];
+
+    const prefijo = ENJOY_PREFIJOS[hoja];
+    let siguienteNumero = await siguienteNumeroDisponible(empresaId, prefijo);
+
+    // Fila 1: título del espacio. Fila 2: headers. Datos desde fila 3 (índice 2).
+    for (let i = 2; i < rows.length; i++) {
+      const row       = rows[i] as unknown[];
+      const filaExcel = i + 1;
+
+      const elemento = row[0] != null ? String(row[0]).trim() : '';
+      if (!elemento) { omitidos++; continue; }
+      if (esTituloDeSeccion(row, elemento)) { omitidos++; continue; }
+
+      const stockTotal    = parseCantidadEnjoy(row[6]) ?? 0; // Col G — ene-26, stock actual
+      const informe       = row[7] != null ? String(row[7]).trim() : '';
+      const observaciones = row[8] != null ? String(row[8]).trim() : '';
+      const historial      = buildHistorialStock(row) as unknown as Prisma.InputJsonValue;
+
+      try {
+        const existing = await prisma.producto.findFirst({
+          where: { nombre: elemento, espacio: hoja, deleted_at: null, ...withTenant(empresaId) },
+        });
+
+        let codigoInterno = existing?.codigo_interno ?? null;
+        if (!codigoInterno) {
+          siguienteNumero++;
+          codigoInterno = `${prefijo}${String(siguienteNumero).padStart(3, '0')}`;
+          codigosGenerados.push(codigoInterno);
+        }
+
+        if (existing) {
+          await prisma.producto.update({
+            where: { id: existing.id },
+            data: {
+              stock_total:       stockTotal,
+              notas:             observaciones || null,
+              informe_situacion: informe || null,
+              historial_stock:   historial,
+              codigo_interno:    codigoInterno,
+              updated_by:        req.user!.id,
+            },
+          });
+          hojaActualizados++;
+        } else {
+          await prisma.producto.create({
+            data: {
+              ...withTenant(empresaId),
+              nombre:            elemento,
+              espacio:           hoja,
+              codigo_interno:    codigoInterno,
+              stock_total:       stockTotal,
+              catalogo_origen:   'propio',
+              notas:             observaciones || null,
+              informe_situacion: informe || null,
+              historial_stock:   historial,
+              created_by: req.user!.id,
+              updated_by: req.user!.id,
+            },
+          });
+          hojaCreados++;
+        }
+      } catch (err) {
+        errores.push({ hoja, fila: filaExcel, motivo: err instanceof Error ? err.message : 'Error desconocido' });
+      }
+    }
+
+    creados      += hojaCreados;
+    actualizados += hojaActualizados;
+    hojasProcesadas++;
+    porHoja.push({ hoja, creados: hojaCreados, actualizados: hojaActualizados, codigos_generados: codigosGenerados });
+  }
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Producto',
+    descripcion: `Importó stock Enjoy — ${hojasProcesadas} hojas, ${creados} creados, ${actualizados} actualizados, ${errores.length} errores`,
+    ip: req.ip, tx: prisma,
+  });
+
+  res.json({ hojas_procesadas: hojasProcesadas, creados, actualizados, omitidos, por_hoja: porHoja, errores });
 }

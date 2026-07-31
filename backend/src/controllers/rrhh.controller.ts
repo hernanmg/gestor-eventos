@@ -8,6 +8,12 @@ import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacion } from '../lib/pdfTemplates/liquidacion';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
+import { calcularMontoJornada } from '../lib/calcularLiquidacion';
+
+const CATEGORIAS_EMPLEADO = [
+  'CAPITAN', 'ARMADOR', 'CHOFER', 'ADMINISTRATIVO', 'TECNICO',
+  'JORNALERO', 'FOFI', 'NESTORAS', 'EXTRANJERO', 'SERENO', 'OTRO',
+] as const;
 
 // ── Helpers numéricos ─────────────────────────────────────────────────────────
 
@@ -25,6 +31,32 @@ export function calcularHoras(horaIngreso: Date | null, horaEgreso: Date | null)
     return { horas_normales: round2(minutosTotales / 60), horas_extras: 0 };
   }
   return { horas_normales: 8, horas_extras: round2((minutosTotales - 480) / 60) };
+}
+
+// Igual que calcularHoras, pero parte las horas según el umbral de jornada del
+// empleado en vez de la regla fija de 8hs — así horas_normales/horas_extras
+// reflejan visualmente el modelo real (LINEAL u JORNADA) en la tabla de Jornadas.
+// No afecta a calcularMontoJornada, que ya recompone el total sumando ambas.
+function calcularHorasSegunEmpleado(
+  empleado: { tipo_liquidacion: string; umbral_horas_jornada: unknown },
+  horaIngreso: Date | null,
+  horaEgreso: Date | null,
+) {
+  if (empleado.tipo_liquidacion !== 'JORNADA') {
+    return calcularHoras(horaIngreso, horaEgreso);
+  }
+
+  if (!horaIngreso || !horaEgreso) return { horas_normales: 0, horas_extras: 0 };
+  const minutosTotales = (horaEgreso.getTime() - horaIngreso.getTime()) / 60000;
+  if (minutosTotales <= 0) return { horas_normales: 0, horas_extras: 0 };
+
+  const horasTrabajadas = round2(minutosTotales / 60);
+  const umbralJornada    = Number(empleado.umbral_horas_jornada ?? 0);
+
+  if (horasTrabajadas >= umbralJornada) {
+    return { horas_normales: umbralJornada, horas_extras: round2(horasTrabajadas - umbralJornada) };
+  }
+  return { horas_normales: horasTrabajadas, horas_extras: 0 };
 }
 
 // Tab de egresos usada para las liquidaciones de RRHH — se crea la primera vez
@@ -91,11 +123,32 @@ async function getEmpleadoPropio(usuarioId: number, empresaId: number) {
 }
 
 function mapDecimalsEmpleado(e: any) {
-  return { ...e, valor_hora: Number(e.valor_hora), valor_hora_extra: Number(e.valor_hora_extra) };
+  return {
+    ...e,
+    valor_hora:               Number(e.valor_hora),
+    valor_hora_extra:         Number(e.valor_hora_extra),
+    valor_jornada_completa:   e.valor_jornada_completa   != null ? Number(e.valor_jornada_completa)   : null,
+    valor_media_jornada:      e.valor_media_jornada      != null ? Number(e.valor_media_jornada)      : null,
+    umbral_horas_jornada:     e.umbral_horas_jornada     != null ? Number(e.umbral_horas_jornada)     : null,
+    umbral_horas_media:       e.umbral_horas_media       != null ? Number(e.umbral_horas_media)       : null,
+    valor_hora_extra_jornada: e.valor_hora_extra_jornada != null ? Number(e.valor_hora_extra_jornada) : null,
+    valor_viaje:              e.valor_viaje              != null ? Number(e.valor_viaje)              : null,
+  };
 }
 
 function mapDecimalsJornada(j: any) {
-  return { ...j, horas_normales: Number(j.horas_normales), horas_extras: Number(j.horas_extras) };
+  return {
+    ...j,
+    horas_normales: Number(j.horas_normales),
+    horas_extras:   Number(j.horas_extras),
+    ...(j.empleado && typeof j.empleado === 'object' ? {
+      empleado: {
+        ...j.empleado,
+        ...(j.empleado.umbral_horas_jornada !== undefined && { umbral_horas_jornada: j.empleado.umbral_horas_jornada != null ? Number(j.empleado.umbral_horas_jornada) : null }),
+        ...(j.empleado.umbral_horas_media   !== undefined && { umbral_horas_media:   j.empleado.umbral_horas_media   != null ? Number(j.empleado.umbral_horas_media)   : null }),
+      },
+    } : {}),
+  };
 }
 
 function mapDecimalsAnticipo(a: any) {
@@ -131,12 +184,36 @@ const empleadoSchema = z.object({
   cbu:              z.string().nullable().optional(),
   alias:            z.string().nullable().optional(),
   banco:            z.string().nullable().optional(),
-  categoria:        z.enum(['CAPITAN', 'ARMADOR', 'CHOFER', 'ADMINISTRATIVO', 'TECNICO', 'OTRO']).default('OTRO'),
+  categoria:        z.enum(CATEGORIAS_EMPLEADO).default('OTRO'),
   valor_hora:       z.number().min(0).default(0),
   valor_hora_extra: z.number().min(0).default(0),
   estado:           z.enum(['ACTIVO', 'INACTIVO', 'SUSPENDIDO']).default('ACTIVO'),
   notas:            z.string().nullable().optional(),
   usuario_id:       z.number().int().positive().nullable().optional(),
+
+  // ── Modelo de liquidación ────────────────────────────────────────────────────
+  tipo_liquidacion:         z.enum(['LINEAL', 'JORNADA']).default('LINEAL'),
+  valor_jornada_completa:   z.number().min(0).nullable().optional(),
+  valor_media_jornada:      z.number().min(0).nullable().optional(),
+  umbral_horas_jornada:     z.number().min(0).nullable().optional(),
+  umbral_horas_media:       z.number().min(0).nullable().optional(),
+  valor_hora_extra_jornada: z.number().min(0).nullable().optional(),
+  valor_viaje:              z.number().min(0).nullable().optional(),
+
+  // ── Legajo ────────────────────────────────────────────────────────────────────
+  apodo:                      z.string().nullable().optional(),
+  fecha_nacimiento:           z.string().nullable().optional(),
+  grupo_sanguineo:            z.string().nullable().optional(),
+  contacto_emergencia_nombre: z.string().nullable().optional(),
+  contacto_emergencia_tel:    z.string().nullable().optional(),
+  escalafon:                  z.number().int().nullable().optional(),
+  art:                        z.string().nullable().optional(),
+  licencia_conducir:          z.boolean().default(false),
+  equipamiento_asignado:      z.string().nullable().optional(),
+  talle_pantalon:             z.string().nullable().optional(),
+  talle_remera:               z.string().nullable().optional(),
+  talle_buzo:                 z.string().nullable().optional(),
+  talle_calzado:              z.string().nullable().optional(),
 });
 
 export async function listEmpleados(req: Request, res: Response) {
@@ -216,6 +293,28 @@ export async function createEmpleado(req: Request, res: Response) {
       notas:            d.notas ?? null,
       usuario_id:       d.usuario_id ?? null,
       created_by:       req.user!.id,
+
+      tipo_liquidacion:         d.tipo_liquidacion,
+      valor_jornada_completa:   d.valor_jornada_completa ?? null,
+      valor_media_jornada:      d.valor_media_jornada ?? null,
+      umbral_horas_jornada:     d.umbral_horas_jornada ?? null,
+      umbral_horas_media:       d.umbral_horas_media ?? null,
+      valor_hora_extra_jornada: d.valor_hora_extra_jornada ?? null,
+      valor_viaje:              d.valor_viaje ?? null,
+
+      apodo:                      d.apodo ?? null,
+      fecha_nacimiento:           d.fecha_nacimiento ? new Date(d.fecha_nacimiento) : null,
+      grupo_sanguineo:            d.grupo_sanguineo ?? null,
+      contacto_emergencia_nombre: d.contacto_emergencia_nombre ?? null,
+      contacto_emergencia_tel:    d.contacto_emergencia_tel ?? null,
+      escalafon:                  d.escalafon ?? null,
+      art:                        d.art ?? null,
+      licencia_conducir:          d.licencia_conducir,
+      equipamiento_asignado:      d.equipamiento_asignado ?? null,
+      talle_pantalon:             d.talle_pantalon ?? null,
+      talle_remera:               d.talle_remera ?? null,
+      talle_buzo:                 d.talle_buzo ?? null,
+      talle_calzado:              d.talle_calzado ?? null,
     },
   });
   res.status(201).json(mapDecimalsEmpleado(empleado));
@@ -251,6 +350,28 @@ export async function updateEmpleado(req: Request, res: Response) {
       ...(d.estado           !== undefined && { estado:           d.estado }),
       ...(d.notas            !== undefined && { notas:            d.notas }),
       ...(d.usuario_id       !== undefined && { usuario_id:       d.usuario_id }),
+
+      ...(d.tipo_liquidacion         !== undefined && { tipo_liquidacion:         d.tipo_liquidacion }),
+      ...(d.valor_jornada_completa   !== undefined && { valor_jornada_completa:   d.valor_jornada_completa }),
+      ...(d.valor_media_jornada      !== undefined && { valor_media_jornada:      d.valor_media_jornada }),
+      ...(d.umbral_horas_jornada     !== undefined && { umbral_horas_jornada:     d.umbral_horas_jornada }),
+      ...(d.umbral_horas_media       !== undefined && { umbral_horas_media:       d.umbral_horas_media }),
+      ...(d.valor_hora_extra_jornada !== undefined && { valor_hora_extra_jornada: d.valor_hora_extra_jornada }),
+      ...(d.valor_viaje              !== undefined && { valor_viaje:              d.valor_viaje }),
+
+      ...(d.apodo                      !== undefined && { apodo:                      d.apodo }),
+      ...(d.fecha_nacimiento           !== undefined && { fecha_nacimiento:           d.fecha_nacimiento ? new Date(d.fecha_nacimiento) : null }),
+      ...(d.grupo_sanguineo            !== undefined && { grupo_sanguineo:            d.grupo_sanguineo }),
+      ...(d.contacto_emergencia_nombre !== undefined && { contacto_emergencia_nombre: d.contacto_emergencia_nombre }),
+      ...(d.contacto_emergencia_tel    !== undefined && { contacto_emergencia_tel:    d.contacto_emergencia_tel }),
+      ...(d.escalafon                  !== undefined && { escalafon:                  d.escalafon }),
+      ...(d.art                        !== undefined && { art:                        d.art }),
+      ...(d.licencia_conducir          !== undefined && { licencia_conducir:          d.licencia_conducir }),
+      ...(d.equipamiento_asignado      !== undefined && { equipamiento_asignado:      d.equipamiento_asignado }),
+      ...(d.talle_pantalon             !== undefined && { talle_pantalon:             d.talle_pantalon }),
+      ...(d.talle_remera               !== undefined && { talle_remera:               d.talle_remera }),
+      ...(d.talle_buzo                 !== undefined && { talle_buzo:                 d.talle_buzo }),
+      ...(d.talle_calzado              !== undefined && { talle_calzado:              d.talle_calzado }),
     },
   });
   res.json(mapDecimalsEmpleado(updated));
@@ -277,6 +398,10 @@ const jornadaSchema = z.object({
   hora_ingreso:      z.string().nullable().optional(),
   hora_egreso:       z.string().nullable().optional(),
   descripcion:       z.string().nullable().optional(),
+  cantidad_viajes:   z.number().int().min(0).nullable().optional(),
+  convocatoria:      z.string().nullable().optional(),
+  lugar_trabajo:     z.string().nullable().optional(),
+  camion_id:         z.number().int().positive().nullable().optional(),
 });
 
 // Si el usuario es VIEWER con empleado vinculado, sólo puede ver/cargar sus
@@ -312,8 +437,9 @@ export async function listJornadas(req: Request, res: Response) {
   const jornadas = await prisma.jornada.findMany({
     where,
     include: {
-      empleado: { select: { id: true, nombre: true, apellido: true } },
+      empleado: { select: { id: true, nombre: true, apellido: true, tipo_liquidacion: true, umbral_horas_jornada: true, umbral_horas_media: true } },
       evento:   { select: { id: true, nombre: true } },
+      camion:   { select: { id: true, codigo: true, descripcion: true } },
     },
     orderBy: { fecha: 'desc' },
   });
@@ -327,7 +453,11 @@ export async function listJornadasEmpleado(req: Request, res: Response) {
 
   const jornadas = await prisma.jornada.findMany({
     where:   { empleado_id: empleadoId, deleted_at: null },
-    include: { evento: { select: { id: true, nombre: true } } },
+    include: {
+      empleado: { select: { id: true, nombre: true, apellido: true, tipo_liquidacion: true, umbral_horas_jornada: true, umbral_horas_media: true } },
+      evento:   { select: { id: true, nombre: true } },
+      camion:   { select: { id: true, codigo: true, descripcion: true } },
+    },
     orderBy: { fecha: 'desc' },
   });
   res.json(jornadas.map(mapDecimalsJornada));
@@ -347,9 +477,14 @@ export async function createJornada(req: Request, res: Response) {
   const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
 
+  if (d.camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: d.camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+
   const horaIngreso = d.hora_ingreso ? new Date(d.hora_ingreso) : null;
   const horaEgreso  = d.hora_egreso  ? new Date(d.hora_egreso)  : null;
-  const { horas_normales, horas_extras } = calcularHoras(horaIngreso, horaEgreso);
+  const { horas_normales, horas_extras } = calcularHorasSegunEmpleado(empleado, horaIngreso, horaEgreso);
 
   try {
     const jornada = await prisma.jornada.create({
@@ -364,6 +499,10 @@ export async function createJornada(req: Request, res: Response) {
         horas_normales,
         horas_extras,
         descripcion:       d.descripcion ?? null,
+        cantidad_viajes:   d.cantidad_viajes ?? null,
+        convocatoria:      d.convocatoria ?? null,
+        lugar_trabajo:     d.lugar_trabajo ?? null,
+        camion_id:         d.camion_id ?? null,
         estado:            EstadoJornada.PENDIENTE,
         created_by:        req.user!.id,
       },
@@ -382,7 +521,10 @@ export async function updateJornada(req: Request, res: Response) {
   const scope = await resolveEmpleadoScope(req);
   if (!scope.ok) { res.status(403).json({ error: 'Sin acceso al módulo de RRHH' }); return; }
 
-  const jornada = await prisma.jornada.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  const jornada = await prisma.jornada.findFirst({
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    include: { empleado: true },
+  });
   if (!jornada) { res.status(404).json({ error: 'Jornada no encontrada' }); return; }
   if (scope.forced !== null && jornada.empleado_id !== scope.forced) {
     res.status(403).json({ error: 'No podés editar jornadas de otro empleado' }); return;
@@ -397,9 +539,14 @@ export async function updateJornada(req: Request, res: Response) {
   }
   const d = parsed.data;
 
+  if (d.camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: d.camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+
   const horaIngreso = d.hora_ingreso !== undefined ? (d.hora_ingreso ? new Date(d.hora_ingreso) : null) : jornada.hora_ingreso;
   const horaEgreso  = d.hora_egreso  !== undefined ? (d.hora_egreso  ? new Date(d.hora_egreso)  : null) : jornada.hora_egreso;
-  const { horas_normales, horas_extras } = calcularHoras(horaIngreso, horaEgreso);
+  const { horas_normales, horas_extras } = calcularHorasSegunEmpleado(jornada.empleado, horaIngreso, horaEgreso);
 
   const updated = await prisma.jornada.update({
     where: { id },
@@ -412,6 +559,10 @@ export async function updateJornada(req: Request, res: Response) {
       horas_normales,
       horas_extras,
       ...(d.descripcion       !== undefined && { descripcion:       d.descripcion }),
+      ...(d.cantidad_viajes   !== undefined && { cantidad_viajes:   d.cantidad_viajes }),
+      ...(d.convocatoria      !== undefined && { convocatoria:      d.convocatoria }),
+      ...(d.lugar_trabajo     !== undefined && { lugar_trabajo:     d.lugar_trabajo }),
+      ...(d.camion_id         !== undefined && { camion_id:         d.camion_id }),
     },
   });
   res.json(mapDecimalsJornada(updated));
@@ -600,6 +751,66 @@ const generarSchema = z.object({
   evento_id:   z.number().int().positive().nullable().optional(),
 });
 
+// Desglose por jornada APROBADA del período — usa calcularMontoJornada, que
+// aplica el modelo LINEAL u JORNADA según el empleado. Compartido entre el
+// preview y la generación real de la liquidación para que nunca diverjan.
+async function calcularDesglosePeriodo(
+  empleadoId: number, fechaDesde: Date, fechaHasta: Date, empresaId: number,
+) {
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(empresaId) } });
+  if (!empleado) return null;
+
+  const jornadas = await prisma.jornada.findMany({
+    where: {
+      empleado_id: empleadoId,
+      estado:      EstadoJornada.APROBADA,
+      fecha:       { gte: fechaDesde, lte: fechaHasta },
+      deleted_at:  null,
+      ...withTenant(empresaId),
+    },
+    orderBy: { fecha: 'asc' },
+  });
+
+  const desglose = jornadas.map(j => ({
+    jornada_id:   j.id,
+    fecha:        j.fecha,
+    convocatoria: j.convocatoria,
+    ...calcularMontoJornada(empleado, j),
+  }));
+
+  const horasNormales = round2(desglose.reduce((s, x) => s + x.horas_normales, 0));
+  const horasExtras   = round2(desglose.reduce((s, x) => s + x.horas_extras, 0));
+  const subtotal      = round2(desglose.reduce((s, x) => s + x.total, 0));
+
+  return { empleado, desglose, horasNormales, horasExtras, subtotal };
+}
+
+const previewSchema = z.object({
+  empleado_id: z.coerce.number().int().positive(),
+  fecha_desde: z.string().min(1),
+  fecha_hasta: z.string().min(1),
+});
+
+// GET /rrhh/liquidaciones/preview — desglose por jornada sin crear la Liquidación.
+export async function previewLiquidacion(req: Request, res: Response) {
+  const parsed = previewSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Se requieren empleado_id, fecha_desde, fecha_hasta' }); return;
+  }
+  const d = parsed.data;
+
+  const resultado = await calcularDesglosePeriodo(d.empleado_id, new Date(d.fecha_desde), new Date(d.fecha_hasta), req.empresaId!);
+  if (!resultado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  res.json({
+    tipo_liquidacion: resultado.empleado.tipo_liquidacion,
+    horas_normales:   resultado.horasNormales,
+    horas_extras:     resultado.horasExtras,
+    subtotal_horas:   resultado.subtotal,
+    jornadas:         resultado.desglose,
+  });
+}
+
 export async function generarLiquidacion(req: Request, res: Response) {
   const parsed = generarSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -607,24 +818,13 @@ export async function generarLiquidacion(req: Request, res: Response) {
   }
   const d = parsed.data;
 
-  const empleado = await prisma.empleado.findFirst({ where: { id: d.empleado_id, deleted_at: null, ...withTenant(req.empresaId!) } });
-  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
-
   const fechaDesde = new Date(d.fecha_desde);
   const fechaHasta = new Date(d.fecha_hasta);
 
   // 1 & 2. Jornadas APROBADAS del período — las PENDIENTES/RECHAZADAS no cuentan
-  const jornadas = await prisma.jornada.aggregate({
-    where: {
-      empleado_id: d.empleado_id,
-      estado:      EstadoJornada.APROBADA,
-      fecha:       { gte: fechaDesde, lte: fechaHasta },
-      deleted_at:  null,
-    },
-    _sum: { horas_normales: true, horas_extras: true },
-  });
-  const horasNormales = Number(jornadas._sum.horas_normales ?? 0);
-  const horasExtras   = Number(jornadas._sum.horas_extras ?? 0);
+  const resultado = await calcularDesglosePeriodo(d.empleado_id, fechaDesde, fechaHasta, req.empresaId!);
+  if (!resultado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+  const { empleado, horasNormales, horasExtras, subtotal } = resultado;
 
   // 3. Anticipos no descontados
   const anticipos = await prisma.anticipo.findMany({
@@ -632,14 +832,15 @@ export async function generarLiquidacion(req: Request, res: Response) {
   });
   const totalAnticipos = anticipos.reduce((s, a) => s + Number(a.monto), 0);
 
-  // 4. Cálculo
-  const valorHora      = Number(empleado.valor_hora);
-  const valorHoraExtra = Number(empleado.valor_hora_extra);
-  const subtotalHoras  = round2(horasNormales * valorHora + horasExtras * valorHoraExtra);
+  // 4. Cálculo — subtotal_horas ya viene calculado por jornada (LINEAL u JORNADA)
+  const valorHora       = Number(empleado.valor_hora);
+  const valorHoraExtra  = Number(empleado.valor_hora_extra);
   const totalDescuentos = 0;
-  const totalACobrar   = round2(subtotalHoras - totalAnticipos - totalDescuentos);
+  const totalACobrar    = round2(subtotal - totalAnticipos - totalDescuentos);
 
-  // 5. Crear en BORRADOR — los anticipos NO se marcan descontados todavía
+  // 5. Crear en BORRADOR — los anticipos NO se marcan descontados todavía.
+  // tipo_liquidacion queda como snapshot: si luego se edita el empleado, esta
+  // liquidación ya aprobada no cambia de significado.
   const liquidacion = await prisma.liquidacion.create({
     data: {
       empleado_id:      d.empleado_id,
@@ -647,11 +848,12 @@ export async function generarLiquidacion(req: Request, res: Response) {
       evento_id:        d.evento_id ?? null,
       fecha_desde:      fechaDesde,
       fecha_hasta:      fechaHasta,
+      tipo_liquidacion: empleado.tipo_liquidacion,
       horas_normales:   horasNormales,
       horas_extras:     horasExtras,
       valor_hora:       valorHora,
       valor_hora_extra: valorHoraExtra,
-      subtotal_horas:   subtotalHoras,
+      subtotal_horas:   subtotal,
       total_anticipos:  totalAnticipos,
       total_descuentos: totalDescuentos,
       total_a_cobrar:   totalACobrar,
