@@ -20,13 +20,17 @@ export function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
   row.height = 18;
 }
 
+// Las fechas de negocio (fecha_inicio, fecha_emision, etc.) son calendario puro,
+// guardadas como medianoche UTC. Leerlas con getters locales las corre un día
+// para atrás en cualquier timezone negativo (ej. Argentina, UTC-3) — por eso
+// siempre se leen los componentes en UTC, sin importar la timezone del server.
 export function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return '';
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${date.getFullYear()}`;
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${date.getUTCFullYear()}`;
 }
 
 export function safeName(s: string): string {

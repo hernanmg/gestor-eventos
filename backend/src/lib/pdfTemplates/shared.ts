@@ -87,13 +87,15 @@ export const esc = (s: string | null | undefined): string =>
 export const fmt = (n: number): string =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+// Fechas de negocio guardadas como medianoche UTC — leer en UTC evita el
+// corrimiento de un día en timezones negativas (ver excelExporter.ts).
 export const fmtDate = (d: Date | string | null | undefined): string => {
   if (!d) return '—';
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return '—';
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${date.getFullYear()}`;
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${date.getUTCFullYear()}`;
 };
 
 export const saldoClass = (n: number): string =>

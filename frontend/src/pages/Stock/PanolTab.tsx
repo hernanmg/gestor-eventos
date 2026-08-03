@@ -9,6 +9,7 @@ import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import type { PanolItem, MovimientoPanol } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -372,7 +373,7 @@ function MovimientosSubTab() {
                     <td className="px-3 py-2.5 text-right">{m.cantidad}</td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">{m.evento?.nombre ?? '-'}</td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">{m.responsable_nombre ?? '-'}</td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{new Date(m.fecha).toLocaleDateString('es-AR')}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatDate(m.fecha)}</td>
                     <td className="px-3 py-2.5 text-xs">
                       {m.devolucion_at
                         ? <span>{m.cantidad_devuelta}/{m.cantidad}{tieneFaltante ? ` (faltan ${m.cantidad_faltante})` : ''}</span>

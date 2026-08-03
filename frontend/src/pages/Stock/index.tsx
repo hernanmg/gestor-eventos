@@ -10,6 +10,7 @@ import { useAlertasPanol } from '@/hooks/usePanol';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import type { Producto, AlertaStock, SugerenciaStock, CategoriaStock } from '@/types';
 import CunasTab from './CunasTab';
 import CamionesTab from './CamionesTab';
@@ -578,7 +579,7 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
             <span>Disponible: <strong className={alerta.disponible_actual < alerta.stock_minimo ? 'text-red-600' : 'text-foreground'}>{alerta.disponible_actual}</strong></span>
             <span>Mínimo: <strong className="text-foreground">{alerta.stock_minimo}</strong></span>
             {alerta.fecha_quiebre_proyectado && (
-              <span>Quiebre el: <strong className="text-yellow-700">{new Date(alerta.fecha_quiebre_proyectado).toLocaleDateString('es-AR')}</strong></span>
+              <span>Quiebre el: <strong className="text-yellow-700">{formatDate(alerta.fecha_quiebre_proyectado)}</strong></span>
             )}
           </div>
         </div>
@@ -592,8 +593,8 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
               <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
               <span className="font-medium">{e.evento_nombre}</span>
               <span className="text-muted-foreground">— {e.cantidad} u.</span>
-              <span className="text-muted-foreground">{new Date(e.fecha_salida).toLocaleDateString('es-AR')}</span>
-              {e.fecha_retorno && <span className="text-muted-foreground">→ {new Date(e.fecha_retorno).toLocaleDateString('es-AR')}</span>}
+              <span className="text-muted-foreground">{formatDate(e.fecha_salida)}</span>
+              {e.fecha_retorno && <span className="text-muted-foreground">→ {formatDate(e.fecha_retorno)}</span>}
             </div>
           ))}
         </div>

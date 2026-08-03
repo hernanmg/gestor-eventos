@@ -4,6 +4,7 @@ import { useActivos, useCreateActivo, useUpdateActivo, useDeleteActivo } from '@
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import type { Activo, EstadoActivo } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -235,7 +236,7 @@ export default function ActivosTab() {
                   <td className="px-3 py-2.5 font-medium">{a.nombre}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{a.categoria ?? '-'}</td>
                   <td className="px-3 py-2.5"><EstadoSelect activo={a} /></td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.fecha_compra ? new Date(a.fecha_compra).toLocaleDateString('es-AR') : '-'}</td>
+                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.fecha_compra ? formatDate(a.fecha_compra) : '-'}</td>
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{a.valor_compra ?? '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{a.ubicacion ?? '-'}</td>
                   <td className="px-3 py-2.5 w-48"><ObservacionesCell activo={a} /></td>

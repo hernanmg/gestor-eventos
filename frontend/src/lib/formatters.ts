@@ -23,11 +23,16 @@ export function currencySymbol(moneda: Moneda): string {
   return moneda === 'USD' ? 'US$' : '$';
 }
 
+// Las fechas de negocio (fecha_inicio, fecha_emision, etc.) llegan del backend
+// como medianoche UTC. Sin `timeZone: 'UTC'` explícito, Intl.DateTimeFormat usa
+// la timezone del navegador y corre la fecha un día para atrás en timezones
+// negativas (ej. Argentina, UTC-3).
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   return new Intl.DateTimeFormat('es-AR', {
-    day:   '2-digit',
-    month: '2-digit',
-    year:  'numeric',
+    day:      '2-digit',
+    month:    '2-digit',
+    year:     'numeric',
+    timeZone: 'UTC',
   }).format(new Date(dateStr));
 }

@@ -52,14 +52,22 @@ const ESTADOS: EstadoAsignacionDiaria[] = ['ASIGNADO', 'LIBRE', 'VACACIONES', 'A
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
+// Fecha "de hoy"/navegación de días en el calendario LOCAL del usuario — a
+// diferencia de fmtDate/formatDate (fechas de negocio en UTC), acá sí
+// queremos la hora local real, por eso se evita toISOString() (que convierte
+// a UTC y corre un día para adelante/atrás cerca de la medianoche local).
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateStr(new Date());
 }
 
 function addDays(fecha: string, days: number): string {
   const d = new Date(fecha + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toDateStr(d);
 }
 
 // Elegible para generar Jornada al cerrar — misma condición que el backend.

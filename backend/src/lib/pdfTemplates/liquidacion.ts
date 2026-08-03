@@ -19,8 +19,13 @@ export interface LiquidacionPdfData {
   fecha_generacion: Date;
 }
 
+// Fechas de negocio guardadas como medianoche UTC — leer en UTC evita el
+// corrimiento de un día en timezones negativas (ver excelExporter.ts).
 function fmtFecha(d: Date): string {
-  return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const date = new Date(d);
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${date.getUTCFullYear()}`;
 }
 
 function fmtMoneda(n: number): string {
