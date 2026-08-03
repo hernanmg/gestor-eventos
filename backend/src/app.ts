@@ -22,6 +22,7 @@ import panolRouter from './routes/panol';
 import activosRouter from './routes/activos';
 import rubrosRouter from './routes/rubros';
 import { fichaEventoRouter, rubrosEventoRouter, pedidoItemsRouter } from './routes/fichaEvento';
+import parteDiarioRouter from './routes/parteDiario';
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use('/api/rubros',            rubrosRouter);
 app.use('/api/eventos/:id/ficha', fichaEventoRouter);
 app.use('/api/rubros-evento',     rubrosEventoRouter);
 app.use('/api/pedido-items',      pedidoItemsRouter);
+app.use('/api/parte-diario',      parteDiarioRouter);
 
 app.use(errorHandler);
 

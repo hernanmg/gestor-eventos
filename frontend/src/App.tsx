@@ -22,6 +22,8 @@ import ProductoDetallePage  from '@/pages/Stock/ProductoDetalle';
 import FirmarMovimientoPage from '@/pages/Stock/FirmarMovimiento';
 import FacturasPage         from '@/pages/Facturas';
 import FacturaDetalle       from '@/pages/Facturas/FacturaDetalle';
+import ParteDiarioPage      from '@/pages/ParteDiario';
+import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +53,8 @@ export default function App() {
             <Route path="/configuracion/empresa" element={<ConfiguracionEmpresaPage />} />
             <Route path="/rrhh"             element={<RRHHPage />} />
             <Route path="/rrhh/importar"    element={<RRHHImportarPage />} />
+            <Route path="/parte-diario"            element={<ParteDiarioPage />} />
+            <Route path="/parte-diario/historial"  element={<ParteDiarioHistorialPage />} />
             <Route path="/importer"         element={<ImporterPage />} />
             <Route path="/proveedores"      element={<ProveedoresPage />} />
             <Route path="/proveedores/:id"  element={<ProveedorDetallePage />} />

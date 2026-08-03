@@ -396,6 +396,34 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Parte Diario (DOS57) ────────────────────────────────────────────────────
+  '/parte-diario': {
+    titulo: 'Parte Diario de Personal',
+    descripcion: 'Planilla diaria que reemplaza el armado manual en Excel: quién trabaja, en qué horario, dónde y con qué vehículo.',
+    secciones: [
+      {
+        titulo: '¿Cómo se arma?',
+        contenido: 'Elegí la fecha con el navegador de días y creá el parte si todavía no existe. Agregá personas en cada sección (Administración, Depósito, Eventos) con su horario, lugar, tarea y vehículo. Las personas sin asignación van a "No citados".',
+      },
+      {
+        titulo: 'Orden y secciones',
+        contenido: 'Podés reordenar arrastrando las filas dentro de cada sección. El orden se guarda automáticamente.',
+      },
+      {
+        titulo: 'Cerrar el parte',
+        contenido: 'Al cerrar el parte, el sistema crea automáticamente las Jornadas de RRHH para cada persona asignada que tenga hora de ingreso y hora de salida fija cargadas. Un parte cerrado ya no se puede editar.',
+      },
+      {
+        titulo: 'Hora de salida "***"',
+        contenido: 'Si alguien se queda más tiempo por su propia voluntad, no marques "Hora fija": esa hora no se usa para calcular horas trabajadas.',
+      },
+    ],
+    links: [
+      { label: 'Ver historial de partes', ruta: '/parte-diario/historial' },
+      { label: 'Ver RRHH', ruta: '/rrhh' },
+    ],
+  },
+
 };
 
 // ── Routing ──────────────────────────────────────────────────────────────────

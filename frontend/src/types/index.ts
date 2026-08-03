@@ -1010,3 +1010,61 @@ export interface LiquidacionDetalle extends Liquidacion {
   jornadas:  Jornada[];
   movimiento?: { id: number; tipo: Tipo; tab_numero: number; evento_id: number } | null;
 }
+
+// ── Parte Diario de Personal (DOS57) ──────────────────────────────────────────
+
+export type EstadoAsignacionDiaria = 'ASIGNADO' | 'LIBRE' | 'VACACIONES' | 'AUSENTE' | 'NO_CITADO';
+
+export interface AsignacionDiaria {
+  id:              number;
+  parte_diario_id: number;
+  empleado_id:     number;
+  estado:          EstadoAsignacionDiaria;
+  hora_ingreso:    string | null;
+  lugar:           string | null;
+  tarea:           string | null;
+  seccion:         string | null;
+  orden:           number;
+  camion_id:       number | null;
+  vehiculo_texto:  string | null;
+  evento_id:       number | null;
+  hora_salida:      string | null;
+  hora_salida_fija: boolean;
+  jornada_id:       number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  empleado: { id: number; nombre: string; apellido: string; apodo: string | null };
+  camion:   { id: number; codigo: string; descripcion: string | null } | null;
+  evento:   { id: number; nombre: string } | null;
+}
+
+export interface ParteDiario {
+  id:         number;
+  empresa_id: number;
+  fecha:      string;
+  titulo:     string | null;
+  notas:      string | null;
+  cerrado:    boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  asignaciones: AsignacionDiaria[];
+}
+
+// Vista liviana de GET /parte-diario (lista/historial) — sin asignaciones
+export interface ParteDiarioResumen {
+  id:               number;
+  fecha:            string;
+  titulo:           string | null;
+  cerrado:          boolean;
+  total_personas:   number;
+  jornadas_creadas: number;
+  created_at:       string;
+}
+
+export interface CerrarParteResultado {
+  jornadas_creadas:    number;
+  jornadas_vinculadas: number;
+  omitidas:            number;
+}

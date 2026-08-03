@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -7,6 +7,7 @@ import { useAlertasFacturas } from '@/hooks/useFacturas';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoBlobUrl } from '@/hooks/useEmpresas';
 import { FEATURES } from '@/lib/features';
+import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
 import type { MeResponse } from '@/types';
 
@@ -291,6 +292,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
               <Users size={18} className="shrink-0" />
               {isOpen && <span>RRHH</span>}
+            </NavLink>
+          )}
+
+          {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
+              <ClipboardCheck size={18} className="shrink-0" />
+              {isOpen && <span>Parte Diario</span>}
             </NavLink>
           )}
 

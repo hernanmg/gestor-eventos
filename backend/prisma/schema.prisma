@@ -220,6 +220,8 @@ model Empresa {
   activos               Activo[]
   rubros                Rubro[]
   rubrosEvento          RubroEvento[]
+  partesDiario          ParteDiario[]
+  asignacionesDiarias   AsignacionDiaria[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -314,6 +316,7 @@ model Evento {
   liquidaciones          Liquidacion[]
   movimientosPanol       MovimientoPanol[]
   rubros_evento          RubroEvento[]
+  asignaciones_diarias   AsignacionDiaria[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -719,6 +722,7 @@ model Camion {
 
   asignaciones AsignacionStock[]
   jornadas     Jornada[]
+  asignaciones_diarias AsignacionDiaria[]
 
   @@unique([codigo, empresa_id])
 }
@@ -881,6 +885,76 @@ model PagoFactura {
   created_by    Int?
 }
 
+// ─── PARTE DIARIO DE PERSONAL (DOS57) ────────────────────────────────────────
+// Reemplaza la planilla "TAREAS PERSONAL DIARIO" que se arma a mano cada día.
+// Al cerrar el parte, genera las Jornada correspondientes (para su posterior
+// aprobación) — es la fuente de horas trabajadas y de despacho diario.
+
+enum EstadoAsignacionDiaria {
+  ASIGNADO
+  LIBRE      // sin tarea ese día
+  VACACIONES
+  AUSENTE
+  NO_CITADO
+}
+
+model ParteDiario {
+  id         Int      @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa  @relation(fields: [empresa_id], references: [id])
+  fecha      DateTime // la fecha del parte (sin hora)
+  titulo     String? // ej: "Viernes 24/07/2026"
+  notas      String? // nota al pie (ej: "Modificaciones validar en grupo TODOS")
+  cerrado    Boolean  @default(false) // cuando está cerrado no se edita
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  asignaciones AsignacionDiaria[]
+
+  @@unique([empresa_id, fecha])
+}
+
+model AsignacionDiaria {
+  id              Int         @id @default(autoincrement())
+  parte_diario_id Int
+  parte_diario    ParteDiario @relation(fields: [parte_diario_id], references: [id])
+  empleado_id     Int
+  empleado        Empleado    @relation(fields: [empleado_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa     @relation(fields: [empresa_id], references: [id])
+  // Asignación del día
+  estado       EstadoAsignacionDiaria @default(ASIGNADO)
+  hora_ingreso String? // "08:00", "09:00" — texto para flexibilidad
+  lugar        String? // "Polo", "Santiago del Estero", "Depósito"
+  tarea        String? // descripción libre de la tarea
+  seccion      String? // "Administración", "Depósito", "Eventos"
+  // Orden de despliegue dentro de la sección (drag & drop en el frontend) —
+  // no estaba en el pedido original pero es imprescindible para persistir el
+  // reordenamiento, igual que Movimiento.orden / PedidoItem.orden.
+  orden Int @default(0)
+  // Vehículo asignado al grupo (puede ser el mismo para varios)
+  camion_id      Int?
+  camion         Camion? @relation(fields: [camion_id], references: [id])
+  vehiculo_texto String? // texto libre si no está en Camiones — ej: "Camioneta HLW 156", "Sprinter"
+  // Vínculo con evento formal (opcional)
+  evento_id Int?
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+  // Hora de salida (se completa al final del día o la siguen)
+  hora_salida      String? // "***" en el Excel original significa voluntaria
+  hora_salida_fija Boolean @default(false) // true = hora computada, false = voluntaria
+  // Al cerrar el parte → crear Jornada automáticamente
+  jornada_id Int?     @unique
+  jornada    Jornada? @relation(fields: [jornada_id], references: [id])
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  @@unique([parte_diario_id, empleado_id])
+}
+
 // ─── RRHH ─────────────────────────────────────────────────────────────────────
 
 model Empleado {
@@ -944,6 +1018,7 @@ model Empleado {
   jornadas         Jornada[]
   anticipos        Anticipo[]
   liquidaciones    Liquidacion[]
+  asignaciones_diarias AsignacionDiaria[]
 }
 
 model Jornada {
@@ -979,6 +1054,8 @@ model Jornada {
   created_by        Int?
   aprobado_por      Int?
   aprobado_at       DateTime?
+
+  asignacion_diaria AsignacionDiaria?
 
   @@unique([empleado_id, fecha])
 }

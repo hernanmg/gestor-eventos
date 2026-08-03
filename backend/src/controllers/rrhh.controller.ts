@@ -37,7 +37,7 @@ export function calcularHoras(horaIngreso: Date | null, horaEgreso: Date | null)
 // empleado en vez de la regla fija de 8hs — así horas_normales/horas_extras
 // reflejan visualmente el modelo real (LINEAL u JORNADA) en la tabla de Jornadas.
 // No afecta a calcularMontoJornada, que ya recompone el total sumando ambas.
-function calcularHorasSegunEmpleado(
+export function calcularHorasSegunEmpleado(
   empleado: { tipo_liquidacion: string; umbral_horas_jornada: unknown },
   horaIngreso: Date | null,
   horaEgreso: Date | null,
