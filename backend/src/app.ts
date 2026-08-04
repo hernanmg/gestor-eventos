@@ -24,6 +24,7 @@ import rubrosRouter from './routes/rubros';
 import { fichaEventoRouter, rubrosEventoRouter, pedidoItemsRouter } from './routes/fichaEvento';
 import parteDiarioRouter from './routes/parteDiario';
 import { comidasEventoRouter, comidasRouter } from './routes/comidas';
+import calendarioRouter from './routes/calendario';
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.use('/api/pedido-items',      pedidoItemsRouter);
 app.use('/api/parte-diario',      parteDiarioRouter);
 app.use('/api/eventos/:id/comidas', comidasEventoRouter);
 app.use('/api/comidas',             comidasRouter);
+app.use('/api/calendario',          calendarioRouter);
 
 app.use(errorHandler);
 

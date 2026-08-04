@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useRubros } from '@/hooks/useRubros';
@@ -232,11 +232,14 @@ const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'COMIDAS',       label: 'Comidas'       },
 ];
 
+const MAIN_TAB_KEYS: MainTab[] = ['RESUMEN', 'FICHA', 'EGRESO', 'INGRESO', 'CAJA', 'CONCILIATORIA', 'ECHEQS', 'STOCK', 'FACTURAS', 'COMIDAS', 'AUDITORIA'];
+
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
   const eventoId   = Number(id);
   const { user }   = useAuth();
+  const [searchParams] = useSearchParams();
 
   const { data: evento,    isLoading: loadingEvento } = useEvento(eventoId);
   const { data: rubros = [], isLoading: loadingRubros } = useRubros();
@@ -248,7 +251,8 @@ export default function EventoPage() {
   const { data: sinProveedor } = useSinProveedor(eventoId);
   const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
-  const [mainTab, setMainTab] = useState<MainTab>('RESUMEN');
+  const tabParam = searchParams.get('tab')?.toUpperCase() as MainTab | null;
+  const [mainTab, setMainTab] = useState<MainTab>(tabParam && MAIN_TAB_KEYS.includes(tabParam) ? tabParam : 'RESUMEN');
   const [subTab,  setSubTab]  = useState<number | null>(null);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
 

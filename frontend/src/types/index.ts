@@ -1117,3 +1117,30 @@ export interface ResumenComidaFecha {
   costo_total:     number;
   por_area: { area: string; almuerzo: number; cena: number }[];
 }
+
+// ── Calendario ────────────────────────────────────────────────────────────────
+// Sin tabla propia — agrega fechas de los modelos existentes en una sola vista.
+
+export type TipoCalendario =
+  | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
+  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION';
+
+export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
+
+export interface CalendarioItem {
+  id:             string;
+  tipo:           TipoCalendario;
+  titulo:         string;
+  fecha:          string;
+  fecha_fin?:     string | null;
+  empresa_id:     number;
+  empresa_nombre: string;
+  color:          string;
+  urgencia:       UrgenciaCalendario;
+  metadata:       Record<string, unknown>;
+}
+
+export interface CalendarioResponse {
+  items:            CalendarioItem[];
+  totales_por_tipo: Partial<Record<TipoCalendario, number>>;
+}

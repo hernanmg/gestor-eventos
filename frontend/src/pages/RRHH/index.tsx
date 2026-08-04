@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { FileUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -18,9 +18,13 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'liquidaciones', label: 'Liquidaciones' },
 ];
 
+const TAB_KEYS: TabKey[] = ['empleados', 'jornadas', 'anticipos', 'liquidaciones'];
+
 export default function RRHHPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab]           = useState<TabKey>('empleados');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as TabKey | null;
+  const [activeTab, setActiveTab] = useState<TabKey>(tabParam && TAB_KEYS.includes(tabParam) ? tabParam : 'empleados');
   const [filtroEmpleadoId, setFiltroEmpleadoId] = useState<number | null>(null);
 
   if (!user) return null;

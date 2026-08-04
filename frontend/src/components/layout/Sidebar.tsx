@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -188,6 +188,12 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                 )}
               </>
             )}
+          </NavLink>
+
+          {/* Calendario — agrega fechas de todos los módulos, visible para todos los roles */}
+          <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+            <CalendarDays size={18} className="shrink-0" />
+            {isOpen && <span>Calendario</span>}
           </NavLink>
 
           <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>

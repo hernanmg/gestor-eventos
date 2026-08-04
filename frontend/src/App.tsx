@@ -6,6 +6,7 @@ import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
 import MacroPage            from '@/pages/Macro';
 import CajaGlobalPage       from '@/pages/Caja';
 import DashboardPage        from '@/pages/Dashboard';
+import CalendarioPage       from '@/pages/Calendario';
 import EventosPage          from '@/pages/Eventos';
 import EventoPage                  from '@/pages/Evento';
 import VincularProveedoresPage     from '@/pages/Evento/VincularProveedores';
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/macro"         element={<MacroPage />} />
             <Route path="/caja"          element={<CajaGlobalPage />} />
             <Route path="/dashboard"     element={<DashboardPage />} />
+            <Route path="/calendario"    element={<CalendarioPage />} />
             <Route path="/eventos"                              element={<EventosPage />} />
             <Route path="/eventos/:id"                         element={<EventoPage />} />
             <Route path="/eventos/:id/vincular-proveedores"    element={<VincularProveedoresPage />} />

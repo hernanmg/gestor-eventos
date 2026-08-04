@@ -1,0 +1,53 @@
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
+import type { CalendarioResponse, TipoCalendario } from '@/types';
+
+// Espejo de TIPO_QUERY_MAP en backend/src/controllers/calendario.controller.ts
+export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
+  EVENTO:        'eventos',
+  FACTURA_VENCE: 'facturas',
+  ECHEQ_COBRO:   'echeqs',
+  JORNADA:       'jornadas',
+  PARTE_DIARIO:  'partes',
+  STOCK_RETORNO: 'stock',
+  LIQUIDACION:   'liquidaciones',
+};
+
+export const TODOS_LOS_TIPOS: TipoCalendario[] = Object.keys(TIPO_QUERY_MAP) as TipoCalendario[];
+
+function toParams(desde: string, hasta: string, tipos: Set<TipoCalendario>, empresaId?: number | null) {
+  const params: Record<string, string> = { desde, hasta };
+  if (empresaId != null) params.empresa_id = String(empresaId);
+  // Solo mandar ?tipos= cuando el filtro excluye algo — con todos activos,
+  // omitir el param es equivalente y evita una query string enorme.
+  if (tipos.size > 0 && tipos.size < TODOS_LOS_TIPOS.length) {
+    params.tipos = [...tipos].map(t => TIPO_QUERY_MAP[t]).join(',');
+  }
+  return params;
+}
+
+export const calendarioKey = (desde: string, hasta: string, tipos: Set<TipoCalendario>, empresaId?: number | null) =>
+  ['calendario', desde, hasta, empresaId ?? null, [...tipos].sort().join(',')];
+
+export function useCalendario(desde: string, hasta: string, tipos: Set<TipoCalendario>, empresaId?: number | null) {
+  return useQuery<CalendarioResponse>({
+    queryKey:  calendarioKey(desde, hasta, tipos, empresaId),
+    queryFn:   () => api.get('/calendario', { params: toParams(desde, hasta, tipos, empresaId) }).then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+    enabled:   !!desde && !!hasta,
+  });
+}
+
+// Precarga el rango del mes siguiente al navegar la vista mensual, para que
+// el cambio de mes se sienta instantáneo la mayoría de las veces.
+export function usePrefetchCalendario() {
+  const qc = useQueryClient();
+  return useCallback((desde: string, hasta: string, tipos: Set<TipoCalendario>, empresaId?: number | null) => {
+    qc.prefetchQuery({
+      queryKey: calendarioKey(desde, hasta, tipos, empresaId),
+      queryFn:  () => api.get('/calendario', { params: toParams(desde, hasta, tipos, empresaId) }).then(r => r.data),
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [qc]);
+}
