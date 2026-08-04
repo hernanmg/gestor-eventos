@@ -21,6 +21,7 @@ import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import EventoStockPage from './Stock';
 import EventoFacturas from './Facturas';
+import ComidasPage from './Comidas';
 import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
@@ -216,7 +217,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'COMIDAS' | 'AUDITORIA';
 
 const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
@@ -228,6 +229,7 @@ const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
   { key: 'ECHEQS',        label: 'Echeqs'        },
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
   { key: 'FACTURAS',      label: 'Facturas'      },
+  { key: 'COMIDAS',       label: 'Comidas'       },
 ];
 
 export default function EventoPage() {
@@ -418,6 +420,10 @@ export default function EventoPage() {
 
         {mainTab === 'FACTURAS' && (
           <EventoFacturas eventoId={eventoId} />
+        )}
+
+        {mainTab === 'COMIDAS' && (
+          <ComidasPage eventoId={eventoId} canEdit={canEdit} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

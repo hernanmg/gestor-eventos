@@ -88,7 +88,19 @@ export async function getParteDiario(req: Request, res: Response) {
   });
   if (!parte) { res.status(404).json({ error: 'No existe un parte diario para esa fecha' }); return; }
 
-  res.json(parte);
+  // Sugerencia de viandas para el módulo de Comidas — cuenta las asignaciones
+  // ASIGNADO agrupadas por sección. No crea el pedido, solo sugiere cantidades.
+  const porSeccionMap = new Map<string, number>();
+  for (const a of parte.asignaciones) {
+    if (a.estado !== 'ASIGNADO') continue;
+    const seccion = a.seccion ?? 'Sin sección';
+    porSeccionMap.set(seccion, (porSeccionMap.get(seccion) ?? 0) + 1);
+  }
+  const pedido_comida_sugerido = {
+    por_seccion: [...porSeccionMap.entries()].map(([seccion, cantidad]) => ({ seccion, cantidad })),
+  };
+
+  res.json({ ...parte, pedido_comida_sugerido });
 }
 
 const crearParteSchema = z.object({

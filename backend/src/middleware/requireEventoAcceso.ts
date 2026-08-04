@@ -111,3 +111,19 @@ export const byPedidoItemId: GetEventoIdFn = async (req) => {
   });
   return pi?.rubro_evento?.evento_id ?? null;
 };
+
+export const byPedidoComidaId: GetEventoIdFn = async (req) => {
+  const pc = await (prisma as any).pedidoComida.findFirst({
+    where:  { id: Number(req.params.id) },
+    select: { evento_id: true },
+  });
+  return pc?.evento_id ?? null;
+};
+
+export const byLineaComidaId: GetEventoIdFn = async (req) => {
+  const lc = await (prisma as any).lineaComida.findFirst({
+    where:   { id: Number(req.params.id) },
+    include: { pedido_comida: { select: { evento_id: true } } },
+  });
+  return lc?.pedido_comida?.evento_id ?? null;
+};

@@ -1039,6 +1039,10 @@ export interface AsignacionDiaria {
   evento:   { id: number; nombre: string } | null;
 }
 
+export interface PedidoComidaSugerido {
+  por_seccion: { seccion: string; cantidad: number }[];
+}
+
 export interface ParteDiario {
   id:         number;
   empresa_id: number;
@@ -1050,6 +1054,7 @@ export interface ParteDiario {
   updated_at: string;
   deleted_at: string | null;
   asignaciones: AsignacionDiaria[];
+  pedido_comida_sugerido: PedidoComidaSugerido;
 }
 
 // Vista liviana de GET /parte-diario (lista/historial) — sin asignaciones
@@ -1067,4 +1072,48 @@ export interface CerrarParteResultado {
   jornadas_creadas:    number;
   jornadas_vinculadas: number;
   omitidas:            number;
+}
+
+// ── Comidas ───────────────────────────────────────────────────────────────────
+
+export type TipoComida = 'ALMUERZO' | 'CENA' | 'DESAYUNO' | 'MERIENDA';
+
+export interface LineaComida {
+  id:               number;
+  pedido_comida_id: number;
+  tipo:             TipoComida;
+  area:             string;
+  cantidad:         number;
+  valor_unitario:   number | null;
+  detalle:          string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface PedidoComida {
+  id:              number;
+  evento_id:       number;
+  empresa_id:      number;
+  fecha:           string;
+  proveedor_id:    number | null;
+  proveedor:       { id: number; nombre: string; alias: string | null; cuit: string | null; categoria: string | null; telefono: string | null } | null;
+  proveedor_texto: string | null;
+  forma_pago:      string | null;
+  notas:           string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  created_by: number | null;
+  updated_by: number | null;
+  lineas: LineaComida[];
+}
+
+export interface ResumenComidaFecha {
+  fecha:           string;
+  total_almuerzos: number;
+  total_cenas:     number;
+  total_personas:  number;
+  costo_total:     number;
+  por_area: { area: string; almuerzo: number; cena: number }[];
 }

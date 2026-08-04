@@ -222,6 +222,7 @@ model Empresa {
   rubrosEvento          RubroEvento[]
   partesDiario          ParteDiario[]
   asignacionesDiarias   AsignacionDiaria[]
+  pedidosComida         PedidoComida[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -317,6 +318,7 @@ model Evento {
   movimientosPanol       MovimientoPanol[]
   rubros_evento          RubroEvento[]
   asignaciones_diarias   AsignacionDiaria[]
+  pedidos_comida         PedidoComida[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -525,10 +527,11 @@ model Proveedor {
   created_by Int?
   updated_by Int?
 
-  movimientos   Movimiento[]
-  echeqs        Echeq[]
-  facturas      Factura[]
-  rubros_evento RubroEvento[]
+  movimientos    Movimiento[]
+  echeqs         Echeq[]
+  facturas       Factura[]
+  rubros_evento  RubroEvento[]
+  pedidos_comida PedidoComida[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -953,6 +956,60 @@ model AsignacionDiaria {
   deleted_at DateTime?
 
   @@unique([parte_diario_id, empleado_id])
+}
+
+// ─── COMIDAS (Enjoy y DOS57) ──────────────────────────────────────────────────
+// Registro operativo de viandas/comidas por día de evento: cuántos almuerzos y
+// cenas por área, con qué proveedor. Reemplaza las planillas manuales
+// (Planilla_Control_de_Viandas.xlsx, DOS57_RESUMEN_COMIDAS_2026.xlsx). Vive
+// dentro del evento — no crea movimientos automáticamente, es solo registro.
+
+enum TipoComida {
+  ALMUERZO
+  CENA
+  DESAYUNO
+  MERIENDA
+}
+
+model PedidoComida {
+  id              Int          @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento       @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa      @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime // fecha del día de comida
+  proveedor_id    Int?
+  proveedor       Proveedor?   @relation(fields: [proveedor_id], references: [id])
+  proveedor_texto String? // nombre libre si no está en sistema
+  forma_pago      String? // "Cuenta corriente", "Efectivo", "Transferencia"
+  notas           String?
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+
+  lineas LineaComida[]
+
+  @@unique([evento_id, fecha])
+}
+
+model LineaComida {
+  id               Int          @id @default(autoincrement())
+  pedido_comida_id Int
+  pedido_comida    PedidoComida @relation(fields: [pedido_comida_id], references: [id])
+  tipo             TipoComida
+  area             String // "Administración", "Depósito", "Eventos", "Staff"
+  cantidad         Int
+  valor_unitario   Decimal?     @db.Decimal(10, 2)
+  detalle          String? // descripción del menú o nombres de personas
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  @@unique([pedido_comida_id, tipo, area])
 }
 
 // ─── RRHH ─────────────────────────────────────────────────────────────────────
