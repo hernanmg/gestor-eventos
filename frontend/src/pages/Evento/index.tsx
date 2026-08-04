@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
@@ -237,9 +237,11 @@ const MAIN_TAB_KEYS: MainTab[] = ['RESUMEN', 'FICHA', 'EGRESO', 'INGRESO', 'CAJA
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
+  const location   = useLocation();
   const eventoId   = Number(id);
   const { user }   = useAuth();
   const [searchParams] = useSearchParams();
+  const successMessage = (location.state as { successMessage?: string } | null)?.successMessage;
 
   const { data: evento,    isLoading: loadingEvento } = useEvento(eventoId);
   const { data: rubros = [], isLoading: loadingRubros } = useRubros();
@@ -320,6 +322,14 @@ export default function EventoPage() {
         <EstadoBadge estado={evento.estado} />
         <ExportDropdown eventoId={eventoId} rubros={rubros} />
       </div>
+
+      {/* Banner de éxito (ej: evento recién creado desde la pre-macro) */}
+      {successMessage && (
+        <div className="flex items-center gap-2 px-6 py-2.5 bg-green-50 border-b border-green-200 shrink-0">
+          <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+          <span className="text-sm text-green-800">{successMessage}</span>
+        </div>
+      )}
 
       {/* Banner sin proveedor */}
       {countSinProveedor > 0 && (

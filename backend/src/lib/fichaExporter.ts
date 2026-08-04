@@ -17,11 +17,16 @@ interface ResumenRow {
   servicio:      string;
   proveedor:     string | null;
   confirmado:    string;
+  estado:        EstadoRubroEvento;
   presupuesto:   number | null;
   observaciones: string | null;
   contacto:      string | null;
   referente:     string | null;
 }
+
+// NO_VA/CANCELADO se listan igual (el cliente quiere saber qué NO va) pero
+// tachados, para que salten a la vista sin perderse en la planilla.
+const ESTADOS_TACHADOS = new Set<EstadoRubroEvento>(['NO_VA', 'CANCELADO']);
 
 function addResumenSheet(wb: ExcelJS.Workbook, rows: ResumenRow[]) {
   const ws = wb.addWorksheet('PROVEEDORES CONFIRMADOS');
@@ -38,6 +43,11 @@ function addResumenSheet(wb: ExcelJS.Workbook, rows: ResumenRow[]) {
       r.presupuesto ?? '', r.observaciones ?? '', r.contacto ?? '', r.referente ?? '',
     ]);
     if (r.presupuesto !== null) row.getCell(4).numFmt = NUM_FMT;
+    if (ESTADOS_TACHADOS.has(r.estado)) {
+      row.eachCell(cell => {
+        cell.font = { ...cell.font, strike: true, color: { argb: 'FF999999' } };
+      });
+    }
   }
 }
 
@@ -130,6 +140,7 @@ export async function generateFichaExcel(eventoId: number, empresaId: number): P
     servicio:      re.rubro.nombre,
     proveedor:     re.proveedor?.nombre ?? null,
     confirmado:    ESTADO_LABEL[re.estado],
+    estado:        re.estado,
     presupuesto:   re.presupuesto !== null ? Number(re.presupuesto) : null,
     observaciones: re.notas,
     contacto:      re.contacto_telefono,

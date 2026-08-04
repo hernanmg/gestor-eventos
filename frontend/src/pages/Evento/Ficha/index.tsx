@@ -274,14 +274,18 @@ function RubroEventoRow({ eventoId, re, expanded, onToggleExpand }: {
           />
         </td>
         <td className={cn(cell, 'w-24 text-right')}>
-          <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-7 text-xs">
-            {expanded ? <ChevronDown size={13} className="mr-1" /> : <ChevronRight size={13} className="mr-1" />}
-            Pedido
-            {re.pedido_items.length > 0 && <span className="ml-1 text-muted-foreground">({re.pedido_items.length})</span>}
-          </Button>
+          {re.estado === 'CONFIRMADO' ? (
+            <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-7 text-xs">
+              {expanded ? <ChevronDown size={13} className="mr-1" /> : <ChevronRight size={13} className="mr-1" />}
+              Ver pedido
+              {re.pedido_items.length > 0 && <span className="ml-1 text-muted-foreground">({re.pedido_items.length})</span>}
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
         </td>
       </tr>
-      {expanded && <PedidoItemsPanel eventoId={eventoId} rubroEvento={re} />}
+      {expanded && re.estado === 'CONFIRMADO' && <PedidoItemsPanel eventoId={eventoId} rubroEvento={re} />}
     </>
   );
 }
@@ -330,7 +334,11 @@ function RubroEventoCard({ eventoId, re, expanded, onToggleExpand }: {
               {ESTADOS.map(e => <option key={e} value={e}>{ESTADO_LABEL[e]}</option>)}
             </select>
           </div>
-          <PedidoItemsPanelMobile eventoId={eventoId} rubroEvento={re} />
+          {re.estado === 'CONFIRMADO' ? (
+            <PedidoItemsPanelMobile eventoId={eventoId} rubroEvento={re} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Confirmá el rubro para ver/cargar su pedido técnico.</p>
+          )}
         </div>
       )}
     </div>

@@ -158,7 +158,7 @@ export async function updateRubroEvento(req: Request, res: Response) {
   }
 
   const updated = await prisma.$transaction(async tx => {
-    const re = await tx.rubroEvento.update({
+    await tx.rubroEvento.update({
       where: { id },
       data: {
         ...(d.proveedor_id      !== undefined && { proveedor_id:      d.proveedor_id }),
@@ -174,8 +174,21 @@ export async function updateRubroEvento(req: Request, res: Response) {
         ...(d.notas             !== undefined && { notas:             d.notas }),
         updated_by: req.user!.id,
       },
-      include: RUBRO_EVENTO_INCLUDE,
     });
+
+    // Un rubro que ya NO VA o se CANCELÓ no tiene pedido técnico vigente —
+    // se vacía (soft delete), pero el RubroEvento en sí queda (es historial,
+    // no se borra). No toca movimientos de Egresos ya cargados en ese rubro.
+    let pedidoItemsVaciados = 0;
+    if (d.estado === 'CANCELADO' || d.estado === 'NO_VA') {
+      const { count } = await tx.pedidoItem.updateMany({
+        where: { rubro_evento_id: id, deleted_at: null },
+        data:  { deleted_at: new Date() },
+      });
+      pedidoItemsVaciados = count;
+    }
+
+    const re = await tx.rubroEvento.findUniqueOrThrow({ where: { id }, include: RUBRO_EVENTO_INCLUDE });
 
     await registrarAuditoria({
       usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'RubroEvento', entidadId: id,
@@ -185,6 +198,15 @@ export async function updateRubroEvento(req: Request, res: Response) {
       datosDespues: parsed.data,
       ip: req.ip, tx: tx as any,
     });
+
+    if (pedidoItemsVaciados > 0) {
+      await registrarAuditoria({
+        usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'PedidoItem', entidadId: id,
+        eventoId:    existing.evento_id,
+        descripcion: `Vació ${pedidoItemsVaciados} ítem(s) de pedido de "${re.rubro.nombre}" al pasar a ${d.estado}`,
+        ip: req.ip, tx: tx as any,
+      });
+    }
 
     return re;
   });
@@ -212,6 +234,10 @@ export async function addPedidoItem(req: Request, res: Response) {
   const rubroEventoId = Number(req.params.id);
   const rubroEvento = await prisma.rubroEvento.findFirst({ where: { id: rubroEventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!rubroEvento) { res.status(404).json({ error: 'Rubro de la ficha no encontrado' }); return; }
+  if (rubroEvento.estado !== 'CONFIRMADO') {
+    res.status(400).json({ error: 'El rubro debe estar CONFIRMADO para cargar su pedido técnico' });
+    return;
+  }
 
   const parsed = pedidoItemSchema.safeParse(req.body);
   if (!parsed.success) {

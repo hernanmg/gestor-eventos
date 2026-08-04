@@ -84,12 +84,25 @@ async function calcDisponibilidad(
       producto_id: productoId,
       estado:      'ACTIVA',
       deleted_at:  null,
-      fecha_salida: { lte: fechaHasta },
-      OR: [
-        { fecha_retorno: null },
-        { fecha_retorno: { gte: fechaDesde } },
-      ],
       ...(excludeAsignacionId ? { id: { not: excludeAsignacionId } } : {}),
+      // Comprometido si: (a) su ventana planificada [fecha_salida, fecha_retorno]
+      // solapa el rango consultado — para proyectar quiebres futuros de
+      // asignaciones todavía no firmadas — o (b) está físicamente afuera del
+      // depósito ahora mismo (EN_TRANSITO/EN_EVENTO/EXCEDENTE), sin importar
+      // si esa fecha planificada ya pasó o directamente cambió: firmar la
+      // salida antes o después de lo planificado no debe "liberar" stock que
+      // en la práctica sigue afuera. Vuelve a estar disponible recién al
+      // cancelar la asignación (retorno a DEPOSITO).
+      OR: [
+        {
+          fecha_salida: { lte: fechaHasta },
+          OR: [
+            { fecha_retorno: null },
+            { fecha_retorno: { gte: fechaDesde } },
+          ],
+        },
+        { ubicacion: { in: ['EN_TRANSITO', 'EN_EVENTO', 'EXCEDENTE'] } },
+      ],
     },
     include: { evento: { select: { id: true, nombre: true } } },
   });

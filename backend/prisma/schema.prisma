@@ -223,6 +223,7 @@ model Empresa {
   partesDiario          ParteDiario[]
   asignacionesDiarias   AsignacionDiaria[]
   pedidosComida         PedidoComida[]
+  preMacros             PreMacro[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -319,6 +320,7 @@ model Evento {
   rubros_evento          RubroEvento[]
   asignaciones_diarias   AsignacionDiaria[]
   pedidos_comida         PedidoComida[]
+  pre_macro              PreMacro?
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -1188,4 +1190,82 @@ model AuditoriaLog {
   datos_despues Json?
   ip            String?
   created_at    DateTime @default(now())
+}
+
+// ─── PRE-MACRO (wizard de creación de evento) ────────────────────────────────
+// Punto de entrada para crear un evento nuevo: ayuda-memoria de 4 pasos que
+// termina en un resumen + selección de rubros preseleccionados. Aplica a
+// Enjoy y DOS57 por igual — la lógica de sugerencia de rubros difiere por
+// empresa (ver src/lib/sugerirRubros.ts).
+
+model PreMacro {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  // Estado del wizard
+  paso_actual Int     @default(1)
+  completada  Boolean @default(false)
+  // Evento resultante (null hasta que se confirma)
+  evento_id Int?    @unique
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+
+  // PASO 1 — El evento
+  nombre_evento String?
+  tipo_evento   String? // "Festival", "Corporativo", "Privado", "Deportivo", otro
+  descripcion   String?
+  para_que_es   String? // texto libre: para qué es el evento
+  es_privado    Boolean @default(false)
+
+  // PASO 2 — Dónde y cuándo
+  fecha_inicio    DateTime?
+  fecha_fin       DateTime?
+  hora_inicio     String? // "20:00"
+  hora_fin        String?
+  lugar_nombre    String? // "Estadio Mario Kempes"
+  lugar_ciudad    String?
+  lugar_provincia String?
+  lugar_direccion String?
+  dias_montaje    Int? // días de armado previos al evento
+  dias_desmontaje Int? // días de desarmado posteriores
+
+  // PASO 3 — Quién y cómo
+  cliente_nombre    String? // quién lo encarga
+  razon_social      String? // razón social que paga
+  cuit_pagador      String?
+  quien_lo_hace     String? // responsable interno de Enjoy/DOS57
+  contacto_cliente  String?
+  telefono_cliente  String?
+  presupuesto_total Decimal? @db.Decimal(12, 2)
+  moneda            Moneda   @default(ARS)
+
+  // PASO 4 — Personal y logística
+  lleva_empleados         Boolean @default(true)
+  cantidad_estimada_staff Int?
+  requiere_hospedaje      Boolean @default(false)
+  ciudad_hospedaje        String?
+  requiere_traslado       Boolean @default(false)
+  notas_traslado          String? // "2 camiones + 1 van"
+  requiere_comidas        Boolean @default(false)
+  cantidad_dias_comida    Int?
+  observaciones_generales String?
+
+  // Rubros sugeridos (JSON array de { rubro_id, rubro_nombre, razon, seleccionado })
+  rubros_sugeridos   Json?
+  rubros_confirmados Json?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  // Socios del evento (mismo modelo conceptual que Evento.socios)
+  socios SocioPreMacro[]
+}
+
+model SocioPreMacro {
+  id           Int      @id @default(autoincrement())
+  pre_macro_id Int
+  pre_macro    PreMacro @relation(fields: [pre_macro_id], references: [id])
+  nombre       String
+  porcentaje   Decimal  @db.Decimal(5, 2)
 }

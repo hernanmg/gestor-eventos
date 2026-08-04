@@ -8,6 +8,7 @@ import CajaGlobalPage       from '@/pages/Caja';
 import DashboardPage        from '@/pages/Dashboard';
 import CalendarioPage       from '@/pages/Calendario';
 import EventosPage          from '@/pages/Eventos';
+import PreMacroPage         from '@/pages/PreMacro';
 import EventoPage                  from '@/pages/Evento';
 import VincularProveedoresPage     from '@/pages/Evento/VincularProveedores';
 import ConfiguracionPage    from '@/pages/Configuracion';
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/dashboard"     element={<DashboardPage />} />
             <Route path="/calendario"    element={<CalendarioPage />} />
             <Route path="/eventos"                              element={<EventosPage />} />
+            <Route path="/pre-macro/:id"                        element={<PreMacroPage />} />
             <Route path="/eventos/:id"                         element={<EventoPage />} />
             <Route path="/eventos/:id/vincular-proveedores"    element={<VincularProveedoresPage />} />
             <Route path="/configuracion"    element={<ConfiguracionPage />} />

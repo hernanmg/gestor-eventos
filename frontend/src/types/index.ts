@@ -175,6 +175,94 @@ export interface EventoPayload {
   moneda_base:  Moneda;
 }
 
+// ── Pre-Macro (wizard de creación de evento) ──────────────────────────────────
+
+export type TipoEventoPreMacro = 'Festival' | 'Corporativo' | 'Privado' | 'Deportivo' | 'Otro';
+
+export interface RubroSugerido {
+  rubro_id:     number;
+  rubro_nombre: string;
+  razon:        string | null;
+  seleccionado: boolean;
+}
+
+export interface RubroConfirmado {
+  rubro_id:     number;
+  seleccionado: boolean;
+}
+
+export interface SocioPreMacro {
+  id:         number;
+  nombre:     string;
+  porcentaje: number;
+}
+
+export interface PreMacro {
+  id:          number;
+  empresa_id:  number;
+  paso_actual: number;
+  completada:  boolean;
+  evento_id:   number | null;
+
+  // Paso 1
+  nombre_evento: string | null;
+  tipo_evento:   string | null;
+  descripcion:   string | null;
+  para_que_es:   string | null;
+  es_privado:    boolean;
+
+  // Paso 2
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  hora_inicio:     string | null;
+  hora_fin:        string | null;
+  lugar_nombre:    string | null;
+  lugar_ciudad:    string | null;
+  lugar_provincia: string | null;
+  lugar_direccion: string | null;
+  dias_montaje:    number | null;
+  dias_desmontaje: number | null;
+
+  // Paso 3
+  cliente_nombre:    string | null;
+  razon_social:      string | null;
+  cuit_pagador:      string | null;
+  quien_lo_hace:     string | null;
+  contacto_cliente:  string | null;
+  telefono_cliente:  string | null;
+  presupuesto_total: number | null;
+  moneda:            Moneda;
+  socios:            SocioPreMacro[];
+
+  // Paso 4
+  lleva_empleados:         boolean;
+  cantidad_estimada_staff: number | null;
+  requiere_hospedaje:      boolean;
+  ciudad_hospedaje:        string | null;
+  requiere_traslado:       boolean;
+  notas_traslado:          string | null;
+  requiere_comidas:        boolean;
+  cantidad_dias_comida:    number | null;
+  observaciones_generales: string | null;
+
+  rubros_sugeridos:   RubroSugerido[] | null;
+  rubros_confirmados: RubroConfirmado[] | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PreMacroBorrador {
+  id:            number;
+  nombre_evento: string | null;
+  updated_at:    string;
+}
+
+export type PreMacroPayload = Partial<Omit<PreMacro,
+  | 'id' | 'empresa_id' | 'completada' | 'evento_id' | 'socios'
+  | 'rubros_sugeridos' | 'rubros_confirmados' | 'created_at' | 'updated_at'
+>> & { socios?: Array<{ nombre: string; porcentaje: number }> };
+
 // ── Movimientos ───────────────────────────────────────────────────────────────
 
 export interface Movimiento {

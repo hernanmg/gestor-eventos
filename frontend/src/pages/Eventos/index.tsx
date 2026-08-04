@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2, FileClock } from 'lucide-react';
 import { useEventos, useDeleteEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
+import { useCreatePreMacro, usePreMacroBorrador, useDiscardPreMacro } from '@/hooks/usePreMacro';
 import { useAuth } from '@/hooks/useAuth';
 import { EstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,19 +29,28 @@ export default function EventosPage() {
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
 
+  const createPreMacro = useCreatePreMacro();
+  const { data: borrador } = usePreMacroBorrador();
+  const discardPreMacro    = useDiscardPreMacro();
+
   const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
 
   const handleNew = () => {
-    setEditingEvento(null);
-    setDialogOpen(true);
+    createPreMacro.mutate();
   };
 
-  // El panel de ayuda puede abrir este modal con el evento personalizado
+  // El panel de ayuda puede abrir el wizard de pre-macro
   useEffect(() => {
     const handler = () => handleNew();
     window.addEventListener('help:abrir_modal_nuevo_evento', handler);
     return () => window.removeEventListener('help:abrir_modal_nuevo_evento', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDescartarBorrador = () => {
+    if (!borrador) return;
+    if (!window.confirm(`¿Descartar la pre-macro sin completar "${borrador.nombre_evento || 'sin nombre'}"?`)) return;
+    discardPreMacro.mutate(borrador.id);
+  };
 
   const handleEdit = (evento: Evento) => {
     setEditingEvento(evento);
@@ -80,12 +90,30 @@ export default function EventosPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Eventos</h1>
         {canEdit && (
-          <Button onClick={handleNew} size="sm">
+          <Button onClick={handleNew} size="sm" disabled={createPreMacro.isPending}>
             <Plus size={16} className="mr-1.5" />
             Nuevo evento
           </Button>
         )}
       </div>
+
+      {/* Banner de pre-macro sin completar */}
+      {borrador && (
+        <div className="flex items-center gap-2 mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <FileClock size={16} className="text-amber-600 shrink-0" />
+          <span className="text-sm text-amber-800">
+            Tenés una pre-macro sin completar: <strong>{borrador.nombre_evento || 'Sin nombre'}</strong>
+          </span>
+          <div className="ml-auto flex gap-2 shrink-0">
+            <Button size="sm" onClick={() => navigate(`/pre-macro/${borrador.id}`)}>
+              Continuar →
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleDescartarBorrador} disabled={discardPreMacro.isPending}>
+              Descartar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
@@ -97,7 +125,7 @@ export default function EventosPage() {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-muted-foreground text-sm">No hay eventos registrados.</p>
           {canEdit && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={handleNew}>
+            <Button variant="outline" size="sm" className="mt-3" onClick={handleNew} disabled={createPreMacro.isPending}>
               <Plus size={14} className="mr-1.5" />
               Crear el primer evento
             </Button>
@@ -267,13 +295,11 @@ export default function EventosPage() {
         </>
       )}
 
-      {/* Create / Edit dialog */}
+      {/* Edit dialog — la creación de eventos pasa por la pre-macro */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editingEvento ? 'Editar evento' : 'Nuevo evento'}
-            </DialogTitle>
+            <DialogTitle>Editar evento</DialogTitle>
           </DialogHeader>
           <EventoForm
             evento={editingEvento ?? undefined}
