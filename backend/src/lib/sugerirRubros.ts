@@ -109,9 +109,13 @@ async function sugerirRubrosEnjoy(p: PreMacroParaSugerencia, empresaId: number):
 }
 
 // ── DOS57 (empresa_id=2) ──────────────────────────────────────────────────────
-// TODO: lógica de sugerencia específica para DOS57
-// pendiente de relevamiento con Pollo y Vicky
-// Por ahora: se sugieren TODOS los rubros activos de DOS57, preseleccionados.
+// Rubros operativos reales confirmados por Jazmín (ver prisma/seed.ts) — los
+// únicos 3 que se sugieren siempre. RRHH/Impuestos son técnicos (no se
+// sugieren, igual que en Enjoy) y aparecen en "Otros rubros" para activarlos
+// a mano si hace falta.
+
+const DOS57_SIEMPRE = ['Layher', 'Vallado', 'Varios'];
+const RAZON_DOS57 = 'Rubro operativo de DOS57';
 
 async function sugerirRubrosDos57(empresaId: number): Promise<RubroSugerido[]> {
   const todos = await prisma.rubro.findMany({
@@ -119,12 +123,15 @@ async function sugerirRubrosDos57(empresaId: number): Promise<RubroSugerido[]> {
     select: { id: true, nombre: true },
   });
 
-  return todos.map(r => ({
-    rubro_id:     r.id,
-    rubro_nombre: r.nombre,
-    razon:        'Sugerido por defecto para DOS57',
-    seleccionado: true,
-  }));
+  return todos.map(r => {
+    const sugerido = DOS57_SIEMPRE.includes(r.nombre);
+    return {
+      rubro_id:     r.id,
+      rubro_nombre: r.nombre,
+      razon:        sugerido ? RAZON_DOS57 : null,
+      seleccionado: sugerido,
+    };
+  });
 }
 
 export async function sugerirRubros(preMacro: PreMacroParaSugerencia, empresaId: number): Promise<RubroSugerido[]> {

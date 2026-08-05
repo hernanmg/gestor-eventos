@@ -149,6 +149,10 @@ const help: Record<string, HelpContent> = {
     descripcion: 'La Ficha de Evento centraliza todos los proveedores y pedidos del evento. Inicializá la ficha para ver los 84 rubros y asignales proveedor, estado y detalle del pedido. Al exportar generás el documento que antes se hacía a mano.',
     secciones: [
       {
+        titulo: '¿Ficha o Stock?',
+        contenido: 'La Ficha gestiona los PROVEEDORES EXTERNOS de cada rubro — empresas a las que Enjoy contrata servicios (sonido, luces, seguridad, etc.). El stock propio de Enjoy (equipos del depósito) se gestiona desde la tab Stock del evento, no desde la Ficha. Si un rubro lo cubre material propio del depósito, asignalo desde Stock. Si lo cubre un proveedor externo, cargalo en la Ficha.',
+      },
+      {
         titulo: '¿Cómo empiezo?',
         contenido: 'Hacé clic en "Inicializar ficha" — se crean automáticamente todos los rubros de egresos configurados para tu empresa, en estado Pendiente. A partir de ahí asignales proveedor, estado, contacto y quién coordina cada uno.',
       },

@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
 // Rubros operativos reales de Enjoy (1-84, ver docs/Control de Rubros Enjoy.xlsx)
 // + 3 rubros técnicos del sistema (85-87) de los que depende lógica de negocio
 // por su `codigo` estable: impuesto_subcategoria (EG-IMP) y echeqs (EG-EXTRA).
-const RUBROS_ENJOY: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string }[] = [
+const RUBROS_ENJOY: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string; descripcion?: string }[] = [
   { tipo: TipoRubro.EGRESO, orden: 1,  nombre: 'Directorio' },
   { tipo: TipoRubro.EGRESO, orden: 2,  nombre: 'Estructuras' },
   { tipo: TipoRubro.EGRESO, orden: 3,  nombre: 'Cerramiento' },
@@ -110,15 +110,19 @@ const RUBROS_ENJOY: { tipo: TipoRubro; orden: number; nombre: string; codigo?: s
   { tipo: TipoRubro.INGRESO, orden: 5, nombre: 'Service Charge' },
 ];
 
-const RUBROS_DOS57: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string }[] = [
-  { tipo: TipoRubro.EGRESO, orden: 1, nombre: 'Materiales Layher' },
-  { tipo: TipoRubro.EGRESO, orden: 2, nombre: 'Transporte y Logística' },
-  { tipo: TipoRubro.EGRESO, orden: 3, nombre: 'RRHH',                  codigo: RUBROS_SISTEMA.RRHH },
-  { tipo: TipoRubro.EGRESO, orden: 4, nombre: 'Combustible' },
-  { tipo: TipoRubro.EGRESO, orden: 5, nombre: 'Mantenimiento de Equipos' },
-  { tipo: TipoRubro.EGRESO, orden: 6, nombre: 'Impuestos',             codigo: RUBROS_SISTEMA.IMPUESTOS },
-  { tipo: TipoRubro.EGRESO, orden: 7, nombre: 'Gastos Generales' },
-  { tipo: TipoRubro.EGRESO, orden: 8, nombre: 'Préstamos' },
+const RUBROS_DOS57: { tipo: TipoRubro; orden: number; nombre: string; codigo?: string; descripcion?: string }[] = [
+  // Rubros operativos reales de DOS57, confirmados por Jazmín — reemplazan
+  // el set genérico inicial (Materiales Layher, Transporte y Logística,
+  // Combustible, Mantenimiento de Equipos, Gastos Generales, Préstamos).
+  { tipo: TipoRubro.EGRESO, orden: 1, nombre: 'Layher',  codigo: 'LAYHER' },
+  { tipo: TipoRubro.EGRESO, orden: 2, nombre: 'Vallado', codigo: 'VALLADO' },
+  { tipo: TipoRubro.EGRESO, orden: 3, nombre: 'Varios',  codigo: 'VARIOS', descripcion: 'Aforo, Sillas, Tablones' },
+  // Rubros técnicos del sistema — no borrables (es_sistema=true), requeridos
+  // por lógica de negocio propia (liquidaciones RRHH, impuesto_subcategoria).
+  // Van al final del orden para no mezclarse con los operativos (mismo patrón
+  // que los técnicos de Enjoy, orden 85-87).
+  { tipo: TipoRubro.EGRESO, orden: 4, nombre: 'RRHH',      codigo: RUBROS_SISTEMA.RRHH },
+  { tipo: TipoRubro.EGRESO, orden: 5, nombre: 'Impuestos', codigo: RUBROS_SISTEMA.IMPUESTOS },
   { tipo: TipoRubro.INGRESO, orden: 1, nombre: 'Alquiler de Estructuras' },
   { tipo: TipoRubro.INGRESO, orden: 2, nombre: 'Mano de Obra' },
   { tipo: TipoRubro.INGRESO, orden: 3, nombre: 'Transporte' },
@@ -184,16 +188,22 @@ async function main() {
   for (const [empresa, rubros] of [[enjoy, RUBROS_ENJOY], [dos57, RUBROS_DOS57]] as const) {
     for (const r of rubros) {
       await prisma.rubro.upsert({
-        where:  { empresa_id_tipo_nombre: { empresa_id: empresa.id, tipo: r.tipo, nombre: r.nombre } },
-        update: { orden: r.orden, codigo: r.codigo ?? null, es_sistema: true, activo: true },
+        where: { empresa_id_tipo_nombre: { empresa_id: empresa.id, tipo: r.tipo, nombre: r.nombre } },
+        update: {
+          orden: r.orden, codigo: r.codigo ?? null, es_sistema: true, activo: true,
+          // Sólo se pisa si el seed trae un valor — así no se borra una
+          // descripción cargada a mano desde Configuración para otros rubros.
+          ...(r.descripcion !== undefined && { descripcion: r.descripcion }),
+        },
         create: {
-          empresa_id: empresa.id,
-          tipo:       r.tipo,
-          nombre:     r.nombre,
-          codigo:     r.codigo ?? null,
-          orden:      r.orden,
-          es_sistema: true,
-          activo:     true,
+          empresa_id:  empresa.id,
+          tipo:        r.tipo,
+          nombre:      r.nombre,
+          codigo:      r.codigo ?? null,
+          descripcion: r.descripcion ?? null,
+          orden:       r.orden,
+          es_sistema:  true,
+          activo:      true,
         },
       });
     }
@@ -218,6 +228,26 @@ async function main() {
   });
   if (rubrosObsoletos > 0) {
     console.log(`✓ Rubros EGRESO genéricos obsoletos de Enjoy desactivados: ${rubrosObsoletos}`);
+  }
+
+  // ── Limpieza: rubros EGRESO genéricos de DOS57 reemplazados por los 3 reales
+  // confirmados por Jazmín. Mismo patrón que Enjoy: soft-delete, no hard
+  // delete, para no romper movimientos históricos que ya los referencian.
+  const NOMBRES_DOS57_VIGENTES = RUBROS_DOS57
+    .filter(r => r.tipo === TipoRubro.EGRESO)
+    .map(r => r.nombre);
+
+  const { count: rubrosObsoletosDos57 } = await prisma.rubro.updateMany({
+    where: {
+      empresa_id: dos57.id,
+      tipo:       TipoRubro.EGRESO,
+      nombre:     { notIn: NOMBRES_DOS57_VIGENTES },
+      deleted_at: null,
+    },
+    data: { deleted_at: new Date(), activo: false },
+  });
+  if (rubrosObsoletosDos57 > 0) {
+    console.log(`✓ Rubros EGRESO genéricos obsoletos de DOS57 desactivados: ${rubrosObsoletosDos57}`);
   }
 
   // ── Usuario admin global ────────────────────────────────────────────────────
