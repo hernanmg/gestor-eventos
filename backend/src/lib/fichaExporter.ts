@@ -55,7 +55,6 @@ function addResumenSheet(wb: ExcelJS.Workbook, rows: ResumenRow[]) {
 
 interface PedidoItemRow {
   cantidad:        number | null;
-  unidad:          string | null;
   descripcion:     string;
   dias_uso:        number | null;
   horario_llegada: string | null;
@@ -84,7 +83,7 @@ function addPedidoSheet(wb: ExcelJS.Workbook, data: PedidoSheetData, usedNames: 
 
   const ws = wb.addWorksheet(name);
   ws.columns = [
-    { width: 12 }, { width: 12 }, { width: 42 }, { width: 12 }, { width: 16 }, { width: 16 }, { width: 30 },
+    { width: 12 }, { width: 42 }, { width: 12 }, { width: 16 }, { width: 16 }, { width: 30 },
   ];
 
   const title = ws.addRow(['FICHA DE PEDIDO']);
@@ -96,12 +95,12 @@ function addPedidoSheet(wb: ExcelJS.Workbook, data: PedidoSheetData, usedNames: 
   ws.addRow([`FECHA RETIRO: ${fmtDate(data.fecha_retiro)}`]);
   ws.addRow([]);
 
-  const headers = ['Cantidad', 'Unidad', 'Material', 'Días de uso', 'Horario llegada', 'Horario retiro', 'Observaciones'];
+  const headers = ['Cantidad', 'Material', 'Días de uso', 'Horario llegada', 'Horario retiro', 'Observaciones'];
   applyHeaderStyle(ws.addRow(headers), headers.length);
 
   for (const item of data.items) {
     const row = ws.addRow([
-      item.cantidad ?? '', item.unidad ?? '', item.descripcion, item.dias_uso ?? '',
+      item.cantidad ?? '', item.descripcion, item.dias_uso ?? '',
       item.horario_llegada ?? '', item.horario_retiro ?? '', item.observaciones ?? '',
     ]);
     if (item.cantidad !== null) row.getCell(1).numFmt = NUM_FMT;
@@ -162,7 +161,6 @@ export async function generateFichaExcel(eventoId: number, empresaId: number): P
       fecha_retiro:      re.fecha_retiro,
       items: re.pedido_items.map(i => ({
         cantidad:        i.cantidad !== null ? Number(i.cantidad) : null,
-        unidad:          i.unidad,
         descripcion:     i.descripcion,
         dias_uso:        i.dias_uso,
         horario_llegada: i.horario_llegada,

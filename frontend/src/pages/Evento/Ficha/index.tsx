@@ -52,7 +52,6 @@ const inputCls = 'w-full text-xs border border-transparent rounded px-1 py-0.5 f
 function pedidoItemToLocal(item: PedidoItem) {
   return {
     cantidad:        item.cantidad !== null ? String(item.cantidad) : '',
-    unidad:          item.unidad ?? '',
     descripcion:     item.descripcion,
     dias_uso:        item.dias_uso !== null ? String(item.dias_uso) : '',
     horario_llegada: item.horario_llegada ?? '',
@@ -97,7 +96,6 @@ function SortablePedidoItemRow({ item, onSave, onDelete }: {
         </button>
       </td>
       <td className={cn(cell, 'w-20')}><input {...field('cantidad')} type="number" step="0.01" min="0" className={cn(inputCls, 'text-right')} /></td>
-      <td className={cn(cell, 'w-24')}><input {...field('unidad')} placeholder="unidades" className={inputCls} /></td>
       <td className={cell}><input {...field('descripcion')} placeholder="Material / servicio" className={inputCls} /></td>
       <td className={cn(cell, 'w-20')}><input {...field('dias_uso')} type="number" step="1" min="0" className={cn(inputCls, 'text-right')} /></td>
       <td className={cn(cell, 'w-28')}><input {...field('horario_llegada')} placeholder="08:00" className={inputCls} /></td>
@@ -150,7 +148,7 @@ function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEv
 
   return (
     <tr>
-      <td colSpan={9} className="bg-muted/10 px-4 py-3">
+      <td colSpan={8} className="bg-muted/10 px-4 py-3">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
           Pedido técnico — {rubroEvento.rubro.nombre}
         </p>
@@ -162,7 +160,6 @@ function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEv
                   <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
                     <th className="w-6" />
                     <th className="px-1.5 py-1.5 text-right w-20">Cant.</th>
-                    <th className="px-1.5 py-1.5 text-left w-24">Unidad</th>
                     <th className="px-1.5 py-1.5 text-left">Descripción</th>
                     <th className="px-1.5 py-1.5 text-right w-20">Días</th>
                     <th className="px-1.5 py-1.5 text-left w-28">Llegada</th>
@@ -176,7 +173,7 @@ function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEv
                     <SortablePedidoItemRow key={item.id} item={item} onSave={handleSave} onDelete={handleDelete} />
                   ))}
                   {items.length === 0 && (
-                    <tr><td colSpan={9} className="py-4 text-center text-muted-foreground">Sin ítems cargados todavía.</td></tr>
+                    <tr><td colSpan={8} className="py-4 text-center text-muted-foreground">Sin ítems cargados todavía.</td></tr>
                   )}
                 </tbody>
               </table>

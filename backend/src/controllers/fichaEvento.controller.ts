@@ -220,7 +220,6 @@ export async function updateRubroEvento(req: Request, res: Response) {
 
 const pedidoItemSchema = z.object({
   cantidad:        z.number().nonnegative().nullable().optional(),
-  unidad:          z.string().nullable().optional(),
   descripcion:     z.string().min(1),
   dias_uso:        z.number().int().nonnegative().nullable().optional(),
   horario_llegada: z.string().nullable().optional(),
@@ -258,7 +257,6 @@ export async function addPedidoItem(req: Request, res: Response) {
       data: {
         rubro_evento_id: rubroEventoId,
         cantidad:        d.cantidad ?? null,
-        unidad:          d.unidad ?? null,
         descripcion:     d.descripcion,
         dias_uso:        d.dias_uso ?? null,
         horario_llegada: d.horario_llegada ?? null,
@@ -307,7 +305,6 @@ export async function updatePedidoItem(req: Request, res: Response) {
       where: { id },
       data: {
         ...(d.cantidad        !== undefined && { cantidad:        d.cantidad }),
-        ...(d.unidad          !== undefined && { unidad:          d.unidad }),
         ...(d.descripcion     !== undefined && { descripcion:     d.descripcion }),
         ...(d.dias_uso        !== undefined && { dias_uso:        d.dias_uso }),
         ...(d.horario_llegada !== undefined && { horario_llegada: d.horario_llegada }),

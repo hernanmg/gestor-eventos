@@ -77,7 +77,6 @@ export function useUpdateRubroEvento(eventoId: number) {
 
 export interface PedidoItemPayload {
   cantidad?:        number | null;
-  unidad?:          string | null;
   descripcion:      string;
   dias_uso?:        number | null;
   horario_llegada?: string | null;

@@ -406,7 +406,6 @@ model PedidoItem {
   rubro_evento    RubroEvento @relation(fields: [rubro_evento_id], references: [id])
   // El pedido técnico: qué se le pide al proveedor
   cantidad        Decimal? @db.Decimal(10, 2)
-  unidad          String? // "unidades", "metros", "días", "personas"
   descripcion     String  // "Sistema de sonido line array", "Generador 100kva", etc.
   dias_uso        Int?
   horario_llegada String? // texto libre: "08:00", "día anterior al evento"
