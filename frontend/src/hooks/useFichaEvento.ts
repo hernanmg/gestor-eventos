@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { RubroEvento, PedidoItem, EstadoRubroEvento, Moneda } from '@/types';
+import type { RubroEvento, PedidoItem, EstadoRubroEvento, Moneda, AsignacionStock } from '@/types';
 
 export const fichaKey = (eventoId: number) => ['eventos', eventoId, 'ficha'];
 
@@ -62,6 +62,10 @@ export interface RubroEventoPayload {
   presupuesto?:       number | null;
   moneda?:            Moneda;
   notas?:             string | null;
+  // Fuentes mixtas (stock propio + proveedor externo)
+  usa_stock_propio?:   boolean;
+  cantidad_stock?:     number | null;
+  cantidad_proveedor?: number | null;
 }
 
 export function useUpdateRubroEvento(eventoId: number) {
@@ -70,6 +74,42 @@ export function useUpdateRubroEvento(eventoId: number) {
     mutationFn: ({ id, data }: { id: number; data: RubroEventoPayload }) =>
       api.put<RubroEvento>(`/rubros-evento/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: fichaKey(eventoId) }),
+  });
+}
+
+// ── Stock propio (fuentes mixtas) ────────────────────────────────────────────
+
+export interface AsignarStockPayload {
+  producto_id:    number;
+  cantidad:       number;
+  fecha_salida:   string;
+  fecha_retorno?: string | null;
+  notas?:         string | null;
+}
+
+export function useAsignarStock(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rubroEventoId, data }: { rubroEventoId: number; data: AsignarStockPayload }) =>
+      api.post<{ asignacion: AsignacionStock; disponibilidad_restante: number }>(
+        `/rubros-evento/${rubroEventoId}/asignar-stock`, data,
+      ).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
+      qc.invalidateQueries({ queryKey: ['stock'] });
+    },
+  });
+}
+
+export function useDesasignarStock(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rubroEventoId, asignacionId }: { rubroEventoId: number; asignacionId: number }) =>
+      api.delete(`/rubros-evento/${rubroEventoId}/asignaciones/${asignacionId}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
+      qc.invalidateQueries({ queryKey: ['stock'] });
+    },
   });
 }
 

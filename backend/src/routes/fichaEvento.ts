@@ -8,6 +8,7 @@ import { asyncHandler } from '../lib/asyncHandler';
 import {
   getFicha, resumenFicha, inicializarFicha, exportarFicha,
   updateRubroEvento, addPedidoItem, updatePedidoItem, deletePedidoItem,
+  asignarStock, desasignarStock,
 } from '../controllers/fichaEvento.controller';
 
 // ── Nested bajo /api/eventos/:id/ficha ────────────────────────────────────────
@@ -25,6 +26,8 @@ rubrosEventoRouter.use(auth);
 rubrosEventoRouter.use(tenantMiddleware);
 rubrosEventoRouter.put('/:id',        requireEventoAcceso(byRubroEventoId), requireEventoRole('OPERADOR'), asyncHandler(updateRubroEvento));
 rubrosEventoRouter.post('/:id/items', requireEventoAcceso(byRubroEventoId), requireEventoRole('OPERADOR'), asyncHandler(addPedidoItem));
+rubrosEventoRouter.post('/:id/asignar-stock',                requireEventoAcceso(byRubroEventoId), requireEventoRole('OPERADOR'), asyncHandler(asignarStock));
+rubrosEventoRouter.delete('/:id/asignaciones/:asignacionId', requireEventoAcceso(byRubroEventoId), requireEventoRole('OPERADOR'), asyncHandler(desasignarStock));
 
 // ── /api/pedido-items ──────────────────────────────────────────────────────────
 export const pedidoItemsRouter = Router();

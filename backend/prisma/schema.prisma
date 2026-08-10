@@ -388,6 +388,13 @@ model RubroEvento {
   moneda      Moneda   @default(ARS)
   // Notas generales del rubro en este evento
   notas String?
+  // ── Fuentes mixtas (stock propio + proveedor externo) ────────────────────────
+  // Un rubro puede cubrirse con stock propio del depósito, con un proveedor
+  // externo, o ambos a la vez (ej: DOS57 con stock insuficiente completa con
+  // un proveedor externo). Ver AsignacionStock.rubro_evento_id.
+  usa_stock_propio   Boolean @default(false)
+  cantidad_stock     Int? // suma de las AsignacionStock activas vinculadas
+  cantidad_proveedor Int? // cantidad cubierta por el proveedor externo
   // audit
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
@@ -395,7 +402,8 @@ model RubroEvento {
   created_by Int?
   updated_by Int?
   // Pedido técnico detallado (una o más líneas por rubro)
-  pedido_items PedidoItem[]
+  pedido_items       PedidoItem[]
+  asignaciones_stock AsignacionStock[]
 
   @@unique([evento_id, rubro_id])
 }
@@ -671,6 +679,12 @@ model AsignacionStock {
   deleted_at       DateTime?
   created_by       Int?
   updated_by       Int?
+
+  // ── Vínculo con la Ficha de Evento (fuentes mixtas: stock propio) ────────────
+  // Cuando esta asignación cubre (total o parcialmente) un rubro de la ficha,
+  // en vez de ser un movimiento de stock genérico del evento.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
 
   // ── Logística DOS57 (camión / cuna) ──────────────────────────────────────────
   camion_id          Int?

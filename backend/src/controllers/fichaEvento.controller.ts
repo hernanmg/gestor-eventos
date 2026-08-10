@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { generateFichaExcel } from '../lib/fichaExporter';
+import { calcDisponibilidad, calcSugerencias } from './stock.controller';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -14,17 +15,50 @@ const RUBRO_EVENTO_INCLUDE = {
     where:   { deleted_at: null },
     orderBy: { orden: 'asc' as const },
   },
+  // Stock propio vinculado (fuentes mixtas) — ver AsignacionStock.rubro_evento_id
+  asignaciones_stock: {
+    where:   { deleted_at: null },
+    include: { producto: { select: { id: true, nombre: true } } },
+    orderBy: { created_at: 'asc' as const },
+  },
 };
 
 function mapPedidoItem(pi: any) {
   return { ...pi, cantidad: pi.cantidad !== null && pi.cantidad !== undefined ? Number(pi.cantidad) : null };
 }
 
-function mapRubroEvento(re: any) {
+// Disponibilidad "si esta asignación no existiera" — mismo uso de
+// excludeAsignacionId que el módulo de stock al editar una asignación propia.
+async function mapAsignacionStock(a: any, empresaId: number) {
+  const disp = await calcDisponibilidad(
+    a.producto_id,
+    a.fecha_salida,
+    a.fecha_retorno ?? a.fecha_salida,
+    empresaId,
+    a.id,
+  );
+  return {
+    id:              a.id,
+    producto_id:     a.producto_id,
+    producto_nombre: a.producto?.nombre ?? null,
+    cantidad:        a.cantidad,
+    fecha_salida:    a.fecha_salida,
+    fecha_retorno:   a.fecha_retorno,
+    ubicacion:       a.ubicacion,
+    estado:          a.estado,
+    disponibilidad:  disp ? { disponible: disp.disponible, comprometido: disp.cantidad_comprometida } : null,
+  };
+}
+
+async function mapRubroEvento(re: any, empresaId: number) {
+  const asignaciones_stock = Array.isArray(re.asignaciones_stock)
+    ? await Promise.all(re.asignaciones_stock.map((a: any) => mapAsignacionStock(a, empresaId)))
+    : undefined;
   return {
     ...re,
     presupuesto:  re.presupuesto !== null && re.presupuesto !== undefined ? Number(re.presupuesto) : null,
     pedido_items: Array.isArray(re.pedido_items) ? re.pedido_items.map(mapPedidoItem) : undefined,
+    asignaciones_stock,
   };
 }
 
@@ -43,7 +77,7 @@ export async function getFicha(req: Request, res: Response) {
     orderBy: { rubro: { orden: 'asc' } },
   });
 
-  res.json(rubrosEvento.map(mapRubroEvento));
+  res.json(await Promise.all(rubrosEvento.map(re => mapRubroEvento(re, req.empresaId!))));
 }
 
 export async function resumenFicha(req: Request, res: Response) {
@@ -139,6 +173,10 @@ const updateRubroEventoSchema = z.object({
   presupuesto:        z.number().nonnegative().nullable().optional(),
   moneda:             z.enum(['ARS', 'USD']).optional(),
   notas:              z.string().nullable().optional(),
+  // Fuentes mixtas (stock propio + proveedor externo)
+  usa_stock_propio:   z.boolean().optional(),
+  cantidad_stock:     z.number().int().nonnegative().nullable().optional(),
+  cantidad_proveedor: z.number().int().nonnegative().nullable().optional(),
 });
 
 export async function updateRubroEvento(req: Request, res: Response) {
@@ -172,6 +210,9 @@ export async function updateRubroEvento(req: Request, res: Response) {
         ...(d.presupuesto       !== undefined && { presupuesto:       d.presupuesto }),
         ...(d.moneda            !== undefined && { moneda:            d.moneda }),
         ...(d.notas             !== undefined && { notas:             d.notas }),
+        ...(d.usa_stock_propio   !== undefined && { usa_stock_propio:   d.usa_stock_propio }),
+        ...(d.cantidad_stock     !== undefined && { cantidad_stock:     d.cantidad_stock }),
+        ...(d.cantidad_proveedor !== undefined && { cantidad_proveedor: d.cantidad_proveedor }),
         updated_by: req.user!.id,
       },
     });
@@ -211,7 +252,159 @@ export async function updateRubroEvento(req: Request, res: Response) {
     return re;
   });
 
-  res.json(mapRubroEvento(updated));
+  res.json(await mapRubroEvento(updated, req.empresaId!));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STOCK PROPIO (fuentes mixtas — asignación de AsignacionStock a un rubro)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const asignarStockSchema = z.object({
+  producto_id:   z.number().int().positive(),
+  cantidad:      z.number().int().positive(),
+  fecha_salida:  z.string(),
+  fecha_retorno: z.string().nullable().optional(),
+  notas:         z.string().nullable().optional(),
+});
+
+// POST /api/rubros-evento/:id/asignar-stock
+export async function asignarStock(req: Request, res: Response) {
+  const rubroEventoId = Number(req.params.id);
+  const rubroEvento = await prisma.rubroEvento.findFirst({ where: { id: rubroEventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!rubroEvento) { res.status(404).json({ error: 'Rubro de la ficha no encontrado' }); return; }
+
+  const parsed = asignarStockSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+  const { producto_id, cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
+
+  const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!producto) { res.status(400).json({ error: 'Producto no encontrado' }); return; }
+
+  const fechaSalidaDate  = new Date(fecha_salida);
+  const fechaRetornoDate = fecha_retorno ? new Date(fecha_retorno) : null;
+
+  // Mismo patrón de verificación que el módulo de stock (asignarProducto).
+  const disp = await calcDisponibilidad(producto_id, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate, req.empresaId!);
+  if (!disp) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  if (cantidad > disp.disponible) {
+    const sugerencias = await calcSugerencias(
+      producto_id, rubroEvento.evento_id, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate, req.empresaId!,
+    );
+    res.status(400).json({
+      error:       `Stock insuficiente — disponible: ${disp.disponible}, solicitado: ${cantidad}`,
+      disponible:  disp.disponible,
+      sugerencias,
+    });
+    return;
+  }
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const created = await tx.asignacionStock.create({
+      data: {
+        producto_id,
+        evento_id:       rubroEvento.evento_id,
+        rubro_evento_id: rubroEvento.id,
+        cantidad,
+        fecha_salida:    fechaSalidaDate,
+        fecha_retorno:   fechaRetornoDate,
+        ubicacion:       'DEPOSITO', // todavía no salió del depósito
+        estado:          'ACTIVA',
+        origen:          'DEPOSITO',
+        notas:           notas ?? null,
+        created_by:      req.user!.id,
+        updated_by:      req.user!.id,
+      },
+    });
+
+    const agg = await tx.asignacionStock.aggregate({
+      where: { rubro_evento_id: rubroEvento.id, estado: 'ACTIVA', deleted_at: null },
+      _sum:  { cantidad: true },
+    });
+
+    await tx.rubroEvento.update({
+      where: { id: rubroEvento.id },
+      data:  { usa_stock_propio: true, cantidad_stock: agg._sum.cantidad ?? cantidad },
+    });
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'AsignacionStock', entidadId: created.id,
+      eventoId:    rubroEvento.evento_id,
+      descripcion: `Asignó ${cantidad} u. de "${producto.nombre}" (stock propio) al rubro de la ficha #${rubroEvento.id}`,
+      datosDespues: { producto_id, cantidad, fecha_salida, fecha_retorno },
+      ip: req.ip, tx: tx as any,
+    });
+
+    return created;
+  });
+
+  res.status(201).json({
+    asignacion,
+    disponibilidad_restante: disp.disponible - cantidad,
+  });
+}
+
+// DELETE /api/rubros-evento/:id/asignaciones/:asignacionId
+export async function desasignarStock(req: Request, res: Response) {
+  const rubroEventoId = Number(req.params.id);
+  const asignacionId  = Number(req.params.asignacionId);
+
+  const rubroEvento = await prisma.rubroEvento.findFirst({ where: { id: rubroEventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!rubroEvento) { res.status(404).json({ error: 'Rubro de la ficha no encontrado' }); return; }
+
+  const asignacion = await prisma.asignacionStock.findFirst({
+    where:   { id: asignacionId, rubro_evento_id: rubroEventoId, deleted_at: null },
+    include: { producto: { select: { nombre: true } } },
+  });
+  if (!asignacion) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (asignacion.estado !== 'ACTIVA') {
+    res.status(400).json({ error: 'Solo se pueden cancelar asignaciones ACTIVAS' }); return;
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.asignacionStock.update({
+      where: { id: asignacionId },
+      data:  { estado: 'CANCELADA', deleted_at: new Date(), updated_by: req.user!.id },
+    });
+
+    // Mismo movimiento que cancelarAsignacion en el módulo de stock —
+    // devuelve la cantidad al depósito.
+    await tx.movimientoStock.create({
+      data: {
+        producto_id:      asignacion.producto_id,
+        asignacion_id:    asignacionId,
+        tipo:             'RETORNO_DEPOSITO',
+        cantidad:         asignacion.cantidad,
+        evento_origen_id: rubroEvento.evento_id,
+        fecha:            new Date(),
+        descripcion:      `Cancelación de asignación #${asignacionId} desde la ficha`,
+        created_by:       req.user!.id,
+      },
+    });
+
+    const agg = await tx.asignacionStock.aggregate({
+      where: { rubro_evento_id: rubroEventoId, estado: 'ACTIVA', deleted_at: null },
+      _sum:  { cantidad: true },
+    });
+    const cantidadStock = agg._sum.cantidad ?? 0;
+
+    await tx.rubroEvento.update({
+      where: { id: rubroEventoId },
+      data:  { cantidad_stock: cantidadStock, usa_stock_propio: cantidadStock > 0 },
+    });
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'AsignacionStock', entidadId: asignacionId,
+      eventoId:    rubroEvento.evento_id,
+      descripcion: `Canceló asignación de stock propio de "${asignacion.producto.nombre}" (${asignacion.cantidad} u.) del rubro de la ficha`,
+      datosAntes:  { estado: 'ACTIVA', cantidad: asignacion.cantidad },
+      ip: req.ip, tx: tx as any,
+    });
+  });
+
+  res.json({ message: 'Asignación cancelada correctamente' });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

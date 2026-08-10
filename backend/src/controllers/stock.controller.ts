@@ -66,7 +66,7 @@ const transferenciaSchema = z.object({
 
 function toDate(s: string): Date { return new Date(s); }
 
-async function calcDisponibilidad(
+export async function calcDisponibilidad(
   productoId: number,
   fechaDesde: Date,
   fechaHasta: Date,
@@ -130,7 +130,7 @@ async function calcDisponibilidad(
   };
 }
 
-async function calcSugerencias(
+export async function calcSugerencias(
   productoId: number,
   eventoDestinoId: number,
   fechaDesde: Date,
@@ -603,6 +603,7 @@ export async function getEventoStock(req: Request, res: Response) {
       evento_origen:  { select: { id: true, nombre: true } },
       camion:         { select: { id: true, codigo: true, descripcion: true } },
       cuna:           { select: { id: true, codigo: true, descripcion: true } },
+      rubro_evento:   { select: { id: true, rubro: { select: { nombre: true } } } },
     },
     orderBy: { created_at: 'desc' },
   });
@@ -616,7 +617,17 @@ export async function getEventoStock(req: Request, res: Response) {
     },
   });
 
-  res.json({ asignaciones, prestadas });
+  // Para mostrar "Este material está asignado al rubro X" en la tab Stock del evento.
+  const mapRubroEvento = (a: (typeof asignaciones)[number]) => {
+    const { rubro_evento, ...rest } = a as any;
+    return {
+      ...rest,
+      rubro_evento_id: rubro_evento?.id ?? null,
+      rubro_nombre:    rubro_evento?.rubro?.nombre ?? null,
+    };
+  };
+
+  res.json({ asignaciones: asignaciones.map(mapRubroEvento), prestadas });
 }
 
 export async function asignarProducto(req: Request, res: Response) {

@@ -105,6 +105,19 @@ export interface PedidoItem {
   deleted_at:      string | null;
 }
 
+// Stock propio vinculado a un rubro de la ficha (fuentes mixtas)
+export interface RubroEventoAsignacionStock {
+  id:               number;
+  producto_id:      number;
+  producto_nombre:  string | null;
+  cantidad:         number;
+  fecha_salida:     string;
+  fecha_retorno:    string | null;
+  ubicacion:        UbicacionStock;
+  estado:           EstadoAsignacion;
+  disponibilidad:   { disponible: number; comprometido: number } | null;
+}
+
 export interface RubroEvento {
   id:         number;
   evento_id:  number;
@@ -121,12 +134,17 @@ export interface RubroEvento {
   presupuesto:   number | null;
   moneda:        Moneda;
   notas:         string | null;
+  // Fuentes mixtas (stock propio + proveedor externo)
+  usa_stock_propio:   boolean;
+  cantidad_stock:     number | null;
+  cantidad_proveedor: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
   rubro:        { id: number; nombre: string; orden: number };
   proveedor:    ProveedorBusqueda | null;
   pedido_items: PedidoItem[];
+  asignaciones_stock: RubroEventoAsignacionStock[];
 }
 
 // Vista liviana de GET /ficha/resumen — sin pedido_items
@@ -569,6 +587,9 @@ export interface AsignacionStock {
   camion_id:           number | null;
   cuna_id:             number | null;
   cantidad_excedente:  number;
+  // Vínculo con la Ficha de Evento (fuentes mixtas) — solo en GET /eventos/:id/stock
+  rubro_evento_id?:    number | null;
+  rubro_nombre?:       string | null;
   firmado_salida:      boolean;
   firmado_salida_at:   string | null;
   firmado_llegada:     boolean;

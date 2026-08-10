@@ -257,6 +257,12 @@ export default function EventoPage() {
   const [mainTab, setMainTab] = useState<MainTab>(tabParam && MAIN_TAB_KEYS.includes(tabParam) ? tabParam : 'RESUMEN');
   const [subTab,  setSubTab]  = useState<number | null>(null);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
+  // Deep-link "Rubro: X" desde la tab Stock → tab Ficha filtrada por ese rubro
+  const [fichaBusqueda, setFichaBusqueda] = useState<string | undefined>(undefined);
+  const handleVerRubroEnFicha = (rubroNombre: string) => {
+    setFichaBusqueda(rubroNombre);
+    setMainTab('FICHA');
+  };
 
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const isAdmin  = user?.rol === 'ADMIN';
@@ -392,7 +398,7 @@ export default function EventoPage() {
         )}
 
         {mainTab === 'FICHA' && (
-          <FichaEventoPage eventoId={eventoId} canEdit={canEdit} monedaBase={evento.moneda_base} />
+          <FichaEventoPage eventoId={eventoId} evento={evento} canEdit={canEdit} monedaBase={evento.moneda_base} initialBusqueda={fichaBusqueda} />
         )}
 
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (
@@ -429,7 +435,7 @@ export default function EventoPage() {
         )}
 
         {FEATURES.STOCK && mainTab === 'STOCK' && (
-          <EventoStockPage evento={evento} canEdit={canEdit} />
+          <EventoStockPage evento={evento} canEdit={canEdit} onVerRubro={handleVerRubroEnFicha} />
         )}
 
         {mainTab === 'FACTURAS' && (

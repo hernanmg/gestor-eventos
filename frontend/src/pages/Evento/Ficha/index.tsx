@@ -12,18 +12,27 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Trash2, ChevronDown, ChevronRight,
-  FileSpreadsheet, Loader2, Sparkles,
+  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse,
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
   useFichaEvento, useInicializarFicha, useExportarFicha,
   useUpdateRubroEvento, useAddPedidoItem, useUpdatePedidoItem, useDeletePedidoItem,
+  useAsignarStock, useDesasignarStock,
   type PedidoItemPayload,
 } from '@/hooks/useFichaEvento';
+import { useDisponibilidad } from '@/hooks/useStock';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
+import ProductoCombobox, { type ProductoLite } from '@/components/domain/ProductoCombobox';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import type { RubroEvento, PedidoItem, EstadoRubroEvento, ProveedorBusqueda, Moneda } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import type {
+  RubroEvento, RubroEventoAsignacionStock, PedidoItem, EstadoRubroEvento,
+  ProveedorBusqueda, Moneda, Evento, UbicacionStock, SugerenciaStock,
+} from '@/types';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -45,9 +54,41 @@ const ESTADO_SELECT_CLASS: Record<EstadoRubroEvento, string> = {
 
 const ESTADOS: EstadoRubroEvento[] = ['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'NO_VA', 'CANCELADO'];
 
+const UBICACION_LABEL: Record<UbicacionStock, string> = {
+  DEPOSITO:    'Depósito',
+  EN_TRANSITO: 'En tránsito',
+  EN_EVENTO:   'En evento',
+  EXCEDENTE:   'Excedente',
+  ALQUILADO:   'Alquilado',
+  BAJA:        'Baja',
+};
+
+const UBICACION_CLASS: Record<UbicacionStock, string> = {
+  DEPOSITO:    'bg-gray-100 text-gray-700',
+  EN_TRANSITO: 'bg-orange-100 text-orange-700',
+  EN_EVENTO:   'bg-green-100 text-green-700',
+  EXCEDENTE:   'bg-blue-100 text-blue-700',
+  ALQUILADO:   'bg-purple-100 text-purple-700',
+  BAJA:        'bg-red-100 text-red-700',
+};
+
+// Un rubro NO_VA/CANCELADO no admite pedido técnico ni stock propio nuevo —
+// mismo criterio que el vaciado de PedidoItems al cambiar a esos estados.
+function puedeExpandir(estado: EstadoRubroEvento): boolean {
+  return estado !== 'NO_VA' && estado !== 'CANCELADO';
+}
+
+function UbicacionBadge({ ubicacion }: { ubicacion: UbicacionStock }) {
+  return (
+    <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] font-medium', UBICACION_CLASS[ubicacion])}>
+      {UBICACION_LABEL[ubicacion]}
+    </span>
+  );
+}
+
 const inputCls = 'w-full text-xs border border-transparent rounded px-1 py-0.5 focus:border-ring/50 focus:outline-none bg-transparent hover:bg-accent/30 focus:bg-white transition';
 
-// ── Panel de PedidoItems (expandible por fila) ────────────────────────────────
+// ── Tabla de PedidoItems (pedido técnico del proveedor externo) ──────────────
 
 function pedidoItemToLocal(item: PedidoItem) {
   return {
@@ -115,7 +156,9 @@ function SortablePedidoItemRow({ item, onSave, onDelete }: {
   );
 }
 
-function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEvento: RubroEvento }) {
+// Tabla "pelada" (sin <tr><td> envolvente) — la ubica quien la use, sea la
+// fila expandida de la tabla desktop o directamente en la card mobile.
+function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEvento: RubroEvento }) {
   const addItem    = useAddPedidoItem(eventoId);
   const updateItem = useUpdatePedidoItem(eventoId);
   const deleteItem = useDeletePedidoItem(eventoId);
@@ -147,42 +190,287 @@ function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEv
   };
 
   return (
-    <tr>
-      <td colSpan={8} className="bg-muted/10 px-4 py-3">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Pedido técnico — {rubroEvento.rubro.nombre}
-        </p>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-            <div className="overflow-x-auto border border-border rounded-md bg-white">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
-                    <th className="w-6" />
-                    <th className="px-1.5 py-1.5 text-right w-20">Cant.</th>
-                    <th className="px-1.5 py-1.5 text-left">Descripción</th>
-                    <th className="px-1.5 py-1.5 text-right w-20">Días</th>
-                    <th className="px-1.5 py-1.5 text-left w-28">Llegada</th>
-                    <th className="px-1.5 py-1.5 text-left w-28">Retiro</th>
-                    <th className="px-1.5 py-1.5 text-left">Observaciones</th>
-                    <th className="w-8" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => (
-                    <SortablePedidoItemRow key={item.id} item={item} onSave={handleSave} onDelete={handleDelete} />
-                  ))}
-                  {items.length === 0 && (
-                    <tr><td colSpan={8} className="py-4 text-center text-muted-foreground">Sin ítems cargados todavía.</td></tr>
-                  )}
-                </tbody>
-              </table>
+    <div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          <div className="overflow-x-auto border border-border rounded-md bg-white">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
+                  <th className="w-6" />
+                  <th className="px-1.5 py-1.5 text-right w-20">Cant.</th>
+                  <th className="px-1.5 py-1.5 text-left">Descripción</th>
+                  <th className="px-1.5 py-1.5 text-right w-20">Días</th>
+                  <th className="px-1.5 py-1.5 text-left w-28">Llegada</th>
+                  <th className="px-1.5 py-1.5 text-left w-28">Retiro</th>
+                  <th className="px-1.5 py-1.5 text-left">Observaciones</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <SortablePedidoItemRow key={item.id} item={item} onSave={handleSave} onDelete={handleDelete} />
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={8} className="py-4 text-center text-muted-foreground">Sin ítems cargados todavía.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SortableContext>
+      </DndContext>
+      <Button variant="ghost" size="sm" onClick={handleAdd} disabled={addItem.isPending} className="h-7 text-xs text-muted-foreground hover:text-foreground mt-1.5">
+        <Plus size={13} className="mr-1" /> Agregar ítem
+      </Button>
+    </div>
+  );
+}
+
+// ── Stock propio (fuentes mixtas) ─────────────────────────────────────────────
+
+interface AsignarStockForm {
+  producto:      ProductoLite | null;
+  cantidad:      number;
+  fecha_salida:  string;
+  fecha_retorno: string;
+  notas:         string;
+}
+
+function AsignarStockDialog({ eventoId, evento, rubroEvento, onClose }: {
+  eventoId:    number;
+  evento:      Evento;
+  rubroEvento: RubroEvento;
+  onClose:     () => void;
+}) {
+  const defaultSalida  = evento.fecha_inicio ? evento.fecha_inicio.split('T')[0] : '';
+  const defaultRetorno = evento.fecha_fin    ? evento.fecha_fin.split('T')[0]    : '';
+
+  const [form, setForm] = useState<AsignarStockForm>({
+    producto: null, cantidad: 1, fecha_salida: defaultSalida, fecha_retorno: defaultRetorno, notas: '',
+  });
+  const [error,       setError]       = useState<string | null>(null);
+  const [sugerencias, setSugerencias] = useState<SugerenciaStock[]>([]);
+
+  const asignar = useAsignarStock(eventoId);
+
+  const { data: disponibilidad } = useDisponibilidad({
+    producto_id: form.producto?.id,
+    fecha_desde: form.fecha_salida  || undefined,
+    fecha_hasta: form.fecha_retorno || form.fecha_salida || undefined,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.producto) { setError('Seleccioná un producto'); return; }
+    setError(null);
+    setSugerencias([]);
+    try {
+      await asignar.mutateAsync({
+        rubroEventoId: rubroEvento.id,
+        data: {
+          producto_id:   form.producto.id,
+          cantidad:      form.cantidad,
+          fecha_salida:  form.fecha_salida,
+          fecha_retorno: form.fecha_retorno || null,
+          notas:         form.notas || undefined,
+        },
+      });
+      onClose();
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+      setSugerencias(err?.response?.data?.sugerencias ?? []);
+    }
+  };
+
+  const inputFieldCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+  const labelCls      = 'block text-xs font-medium text-muted-foreground mb-0.5';
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Asignar stock propio — {rubroEvento.rubro.nombre}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div>
+            <label className={labelCls}>Producto *</label>
+            <ProductoCombobox value={form.producto} onChange={p => setForm(f => ({ ...f, producto: p }))} />
+          </div>
+
+          {disponibilidad && (
+            <div className={cn(
+              'rounded px-3 py-2 text-xs space-y-1',
+              disponibilidad.disponible >= form.cantidad ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800',
+            )}>
+              <p>Disponible: <strong>{disponibilidad.disponible} unidades</strong></p>
+              {disponibilidad.asignaciones_solapadas.map(a => (
+                <p key={a.asignacion_id} className="flex items-center gap-1 text-yellow-700">
+                  <AlertTriangle size={11} className="shrink-0" /> {a.cantidad} unidades comprometidas en {a.evento_nombre}
+                </p>
+              ))}
             </div>
-          </SortableContext>
-        </DndContext>
-        <Button variant="ghost" size="sm" onClick={handleAdd} disabled={addItem.isPending} className="h-7 text-xs text-muted-foreground hover:text-foreground mt-1.5">
-          <Plus size={13} className="mr-1" /> Agregar ítem
+          )}
+
+          <div>
+            <label className={labelCls}>Cantidad *</label>
+            <input
+              type="number" min={1} max={disponibilidad?.disponible} className={inputFieldCls}
+              value={form.cantidad}
+              onChange={e => setForm(f => ({ ...f, cantidad: Number(e.target.value) }))}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Fecha salida *</label>
+              <input type="date" className={inputFieldCls} value={form.fecha_salida}
+                onChange={e => setForm(f => ({ ...f, fecha_salida: e.target.value }))} required />
+            </div>
+            <div>
+              <label className={labelCls}>Fecha retorno</label>
+              <input type="date" className={inputFieldCls} value={form.fecha_retorno}
+                onChange={e => setForm(f => ({ ...f, fecha_retorno: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Notas</label>
+            <input className={inputFieldCls} value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
+          </div>
+
+          {error && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-destructive">{error}</p>
+              {sugerencias.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Fuentes alternativas:</p>
+                  {sugerencias.slice(0, 3).map(s => (
+                    <div key={s.asignacion_id} className="text-xs border rounded px-2 py-1 flex items-center gap-2">
+                      <span className="font-medium">{s.evento_origen_nombre}</span>
+                      <span className="text-muted-foreground">— {s.cantidad_disponible} u.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={asignar.isPending}>
+              {asignar.isPending ? 'Asignando…' : 'Asignar'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StockPropioSection({ eventoId, evento, rubroEvento }: {
+  eventoId:    number;
+  evento:      Evento;
+  rubroEvento: RubroEvento;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const desasignar = useDesasignarStock(eventoId);
+
+  const activas = rubroEvento.asignaciones_stock.filter(a => a.estado === 'ACTIVA');
+  const total   = activas.reduce((sum, a) => sum + a.cantidad, 0);
+
+  const handleDelete = (a: RubroEventoAsignacionStock) => {
+    // ubicacion !== DEPOSITO ⇒ ya se firmó la salida — advertencia más fuerte,
+    // cancelar no revierte el movimiento físico, sólo libera el registro.
+    const yaSalio = a.ubicacion !== 'DEPOSITO';
+    const msg = yaSalio
+      ? `Esta asignación ya salió del depósito (${UBICACION_LABEL[a.ubicacion]}). Cancelarla no revierte el movimiento físico — ¿cancelar igual?`
+      : `¿Cancelar la asignación de "${a.producto_nombre}"?`;
+    if (!window.confirm(msg)) return;
+    desasignar.mutate({ rubroEventoId: rubroEvento.id, asignacionId: a.id });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <Warehouse size={12} /> Stock propio
+        </p>
+        <Button variant="ghost" size="sm" onClick={() => setDialogOpen(true)} className="h-6 text-xs text-muted-foreground hover:text-foreground">
+          <Plus size={12} className="mr-1" /> Asignar desde stock
         </Button>
+      </div>
+
+      {activas.length > 0 ? (
+        <div className="overflow-x-auto border border-border rounded-md bg-white">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
+                <th className="px-2 py-1.5 text-left">Producto</th>
+                <th className="px-2 py-1.5 text-right w-16">Cant.</th>
+                <th className="px-2 py-1.5 text-left w-24">F. salida</th>
+                <th className="px-2 py-1.5 text-left w-28">Ubicación</th>
+                <th className="w-8" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {activas.map(a => (
+                <tr key={a.id}>
+                  <td className="px-2 py-1.5">{a.producto_nombre ?? `#${a.producto_id}`}</td>
+                  <td className="px-2 py-1.5 text-right">{a.cantidad}</td>
+                  <td className="px-2 py-1.5">{format(new Date(a.fecha_salida), 'dd/MM/yy', { locale: es })}</td>
+                  <td className="px-2 py-1.5"><UbicacionBadge ubicacion={a.ubicacion} /></td>
+                  <td className="w-8 px-1">
+                    <button
+                      onClick={() => handleDelete(a)}
+                      className="p-1 rounded text-destructive hover:bg-destructive/10 transition"
+                      title="Cancelar asignación"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Sin stock propio asignado a este rubro.</p>
+      )}
+
+      {total > 0 && <p className="text-xs text-muted-foreground text-right">Total propio: {total} u.</p>}
+
+      {dialogOpen && (
+        <AsignarStockDialog
+          eventoId={eventoId}
+          evento={evento}
+          rubroEvento={rubroEvento}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Panel de detalle expandible (stock propio + pedido técnico) ──────────────
+
+function RubroDetallePanel({ eventoId, evento, rubroEvento, colSpan }: {
+  eventoId:    number;
+  evento:      Evento;
+  rubroEvento: RubroEvento;
+  colSpan:     number;
+}) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="bg-muted/10 px-4 py-3 space-y-4">
+        <StockPropioSection eventoId={eventoId} evento={evento} rubroEvento={rubroEvento} />
+
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Pedido técnico — {rubroEvento.rubro.nombre}
+          </p>
+          {rubroEvento.estado === 'CONFIRMADO' ? (
+            <PedidoItemsTable eventoId={eventoId} rubroEvento={rubroEvento} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Confirmá el proveedor externo para cargar el pedido técnico.</p>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -190,8 +478,9 @@ function PedidoItemsPanel({ eventoId, rubroEvento }: { eventoId: number; rubroEv
 
 // ── Fila de rubro ─────────────────────────────────────────────────────────────
 
-function RubroEventoRow({ eventoId, re, expanded, onToggleExpand }: {
+function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
   eventoId: number;
+  evento:   Evento;
   re:       RubroEvento;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -228,12 +517,17 @@ function RubroEventoRow({ eventoId, re, expanded, onToggleExpand }: {
 
   const noVa = re.estado === 'NO_VA';
   const cell = 'px-2 py-1.5 text-sm align-top';
+  const puedeVerDetalle = puedeExpandir(re.estado);
+  const totalDetalle = re.pedido_items.length + re.asignaciones_stock.filter(a => a.estado === 'ACTIVA').length;
 
   return (
     <>
       <tr className={cn('border-b border-border hover:bg-muted/10', noVa && 'opacity-50')}>
         <td className={cn(cell, 'w-10 text-center text-muted-foreground')}>{re.rubro.orden}</td>
-        <td className={cn(cell, 'font-medium', noVa && 'line-through')}>{re.rubro.nombre}</td>
+        <td className={cn(cell, 'font-medium', noVa && 'line-through')}>
+          {re.rubro.nombre}
+          {re.usa_stock_propio && <Warehouse size={11} className="inline-block ml-1.5 text-muted-foreground align-text-top" />}
+        </td>
         <td className={cn(cell, 'w-40')}>
           <ProveedorCombobox value={re.proveedor} onChange={handleProveedorChange} />
         </td>
@@ -271,26 +565,29 @@ function RubroEventoRow({ eventoId, re, expanded, onToggleExpand }: {
           />
         </td>
         <td className={cn(cell, 'w-24 text-right')}>
-          {re.estado === 'CONFIRMADO' ? (
+          {puedeVerDetalle ? (
             <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-7 text-xs">
               {expanded ? <ChevronDown size={13} className="mr-1" /> : <ChevronRight size={13} className="mr-1" />}
-              Ver pedido
-              {re.pedido_items.length > 0 && <span className="ml-1 text-muted-foreground">({re.pedido_items.length})</span>}
+              Detalle
+              {totalDetalle > 0 && <span className="ml-1 text-muted-foreground">({totalDetalle})</span>}
             </Button>
           ) : (
             <span className="text-xs text-muted-foreground">—</span>
           )}
         </td>
       </tr>
-      {expanded && re.estado === 'CONFIRMADO' && <PedidoItemsPanel eventoId={eventoId} rubroEvento={re} />}
+      {expanded && puedeVerDetalle && (
+        <RubroDetallePanel eventoId={eventoId} evento={evento} rubroEvento={re} colSpan={9} />
+      )}
     </>
   );
 }
 
 // ── Vista móvil (cards) ────────────────────────────────────────────────────────
 
-function RubroEventoCard({ eventoId, re, expanded, onToggleExpand }: {
+function RubroEventoCard({ eventoId, evento, re, expanded, onToggleExpand }: {
   eventoId: number;
+  evento:   Evento;
   re:       RubroEvento;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -331,10 +628,20 @@ function RubroEventoCard({ eventoId, re, expanded, onToggleExpand }: {
               {ESTADOS.map(e => <option key={e} value={e}>{ESTADO_LABEL[e]}</option>)}
             </select>
           </div>
-          {re.estado === 'CONFIRMADO' ? (
-            <PedidoItemsPanelMobile eventoId={eventoId} rubroEvento={re} />
+          {puedeExpandir(re.estado) ? (
+            <>
+              <StockPropioSection eventoId={eventoId} evento={evento} rubroEvento={re} />
+              {re.estado === 'CONFIRMADO' ? (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pedido técnico</p>
+                  <PedidoItemsTable eventoId={eventoId} rubroEvento={re} />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Confirmá el proveedor externo para cargar el pedido técnico.</p>
+              )}
+            </>
           ) : (
-            <p className="text-xs text-muted-foreground">Confirmá el rubro para ver/cargar su pedido técnico.</p>
+            <p className="text-xs text-muted-foreground">Este rubro no admite pedido ni stock propio en su estado actual.</p>
           )}
         </div>
       )}
@@ -342,27 +649,18 @@ function RubroEventoCard({ eventoId, re, expanded, onToggleExpand }: {
   );
 }
 
-// Envoltorio simple para reusar PedidoItemsPanel (una <table> completa) fuera de una tabla padre.
-function PedidoItemsPanelMobile({ eventoId, rubroEvento }: { eventoId: number; rubroEvento: RubroEvento }) {
-  return (
-    <table className="w-full">
-      <tbody>
-        <PedidoItemsPanel eventoId={eventoId} rubroEvento={rubroEvento} />
-      </tbody>
-    </table>
-  );
-}
-
 // ── Página principal ──────────────────────────────────────────────────────────
 
-export default function FichaEventoPage({ eventoId }: { eventoId: number; canEdit?: boolean; monedaBase?: Moneda }) {
+export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
+  eventoId: number; evento: Evento; canEdit?: boolean; monedaBase?: Moneda; initialBusqueda?: string;
+}) {
   const { data: fichaData = [], isLoading } = useFichaEvento(eventoId);
   const inicializar = useInicializarFicha(eventoId);
   const { exportar, isExporting } = useExportarFicha();
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<EstadoRubroEvento | ''>('');
-  const [busqueda, setBusqueda] = useState('');
+  const [busqueda, setBusqueda] = useState(initialBusqueda ?? '');
 
   const contadores = useMemo(() => ({
     confirmados: fichaData.filter(r => r.estado === 'CONFIRMADO').length,
@@ -458,6 +756,7 @@ export default function FichaEventoPage({ eventoId }: { eventoId: number; canEdi
                   <RubroEventoRow
                     key={re.id}
                     eventoId={eventoId}
+                    evento={evento}
                     re={re}
                     expanded={expandedId === re.id}
                     onToggleExpand={() => toggleExpand(re.id)}
@@ -476,6 +775,7 @@ export default function FichaEventoPage({ eventoId }: { eventoId: number; canEdi
               <RubroEventoCard
                 key={re.id}
                 eventoId={eventoId}
+                evento={evento}
                 re={re}
                 expanded={expandedId === re.id}
                 onToggleExpand={() => toggleExpand(re.id)}

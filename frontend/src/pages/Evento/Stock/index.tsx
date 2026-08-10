@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { AsignacionStock, Evento, RiesgoSugerencia, SugerenciaStock } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Plus, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Plus, AlertTriangle, ArrowRight, Warehouse } from 'lucide-react';
 
 const RIESGO_CLASS: Record<RiesgoSugerencia, string> = {
   BAJO:  'bg-green-100 text-green-800',
@@ -302,7 +302,9 @@ function TransferenciaDialog({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function EventoStockPage({ evento, canEdit }: { evento: Evento; canEdit: boolean }) {
+export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
+  evento: Evento; canEdit: boolean; onVerRubro?: (rubroNombre: string) => void;
+}) {
   const { data, isLoading } = useEventoStock(evento.id);
   const cancelar = useCancelarAsignacion();
 
@@ -370,7 +372,20 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                         </span>
                       ) : 'Depósito'}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.notas ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {a.rubro_evento_id && a.rubro_nombre && (
+                          <button
+                            onClick={() => onVerRubro?.(a.rubro_nombre!)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium hover:bg-blue-100 transition"
+                            title="Ver este rubro en la Ficha"
+                          >
+                            <Warehouse size={10} /> Rubro: {a.rubro_nombre}
+                          </button>
+                        )}
+                        <span>{a.notas ?? (a.rubro_evento_id ? '' : '—')}</span>
+                      </div>
+                    </td>
                     {canEdit && (
                       <td className="px-3 py-2.5">
                         <button
