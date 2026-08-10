@@ -454,9 +454,9 @@ function EventKPISection({ eventosActivos }: { eventosActivos: { id: number; nom
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Section ───────────────────────────────────────────────────────────────────
 
-export default function DashboardPage() {
+export default function KpisSection() {
   const { data: resumen,  isLoading: loadingResumen }  = useResumenDashboard();
   const { data: alertas,  isLoading: loadingAlertas }  = useAlertasDashboard();
   const { data: eventos = [] }                         = useEventos();
@@ -465,9 +465,9 @@ export default function DashboardPage() {
 
   if (loadingResumen || loadingAlertas) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-sm text-muted-foreground gap-2">
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground gap-2">
         <Loader2 size={16} className="animate-spin" />
-        Cargando dashboard...
+        Cargando KPIs...
       </div>
     );
   }
@@ -475,9 +475,7 @@ export default function DashboardPage() {
   if (!resumen || !alertas) return null;
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
-
+    <div className="space-y-5">
       <MetricsRow data={resumen} />
       <AlertsPanel alertas={alertas.alertas} />
       <RecentEventsTable data={resumen} />

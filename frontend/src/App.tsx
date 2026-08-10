@@ -5,7 +5,6 @@ import LoginPage            from '@/pages/Login';
 import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
 import MacroPage            from '@/pages/Macro';
 import CajaGlobalPage       from '@/pages/Caja';
-import DashboardPage        from '@/pages/Dashboard';
 import CalendarioPage       from '@/pages/Calendario';
 import EventosPage          from '@/pages/Eventos';
 import PreMacroPage         from '@/pages/PreMacro';
@@ -26,6 +25,7 @@ import FacturasPage         from '@/pages/Facturas';
 import FacturaDetalle       from '@/pages/Facturas/FacturaDetalle';
 import ParteDiarioPage      from '@/pages/ParteDiario';
 import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
+import { useAuth }          from '@/hooks/useAuth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +35,14 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Admin global (rol ADMIN sin empresa fija) va a /macro; el resto de roles a /eventos.
+function HomeRedirect() {
+  const { user } = useAuth();
+  if (!user) return null;
+  const esAdminGlobal = user.rol === 'ADMIN' && user.puedeCambiarEmpresa;
+  return <Navigate to={esAdminGlobal ? '/macro' : '/eventos'} replace />;
+}
 
 export default function App() {
   return (
@@ -47,7 +55,7 @@ export default function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/macro"         element={<MacroPage />} />
             <Route path="/caja"          element={<CajaGlobalPage />} />
-            <Route path="/dashboard"     element={<DashboardPage />} />
+            <Route path="/dashboard"     element={<HomeRedirect />} />
             <Route path="/calendario"    element={<CalendarioPage />} />
             <Route path="/eventos"                              element={<EventosPage />} />
             <Route path="/pre-macro/:id"                        element={<PreMacroPage />} />
@@ -68,7 +76,7 @@ export default function App() {
             <Route path="/stock/firmar"            element={<FirmarMovimientoPage />} />
             <Route path="/facturas"                element={<FacturasPage />} />
             <Route path="/facturas/:id"            element={<FacturaDetalle />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>
       </BrowserRouter>

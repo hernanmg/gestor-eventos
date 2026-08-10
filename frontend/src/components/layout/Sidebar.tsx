@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutDashboard, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -164,31 +164,27 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
         {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
-          {/* Macro — vista cross-evento, primer ítem, visible para todos los roles */}
-          <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
-            <LayoutGrid size={18} className="shrink-0" />
-            {isOpen && <span>Macro</span>}
-          </NavLink>
-
-          {/* Dashboard — visible for all roles */}
-          <NavLink to="/dashboard" title={!isOpen ? 'Dashboard' : undefined} className={navItem}>
-            <div className="relative shrink-0">
-              <LayoutDashboard size={18} />
-              {!isOpen && errorCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-              )}
-            </div>
-            {isOpen && (
-              <>
-                <span className="flex-1">Dashboard</span>
-                {errorCount > 0 && (
-                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {errorCount > 99 ? '99+' : errorCount}
-                  </span>
+          {/* Macro — vista cross-evento + KPIs globales, primer ítem, solo admin global */}
+          {user.rol === 'ADMIN' && user.puedeCambiarEmpresa && (
+            <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
+              <div className="relative shrink-0">
+                <LayoutGrid size={18} />
+                {!isOpen && errorCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
                 )}
-              </>
-            )}
-          </NavLink>
+              </div>
+              {isOpen && (
+                <>
+                  <span className="flex-1">Macro</span>
+                  {errorCount > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {errorCount > 99 ? '99+' : errorCount}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          )}
 
           {/* Calendario — agrega fechas de todos los módulos, visible para todos los roles */}
           <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>

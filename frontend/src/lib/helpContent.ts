@@ -18,18 +18,18 @@ export interface HelpContent {
 
 const help: Record<string, HelpContent> = {
 
-  // ── Dashboard ───────────────────────────────────────────────────────────────
-  '/dashboard': {
-    titulo: 'Dashboard',
-    descripcion: 'Vista consolidada de todos los eventos activos.',
+  // ── Macro ───────────────────────────────────────────────────────────────────
+  '/macro': {
+    titulo: 'Macro',
+    descripcion: 'Visibilidad global del negocio — KPIs consolidados y movimientos cross-evento.',
     secciones: [
       {
-        titulo: '¿Qué muestra el dashboard?',
-        contenido: 'Resumen financiero de todos los eventos activos: ingresos, egresos, saldo neto y alertas de echeqs próximos a vencer o rechazados.',
+        titulo: 'KPIs y Alertas',
+        contenido: 'Resumen financiero de todos los eventos activos: ingresos, egresos, saldo neto y alertas de echeqs próximos a vencer o rechazados. Las alertas de nivel ERROR (en rojo) requieren atención inmediata; las de tipo WARNING (en amarillo) son avisos informativos.',
       },
       {
-        titulo: 'Alertas',
-        contenido: 'Las alertas de nivel ERROR (en rojo) requieren atención inmediata. Las de tipo WARNING (en amarillo) son avisos informativos.',
+        titulo: 'Movimientos',
+        contenido: 'Tabla de movimientos de todos los eventos con filtros cross-evento (empresa, evento, rubro, estado, fechas). Permite editar estado y aviso a proveedor en línea, y exportar a Excel.',
       },
     ],
     links: [
