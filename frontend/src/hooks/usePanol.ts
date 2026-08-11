@@ -101,10 +101,11 @@ export function useDevolverMovimientoPanol() {
   });
 }
 
-export function useAlertasPanol() {
+export function useAlertasPanol(enabled: boolean = true) {
   return useQuery({
     queryKey: PANOL_ALERTAS_KEY,
     queryFn:  () => api.get<{ alertas: AlertaPanol[] }>('/panol/alertas').then(r => r.data),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
 }

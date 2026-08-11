@@ -20,7 +20,7 @@ const uploadMiddleware = (req: any, res: any, next: any) => {
   });
 };
 
-router.post('/preview',   requireRole('OPERADOR'), uploadMiddleware, asyncHandler(preview));
-router.post('/confirmar', requireRole('OPERADOR'), asyncHandler(confirmar));
+router.post('/preview',   requireRole('ADMIN'), uploadMiddleware, asyncHandler(preview));
+router.post('/confirmar', requireRole('ADMIN'), asyncHandler(confirmar));
 
 export default router;

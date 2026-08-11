@@ -13,6 +13,11 @@ enum Rol {
   ADMIN
   OPERADOR
   VIEWER
+  JORNALERO
+  // Identificador ASCII por restricción de Prisma (los enum values no aceptan
+  // "Ñ") — el valor real en DB y en el runtime de Prisma Client es "PAÑOLERO"
+  // (ver @map), que es lo que se usa en el resto del código (TS, JSON, zod).
+  PANOLERO @map("PAÑOLERO")
 }
 
 enum Tipo {
@@ -232,6 +237,8 @@ model Usuario {
   id            Int       @id @default(autoincrement())
   email         String    @unique
   nombre        String
+  apodo         String?
+  telefono      String?
   password_hash String
   rol           Rol       @default(OPERADOR)
   activo        Boolean   @default(true)
@@ -1036,7 +1043,10 @@ model Empleado {
   // Datos personales
   nombre           String
   apellido         String
-  dni              String
+  // Nullable — el personal fijo de DOS57 se identifica por CUIL, no siempre
+  // tiene DNI cargado en el legajo. Sigue siendo obligatorio en el alta manual
+  // desde la UI (validación a nivel de Zod, no de schema).
+  dni              String?
   cuit             String?
   email            String?
   telefono         String?
@@ -1069,8 +1079,10 @@ model Empleado {
   grupo_sanguineo            String?
   contacto_emergencia_nombre String?
   contacto_emergencia_tel    String?
+  contacto_emergencia_tel2   String? // segundo teléfono de emergencia
   escalafon                  Int? // nivel numérico — significado a confirmar con el cliente
   art                        String? // aseguradora ART
+  tipo_contratacion          String? // "SANCOR", "ART", "FEDERAL PATRONAL (AP)", etc. — texto libre
   licencia_conducir          Boolean @default(false)
   equipamiento_asignado      String? // celular/notebook/etc.
   talle_pantalon             String?

@@ -43,7 +43,8 @@
       "Bash(curl -s -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@adminportal.com\",\"password\":\"Admin123!\"}')",
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/auth/me)",
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/switch-empresa -H 'Content-Type: application/json' -d '{\"empresaId\":1}')",
-      "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/rubros)"
+      "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/rubros)",
+      "PowerShell(Get-CimInstance *)"
     ]
   }
 }

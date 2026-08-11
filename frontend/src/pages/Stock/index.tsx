@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload, Pencil, Trash2 } from 'lucide-react';
 import {
   useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto, useAlertasStock, useSugerencias, useCategoriasStock,
@@ -7,6 +7,7 @@ import {
   type ImportCatalogoResult,
 } from '@/hooks/useStock';
 import { useAlertasPanol } from '@/hooks/usePanol';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -390,6 +391,9 @@ function ImportarCatalogoDialog({ open, onClose }: { open: boolean; onClose: () 
 
 function ProductosTab() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin        = user?.rol === 'ADMIN'; // catálogo de productos: sólo ADMIN edita (matriz de permisos)
+  const puedeImportar   = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const [search,       setSearch]       = useState('');
   const [categoriaId,  setCategoriaId]  = useState('');
   const [catalogoOrigen, setCatalogoOrigen] = useState('');
@@ -453,12 +457,16 @@ function ProductosTab() {
           <option value="">Todos los catálogos</option>
           {catalogos.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
-          <Upload size={14} className="mr-1.5" /> Importar catálogo
-        </Button>
-        <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-          <Plus size={14} className="mr-1.5" /> Nuevo producto
-        </Button>
+        {puedeImportar && (
+          <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+            <Upload size={14} className="mr-1.5" /> Importar catálogo
+          </Button>
+        )}
+        {isAdmin && (
+          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+            <Plus size={14} className="mr-1.5" /> Nuevo producto
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -480,7 +488,7 @@ function ProductosTab() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Disponible</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Mínimo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+                {isAdmin && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>}
                 <th className="px-3 py-2 w-6" />
               </tr>
             </thead>
@@ -513,12 +521,14 @@ function ProductosTab() {
                     <td className="px-3 py-2.5">
                       <DisponibleBadge disponible={disp} minimo={p.stock_minimo} />
                     </td>
-                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => { setEditing(p); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => { setEditing(p); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                        </div>
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 text-muted-foreground">
                       <ChevronRight size={14} />
                     </td>
@@ -664,11 +674,30 @@ function AlertasTab() {
 type StockTab = 'productos' | 'alertas' | 'cunas' | 'camiones' | 'panol' | 'activos';
 
 export default function StockPage() {
-  const [tab, setTab] = useState<StockTab>('productos');
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as StockTab | null;
+  const [tab, setTab] = useState<StockTab>(tabParam ?? 'productos');
   const { data: alertasData }      = useAlertasStock();
-  const { data: alertasPanolData } = useAlertasPanol();
+  // Pañol es exclusivo de ADMIN/PAÑOLERO (matriz de permisos) — no pedir sus
+  // alertas para OPERADOR/VIEWER, que ya ni ven la tab.
+  const vePanol = user?.rol === 'ADMIN';
+  const { data: alertasPanolData } = useAlertasPanol(vePanol);
   const quiebresCount     = (alertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
   const alertasPanolCount = (alertasPanolData?.alertas ?? []).length;
+
+  // PAÑOLERO — sin acceso a Productos/Cunas/Camiones/Activos/Alertas, sólo Pañol.
+  if (user?.rol === 'PANOLERO') {
+    return (
+      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Package size={22} />
+          Pañol
+        </h1>
+        <PanolTab />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
@@ -682,7 +711,7 @@ export default function StockPage() {
           { key: 'productos', label: 'Productos' },
           { key: 'cunas',     label: 'Cunas' },
           { key: 'camiones',  label: 'Camiones' },
-          { key: 'panol',     label: `Pañol${alertasPanolCount > 0 ? ` (${alertasPanolCount})` : ''}` },
+          ...(vePanol ? [{ key: 'panol' as StockTab, label: `Pañol${alertasPanolCount > 0 ? ` (${alertasPanolCount})` : ''}` }] : []),
           { key: 'activos',   label: 'Activos' },
           { key: 'alertas',   label: `Alertas de stock${quiebresCount > 0 ? ` (${quiebresCount})` : ''}` },
         ] as { key: StockTab; label: string }[]).map(({ key, label }) => (
@@ -704,7 +733,7 @@ export default function StockPage() {
       {tab === 'productos' && <ProductosTab />}
       {tab === 'cunas'     && <CunasTab />}
       {tab === 'camiones'  && <CamionesTab />}
-      {tab === 'panol'     && <PanolTab />}
+      {tab === 'panol' && vePanol && <PanolTab />}
       {tab === 'activos'   && <ActivosTab />}
       {tab === 'alertas'   && <AlertasTab />}
     </div>

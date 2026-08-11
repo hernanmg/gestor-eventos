@@ -5,6 +5,7 @@ import {
   useAddProductoCuna, useRemoveProductoCuna,
 } from '@/hooks/useCunas';
 import { useProductos } from '@/hooks/useStock';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -165,6 +166,8 @@ function CunaContenidoDialog({ cunaId, onClose }: { cunaId: number | null; onClo
 }
 
 export default function CunasTab() {
+  const { user } = useAuth();
+  const isAdmin  = user?.rol === 'ADMIN'; // catálogo de cunas: sólo ADMIN edita (matriz de permisos)
   const { data: cunas = [], isLoading } = useCunas();
   const deleteCuna = useDeleteCuna();
   const [formOpen, setFormOpen]       = useState(false);
@@ -178,11 +181,13 @@ export default function CunasTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <Plus size={14} className="mr-1.5" /> Nueva cuna
-        </Button>
-      </div>
+      {isAdmin && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
+            <Plus size={14} className="mr-1.5" /> Nueva cuna
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
@@ -200,7 +205,7 @@ export default function CunasTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Descripción</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Productos distintos</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Total unidades</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+                {isAdmin && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -210,12 +215,14 @@ export default function CunasTab() {
                   <td className="px-3 py-2.5 text-muted-foreground">{c.descripcion ?? '-'}</td>
                   <td className="px-3 py-2.5 text-right">{c.productos_distintos ?? 0}</td>
                   <td className="px-3 py-2.5 text-right">{c.total_unidades ?? 0}</td>
-                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
-                    </div>
-                  </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

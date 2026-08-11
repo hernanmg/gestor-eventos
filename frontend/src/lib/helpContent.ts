@@ -395,7 +395,15 @@ const help: Record<string, HelpContent> = {
       },
       {
         titulo: 'Usuarios',
-        contenido: 'Creá y gestioná usuarios. Roles disponibles: ADMIN (acceso total), OPERADOR (puede editar), VIEWER (solo lectura).',
+        contenido: 'Creá y gestioná usuarios. Cada usuario tiene un rol que define qué puede ver y hacer en el sistema — ver la sección "Roles y permisos" para el detalle de cada uno.',
+      },
+      {
+        titulo: 'Roles y permisos',
+        contenido: 'ADMIN — Acceso total. Puede crear eventos, gestionar usuarios, ver todas las áreas.\n\n'
+          + 'OPERADOR — Acceso operativo. Puede ver eventos y cargar datos en Caja, Ficha, Stock y Parte Diario. No puede crear eventos ni acceder a RRHH, Facturas o Proveedores.\n\n'
+          + 'VIEWER — Solo lectura. Ve todo lo que ve el Operador pero no puede cargar ni modificar nada.\n\n'
+          + 'JORNALERO — Acceso mínimo. Solo puede cargar sus propias jornadas y ver su asignación en el Parte Diario del día.\n\n'
+          + 'PAÑOLERO — Acceso al pañol. Solo puede gestionar las salidas y devoluciones del pañol.',
       },
     ],
   },

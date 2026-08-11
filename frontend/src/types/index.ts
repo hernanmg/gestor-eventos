@@ -1,6 +1,9 @@
 // Espejo de los enums del schema Prisma
 
-export type Rol           = 'ADMIN' | 'OPERADOR' | 'VIEWER';
+// 'PANOLERO' (sin Ñ) — así representa Prisma Client el valor Rol.PAÑOLERO en
+// JS/TS (el @map de schema.prisma sólo afecta el nombre en la columna de
+// Postgres). "Pañolero" con Ñ se usa únicamente como texto de UI.
+export type Rol           = 'ADMIN' | 'OPERADOR' | 'VIEWER' | 'JORNALERO' | 'PANOLERO';
 export type EstadoFactura = 'RECIBIDA' | 'APROBADA' | 'PAGADA' | 'ANULADA';
 export type MedioPago     = 'TRANSFERENCIA' | 'ECHEQ' | 'EFECTIVO' | 'CHEQUE';
 export type CondicionPago = 'CONTADO' | 'DIAS_30' | 'DIAS_60' | 'DIAS_90' | 'ECHEQ' | 'OTRO';
@@ -24,11 +27,21 @@ export interface Usuario {
   id:         number;
   email:      string;
   nombre:     string;
+  apodo:      string | null;
+  telefono:   string | null;
   rol:        Rol;
   activo:     boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+export interface UsuarioEmpresaAcceso {
+  id:         number;
+  usuario_id: number;
+  empresa_id: number;
+  empresa:    { id: number; nombre: string; nombre_corto: string | null };
+  created_at: string;
 }
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
@@ -969,7 +982,9 @@ export interface Empleado {
   id:               number;
   nombre:           string;
   apellido:         string;
-  dni:              string;
+  // Nullable — el personal fijo importado desde Excel a veces sólo tiene
+  // CUIL, no DNI. El alta manual desde la UI lo sigue exigiendo.
+  dni:              string | null;
   cuit:             string | null;
   email:            string | null;
   telefono:         string | null;
@@ -999,8 +1014,10 @@ export interface Empleado {
   grupo_sanguineo:            string | null;
   contacto_emergencia_nombre: string | null;
   contacto_emergencia_tel:    string | null;
+  contacto_emergencia_tel2:   string | null;
   escalafon:                  number | null;
   art:                        string | null;
+  tipo_contratacion:          string | null;
   licencia_conducir:          boolean;
   equipamiento_asignado:      string | null;
   talle_pantalon:             string | null;

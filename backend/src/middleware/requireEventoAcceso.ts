@@ -54,7 +54,10 @@ export function requireEventoRole(minRol: 'OPERADOR' | 'ADMIN'): RequestHandler 
       return;
     }
 
-    if (ROL_LEVEL[req.user!.rol] < ROL_LEVEL[minRol]) {
+    // JORNALERO/PANOLERO no forman parte de esta jerarquía (quedan bloqueados
+    // antes de llegar acá por restrictedRoleGate.ts) — 0 por defecto.
+    const nivelUsuario = ROL_LEVEL[req.user!.rol as 'VIEWER' | 'OPERADOR' | 'ADMIN'] ?? 0;
+    if (nivelUsuario < ROL_LEVEL[minRol]) {
       res.status(403).json({ error: 'Sin permisos suficientes' });
       return;
     }

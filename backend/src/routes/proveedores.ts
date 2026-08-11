@@ -11,14 +11,15 @@ const router = Router();
 
 router.use(auth);
 router.use(tenantMiddleware);
+router.use(requireRole('ADMIN')); // Proveedores es exclusivo de ADMIN (matriz de permisos)
 
 // buscar MUST be before /:id so Express doesn't match "buscar" as an id
 router.get('/buscar',    asyncHandler(buscar));
 router.get('/',          asyncHandler(list));
 router.get('/:id',       asyncHandler(getById));
-router.post('/',         requireRole('OPERADOR'), asyncHandler(create));
-router.put('/:id',       requireRole('OPERADOR'), asyncHandler(update));
-router.patch('/:id',     requireRole('OPERADOR'), asyncHandler(toggleActivo));
-router.delete('/:id',    requireRole('ADMIN'),    asyncHandler(remove));
+router.post('/',         asyncHandler(create));
+router.put('/:id',       asyncHandler(update));
+router.patch('/:id',     asyncHandler(toggleActivo));
+router.delete('/:id',    asyncHandler(remove));
 
 export default router;

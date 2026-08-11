@@ -33,7 +33,9 @@ export default function EventosPage() {
   const { data: borrador } = usePreMacroBorrador();
   const discardPreMacro    = useDiscardPreMacro();
 
-  const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  // Crear/editar/eliminar eventos (y arrancar el wizard de pre-macro) es
+  // exclusivo de ADMIN — OPERADOR sólo puede ver (matriz de permisos).
+  const canEdit = user?.rol === 'ADMIN';
 
   const handleNew = () => {
     createPreMacro.mutate();

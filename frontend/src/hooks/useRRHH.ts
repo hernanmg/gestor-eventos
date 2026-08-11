@@ -64,8 +64,10 @@ export interface EmpleadoPayload {
   grupo_sanguineo?:            string | null;
   contacto_emergencia_nombre?: string | null;
   contacto_emergencia_tel?:    string | null;
+  contacto_emergencia_tel2?:   string | null;
   escalafon?:                  number | null;
   art?:                        string | null;
+  tipo_contratacion?:          string | null;
   licencia_conducir?:          boolean;
   equipamiento_asignado?:      string | null;
   talle_pantalon?:             string | null;

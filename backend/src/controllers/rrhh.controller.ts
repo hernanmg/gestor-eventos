@@ -118,7 +118,7 @@ async function getOrCreateRubroRRHH(empresaId: number, tx: any): Promise<number>
 
 // Empleado vinculado a la sesión actual (usuario con empleado_id asociado).
 // Usado para acotar la vista de autoservicio (rol VIEWER + empleado vinculado).
-async function getEmpleadoPropio(usuarioId: number, empresaId: number) {
+export async function getEmpleadoPropio(usuarioId: number, empresaId: number) {
   return prisma.empleado.findFirst({ where: { usuario_id: usuarioId, empresa_id: empresaId, deleted_at: null } });
 }
 
@@ -206,8 +206,10 @@ const empleadoSchema = z.object({
   grupo_sanguineo:            z.string().nullable().optional(),
   contacto_emergencia_nombre: z.string().nullable().optional(),
   contacto_emergencia_tel:    z.string().nullable().optional(),
+  contacto_emergencia_tel2:   z.string().nullable().optional(),
   escalafon:                  z.number().int().nullable().optional(),
   art:                        z.string().nullable().optional(),
+  tipo_contratacion:          z.string().nullable().optional(),
   licencia_conducir:          z.boolean().default(false),
   equipamiento_asignado:      z.string().nullable().optional(),
   talle_pantalon:             z.string().nullable().optional(),
@@ -307,8 +309,10 @@ export async function createEmpleado(req: Request, res: Response) {
       grupo_sanguineo:            d.grupo_sanguineo ?? null,
       contacto_emergencia_nombre: d.contacto_emergencia_nombre ?? null,
       contacto_emergencia_tel:    d.contacto_emergencia_tel ?? null,
+      contacto_emergencia_tel2:   d.contacto_emergencia_tel2 ?? null,
       escalafon:                  d.escalafon ?? null,
       art:                        d.art ?? null,
+      tipo_contratacion:          d.tipo_contratacion ?? null,
       licencia_conducir:          d.licencia_conducir,
       equipamiento_asignado:      d.equipamiento_asignado ?? null,
       talle_pantalon:             d.talle_pantalon ?? null,
@@ -364,8 +368,10 @@ export async function updateEmpleado(req: Request, res: Response) {
       ...(d.grupo_sanguineo            !== undefined && { grupo_sanguineo:            d.grupo_sanguineo }),
       ...(d.contacto_emergencia_nombre !== undefined && { contacto_emergencia_nombre: d.contacto_emergencia_nombre }),
       ...(d.contacto_emergencia_tel    !== undefined && { contacto_emergencia_tel:    d.contacto_emergencia_tel }),
+      ...(d.contacto_emergencia_tel2   !== undefined && { contacto_emergencia_tel2:   d.contacto_emergencia_tel2 }),
       ...(d.escalafon                  !== undefined && { escalafon:                  d.escalafon }),
       ...(d.art                        !== undefined && { art:                        d.art }),
+      ...(d.tipo_contratacion          !== undefined && { tipo_contratacion:          d.tipo_contratacion }),
       ...(d.licencia_conducir          !== undefined && { licencia_conducir:          d.licencia_conducir }),
       ...(d.equipamiento_asignado      !== undefined && { equipamiento_asignado:      d.equipamiento_asignado }),
       ...(d.talle_pantalon             !== undefined && { talle_pantalon:             d.talle_pantalon }),
@@ -408,7 +414,10 @@ const jornadaSchema = z.object({
 // propias jornadas — devuelve el empleado_id forzado o null si no aplica
 // autoservicio (ADMIN/OPERADOR sin restricción).
 async function resolveEmpleadoScope(req: Request): Promise<{ forced: number | null; ok: boolean }> {
-  if (req.user!.rol !== 'VIEWER') return { forced: null, ok: true };
+  // Sólo ADMIN llega acá sin restricción — la ruta ya bloquea todo lo demás
+  // excepto JORNALERO (ver rrhh.ts, ROLES.JORNALERO_PROPIO), que queda forzado
+  // a su propio empleado_id vinculado. VIEWER ya no tiene acceso a RRHH.
+  if (req.user!.rol !== 'JORNALERO') return { forced: null, ok: true };
   const propio = await getEmpleadoPropio(req.user!.id, req.empresaId!);
   if (!propio) return { forced: null, ok: false };
   return { forced: propio.id, ok: true };

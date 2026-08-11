@@ -17,9 +17,13 @@ import {
 import {
   useAllRubros, useUpdateRubro, useCreateRubro, useDeleteRubro, useReorderRubros, useToggleRubro,
 } from '@/hooks/useRubros';
-import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } from '@/hooks/useUsuarios';
+import {
+  useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario,
+  useUsuarioEmpresaAccesos, useCreateUsuarioEmpresaAcceso, useDeleteUsuarioEmpresaAcceso,
+} from '@/hooks/useUsuarios';
 import { useEventoAccesos, useCreateAcceso, useUpdateAcceso, useDeleteAcceso } from '@/hooks/useEventoAccesos';
 import { useEventos } from '@/hooks/useEvento';
+import { useEmpresas } from '@/hooks/useEmpresas';
 import { useCategoriasStock, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/hooks/useStock';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -553,30 +557,112 @@ function RubrosSection() {
 
 interface UsuarioFormData {
   nombre:   string;
+  apodo:    string;
+  telefono: string;
   email:    string;
   password: string;
   rol:      Rol;
 }
 
-const EMPTY_FORM: UsuarioFormData = { nombre: '', email: '', password: '', rol: 'OPERADOR' };
+const EMPTY_FORM: UsuarioFormData = { nombre: '', apodo: '', telefono: '', email: '', password: '', rol: 'OPERADOR' };
+
+const ROL_DESCRIPCION: Record<Rol, string> = {
+  ADMIN:     'Acceso total a su empresa',
+  OPERADOR:  'Carga y edita datos operativos',
+  VIEWER:    'Solo lectura',
+  JORNALERO: 'Solo carga sus propias jornadas',
+  PANOLERO:  'Solo gestiona el pañol',
+};
+
+// ── Acceso multi-empresa (sólo admin global) ──────────────────────────────────
+// El rol que rige en cada empresa adicional es el mismo Usuario.rol global del
+// usuario — el schema actual no guarda un rol distinto por empresa. Esto sólo
+// otorga/revoca la posibilidad de operar en esa empresa.
+
+function EmpresaAccesoPanel({ usuarioId, empresaHogarId }: { usuarioId: number; empresaHogarId: number | null }) {
+  const { data: accesos = [], isLoading } = useUsuarioEmpresaAccesos(usuarioId);
+  const { data: empresas = [] }           = useEmpresas();
+  const createAcceso = useCreateUsuarioEmpresaAcceso(usuarioId);
+  const deleteAcceso = useDeleteUsuarioEmpresaAcceso(usuarioId);
+
+  const [newEmpresaId, setNewEmpresaId] = useState<number | ''>('');
+
+  // La empresa "hogar" del usuario ya le da acceso implícito — no tiene sentido
+  // ofrecerla de nuevo acá.
+  const existingIds = new Set([...accesos.map(a => a.empresa_id), empresaHogarId].filter((id): id is number => id !== null));
+  const disponibles = empresas.filter(e => !existingIds.has(e.id));
+
+  const handleAdd = async () => {
+    if (!newEmpresaId) return;
+    await createAcceso.mutateAsync({ empresaId: Number(newEmpresaId) });
+    setNewEmpresaId('');
+  };
+
+  if (isLoading) return <p className="text-xs text-muted-foreground py-2">Cargando accesos...</p>;
+
+  return (
+    <div className="space-y-2 py-2 px-1">
+      {accesos.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin empresas adicionales asignadas.</p>
+      ) : (
+        <div className="space-y-1">
+          {accesos.map(a => (
+            <div key={a.id} className="flex items-center gap-2 text-xs">
+              <span className="flex-1 truncate font-medium">{a.empresa.nombre_corto ?? a.empresa.nombre}</span>
+              <button
+                onClick={() => deleteAcceso.mutate(a.empresa_id)}
+                className="text-destructive hover:bg-destructive/10 rounded p-0.5"
+                title="Revocar acceso"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {disponibles.length > 0 && (
+        <div className="flex items-center gap-2 pt-1 border-t">
+          <select
+            value={newEmpresaId}
+            onChange={e => setNewEmpresaId(e.target.value ? Number(e.target.value) : '')}
+            className="flex-1 border rounded px-1.5 py-1 text-xs"
+          >
+            <option value="">Agregar empresa...</option>
+            {disponibles.map(e => <option key={e.id} value={e.id}>{e.nombre_corto ?? e.nombre}</option>)}
+          </select>
+          <button
+            onClick={handleAdd}
+            disabled={!newEmpresaId || createAcceso.isPending}
+            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          >
+            Agregar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UsuarioDialog({
-  open, usuario, isSelf, onClose,
+  open, usuario, isSelf, esAdminGlobal, onClose,
   onCreate, onUpdate, isLoading,
 }: {
-  open:      boolean;
-  usuario:   Usuario | null;
-  isSelf:    boolean;
-  onClose:   () => void;
-  onCreate:  (d: UsuarioFormData) => Promise<void>;
-  onUpdate:  (id: number, d: Partial<UsuarioFormData>) => Promise<void>;
-  isLoading: boolean;
+  open:          boolean;
+  usuario:       Usuario | null;
+  isSelf:        boolean;
+  esAdminGlobal: boolean;
+  onClose:       () => void;
+  onCreate:      (d: UsuarioFormData) => Promise<void>;
+  onUpdate:      (id: number, d: Partial<UsuarioFormData>) => Promise<void>;
+  isLoading:     boolean;
 }) {
   const isEdit = usuario !== null;
   const [form,  setForm]  = useState<UsuarioFormData>(() =>
-    usuario ? { nombre: usuario.nombre, email: usuario.email, password: '', rol: usuario.rol } : EMPTY_FORM,
+    usuario ? { nombre: usuario.nombre, apodo: usuario.apodo ?? '', telefono: usuario.telefono ?? '', email: usuario.email, password: '', rol: usuario.rol } : EMPTY_FORM,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+  const [multiEmpresa, setMultiEmpresa] = useState(false);
 
   const f = (key: keyof UsuarioFormData) => ({
     value:    form[key],
@@ -590,10 +676,12 @@ function UsuarioDialog({
     try {
       if (isEdit) {
         const patch: Partial<UsuarioFormData> = {};
-        if (form.nombre   !== usuario!.nombre) patch.nombre   = form.nombre;
-        if (form.email    !== usuario!.email)  patch.email    = form.email;
-        if (form.password)                     patch.password = form.password;
-        if (!isSelf && form.rol !== usuario!.rol) patch.rol   = form.rol;
+        if (form.nombre   !== usuario!.nombre)          patch.nombre   = form.nombre;
+        if (form.apodo    !== (usuario!.apodo ?? ''))   patch.apodo    = form.apodo;
+        if (form.telefono !== (usuario!.telefono ?? '')) patch.telefono = form.telefono;
+        if (form.email    !== usuario!.email)           patch.email    = form.email;
+        if (form.password)                              patch.password = form.password;
+        if (!isSelf && form.rol !== usuario!.rol)        patch.rol      = form.rol;
         await onUpdate(usuario!.id, patch);
       } else {
         await onCreate(form);
@@ -620,6 +708,16 @@ function UsuarioDialog({
             <label className={labelCls}>Nombre *</label>
             <input {...f('nombre')} className={inputCls} required />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Apodo</label>
+              <input {...f('apodo')} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Teléfono</label>
+              <input {...f('telefono')} className={inputCls} />
+            </div>
+          </div>
           <div>
             <label className={labelCls}>Email *</label>
             <input type="email" {...f('email')} className={inputCls} required />
@@ -638,10 +736,28 @@ function UsuarioDialog({
             <div>
               <label className={labelCls}>Rol</label>
               <select {...f('rol')} className={inputCls}>
-                <option value="VIEWER">Visualizador</option>
+                <option value="ADMIN">Admin</option>
                 <option value="OPERADOR">Operador</option>
-                <option value="ADMIN">Administrador</option>
+                <option value="VIEWER">Visualizador</option>
+                <option value="JORNALERO">Jornalero</option>
+                <option value="PANOLERO">Pañolero</option>
               </select>
+              <p className="text-xs text-muted-foreground mt-1">{ROL_DESCRIPCION[form.rol]}</p>
+            </div>
+          )}
+          {isEdit && esAdminGlobal && (
+            <div className="border-t border-border pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={multiEmpresa}
+                  onChange={e => setMultiEmpresa(e.target.checked)}
+                />
+                Acceso a múltiples empresas
+              </label>
+              {multiEmpresa && (
+                <EmpresaAccesoPanel usuarioId={usuario!.id} empresaHogarId={null} />
+              )}
             </div>
           )}
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -750,18 +866,22 @@ function AccesoPanel({ usuarioId }: { usuarioId: number }) {
 // ── Usuarios section ──────────────────────────────────────────────────────────
 
 const ROL_LABEL: Record<Rol, string> = {
-  ADMIN:    'Admin',
-  OPERADOR: 'Operador',
-  VIEWER:   'Visualizador',
+  ADMIN:     'Admin',
+  OPERADOR:  'Operador',
+  VIEWER:    'Visualizador',
+  JORNALERO: 'Jornalero',
+  PANOLERO:  'Pañolero',
 };
 
 const ROL_CLASS: Record<Rol, string> = {
-  ADMIN:    'bg-purple-50 text-purple-700',
-  OPERADOR: 'bg-blue-50 text-blue-700',
-  VIEWER:   'bg-gray-100 text-gray-600',
+  ADMIN:     'bg-blue-900 text-white',      // azul oscuro
+  OPERADOR:  'bg-blue-50 text-blue-700',    // azul
+  VIEWER:    'bg-gray-100 text-gray-600',   // gris
+  JORNALERO: 'bg-green-50 text-green-700',  // verde
+  PANOLERO:  'bg-orange-50 text-orange-700', // naranja
 };
 
-function UsuariosSection({ currentUserId }: { currentUserId: number }) {
+function UsuariosSection({ currentUserId, esAdminGlobal }: { currentUserId: number; esAdminGlobal: boolean }) {
   const { data: usuarios = [], isLoading } = useUsuarios();
   const createUsuario = useCreateUsuario();
   const updateUsuario = useUpdateUsuario();
@@ -914,6 +1034,7 @@ function UsuariosSection({ currentUserId }: { currentUserId: number }) {
         open={dialogOpen}
         usuario={editing}
         isSelf={editing?.id === currentUserId}
+        esAdminGlobal={esAdminGlobal}
         onClose={closeDialog}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
@@ -1166,7 +1287,7 @@ export default function ConfiguracionPage() {
 
       {activeTab === 'rubros'     && <RubrosSection />}
       {activeTab === 'tabs'       && <TabsSection />}
-      {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} />}
+      {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} esAdminGlobal={user.puedeCambiarEmpresa} />}
       {activeTab === 'categorias' && <CategoriasSection />}
     </div>
   );

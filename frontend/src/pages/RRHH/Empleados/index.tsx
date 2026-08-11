@@ -23,6 +23,7 @@ const TIPO_LIQUIDACION_LABEL: Record<TipoLiquidacion, string> = {
 };
 
 const GRUPOS_SANGUINEOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', '0+', '0-'];
+const TALLES_ROPA = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
 const ESTADO_LABEL: Record<EstadoEmpleado, string> = { ACTIVO: 'Activo', INACTIVO: 'Inactivo', SUSPENDIDO: 'Suspendido' };
 const ESTADO_VARIANT: Record<EstadoEmpleado, 'success' | 'muted' | 'destructive'> = {
@@ -42,8 +43,8 @@ const EMPTY: EmpleadoPayload = {
   umbral_horas_jornada: null, umbral_horas_media: null,
   valor_hora_extra_jornada: null, valor_viaje: null,
   apodo: '', fecha_nacimiento: '', grupo_sanguineo: '',
-  contacto_emergencia_nombre: '', contacto_emergencia_tel: '',
-  escalafon: null, art: '', licencia_conducir: false, equipamiento_asignado: '',
+  contacto_emergencia_nombre: '', contacto_emergencia_tel: '', contacto_emergencia_tel2: '',
+  escalafon: null, art: '', tipo_contratacion: '', licencia_conducir: false, equipamiento_asignado: '',
   talle_pantalon: '', talle_remera: '', talle_buzo: '', talle_calzado: '',
 };
 
@@ -51,7 +52,7 @@ function empleadoToForm(empleado: Empleado): EmpleadoPayload {
   return {
     nombre:           empleado.nombre,
     apellido:         empleado.apellido,
-    dni:              empleado.dni,
+    dni:              empleado.dni ?? '',
     cuit:             empleado.cuit ?? '',
     email:            empleado.email ?? '',
     telefono:         empleado.telefono ?? '',
@@ -76,8 +77,10 @@ function empleadoToForm(empleado: Empleado): EmpleadoPayload {
     grupo_sanguineo:            empleado.grupo_sanguineo ?? '',
     contacto_emergencia_nombre: empleado.contacto_emergencia_nombre ?? '',
     contacto_emergencia_tel:    empleado.contacto_emergencia_tel ?? '',
+    contacto_emergencia_tel2:   empleado.contacto_emergencia_tel2 ?? '',
     escalafon:                  empleado.escalafon,
     art:                        empleado.art ?? '',
+    tipo_contratacion:          empleado.tipo_contratacion ?? '',
     licencia_conducir:          empleado.licencia_conducir,
     equipamiento_asignado:      empleado.equipamiento_asignado ?? '',
     talle_pantalon:             empleado.talle_pantalon ?? '',
@@ -233,6 +236,7 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
               <div><label className={labelCls}>ART</label><input {...f('art')} className={inputCls} />{fieldError('art')}</div>
               <div><label className={labelCls}>Contacto de emergencia — nombre</label><input {...f('contacto_emergencia_nombre')} className={inputCls} />{fieldError('contacto_emergencia_nombre')}</div>
               <div><label className={labelCls}>Contacto de emergencia — teléfono</label><input {...f('contacto_emergencia_tel')} className={inputCls} />{fieldError('contacto_emergencia_tel')}</div>
+              <div><label className={labelCls}>Contacto de emergencia — teléfono 2</label><input {...f('contacto_emergencia_tel2')} className={inputCls} />{fieldError('contacto_emergencia_tel2')}</div>
               <div><label className={labelCls}>Escalafón</label><input type="number" step="1" {...f('escalafon')} className={inputCls} />{fieldError('escalafon')}</div>
               <div><label className={labelCls}>Equipamiento asignado</label><input {...f('equipamiento_asignado')} className={inputCls} placeholder="Celular, notebook…" />{fieldError('equipamiento_asignado')}</div>
               <div className="flex items-end pb-1.5">
@@ -246,11 +250,38 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
                 </label>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mt-3">
-              <div><label className={labelCls}>Talle pantalón</label><input {...f('talle_pantalon')} className={inputCls} />{fieldError('talle_pantalon')}</div>
-              <div><label className={labelCls}>Talle remera</label><input {...f('talle_remera')} className={inputCls} />{fieldError('talle_remera')}</div>
-              <div><label className={labelCls}>Talle buzo/campera</label><input {...f('talle_buzo')} className={inputCls} />{fieldError('talle_buzo')}</div>
-              <div><label className={labelCls}>Talle calzado</label><input {...f('talle_calzado')} className={inputCls} />{fieldError('talle_calzado')}</div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 mt-4">Uniforme</p>
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className={labelCls}>Pantalón</label>
+                <input {...f('talle_pantalon')} className={inputCls} placeholder='ej: 42/44' />{fieldError('talle_pantalon')}
+              </div>
+              <div>
+                <label className={labelCls}>Remera</label>
+                <select {...f('talle_remera')} className={inputCls}>
+                  <option value="">-</option>
+                  {TALLES_ROPA.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {fieldError('talle_remera')}
+              </div>
+              <div>
+                <label className={labelCls}>Buzo/Campera</label>
+                <select {...f('talle_buzo')} className={inputCls}>
+                  <option value="">-</option>
+                  {TALLES_ROPA.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {fieldError('talle_buzo')}
+              </div>
+              <div>
+                <label className={labelCls}>Calzado</label>
+                <input {...f('talle_calzado')} className={inputCls} />{fieldError('talle_calzado')}
+              </div>
+            </div>
+
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 mt-4">Contratación</p>
+            <div>
+              <label className={labelCls}>Tipo de contratación</label>
+              <input {...f('tipo_contratacion')} className={inputCls} placeholder="SANCOR, ART, FEDERAL PATRONAL (AP)…" />{fieldError('tipo_contratacion')}
             </div>
           </div>
 
@@ -321,7 +352,7 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
 
             {tab === 'personal' ? (
               <dl className="text-sm space-y-1.5">
-                <div className="flex justify-between"><dt className="text-muted-foreground">DNI</dt><dd>{empleado.dni}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">DNI</dt><dd>{empleado.dni ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">CUIT</dt><dd>{empleado.cuit ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Email</dt><dd>{empleado.email ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Teléfono</dt><dd>{empleado.telefono ?? '-'}</dd></div>

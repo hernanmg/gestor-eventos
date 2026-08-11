@@ -1,6 +1,10 @@
 export type AuthUser = {
   id:        number;
-  rol:       'ADMIN' | 'OPERADOR' | 'VIEWER';
+  // 'PANOLERO' (sin Ñ) — así es como Prisma Client representa el valor de
+  // enum Rol.PAÑOLERO en JS/TS; el @map en schema.prisma sólo afecta el
+  // nombre guardado en la columna de Postgres, no el identificador que
+  // circula por el código de la app (JWT, comparaciones, zod, etc.).
+  rol:       'ADMIN' | 'OPERADOR' | 'VIEWER' | 'JORNALERO' | 'PANOLERO';
   // Empresa activa de la sesión. null = autenticado pero con selección de
   // empresa pendiente (usuario multi-empresa que todavía no eligió, o admin
   // global recién logueado antes de resolver una empresa por defecto).

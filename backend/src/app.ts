@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/errorHandler';
+import { restrictedRoleGate } from './middleware/restrictedRoleGate';
 import authRouter                    from './routes/auth';
 import eventosRouter                 from './routes/eventos';
 import movimientosRouter             from './routes/movimientos';
@@ -60,6 +61,10 @@ app.use(cookieParser());
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Corta acá para JORNALERO/PAÑOLERO antes de entrar a cualquier router — ver
+// restrictedRoleGate.ts para el porqué de este approach.
+app.use(restrictedRoleGate);
 
 app.use('/api/auth',             authRouter);
 app.use('/api/eventos',          eventosRouter);

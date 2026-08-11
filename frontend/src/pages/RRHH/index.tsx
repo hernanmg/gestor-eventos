@@ -29,8 +29,11 @@ export default function RRHHPage() {
 
   if (!user) return null;
 
-  const esAutoservicio = user.rol === 'VIEWER' && user.empleadoId != null;
-  const tieneAcceso     = user.rol === 'ADMIN' || user.rol === 'OPERADOR' || esAutoservicio;
+  // RRHH es exclusivo de ADMIN — la única excepción es JORNALERO viendo/
+  // cargando sus propias jornadas (matriz de permisos: OPERADOR y VIEWER ya
+  // no tienen acceso, ni siquiera de autoservicio).
+  const esAutoservicio = user.rol === 'JORNALERO' && user.empleadoId != null;
+  const tieneAcceso     = user.rol === 'ADMIN' || esAutoservicio;
   if (!tieneAcceso) return <Navigate to="/dashboard" replace />;
 
   if (esAutoservicio) {

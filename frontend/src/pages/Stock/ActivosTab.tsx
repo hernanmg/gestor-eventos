@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Archive, Pencil, Trash2 } from 'lucide-react';
 import { useActivos, useCreateActivo, useUpdateActivo, useDeleteActivo } from '@/hooks/useActivos';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -134,8 +135,11 @@ function ActivoDialog({ open, activo, onClose }: { open: boolean; activo: Activo
   );
 }
 
-function EstadoSelect({ activo }: { activo: Activo }) {
+function EstadoSelect({ activo, editable }: { activo: Activo; editable: boolean }) {
   const updateActivo = useUpdateActivo();
+  if (!editable) {
+    return <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', ESTADO_CLASS[activo.estado])}>{activo.estado}</span>;
+  }
   return (
     <select
       value={activo.estado}
@@ -150,10 +154,14 @@ function EstadoSelect({ activo }: { activo: Activo }) {
   );
 }
 
-function ObservacionesCell({ activo }: { activo: Activo }) {
+function ObservacionesCell({ activo, editable }: { activo: Activo; editable: boolean }) {
   const updateActivo = useUpdateActivo();
   const [value, setValue]     = useState(activo.observaciones ?? '');
   const [editing, setEditing] = useState(false);
+
+  if (!editable) {
+    return <span className="text-xs text-muted-foreground">{activo.observaciones ?? '-'}</span>;
+  }
 
   if (!editing) {
     return (
@@ -176,6 +184,8 @@ function ObservacionesCell({ activo }: { activo: Activo }) {
 }
 
 export default function ActivosTab() {
+  const { user } = useAuth();
+  const isAdmin  = user?.rol === 'ADMIN'; // catálogo de activos: sólo ADMIN edita (matriz de permisos)
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro]       = useState('');
   const [formOpen, setFormOpen]               = useState(false);
@@ -205,7 +215,9 @@ export default function ActivosTab() {
             <option value="BAJA">Baja</option>
           </select>
         </div>
-        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus size={14} className="mr-1.5" /> Nuevo activo</Button>
+        {isAdmin && (
+          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus size={14} className="mr-1.5" /> Nuevo activo</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -227,7 +239,7 @@ export default function ActivosTab() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Valor</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Ubicación</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Observaciones</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+                {isAdmin && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -235,17 +247,19 @@ export default function ActivosTab() {
                 <tr key={a.id} className="hover:bg-muted/20">
                   <td className="px-3 py-2.5 font-medium">{a.nombre}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{a.categoria ?? '-'}</td>
-                  <td className="px-3 py-2.5"><EstadoSelect activo={a} /></td>
+                  <td className="px-3 py-2.5"><EstadoSelect activo={a} editable={isAdmin} /></td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.fecha_compra ? formatDate(a.fecha_compra) : '-'}</td>
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{a.valor_compra ?? '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{a.ubicacion ?? '-'}</td>
-                  <td className="px-3 py-2.5 w-48"><ObservacionesCell activo={a} /></td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => { setEditing(a); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
-                    </div>
-                  </td>
+                  <td className="px-3 py-2.5 w-48"><ObservacionesCell activo={a} editable={isAdmin} /></td>
+                  {isAdmin && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(a); setFormOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
-import { requireRole } from '../middleware/requireRole';
+import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   listEmpleados, getEmpleado, createEmpleado, updateEmpleado, deleteEmpleado,
@@ -22,38 +22,42 @@ const router = Router();
 router.use(auth);
 router.use(tenantMiddleware);
 
+// RRHH es exclusivo de ADMIN — la única excepción es JORNALERO cargando/viendo
+// sus propias jornadas (GET/POST /jornadas), ya scopeado por
+// resolveEmpleadoScope() en el controller (matriz de permisos).
+
 // ── Empleados ─────────────────────────────────────────────────────────────────
 router.get('/empleados',                asyncHandler(listEmpleados));
 router.get('/empleados/:id',             asyncHandler(getEmpleado));
-router.post('/empleados',                requireRole('OPERADOR'), asyncHandler(createEmpleado));
-router.put('/empleados/:id',             requireRole('OPERADOR'), asyncHandler(updateEmpleado));
-router.delete('/empleados/:id',          requireRole('ADMIN'),    asyncHandler(deleteEmpleado));
+router.post('/empleados',                requireRole('ADMIN'), asyncHandler(createEmpleado));
+router.put('/empleados/:id',             requireRole('ADMIN'), asyncHandler(updateEmpleado));
+router.delete('/empleados/:id',          requireRole('ADMIN'), asyncHandler(deleteEmpleado));
 
 // ── Jornadas ──────────────────────────────────────────────────────────────────
-router.get('/jornadas',                  asyncHandler(listJornadas));
-router.get('/empleados/:id/jornadas',    asyncHandler(listJornadasEmpleado));
-router.post('/jornadas',                 asyncHandler(createJornada));
-router.put('/jornadas/:id',              asyncHandler(updateJornada));
-router.patch('/jornadas/:id/aprobar',    requireRole('OPERADOR'), asyncHandler(aprobarJornada));
-router.patch('/jornadas/:id/rechazar',   requireRole('OPERADOR'), asyncHandler(rechazarJornada));
-router.delete('/jornadas/:id',           asyncHandler(deleteJornada));
+router.get('/jornadas',                  requireAnyRole(ROLES.JORNALERO_PROPIO), asyncHandler(listJornadas));
+router.get('/empleados/:id/jornadas',    requireRole('ADMIN'), asyncHandler(listJornadasEmpleado));
+router.post('/jornadas',                 requireAnyRole(ROLES.JORNALERO_PROPIO), asyncHandler(createJornada));
+router.put('/jornadas/:id',              requireRole('ADMIN'), asyncHandler(updateJornada));
+router.patch('/jornadas/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarJornada));
+router.patch('/jornadas/:id/rechazar',   requireRole('ADMIN'), asyncHandler(rechazarJornada));
+router.delete('/jornadas/:id',           requireRole('ADMIN'), asyncHandler(deleteJornada));
 
 // ── Anticipos ─────────────────────────────────────────────────────────────────
-router.get('/empleados/:id/anticipos',   asyncHandler(listAnticiposEmpleado));
-router.post('/anticipos',                requireRole('OPERADOR'), asyncHandler(createAnticipo));
-router.delete('/anticipos/:id',          requireRole('OPERADOR'), asyncHandler(deleteAnticipo));
+router.get('/empleados/:id/anticipos',   requireRole('ADMIN'), asyncHandler(listAnticiposEmpleado));
+router.post('/anticipos',                requireRole('ADMIN'), asyncHandler(createAnticipo));
+router.delete('/anticipos/:id',          requireRole('ADMIN'), asyncHandler(deleteAnticipo));
 
 // ── Liquidaciones ─────────────────────────────────────────────────────────────
-router.get('/liquidaciones',             asyncHandler(listLiquidaciones));
-router.get('/liquidaciones/preview',     asyncHandler(previewLiquidacion));
-router.get('/liquidaciones/:id',         asyncHandler(getLiquidacion));
-router.get('/liquidaciones/:id/pdf',     asyncHandler(exportarLiquidacionPDF));
-router.post('/liquidaciones/generar',    requireRole('OPERADOR'), asyncHandler(generarLiquidacion));
-router.patch('/liquidaciones/:id/aprobar',  requireRole('OPERADOR'), asyncHandler(aprobarLiquidacion));
-router.patch('/liquidaciones/:id/cancelar', requireRole('OPERADOR'), asyncHandler(cancelarLiquidacion));
+router.get('/liquidaciones',             requireRole('ADMIN'), asyncHandler(listLiquidaciones));
+router.get('/liquidaciones/preview',     requireRole('ADMIN'), asyncHandler(previewLiquidacion));
+router.get('/liquidaciones/:id',         requireRole('ADMIN'), asyncHandler(getLiquidacion));
+router.get('/liquidaciones/:id/pdf',     requireRole('ADMIN'), asyncHandler(exportarLiquidacionPDF));
+router.post('/liquidaciones/generar',    requireRole('ADMIN'), asyncHandler(generarLiquidacion));
+router.patch('/liquidaciones/:id/aprobar',  requireRole('ADMIN'), asyncHandler(aprobarLiquidacion));
+router.patch('/liquidaciones/:id/cancelar', requireRole('ADMIN'), asyncHandler(cancelarLiquidacion));
 
 // ── Importadores ──────────────────────────────────────────────────────────────
-router.post('/importar/empleados',       requireRole('OPERADOR'), uploadExcel.single('file'), asyncHandler(importarEmpleados));
-router.post('/importar/jornadas',        requireRole('OPERADOR'), uploadExcel.single('file'), asyncHandler(importarJornadas));
+router.post('/importar/empleados',       requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarEmpleados));
+router.post('/importar/jornadas',        requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarJornadas));
 
 export default router;

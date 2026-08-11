@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Truck, Pencil, Trash2 } from 'lucide-react';
 import { useCamiones, useCreateCamion, useUpdateCamion, useDeleteCamion } from '@/hooks/useCamiones';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -89,6 +90,8 @@ function CamionDialog({ open, camion, onClose }: { open: boolean; camion: Camion
 }
 
 export default function CamionesTab() {
+  const { user } = useAuth();
+  const isAdmin  = user?.rol === 'ADMIN'; // catálogo de camiones: sólo ADMIN edita (matriz de permisos)
   const { data: camiones = [], isLoading } = useCamiones();
   const updateCamion = useUpdateCamion();
   const deleteCamion = useDeleteCamion();
@@ -102,11 +105,13 @@ export default function CamionesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-          <Plus size={14} className="mr-1.5" /> Nuevo camión / vehículo
-        </Button>
-      </div>
+      {isAdmin && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+            <Plus size={14} className="mr-1.5" /> Nuevo camión / vehículo
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
@@ -125,7 +130,7 @@ export default function CamionesTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Patente</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Activo</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+                {isAdmin && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -136,19 +141,27 @@ export default function CamionesTab() {
                   <td className="px-3 py-2.5 text-muted-foreground">{c.patente ?? '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{c.tipo ?? '-'}</td>
                   <td className="px-3 py-2.5">
-                    <button
-                      onClick={() => updateCamion.mutate({ id: c.id, data: { activo: !c.activo } })}
-                      className={cn('text-xs px-2 py-0.5 rounded-full font-medium', c.activo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600')}
-                    >
-                      {c.activo ? 'Activo' : 'Inactivo'}
-                    </button>
+                    {isAdmin ? (
+                      <button
+                        onClick={() => updateCamion.mutate({ id: c.id, data: { activo: !c.activo } })}
+                        className={cn('text-xs px-2 py-0.5 rounded-full font-medium', c.activo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600')}
+                      >
+                        {c.activo ? 'Activo' : 'Inactivo'}
+                      </button>
+                    ) : (
+                      <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', c.activo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600')}>
+                        {c.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
-                    </div>
-                  </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

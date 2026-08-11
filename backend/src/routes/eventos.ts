@@ -22,9 +22,11 @@ router.use(tenantMiddleware);
 
 router.get('/',       asyncHandler(list));
 router.get('/:id',    requireEventoAcceso(), asyncHandler(detail));
-router.post('/',      requireRole('OPERADOR'), asyncHandler(create));
-router.put('/:id',    requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(update));
-router.delete('/:id', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(remove));
+// Crear/editar/eliminar eventos es exclusivo de ADMIN — ya no alcanza con
+// tener EventoAcceso OPERADOR en ese evento puntual (matriz de permisos).
+router.post('/',      requireRole('ADMIN'), asyncHandler(create));
+router.put('/:id',    requireEventoAcceso(), requireRole('ADMIN'), asyncHandler(update));
+router.delete('/:id', requireEventoAcceso(), requireRole('ADMIN'), asyncHandler(remove));
 
 // Movimientos anidados bajo un evento
 router.get('/:id/movimientos',  requireEventoAcceso(), asyncHandler(listMovimientos));

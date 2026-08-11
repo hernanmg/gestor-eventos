@@ -39,9 +39,11 @@ interface SidebarProps {
 }
 
 const ROL_LABEL: Record<MeResponse['rol'], string> = {
-  ADMIN:    'Administrador',
-  OPERADOR: 'Operador',
-  VIEWER:   'Visualizador',
+  ADMIN:     'Administrador',
+  OPERADOR:  'Operador',
+  VIEWER:    'Visualizador',
+  JORNALERO: 'Jornalero',
+  PANOLERO:  'Pañolero',
 };
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
@@ -164,6 +166,26 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
         {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
+          {user.rol === 'JORNALERO' ? (
+            <>
+              <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
+                <Users size={18} className="shrink-0" />
+                {isOpen && <span>RRHH</span>}
+              </NavLink>
+              {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (
+                <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
+                  <ClipboardCheck size={18} className="shrink-0" />
+                  {isOpen && <span>Parte Diario</span>}
+                </NavLink>
+              )}
+            </>
+          ) : user.rol === 'PANOLERO' ? (
+            <NavLink to="/stock?tab=panol" title={!isOpen ? 'Stock' : undefined} className={navItem}>
+              <Package size={18} className="shrink-0" />
+              {isOpen && <span>Stock</span>}
+            </NavLink>
+          ) : (
+          <>
           {/* Macro — vista cross-evento + KPIs globales, primer ítem, solo admin global */}
           {user.rol === 'ADMIN' && user.puedeCambiarEmpresa && (
             <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
@@ -197,21 +219,21 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             {isOpen && <span>Eventos</span>}
           </NavLink>
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
             <NavLink to="/caja" title={!isOpen ? 'Caja Global' : undefined} className={navItem}>
               <Wallet size={18} className="shrink-0" />
               {isOpen && <span>Caja Global</span>}
             </NavLink>
           )}
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {user.rol === 'ADMIN' && (
             <NavLink to="/proveedores" title={!isOpen ? 'Proveedores' : undefined} className={navItem}>
               <Building2 size={18} className="shrink-0" />
               {isOpen && <span>Proveedores</span>}
             </NavLink>
           )}
 
-          {FEATURES.STOCK && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {FEATURES.STOCK && (user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
             <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
               <div className="relative shrink-0">
                 <Package size={18} />
@@ -251,7 +273,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           )}
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {user.rol === 'ADMIN' && (
             <NavLink to="/facturas" title={!isOpen ? 'Facturas' : undefined} className={navItem}>
               <div className="relative shrink-0">
                 <FileText size={18} />
@@ -272,7 +294,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           )}
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {user.rol === 'ADMIN' && (
             <NavLink
               to="/importer"
               title={!isOpen ? 'Importar eventos históricos' : undefined}
@@ -290,14 +312,14 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           )}
 
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.empleadoId != null) && (
+          {user.rol === 'ADMIN' && (
             <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
               <Users size={18} className="shrink-0" />
               {isOpen && <span>RRHH</span>}
             </NavLink>
           )}
 
-          {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+          {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
             <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
               <ClipboardCheck size={18} className="shrink-0" />
               {isOpen && <span>Parte Diario</span>}
@@ -323,6 +345,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               <Palette size={18} className="shrink-0" />
               {isOpen && <span>Config. de empresa</span>}
             </NavLink>
+          )}
+          </>
           )}
         </nav>
 

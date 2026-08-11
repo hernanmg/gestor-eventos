@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
-import { calcularHorasSegunEmpleado } from './rrhh.controller';
+import { calcularHorasSegunEmpleado, getEmpleadoPropio } from './rrhh.controller';
 import { generateParteDiarioExcel } from '../lib/parteDiarioExporter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -100,7 +100,15 @@ export async function getParteDiario(req: Request, res: Response) {
     por_seccion: [...porSeccionMap.entries()].map(([seccion, cantidad]) => ({ seccion, cantidad })),
   };
 
-  res.json({ ...parte, pedido_comida_sugerido });
+  // JORNALERO sólo ve su propia asignación del día, no el parte completo
+  // (matriz de permisos: Parte Diario → "ver propio").
+  let asignaciones = parte.asignaciones;
+  if (req.user!.rol === 'JORNALERO') {
+    const propio = await getEmpleadoPropio(req.user!.id, req.empresaId!);
+    asignaciones = propio ? parte.asignaciones.filter(a => a.empleado.id === propio.id) : [];
+  }
+
+  res.json({ ...parte, asignaciones, pedido_comida_sugerido });
 }
 
 const crearParteSchema = z.object({

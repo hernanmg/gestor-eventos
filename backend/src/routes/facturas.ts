@@ -35,29 +35,30 @@ function pdfMiddleware(req: any, res: any, next: any) {
 export const facturasRouter = Router();
 facturasRouter.use(auth);
 facturasRouter.use(tenantMiddleware);
+facturasRouter.use(requireRole('ADMIN')); // Facturas es exclusivo de ADMIN (matriz de permisos)
 
 facturasRouter.get('/alertas',          asyncHandler(alertas));
 facturasRouter.get('/',                 asyncHandler(listGlobal));
 facturasRouter.get('/:id',              asyncHandler(detail));
 facturasRouter.get('/:id/pdf',          asyncHandler(getPDF));
-facturasRouter.put('/:id',              requireRole('OPERADOR'), asyncHandler(update));
-facturasRouter.put('/:id/pdf',          requireRole('OPERADOR'), pdfMiddleware, asyncHandler(updatePDF));
-facturasRouter.delete('/:id',           requireRole('OPERADOR'), asyncHandler(remove));
-facturasRouter.patch('/:id/aprobar',    requireRole('OPERADOR'), asyncHandler(aprobar));
-facturasRouter.patch('/:id/anular',     requireRole('OPERADOR'), asyncHandler(anular));
-facturasRouter.post('/:id/pagos',       requireRole('OPERADOR'), asyncHandler(pagarFactura));
+facturasRouter.put('/:id',              asyncHandler(update));
+facturasRouter.put('/:id/pdf',          pdfMiddleware, asyncHandler(updatePDF));
+facturasRouter.delete('/:id',           asyncHandler(remove));
+facturasRouter.patch('/:id/aprobar',    asyncHandler(aprobar));
+facturasRouter.patch('/:id/anular',     asyncHandler(anular));
+facturasRouter.post('/:id/pagos',       asyncHandler(pagarFactura));
 
 // ── Router /api/pagos ─────────────────────────────────────────────────────────
 
 export const pagosRouter = Router();
 pagosRouter.use(auth);
 pagosRouter.use(tenantMiddleware);
-pagosRouter.delete('/:id', requireRole('OPERADOR'), asyncHandler(anularPago));
+pagosRouter.delete('/:id', requireRole('ADMIN'), asyncHandler(anularPago));
 
 // ── Router /api/eventos (sub-rutas facturas) ──────────────────────────────────
 
 export const facturasEventoRouter = Router();
 facturasEventoRouter.use(auth);
 facturasEventoRouter.use(tenantMiddleware);
-facturasEventoRouter.get('/:id/facturas',  requireEventoAcceso(), asyncHandler(list));
-facturasEventoRouter.post('/:id/facturas', requireEventoAcceso(), requireRole('OPERADOR'), pdfMiddleware, asyncHandler(create));
+facturasEventoRouter.get('/:id/facturas',  requireEventoAcceso(), requireRole('ADMIN'), asyncHandler(list));
+facturasEventoRouter.post('/:id/facturas', requireEventoAcceso(), requireRole('ADMIN'), pdfMiddleware, asyncHandler(create));

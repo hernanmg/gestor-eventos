@@ -10,13 +10,16 @@ router.use(auth);
 router.use(tenantMiddleware);
 
 // Antes de '/:id' — si no, Express intenta resolver "borrador" como :id
-router.get('/borrador', asyncHandler(borrador));
+// Crear eventos es exclusivo de ADMIN — pre-macro es el wizard que termina
+// creando el Evento, así que sólo ADMIN puede iniciarlo/editarlo/confirmarlo.
+// GET es la única excepción a ADMIN_OPERADOR (matriz de permisos).
+router.get('/borrador', requireRole('OPERADOR'), asyncHandler(borrador));
 
-router.post('/',              requireRole('OPERADOR'), asyncHandler(create));
-router.get('/:id',            asyncHandler(getOne));
-router.put('/:id',            requireRole('OPERADOR'), asyncHandler(update));
-router.put('/:id/rubros',     requireRole('OPERADOR'), asyncHandler(updateRubros));
-router.post('/:id/confirmar', requireRole('OPERADOR'), asyncHandler(confirmar));
-router.delete('/:id',         requireRole('OPERADOR'), asyncHandler(discard));
+router.post('/',              requireRole('ADMIN'), asyncHandler(create));
+router.get('/:id',            requireRole('OPERADOR'), asyncHandler(getOne));
+router.put('/:id',            requireRole('ADMIN'), asyncHandler(update));
+router.put('/:id/rubros',     requireRole('ADMIN'), asyncHandler(updateRubros));
+router.post('/:id/confirmar', requireRole('ADMIN'), asyncHandler(confirmar));
+router.delete('/:id',         requireRole('ADMIN'), asyncHandler(discard));
 
 export default router;

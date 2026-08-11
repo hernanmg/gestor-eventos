@@ -276,6 +276,80 @@ async function main() {
 
   console.log(`✓ Usuario admin global creado: ${adminEmail}`);
 
+  // ── Usuarios reales del sistema ──────────────────────────────────────────────
+  // empresa_id = empresa "hogar" (activa por defecto en su primer login).
+  // accesoExtra = filas adicionales de UsuarioEmpresaAcceso (usuarios multi-empresa).
+  const PASSWORD_INICIAL = 'Enjoy2026!';
+
+  type UsuarioSeed = {
+    nombre:      string;
+    email:       string;
+    telefono?:   string;
+    rol:         'ADMIN' | 'OPERADOR';
+    empresa_id:  number | null;
+    accesoExtra?: { empresa_id: number; rol: 'ADMIN' | 'OPERADOR' | 'VIEWER' }[];
+  };
+
+  const USUARIOS_REALES: UsuarioSeed[] = [
+    // ── Admin global ────────────────────────────────────────────────────────────
+    { nombre: 'Matías Lorenzati', email: 'matiaslorenzati@gmail.com', rol: 'ADMIN', empresa_id: null },
+
+    // ── DOS57 — admins ──────────────────────────────────────────────────────────
+    { nombre: 'Sergio Bibiloni (Pollo)',    email: 'pollobibiloni@gmail.com',           telefono: '351 295-6442', rol: 'ADMIN', empresa_id: dos57.id },
+    { nombre: 'Verónica Salerno (Veck)',    email: 'veckisalerno.dos57@gmail.com',      telefono: '351 259-6633', rol: 'ADMIN', empresa_id: dos57.id },
+    { nombre: 'Andrea Olivetto (Andre)',    email: 'administracion@grupodos57.com.ar',  telefono: '351 221-3138', rol: 'ADMIN', empresa_id: dos57.id },
+    {
+      nombre: 'Mayra Ontivero', email: 'mayra.dos57@gmail.com', telefono: '351 706-2733', rol: 'ADMIN', empresa_id: dos57.id,
+      accesoExtra: [{ empresa_id: enjoy.id, rol: 'ADMIN' }],
+    },
+
+    // ── DOS57 — operadores ──────────────────────────────────────────────────────
+    { nombre: 'Jazmín Valdivia (Jaz)', email: 'jazminvaldivia.dos57@gmail.com', telefono: '351 594-6637', rol: 'OPERADOR', empresa_id: dos57.id },
+
+    // ── Enjoy — admins ──────────────────────────────────────────────────────────
+    { nombre: 'Christian Xinos (Chino)',        email: 'christianxinos@gmail.com',            telefono: '351 800-5952', rol: 'ADMIN', empresa_id: enjoy.id },
+    { nombre: 'Malena Perez Estevez',           email: 'envios.enjoyproducciones@gmail.com',  telefono: '351 386-3241', rol: 'ADMIN', empresa_id: enjoy.id },
+
+    // ── Enjoy — operadores ──────────────────────────────────────────────────────
+    { nombre: 'Victoria Almada',   email: 'victoriaalmada@gmail.com',   telefono: '351 208-1470', rol: 'OPERADOR', empresa_id: enjoy.id },
+    { nombre: 'Daniel Yanello',    email: 'danielyanello93@gmail.com',  telefono: '351 398-0601', rol: 'OPERADOR', empresa_id: enjoy.id },
+  ];
+
+  const passwordHashInicial = await bcrypt.hash(PASSWORD_INICIAL, 10);
+
+  for (const u of USUARIOS_REALES) {
+    const usuario = await prisma.usuario.upsert({
+      where:  { email: u.email },
+      update: { nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true },
+      create: {
+        email:         u.email,
+        nombre:        u.nombre,
+        telefono:      u.telefono ?? null,
+        password_hash: passwordHashInicial,
+        rol:           u.rol,
+        empresa_id:    u.empresa_id,
+      },
+    });
+
+    if (u.empresa_id !== null) {
+      await prisma.usuarioEmpresaAcceso.upsert({
+        where:  { usuario_id_empresa_id: { usuario_id: usuario.id, empresa_id: u.empresa_id } },
+        update: {},
+        create: { usuario_id: usuario.id, empresa_id: u.empresa_id },
+      });
+    }
+
+    for (const extra of u.accesoExtra ?? []) {
+      await prisma.usuarioEmpresaAcceso.upsert({
+        where:  { usuario_id_empresa_id: { usuario_id: usuario.id, empresa_id: extra.empresa_id } },
+        update: {},
+        create: { usuario_id: usuario.id, empresa_id: extra.empresa_id },
+      });
+    }
+
+    console.log(`✓ Usuario "${u.nombre}" (${u.email}) — ${u.rol}${u.empresa_id === null ? ' [global]' : ''}`);
+  }
+
   // ── Backfill: usuarios no-admin sin UsuarioEmpresaAcceso ────────────────────
   // Cubre usuarios que ya existían en la base antes de la migración a
   // multitenancy y quedaron sin ninguna empresa asignada (no podían loguearse).

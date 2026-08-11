@@ -1,7 +1,7 @@
 import { CSS } from './shared';
 
 export interface LiquidacionPdfData {
-  empleado: { nombre: string; apellido: string; dni: string; categoria: string };
+  empleado: { nombre: string; apellido: string; dni: string | null; categoria: string };
   evento_nombre: string | null;
   fecha_desde: Date;
   fecha_hasta: Date;
@@ -56,7 +56,7 @@ export function templateLiquidacion(d: LiquidacionPdfData): string {
   <h1>Liquidación de haberes</h1>
   <div class="info-grid">
     <span>Empleado: <strong>${d.empleado.apellido}, ${d.empleado.nombre}</strong></span>
-    <span>DNI: <strong>${d.empleado.dni}</strong></span>
+    <span>DNI: <strong>${d.empleado.dni ?? '-'}</strong></span>
     <span>Categoría: <strong>${d.empleado.categoria}</strong></span>
   </div>
   <div class="info-grid">

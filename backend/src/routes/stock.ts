@@ -32,8 +32,8 @@ router.use(tenantMiddleware);
 router.get('/productos',                   asyncHandler(listProductos));
 router.get('/productos/:id',               asyncHandler(getProducto));
 router.get('/productos/:id/foto',          asyncHandler(getFoto));
-router.post('/productos',    requireRole('OPERADOR'), asyncHandler(createProducto));
-router.put('/productos/:id', requireRole('OPERADOR'), asyncHandler(updateProducto));
+router.post('/productos',    requireRole('ADMIN'), asyncHandler(createProducto));
+router.put('/productos/:id', requireRole('ADMIN'), asyncHandler(updateProducto));
 router.delete('/productos/:id', requireRole('ADMIN'), asyncHandler(deleteProducto));
 
 // ── Categorías ────────────────────────────────────────────────────────────────
@@ -66,18 +66,18 @@ router.post('/importar/foto/:id', requireRole('OPERADOR'), uploadFoto.single('fo
 
 // ── Camiones ──────────────────────────────────────────────────────────────────
 router.get('/camiones',           asyncHandler(listCamiones));
-router.post('/camiones',          requireRole('OPERADOR'), asyncHandler(createCamion));
-router.put('/camiones/:id',       requireRole('OPERADOR'), asyncHandler(updateCamion));
-router.delete('/camiones/:id',    requireRole('OPERADOR'), asyncHandler(deleteCamion));
+router.post('/camiones',          requireRole('ADMIN'), asyncHandler(createCamion));
+router.put('/camiones/:id',       requireRole('ADMIN'), asyncHandler(updateCamion));
+router.delete('/camiones/:id',    requireRole('ADMIN'), asyncHandler(deleteCamion));
 
 // ── Cunas ─────────────────────────────────────────────────────────────────────
 router.get('/cunas',                       asyncHandler(listCunas));
 router.get('/cunas/:id',                   asyncHandler(getCuna));
-router.post('/cunas',                      requireRole('OPERADOR'), asyncHandler(createCuna));
-router.put('/cunas/:id',                   requireRole('OPERADOR'), asyncHandler(updateCuna));
-router.post('/cunas/:id/productos',        requireRole('OPERADOR'), asyncHandler(addProductoCuna));
-router.delete('/cunas/:id/productos/:productoId', requireRole('OPERADOR'), asyncHandler(removeProductoCuna));
-router.delete('/cunas/:id',                requireRole('OPERADOR'), asyncHandler(deleteCuna));
+router.post('/cunas',                      requireRole('ADMIN'), asyncHandler(createCuna));
+router.put('/cunas/:id',                   requireRole('ADMIN'), asyncHandler(updateCuna));
+router.post('/cunas/:id/productos',        requireRole('ADMIN'), asyncHandler(addProductoCuna));
+router.delete('/cunas/:id/productos/:productoId', requireRole('ADMIN'), asyncHandler(removeProductoCuna));
+router.delete('/cunas/:id',                requireRole('ADMIN'), asyncHandler(deleteCuna));
 
 export default router;
 
