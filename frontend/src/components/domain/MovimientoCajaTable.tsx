@@ -361,7 +361,7 @@ interface Props {
 }
 
 export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdit }: Props) {
-  const { data: movimientos = [], isLoading } = useMovimientosCaja(cuentaId);
+  const { data: movimientos = [], isLoading } = useMovimientosCaja(cuentaId, eventoId);
   const createMov = useCreateMovimientoCaja(cuentaId, eventoId);
   const updateMov = useUpdateMovimientoCaja(cuentaId, eventoId);
   const deleteMov = useDeleteMovimientoCaja(cuentaId, eventoId);
@@ -529,7 +529,7 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
           </tbody>
         </table>
 
-        {!newRow && (
+        {canEdit && !newRow && (
           <div className="px-2 py-1.5 border-t border-border bg-gray-50/50">
             <Button
               variant="ghost"

@@ -49,16 +49,10 @@ function mapEvento(e: any) {
 }
 
 export async function list(req: Request, res: Response) {
-  const isAdmin = req.user!.rol === 'ADMIN';
+  // Lectura abierta a todo rol TODOS_MENOS_RESTRINGIDOS (ver requireAnyRole en
+  // routes/eventos.ts) — ya no se filtra por EventoAcceso, ese ACL puntual
+  // quedó reservado para uso futuro (matriz de permisos: página vs botón).
   const where: Prisma.EventoWhereInput = { ...withTenant(req.empresaId!), deleted_at: null };
-
-  if (!isAdmin) {
-    const accesos = await (prisma as any).eventoAcceso.findMany({
-      where:  { usuario_id: req.user!.id },
-      select: { evento_id: true },
-    });
-    where.id = { in: accesos.map((a: any) => a.evento_id) };
-  }
 
   const eventos = await prisma.evento.findMany({
     where,

@@ -446,6 +446,9 @@ export interface CuentaBancaria {
   saldo_inicial: number;
   // Solo presente en /api/cuentas (listado de empresa) — saldo actual calculado.
   saldo_actual?: number;
+  // Solo presente en GET /api/eventos/:id/cuentas — true si la cuenta es de
+  // empresa (evento_id null) vinculada vía EventoCuenta, no propia del evento.
+  vinculada?:    boolean;
   created_at:    string;
   updated_at:    string;
   deleted_at:    string | null;
@@ -465,6 +468,10 @@ export interface MovimientoOrigen {
 export interface MovimientoCaja {
   id:                   number;
   cuenta_id:            number;
+  // Evento en cuyo contexto se cargó — null si no está atado a ningún evento
+  // (ej. movimiento cargado desde el detalle de cuenta en Caja Global).
+  evento_id?:           number | null;
+  evento?:              { id: number; nombre: string } | null;
   fecha:                string | null;
   descripcion:          string | null;
   debe:                 number;

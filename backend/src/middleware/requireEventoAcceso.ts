@@ -1,29 +1,22 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { prisma } from '../lib/prisma';
 
-type GetEventoIdFn = (req: Request) => Promise<number | null>;
-
-const ROL_LEVEL: Record<'VIEWER' | 'OPERADOR' | 'ADMIN', number> = { VIEWER: 1, OPERADOR: 2, ADMIN: 3 };
-
-export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler {
+// Único uso restante: facturas.ts (Facturas es SOLO_ADMIN de todos modos, así
+// que esto sólo aplica cuando el usuario ya es ADMIN — bypass inmediato — o
+// cuando hace falta el 403 explícito "Sin acceso a este evento" en vez de un
+// 404 genérico). El resto de los módulos (eventos, movimientos, caja, ficha,
+// comidas, echeqs, stock) dejaron de usar el ACL per-evento: la lectura es
+// TODOS_MENOS_RESTRINGIDOS y la escritura se gatea por rol global
+// (ver requireRole.ts) — el control granular vive en botones/tabs del
+// frontend, no en el acceso a la página (matriz de permisos).
+export function requireEventoAcceso(): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // Global ADMIN always has access
     if (req.user!.rol === 'ADMIN') {
       next(); return;
     }
 
-    const eventoId = getEventoId
-      ? await getEventoId(req)
-      : Number(req.params.id) || null;
-
-    if (!eventoId) {
-      // Recurso sin evento asociado (ej: cuenta de caja de empresa, sin
-      // evento_id) — no hay ACL de evento que aplicar. El controlador se
-      // encarga de validar tenant/existencia; requireEventoRole cae al rol
-      // global del usuario en ese caso.
-      next();
-      return;
-    }
+    const eventoId = Number(req.params.id) || null;
+    if (!eventoId) { next(); return; }
 
     const acceso = await (prisma as any).eventoAcceso.findUnique({
       where: { usuario_id_evento_id: { usuario_id: req.user!.id, evento_id: eventoId } },
@@ -34,99 +27,6 @@ export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler
       return;
     }
 
-    req.eventoRol = acceso.rol;
     next();
   };
 }
-
-// Call after requireEventoAcceso — blocks VIEWER event roles from write operations.
-// Si no hay ACL de evento (recurso de empresa sin evento_id), usa el rol global.
-export function requireEventoRole(minRol: 'OPERADOR' | 'ADMIN'): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (req.user!.rol === 'ADMIN') { next(); return; }
-
-    if (req.eventoRol) {
-      if (minRol === 'OPERADOR' && req.eventoRol === 'VIEWER') {
-        res.status(403).json({ error: 'Sin permisos de escritura en este evento' });
-        return;
-      }
-      next();
-      return;
-    }
-
-    // JORNALERO/PANOLERO no forman parte de esta jerarquía (quedan bloqueados
-    // antes de llegar acá por restrictedRoleGate.ts) — 0 por defecto.
-    const nivelUsuario = ROL_LEVEL[req.user!.rol as 'VIEWER' | 'OPERADOR' | 'ADMIN'] ?? 0;
-    if (nivelUsuario < ROL_LEVEL[minRol]) {
-      res.status(403).json({ error: 'Sin permisos suficientes' });
-      return;
-    }
-    next();
-  };
-}
-
-// ── Lookup helpers for resource-based routes ──────────────────────────────────
-
-export const byMovimientoId: GetEventoIdFn = async (req) => {
-  const m = await (prisma as any).movimiento.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return m?.evento_id ?? null;
-};
-
-export const byCuentaId: GetEventoIdFn = async (req) => {
-  const c = await (prisma as any).cuentaBancaria.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return c?.evento_id ?? null;
-};
-
-export const byMovCajaId: GetEventoIdFn = async (req) => {
-  const mc = await (prisma as any).movimientoCaja.findFirst({
-    where:   { id: Number(req.params.id) },
-    include: { cuenta: { select: { evento_id: true } } },
-  });
-  return mc?.cuenta?.evento_id ?? null;
-};
-
-export const byEcheqId: GetEventoIdFn = async (req) => {
-  const e = await (prisma as any).echeq.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return e?.evento_id ?? null;
-};
-
-export const byRubroEventoId: GetEventoIdFn = async (req) => {
-  const re = await (prisma as any).rubroEvento.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return re?.evento_id ?? null;
-};
-
-export const byPedidoItemId: GetEventoIdFn = async (req) => {
-  const pi = await (prisma as any).pedidoItem.findFirst({
-    where:   { id: Number(req.params.id) },
-    include: { rubro_evento: { select: { evento_id: true } } },
-  });
-  return pi?.rubro_evento?.evento_id ?? null;
-};
-
-export const byPedidoComidaId: GetEventoIdFn = async (req) => {
-  const pc = await (prisma as any).pedidoComida.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return pc?.evento_id ?? null;
-};
-
-export const byLineaComidaId: GetEventoIdFn = async (req) => {
-  const lc = await (prisma as any).lineaComida.findFirst({
-    where:   { id: Number(req.params.id) },
-    include: { pedido_comida: { select: { evento_id: true } } },
-  });
-  return lc?.pedido_comida?.evento_id ?? null;
-};

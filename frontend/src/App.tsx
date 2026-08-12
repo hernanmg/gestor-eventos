@@ -5,6 +5,7 @@ import LoginPage            from '@/pages/Login';
 import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
 import MacroPage            from '@/pages/Macro';
 import CajaGlobalPage       from '@/pages/Caja';
+import CuentaDetallePage    from '@/pages/Caja/CuentaDetalle';
 import CalendarioPage       from '@/pages/Calendario';
 import EventosPage          from '@/pages/Eventos';
 import PreMacroPage         from '@/pages/PreMacro';
@@ -55,6 +56,7 @@ export default function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/macro"         element={<MacroPage />} />
             <Route path="/caja"          element={<CajaGlobalPage />} />
+            <Route path="/caja/:cuentaId" element={<CuentaDetallePage />} />
             <Route path="/dashboard"     element={<HomeRedirect />} />
             <Route path="/calendario"    element={<CalendarioPage />} />
             <Route path="/eventos"                              element={<EventosPage />} />

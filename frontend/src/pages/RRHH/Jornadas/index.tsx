@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Check, X as XIcon, Trash2 } from 'lucide-react';
 import {
   useJornadas, useCreateJornada, useAprobarJornada, useRechazarJornada, useDeleteJornada, useEmpleados,
@@ -196,10 +197,28 @@ function RechazarDialog({ jornada, onClose }: { jornada: Jornada | null; onClose
 // ── Página ────────────────────────────────────────────────────────────────────
 
 export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?: number | null }) {
+  const [searchParams] = useSearchParams();
   const [filtros, setFiltros] = useState<JornadaFiltros>({});
   useEffect(() => {
     if (empleadoIdInicial != null) setFiltros(p => ({ ...p, empleado_id: empleadoIdInicial }));
   }, [empleadoIdInicial]);
+
+  // Deep-link desde el Calendario ("N jornadas pendientes — [fecha]"):
+  // ?fecha=YYYY-MM-DD&estado=PENDIENTE — precarga el filtro al montar.
+  useEffect(() => {
+    const fecha  = searchParams.get('fecha');
+    const estado = searchParams.get('estado');
+    const estadoValido = estado && estado in ESTADO_LABEL ? (estado as EstadoJornada) : undefined;
+    if (fecha || estadoValido) {
+      setFiltros(p => ({
+        ...p,
+        ...(fecha        ? { desde: fecha, hasta: fecha } : {}),
+        ...(estadoValido ? { estado: estadoValido } : {}),
+      }));
+    }
+    // Sólo al montar — no queremos pisar los filtros si el usuario los cambia a mano después.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: jornadas = [], isLoading } = useJornadas(filtros);
   const { data: empleados = [] } = useEmpleados();

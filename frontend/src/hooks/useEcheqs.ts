@@ -90,7 +90,7 @@ export function useCobrarEcheq(eventoId: number) {
     }) => api.patch(`/echeqs/${id}/cobrar`, { cuenta_id, fecha_cobro_real, referencia }).then(r => r.data),
     onSuccess: (_data, { cuenta_id }) => {
       qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
-      qc.invalidateQueries({ queryKey: movCajaKey(cuenta_id) });
+      qc.invalidateQueries({ queryKey: movCajaKey(cuenta_id, eventoId) });
     },
   });
 }

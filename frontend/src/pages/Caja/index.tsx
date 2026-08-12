@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Wallet, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Wallet, Plus, ChevronRight } from 'lucide-react';
 import { useCuentasEmpresa, useCreateCuentaEmpresa } from '@/hooks/useCaja';
 import { useEventos } from '@/hooks/useEvento';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/formatters';
@@ -100,6 +102,9 @@ function NuevaCuentaEmpresaDialog({ open, onClose }: { open: boolean; onClose: (
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function CajaGlobalPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR'; // crear cuenta: ADMIN_OPERADOR (matriz de permisos)
   const [eventoFiltro, setEventoFiltro] = useState<'todas' | 'empresa' | number>('todas');
   const [nuevaOpen,    setNuevaOpen]    = useState(false);
 
@@ -129,9 +134,11 @@ export default function CajaGlobalPage() {
           <Wallet size={22} />
           Caja Global
         </h1>
-        <Button size="sm" onClick={() => setNuevaOpen(true)}>
-          <Plus size={14} className="mr-1.5" /> Nueva cuenta
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => setNuevaOpen(true)}>
+            <Plus size={14} className="mr-1.5" /> Nueva cuenta
+          </Button>
+        )}
       </div>
       <p className="text-sm text-muted-foreground -mt-2">
         Todas las cuentas de la empresa: las cajas propias de cada evento y las cajas de empresa
@@ -184,11 +191,16 @@ export default function CajaGlobalPage() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Moneda</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Saldo actual</th>
+                <th className="px-3 py-2 w-6" />
               </tr>
             </thead>
             <tbody className="divide-y">
               {cuentasFiltradas.map(c => (
-                <tr key={c.id} className="hover:bg-muted/20">
+                <tr
+                  key={c.id}
+                  className="hover:bg-muted/20 cursor-pointer"
+                  onClick={() => navigate(`/caja/${c.id}`)}
+                >
                   <td className="px-3 py-2.5 font-medium">{c.nombre}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">
                     {c.evento ? c.evento.nombre : <span className="italic">— Empresa —</span>}
@@ -197,6 +209,9 @@ export default function CajaGlobalPage() {
                   <td className="px-3 py-2.5">{c.moneda}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-medium">
                     {formatCurrency(c.saldo_actual ?? c.saldo_inicial, c.moneda)}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground">
+                    <ChevronRight size={14} />
                   </td>
                 </tr>
               ))}

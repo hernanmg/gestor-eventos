@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { useProveedorDetalle, useUpdateProveedor } from '@/hooks/useProveedores';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -108,6 +109,8 @@ export default function ProveedorDetallePage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
   const provId     = Number(id);
+  const { user }   = useAuth();
+  const isAdmin    = user?.rol === 'ADMIN'; // ABM de proveedores es exclusivo de ADMIN (matriz de permisos)
   const [histTab,  setHistTab]  = useState<HistorialTab>('movimientos');
   const [editOpen, setEditOpen] = useState(false);
 
@@ -170,9 +173,11 @@ export default function ProveedorDetallePage() {
             <p className="text-sm text-muted-foreground mt-1">{proveedor.notas}</p>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-          <Pencil size={13} className="mr-1.5" /> Editar
-        </Button>
+        {isAdmin && (
+          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+            <Pencil size={13} className="mr-1.5" /> Editar
+          </Button>
+        )}
       </div>
 
       {/* Stats */}

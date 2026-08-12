@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
-import { requireRole } from '../middleware/requireRole';
-import { requireEventoAcceso, requireEventoRole, byMovimientoId } from '../middleware/requireEventoAcceso';
+import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import { update, remove, reordenar, vincularProveedor, listMacro, exportarMacro } from '../controllers/movimientos.controller';
 
@@ -17,10 +16,12 @@ router.use(auth);
 router.get('/exportar', asyncHandler(exportarMacro));
 router.get('/',         asyncHandler(listMacro));
 
-router.post('/vincular-proveedor', tenantMiddleware, requireRole('OPERADOR'), asyncHandler(vincularProveedor));
+router.post('/vincular-proveedor', tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(vincularProveedor));
 
-router.put('/:id',         tenantMiddleware, requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(update));
-router.delete('/:id',      tenantMiddleware, requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(remove));
-router.patch('/:id/orden', tenantMiddleware, requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(reordenar));
+// Escritura por rol global — cada controller ya valida tenant/existencia con
+// withTenant(), así que no hace falta el ACL puntual de EventoAcceso acá.
+router.put('/:id',         tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(update));
+router.delete('/:id',      tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(remove));
+router.patch('/:id/orden', tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(reordenar));
 
 export default router;

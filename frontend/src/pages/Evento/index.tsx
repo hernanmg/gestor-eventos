@@ -219,20 +219,26 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
 
 type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'COMIDAS' | 'AUDITORIA';
 
-const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
+// adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
+// ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
+// Comidas (matriz de permisos). Esto se evalúa siempre a partir de
+// useAuth() — no depende de la ruta de navegación (sidebar, calendario, etc.),
+// así que da lo mismo cómo se llegó a la página.
+const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
   { key: 'FICHA',         label: 'Ficha'         },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
-  { key: 'CONCILIATORIA', label: 'Conciliatoria' },
-  { key: 'ECHEQS',        label: 'Echeqs'        },
+  { key: 'CONCILIATORIA', label: 'Conciliatoria', adminOnly: true },
+  { key: 'ECHEQS',        label: 'Echeqs',        adminOnly: true },
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
-  { key: 'FACTURAS',      label: 'Facturas'      },
   { key: 'COMIDAS',       label: 'Comidas'       },
+  { key: 'FACTURAS',      label: 'Facturas',      adminOnly: true },
+  { key: 'AUDITORIA',     label: 'Auditoría',     adminOnly: true },
 ];
 
-const MAIN_TAB_KEYS: MainTab[] = ['RESUMEN', 'FICHA', 'EGRESO', 'INGRESO', 'CAJA', 'CONCILIATORIA', 'ECHEQS', 'STOCK', 'FACTURAS', 'COMIDAS', 'AUDITORIA'];
+const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
 
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
@@ -253,8 +259,15 @@ export default function EventoPage() {
   const { data: sinProveedor } = useSinProveedor(eventoId);
   const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
+  const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const isAdmin  = user?.rol === 'ADMIN';
+  const MAIN_TABS = MAIN_TABS_ALL.filter(t => !t.adminOnly || isAdmin);
+  const MAIN_TABS_KEYS_VISIBLES = MAIN_TABS.map(t => t.key);
+
   const tabParam = searchParams.get('tab')?.toUpperCase() as MainTab | null;
-  const [mainTab, setMainTab] = useState<MainTab>(tabParam && MAIN_TAB_KEYS.includes(tabParam) ? tabParam : 'RESUMEN');
+  const [mainTab, setMainTab] = useState<MainTab>(
+    tabParam && MAIN_TAB_KEYS.includes(tabParam) && MAIN_TABS_KEYS_VISIBLES.includes(tabParam) ? tabParam : 'RESUMEN',
+  );
   const [subTab,  setSubTab]  = useState<number | null>(null);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
   // Deep-link "Rubro: X" desde la tab Stock → tab Ficha filtrada por ese rubro
@@ -263,12 +276,6 @@ export default function EventoPage() {
     setFichaBusqueda(rubroNombre);
     setMainTab('FICHA');
   };
-
-  const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
-  const isAdmin  = user?.rol === 'ADMIN';
-  const MAIN_TABS = isAdmin
-    ? [...MAIN_TABS_BASE, { key: 'AUDITORIA' as MainTab, label: 'Auditoría' }]
-    : MAIN_TABS_BASE;
 
   const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
   const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');

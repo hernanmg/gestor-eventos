@@ -27,8 +27,8 @@ router.use(tenantMiddleware);
 // resolveEmpleadoScope() en el controller (matriz de permisos).
 
 // ── Empleados ─────────────────────────────────────────────────────────────────
-router.get('/empleados',                asyncHandler(listEmpleados));
-router.get('/empleados/:id',             asyncHandler(getEmpleado));
+router.get('/empleados',                requireRole('ADMIN'), asyncHandler(listEmpleados));
+router.get('/empleados/:id',             requireRole('ADMIN'), asyncHandler(getEmpleado));
 router.post('/empleados',                requireRole('ADMIN'), asyncHandler(createEmpleado));
 router.put('/empleados/:id',             requireRole('ADMIN'), asyncHandler(updateEmpleado));
 router.delete('/empleados/:id',          requireRole('ADMIN'), asyncHandler(deleteEmpleado));

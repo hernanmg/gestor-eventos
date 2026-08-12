@@ -185,7 +185,7 @@ export default function ProveedoresPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Proveedores</h1>
-        {(user?.rol === 'ADMIN' || user?.rol === 'OPERADOR') && (
+        {user?.rol === 'ADMIN' && (
           <Button size="sm" onClick={openNew}>
             <Plus size={14} className="mr-1.5" /> Nuevo proveedor
           </Button>
@@ -273,7 +273,7 @@ export default function ProveedoresPage() {
                       className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition"
                       onClick={e => e.stopPropagation()}
                     >
-                      {(user?.rol === 'ADMIN' || user?.rol === 'OPERADOR') && (
+                      {user?.rol === 'ADMIN' && (
                         <>
                           <button
                             onClick={() => openEdit(p)}

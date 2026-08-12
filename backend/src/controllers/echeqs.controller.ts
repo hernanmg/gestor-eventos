@@ -7,6 +7,7 @@ import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
+import { resolveCuentaIdsEvento } from './caja.controller';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -255,9 +256,10 @@ export async function cobrarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'Solo se pueden cobrar echeqs en estado PENDIENTE' }); return;
   }
 
-  const cuenta = await prisma.cuentaBancaria.findFirst({
-    where: { id: parsed.data.cuenta_id, evento_id: echeq.evento_id, deleted_at: null },
-  });
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(echeq.evento_id);
+  const cuenta = [...propiasIds, ...vinculadaIds].includes(parsed.data.cuenta_id)
+    ? await prisma.cuentaBancaria.findFirst({ where: { id: parsed.data.cuenta_id, deleted_at: null } })
+    : null;
   if (!cuenta) { res.status(400).json({ error: 'Cuenta bancaria no encontrada en este evento' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -270,6 +272,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
     const cajaMov = await tx.movimientoCaja.create({
       data: {
         cuenta_id:   parsed.data.cuenta_id,
+        evento_id:   echeq.evento_id,
         fecha:       parsed.data.fecha_cobro_real ? new Date(parsed.data.fecha_cobro_real) : new Date(),
         descripcion: `Cobro echeq ${echeq.numero} — ${echeq.razon_social}`,
         debe:        Number(echeq.importe),

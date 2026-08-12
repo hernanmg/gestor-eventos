@@ -2,8 +2,7 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
-import { requireRole } from '../middleware/requireRole';
-import { requireEventoAcceso, requireEventoRole } from '../middleware/requireEventoAcceso';
+import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   listProductos, getProducto, createProducto, updateProducto, deleteProducto,
@@ -85,5 +84,5 @@ export default router;
 export const eventoStockRouter = Router({ mergeParams: true });
 eventoStockRouter.use(auth);
 eventoStockRouter.use(tenantMiddleware);
-eventoStockRouter.get('/',  requireEventoAcceso(), asyncHandler(getEventoStock));
-eventoStockRouter.post('/', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(asignarProducto));
+eventoStockRouter.get('/',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getEventoStock));
+eventoStockRouter.post('/', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(asignarProducto));

@@ -349,14 +349,20 @@ export async function getCalendario(req: Request, res: Response) {
   const hoy = new Date();
   const hoyUTC = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()));
 
+  // JORNADA y LIQUIDACION enlazan a /rrhh, exclusivo de ADMIN (matriz de
+  // permisos) — no tiene sentido mostrárselos a OPERADOR/VIEWER: verían un
+  // item "accionable" que al hacer click los rebota (RRHHPage → /dashboard →
+  // /eventos) sin explicación. Se filtran acá, en el origen.
+  const isAdmin = req.user!.rol === 'ADMIN';
+
   const tareas: Promise<CalendarioItem[]>[] = [];
   if (tiposActivos.has('EVENTO'))        tareas.push(resolveEventos(empresaFiltro, desde, hasta));
   if (tiposActivos.has('FACTURA_VENCE')) tareas.push(resolveFacturas(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('ECHEQ_COBRO'))   tareas.push(resolveEcheqs(empresaFiltro, desde, hasta, hoyUTC));
-  if (tiposActivos.has('JORNADA'))       tareas.push(resolveJornadas(empresaFiltro, desde, hasta));
+  if (tiposActivos.has('JORNADA') && isAdmin)       tareas.push(resolveJornadas(empresaFiltro, desde, hasta));
   if (tiposActivos.has('PARTE_DIARIO'))  tareas.push(resolvePartesDiario(empresaFiltro, desde, hasta));
   if (tiposActivos.has('STOCK_RETORNO')) tareas.push(resolveStockRetornos(empresaFiltro, desde, hasta));
-  if (tiposActivos.has('LIQUIDACION'))   tareas.push(resolveLiquidaciones(empresaFiltro, desde, hasta));
+  if (tiposActivos.has('LIQUIDACION') && isAdmin)   tareas.push(resolveLiquidaciones(empresaFiltro, desde, hasta));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

@@ -316,6 +316,8 @@ model Evento {
 
   movimientos            Movimiento[]
   cuentas                CuentaBancaria[]
+  cuentas_vinculadas     EventoCuenta[]
+  movimientos_caja       MovimientoCaja[]
   echeqs                 Echeq[]
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
@@ -496,7 +498,24 @@ model CuentaBancaria {
   updated_at    DateTime   @updatedAt
   deleted_at    DateTime?
 
-  movimientos MovimientoCaja[]
+  movimientos       MovimientoCaja[]
+  eventos_vinculados EventoCuenta[]
+}
+
+// Vínculo muchos-a-muchos: una cuenta de empresa (evento_id null, ej. "Caja
+// Pollo", "Caja Jazmín") puede además operarse desde uno o más eventos sin
+// dejar de aparecer en Caja Global — a diferencia de CuentaBancaria.evento_id
+// (dueño único, 1 evento). No se usa para cuentas ya propias de un evento.
+model EventoCuenta {
+  id         Int            @id @default(autoincrement())
+  evento_id  Int
+  evento     Evento         @relation(fields: [evento_id], references: [id])
+  cuenta_id  Int
+  cuenta     CuentaBancaria @relation(fields: [cuenta_id], references: [id])
+  created_at DateTime       @default(now())
+  created_by Int?
+
+  @@unique([evento_id, cuenta_id])
 }
 
 // Saldo corriente calculado por el backend — nunca editable directamente.
@@ -505,6 +524,14 @@ model MovimientoCaja {
   id                   Int            @id @default(autoincrement())
   cuenta_id            Int
   cuenta               CuentaBancaria @relation(fields: [cuenta_id], references: [id])
+  // Evento en cuyo contexto se cargó este movimiento — necesario porque una
+  // cuenta puede estar vinculada a varios eventos a la vez (ver EventoCuenta):
+  // sin esto, la tab Caja de un evento mostraría movimientos de otros
+  // eventos que comparten la misma cuenta. Null = movimiento cargado sin
+  // contexto de evento (ej. desde Caja Global, o histórico pre-EventoCuenta
+  // en una cuenta que hoy no pertenece a ningún evento).
+  evento_id            Int?
+  evento               Evento?        @relation(fields: [evento_id], references: [id])
   fecha                DateTime?
   descripcion          String?
   debe                 Decimal        @default(0) @db.Decimal(15, 2)

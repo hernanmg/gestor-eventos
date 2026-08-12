@@ -68,7 +68,9 @@ function getDetailLink(item: CalendarioItem): string {
     case 'EVENTO':        return `/eventos/${item.id.replace('evento-', '')}`;
     case 'FACTURA_VENCE':  return `/facturas/${item.id.replace('factura-', '')}`;
     case 'ECHEQ_COBRO':    return m.evento_id ? `/eventos/${m.evento_id}?tab=echeqs` : '/eventos';
-    case 'JORNADA':        return `/rrhh?tab=jornadas&fecha=${item.fecha.slice(0, 10)}`;
+    // Los items JORNADA del calendario son siempre pendientes de aprobación
+    // (ver resolveJornadas() en calendario.controller.ts) — se filtra directo.
+    case 'JORNADA':        return `/rrhh?tab=jornadas&fecha=${item.fecha.slice(0, 10)}&estado=PENDIENTE`;
     case 'PARTE_DIARIO':   return `/parte-diario?fecha=${item.fecha.slice(0, 10)}`;
     case 'STOCK_RETORNO':  return m.evento_id ? `/eventos/${m.evento_id}?tab=stock` : '/eventos';
     case 'LIQUIDACION':    return '/rrhh?tab=liquidaciones';
