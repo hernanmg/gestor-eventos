@@ -304,6 +304,8 @@ model Evento {
   nombre       String
   fecha_inicio DateTime?
   fecha_fin    DateTime?
+  dias_montaje    Int          @default(0) // días de armado previos a fecha_inicio
+  dias_desmontaje Int          @default(0) // días de desarmado posteriores a fecha_fin
   estado       EstadoEvento @default(ACTIVO)
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
   socios       Json         @default("[]")

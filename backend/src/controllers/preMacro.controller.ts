@@ -310,6 +310,8 @@ export async function confirmar(req: Request, res: Response) {
         nombre:       preMacro.nombre_evento!,
         fecha_inicio: preMacro.fecha_inicio,
         fecha_fin:    preMacro.fecha_fin,
+        dias_montaje:    preMacro.dias_montaje ?? 0,
+        dias_desmontaje: preMacro.dias_desmontaje ?? 0,
         socios,
         moneda_base:  preMacro.moneda,
         created_by:   req.user!.id,

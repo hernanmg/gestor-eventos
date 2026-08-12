@@ -14,7 +14,7 @@ import {
   GripVertical, Plus, Trash2, ChevronDown, ChevronRight,
   FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, subDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   useFichaEvento, useInicializarFicha, useExportarFicha,
@@ -228,6 +228,21 @@ function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEv
 
 // ── Stock propio (fuentes mixtas) ─────────────────────────────────────────────
 
+// Las fechas de negocio llegan del backend como medianoche UTC (ver
+// formatDate en lib/formatters.ts) — subDays/addDays de date-fns operan sobre
+// los componentes LOCALES del Date, así que hay que anclar el cálculo al día
+// calendario (UTC) en vez de a new Date(iso), que en timezones negativas
+// (ej. Argentina, UTC-3) representa el día anterior.
+function shiftDateOnly(dateStr: string, dias: number, direction: 1 | -1): string {
+  const [y, m, d] = dateStr.split('T')[0].split('-').map(Number);
+  const anchor  = new Date(y, m - 1, d);
+  const shifted = dias === 0 ? anchor : direction < 0 ? subDays(anchor, dias) : addDays(anchor, dias);
+  const yyyy = shifted.getFullYear();
+  const mm   = String(shifted.getMonth() + 1).padStart(2, '0');
+  const dd   = String(shifted.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 interface AsignarStockForm {
   producto:      ProductoLite | null;
   cantidad:      number;
@@ -242,8 +257,8 @@ function AsignarStockDialog({ eventoId, evento, rubroEvento, onClose }: {
   rubroEvento: RubroEvento;
   onClose:     () => void;
 }) {
-  const defaultSalida  = evento.fecha_inicio ? evento.fecha_inicio.split('T')[0] : '';
-  const defaultRetorno = evento.fecha_fin    ? evento.fecha_fin.split('T')[0]    : '';
+  const defaultSalida  = evento.fecha_inicio ? shiftDateOnly(evento.fecha_inicio, evento.dias_montaje    ?? 0, -1) : '';
+  const defaultRetorno = evento.fecha_fin    ? shiftDateOnly(evento.fecha_fin,    evento.dias_desmontaje ?? 0,  1) : '';
 
   const [form, setForm] = useState<AsignarStockForm>({
     producto: null, cantidad: 1, fecha_salida: defaultSalida, fecha_retorno: defaultRetorno, notas: '',

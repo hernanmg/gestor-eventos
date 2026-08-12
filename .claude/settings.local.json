@@ -44,7 +44,8 @@
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/auth/me)",
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/switch-empresa -H 'Content-Type: application/json' -d '{\"empresaId\":1}')",
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/rubros)",
-      "PowerShell(Get-CimInstance *)"
+      "PowerShell(Get-CimInstance *)",
+      "mcp__plugin_engram_engram__mem_get_observation"
     ]
   }
 }

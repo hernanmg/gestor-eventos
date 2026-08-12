@@ -179,18 +179,20 @@ export interface Socio {
 }
 
 export interface Evento {
-  id:           number;
-  nombre:       string;
-  fecha_inicio: string | null;
-  fecha_fin:    string | null;
-  estado:       EstadoEvento;
-  socios:       Socio[];
-  moneda_base:  Moneda;
-  created_at:   string;
-  updated_at:   string;
-  deleted_at:   string | null;
-  created_by:   number | null;
-  updated_by:   number | null;
+  id:              number;
+  nombre:          string;
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  dias_montaje:    number;
+  dias_desmontaje: number;
+  estado:          EstadoEvento;
+  socios:          Socio[];
+  moneda_base:     Moneda;
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+  created_by:      number | null;
+  updated_by:      number | null;
 }
 
 export interface EventoWithCount extends Evento {
@@ -198,11 +200,13 @@ export interface EventoWithCount extends Evento {
 }
 
 export interface EventoPayload {
-  nombre:       string;
-  fecha_inicio: string | null;
-  fecha_fin:    string | null;
-  socios:       Socio[];
-  moneda_base:  Moneda;
+  nombre:          string;
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  dias_montaje?:   number;
+  dias_desmontaje?: number;
+  socios:          Socio[];
+  moneda_base:     Moneda;
 }
 
 // ── Pre-Macro (wizard de creación de evento) ──────────────────────────────────

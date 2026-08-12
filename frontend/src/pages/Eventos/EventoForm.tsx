@@ -17,9 +17,11 @@ const socioSchema = z.object({
 });
 
 const schema = z.object({
-  nombre:       z.string().min(1, 'El nombre es requerido'),
-  fecha_inicio: z.string().optional(),
-  fecha_fin:    z.string().optional(),
+  nombre:          z.string().min(1, 'El nombre es requerido'),
+  fecha_inicio:    z.string().optional(),
+  fecha_fin:       z.string().optional(),
+  dias_montaje:    z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
+  dias_desmontaje: z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
   moneda_base:  z.enum(['ARS', 'USD']),
   socios:       z.array(socioSchema).default([]),
 }).refine(data => {
@@ -56,9 +58,11 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      nombre:       evento?.nombre       ?? '',
-      fecha_inicio: toDateInputValue(evento?.fecha_inicio),
-      fecha_fin:    toDateInputValue(evento?.fecha_fin),
+      nombre:          evento?.nombre          ?? '',
+      fecha_inicio:    toDateInputValue(evento?.fecha_inicio),
+      fecha_fin:       toDateInputValue(evento?.fecha_fin),
+      dias_montaje:    evento?.dias_montaje    ?? 0,
+      dias_desmontaje: evento?.dias_desmontaje ?? 0,
       moneda_base:  evento?.moneda_base  ?? 'ARS',
       socios:       (evento?.socios as FormData['socios']) ?? [],
     },
@@ -70,9 +74,11 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
 
   const onSubmit = async (data: FormData) => {
     const payload = {
-      nombre:       data.nombre,
-      fecha_inicio: data.fecha_inicio || null,
-      fecha_fin:    data.fecha_fin    || null,
+      nombre:          data.nombre,
+      fecha_inicio:    data.fecha_inicio || null,
+      fecha_fin:       data.fecha_fin    || null,
+      dias_montaje:    data.dias_montaje,
+      dias_desmontaje: data.dias_desmontaje,
       moneda_base:  data.moneda_base  as 'ARS' | 'USD',
       socios:       data.socios,
     };
@@ -111,6 +117,36 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
         <div className="space-y-1">
           <Label htmlFor="fecha_fin">Fecha fin</Label>
           <Input id="fecha_fin" type="date" disabled={isPending} {...register('fecha_fin')} />
+        </div>
+      </div>
+
+      {/* Días de montaje / desmontaje */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="dias_montaje">Días de montaje</Label>
+          <Input
+            id="dias_montaje"
+            type="number"
+            min={0}
+            step={1}
+            disabled={isPending}
+            {...register('dias_montaje')}
+            className={errors.dias_montaje ? 'border-destructive' : ''}
+          />
+          {errors.dias_montaje && <p className="text-xs text-destructive">{errors.dias_montaje.message}</p>}
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="dias_desmontaje">Días de desmontaje</Label>
+          <Input
+            id="dias_desmontaje"
+            type="number"
+            min={0}
+            step={1}
+            disabled={isPending}
+            {...register('dias_desmontaje')}
+            className={errors.dias_desmontaje ? 'border-destructive' : ''}
+          />
+          {errors.dias_desmontaje && <p className="text-xs text-destructive">{errors.dias_desmontaje.message}</p>}
         </div>
       </div>
 

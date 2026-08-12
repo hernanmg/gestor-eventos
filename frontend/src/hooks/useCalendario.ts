@@ -35,7 +35,11 @@ export function useCalendario(desde: string, hasta: string, tipos: Set<TipoCalen
     queryKey:  calendarioKey(desde, hasta, tipos, empresaId),
     queryFn:   () => api.get('/calendario', { params: toParams(desde, hasta, tipos, empresaId) }).then(r => r.data),
     staleTime: 5 * 60 * 1000,
-    enabled:   !!desde && !!hasta,
+    // tipos.size === 0 ("desactivar todos los filtros") no tiene equivalente
+    // en la query string — omitir ?tipos= significa "todos" para el backend,
+    // no "ninguno" — así que ni siquiera se dispara el fetch: sin tipos
+    // seleccionados, el resultado es vacío por definición.
+    enabled:   !!desde && !!hasta && tipos.size > 0,
   });
 }
 

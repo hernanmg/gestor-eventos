@@ -11,20 +11,24 @@ const socioSchema = z.object({
 });
 
 const createSchema = z.object({
-  nombre:       z.string().min(1, 'El nombre es requerido'),
-  fecha_inicio: z.string().nullable().optional(),
-  fecha_fin:    z.string().nullable().optional(),
-  socios:       z.array(socioSchema).default([]),
-  moneda_base:  z.enum(['ARS', 'USD']).default('ARS'),
+  nombre:          z.string().min(1, 'El nombre es requerido'),
+  fecha_inicio:    z.string().nullable().optional(),
+  fecha_fin:       z.string().nullable().optional(),
+  dias_montaje:    z.number().int().nonnegative().optional(),
+  dias_desmontaje: z.number().int().nonnegative().optional(),
+  socios:          z.array(socioSchema).default([]),
+  moneda_base:     z.enum(['ARS', 'USD']).default('ARS'),
 });
 
 const updateSchema = z.object({
-  nombre:       z.string().min(1).optional(),
-  fecha_inicio: z.string().nullable().optional(),
-  fecha_fin:    z.string().nullable().optional(),
-  socios:       z.array(socioSchema).optional(),
-  moneda_base:  z.enum(['ARS', 'USD']).optional(),
-  estado:       z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
+  nombre:          z.string().min(1).optional(),
+  fecha_inicio:    z.string().nullable().optional(),
+  fecha_fin:       z.string().nullable().optional(),
+  dias_montaje:    z.number().int().nonnegative().optional(),
+  dias_desmontaje: z.number().int().nonnegative().optional(),
+  socios:          z.array(socioSchema).optional(),
+  moneda_base:     z.enum(['ARS', 'USD']).optional(),
+  estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
 });
 
 function sociosSumOk(socios: { porcentaje: number }[]): boolean {
@@ -78,7 +82,7 @@ export async function create(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { nombre, fecha_inicio, fecha_fin, socios, moneda_base } = parsed.data;
+  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base } = parsed.data;
   if (!sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -89,8 +93,10 @@ export async function create(req: Request, res: Response) {
       data: {
         ...withTenant(req.empresaId!),
         nombre,
-        fecha_inicio: toDate(fecha_inicio) ?? null,
-        fecha_fin:    toDate(fecha_fin) ?? null,
+        fecha_inicio:    toDate(fecha_inicio) ?? null,
+        fecha_fin:       toDate(fecha_fin) ?? null,
+        dias_montaje:    dias_montaje    ?? 0,
+        dias_desmontaje: dias_desmontaje ?? 0,
         socios,
         moneda_base:  moneda_base as Moneda,
         created_by:   req.user!.id,
@@ -126,7 +132,7 @@ export async function update(req: Request, res: Response) {
   const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const { nombre, fecha_inicio, fecha_fin, socios, moneda_base, estado } = parsed.data;
+  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base, estado } = parsed.data;
   if (socios !== undefined && !sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -136,9 +142,11 @@ export async function update(req: Request, res: Response) {
     const updated = await tx.evento.update({
       where: { id },
       data: {
-        ...(nombre       !== undefined && { nombre }),
-        ...(fecha_inicio !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
-        ...(fecha_fin    !== undefined && { fecha_fin:    toDate(fecha_fin) }),
+        ...(nombre          !== undefined && { nombre }),
+        ...(fecha_inicio    !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
+        ...(fecha_fin       !== undefined && { fecha_fin:    toDate(fecha_fin) }),
+        ...(dias_montaje    !== undefined && { dias_montaje }),
+        ...(dias_desmontaje !== undefined && { dias_desmontaje }),
         ...(socios       !== undefined && { socios }),
         ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
         ...(estado       !== undefined && { estado: estado as EstadoEvento }),
