@@ -13,23 +13,27 @@ import type { CalendarioItem, TipoCalendario } from '@/types';
 // Espejo de COLORES/TIPO_QUERY_MAP en backend/src/controllers/calendario.controller.ts
 
 const TIPO_LABEL: Record<TipoCalendario, string> = {
-  EVENTO:        'Eventos',
-  FACTURA_VENCE: 'Facturas',
-  ECHEQ_COBRO:   'Echeqs',
-  JORNADA:       'Jornadas',
-  PARTE_DIARIO:  'Partes',
-  STOCK_RETORNO: 'Stock',
-  LIQUIDACION:   'Liquidaciones',
+  EVENTO:               'Eventos',
+  FACTURA_VENCE:        'Facturas',
+  ECHEQ_COBRO:          'Echeqs',
+  JORNADA:              'Jornadas',
+  PARTE_DIARIO:         'Partes',
+  STOCK_RETORNO:        'Stock',
+  LIQUIDACION:          'Liquidaciones',
+  RENDICION_PENDIENTE:  'Rendiciones',
+  SALDO_MINIMO:         'Saldo bajo',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
-  EVENTO:        '#1E3A5F',
-  FACTURA_VENCE: '#DC2626',
-  ECHEQ_COBRO:   '#F59E0B',
-  JORNADA:       '#065F46',
-  PARTE_DIARIO:  '#4C1D95',
-  STOCK_RETORNO: '#92400E',
-  LIQUIDACION:   '#374151',
+  EVENTO:               '#1E3A5F',
+  FACTURA_VENCE:        '#DC2626',
+  ECHEQ_COBRO:          '#F59E0B',
+  JORNADA:              '#065F46',
+  PARTE_DIARIO:         '#4C1D95',
+  STOCK_RETORNO:        '#92400E',
+  LIQUIDACION:          '#374151',
+  RENDICION_PENDIENTE:  '#7C3AED',
+  SALDO_MINIMO:         '#DC2626',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -74,6 +78,8 @@ function getDetailLink(item: CalendarioItem): string {
     case 'PARTE_DIARIO':   return `/parte-diario?fecha=${item.fecha.slice(0, 10)}`;
     case 'STOCK_RETORNO':  return m.evento_id ? `/eventos/${m.evento_id}?tab=stock` : '/eventos';
     case 'LIQUIDACION':    return '/rrhh?tab=liquidaciones';
+    case 'RENDICION_PENDIENTE': return `/caja/${m.cuenta_id}`;
+    case 'SALDO_MINIMO':        return `/caja/${m.cuenta_id}`;
     default:               return '/calendario';
   }
 }
@@ -87,6 +93,8 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'STOCK_RETORNO':  return [`Evento: ${m.evento_nombre}`, `Ubicación: ${m.ubicacion}`];
     case 'LIQUIDACION':    return [`Total a cobrar: $${Number(m.total_a_cobrar).toLocaleString('es-AR')}`];
     case 'EVENTO':         return [`Estado: ${m.estado}`];
+    case 'RENDICION_PENDIENTE': return [`Responsable: ${m.responsable ?? '—'}`, `${m.dias_transcurridos} día${m.dias_transcurridos !== 1 ? 's' : ''} pendiente`];
+    case 'SALDO_MINIMO':        return [`Saldo actual: $${Number(m.saldo_actual).toLocaleString('es-AR')}`, `Mínimo: $${Number(m.saldo_minimo).toLocaleString('es-AR')}`];
     default:               return [];
   }
 }

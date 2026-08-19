@@ -5,7 +5,7 @@ import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   listCuentasEmpresa, getCuenta, createCuentaEmpresa,
-  updateCuenta, deleteCuenta,
+  updateCuenta, deleteCuenta, updateEstadoCuenta,
   listMovimientosCaja, createMovimientoCaja,
   updateMovimientoCaja, deleteMovimientoCaja,
   conciliar,
@@ -22,6 +22,9 @@ cuentasRouter.get('/:id',              requireAnyRole(ROLES.TODOS_MENOS_RESTRING
 cuentasRouter.post('/',                requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createCuentaEmpresa));
 cuentasRouter.put('/:id',              requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(updateCuenta));
 cuentasRouter.delete('/:id',           requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(deleteCuenta));
+// ABIERTA→PENDIENTE_RENDICION: cualquier usuario con acceso. PENDIENTE_RENDICION→CERRADA:
+// sólo ADMIN — validado dentro del controller (una sola ruta, dos niveles de permiso).
+cuentasRouter.patch('/:id/estado',     requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(updateEstadoCuenta));
 cuentasRouter.get('/:id/movimientos',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listMovimientosCaja));
 cuentasRouter.post('/:id/movimientos', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createMovimientoCaja));
 

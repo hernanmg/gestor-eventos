@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Link2, Link2Off, ChevronDown, ChevronRight, ArrowLeftRight, FileDown, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Link2, Link2Off, ChevronDown, ChevronRight, ArrowLeftRight, FileDown, Loader2, AlertTriangle } from 'lucide-react';
 import {
   useCuentas, useCreateCuenta, useUpdateCuenta, useDeleteCuenta,
   useVincularCuenta, useDesvincularCuenta, useCuentasParaEvento,
@@ -30,6 +30,7 @@ function AddCuentaDialog({
   const [tipo,         setTipo]         = useState<TipoCuenta>('BANCO');
   const [moneda,       setMoneda]       = useState<Moneda>('ARS');
   const [saldoInicial, setSaldoInicial] = useState('0');
+  const [saldoMinimo,  setSaldoMinimo]  = useState('');
   const [error,        setError]        = useState<string | null>(null);
 
   const createCuenta = useCreateCuenta(eventoId);
@@ -44,8 +45,9 @@ function AddCuentaDialog({
         tipo,
         moneda,
         saldo_inicial: parseFloat(saldoInicial) || 0,
+        saldo_minimo:  saldoMinimo.trim() === '' ? null : parseFloat(saldoMinimo),
       });
-      setNombre(''); setTipo('BANCO'); setMoneda('ARS'); setSaldoInicial('0');
+      setNombre(''); setTipo('BANCO'); setMoneda('ARS'); setSaldoInicial('0'); setSaldoMinimo('');
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Error al crear');
@@ -103,6 +105,19 @@ function AddCuentaDialog({
                 className={cn(input, 'text-right')}
               />
             </div>
+          </div>
+          <div>
+            <label className={label}>Saldo mínimo (opcional)</label>
+            <input
+              type="number" min="0" step="0.01"
+              value={saldoMinimo}
+              onChange={e => setSaldoMinimo(e.target.value)}
+              className={input}
+              placeholder="Ej: 500000"
+            />
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              El sistema te alertará si el saldo cae por debajo de este valor.
+            </p>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">
@@ -712,6 +727,12 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
 
       {selectedCuenta && (
         <>
+          {selectedCuenta.estado === 'PENDIENTE_RENDICION' && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle size={15} className="shrink-0" />
+              Esta cuenta tiene una rendición pendiente.
+            </div>
+          )}
           {/* Cuenta header */}
           <div className="flex items-center justify-between gap-4 mb-4 p-3 rounded-lg border border-border bg-gray-50">
             <div className="flex flex-wrap items-center gap-4 text-sm">

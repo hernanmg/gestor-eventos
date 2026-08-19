@@ -10,6 +10,7 @@ export type CondicionPago = 'CONTADO' | 'DIAS_30' | 'DIAS_60' | 'DIAS_90' | 'ECH
 export type Tipo         = 'EGRESO' | 'INGRESO';
 export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
 export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
+export type EstadoCuenta = 'ABIERTA' | 'PENDIENTE_RENDICION' | 'CERRADA';
 export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
 export type Moneda       = 'ARS' | 'USD';
 export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO'
@@ -448,11 +449,22 @@ export interface CuentaBancaria {
   tipo:          TipoCuenta;
   moneda:        Moneda;
   saldo_inicial: number;
-  // Solo presente en /api/cuentas (listado de empresa) — saldo actual calculado.
+  // Si el saldo actual cae por debajo de este valor → alerta (ej. Caja Reserva).
+  saldo_minimo:  number | null;
+  // Solo presente en /api/cuentas y GET /api/cuentas/:id — saldo actual calculado.
   saldo_actual?: number;
+  // Solo presente en /api/cuentas y GET /api/cuentas/:id — true si saldo_actual < saldo_minimo.
+  alerta_saldo_minimo?: boolean;
   // Solo presente en GET /api/eventos/:id/cuentas — true si la cuenta es de
   // empresa (evento_id null) vinculada vía EventoCuenta, no propia del evento.
   vinculada?:    boolean;
+  // ── Estado de cuenta / rendición ─────────────────────────────────────────────
+  estado:          EstadoCuenta;
+  responsable_id:  number | null;
+  responsable?:    { id: number; nombre: string } | null;
+  fecha_apertura:  string | null;
+  fecha_cierre:    string | null;
+  notas_rendicion: string | null;
   created_at:    string;
   updated_at:    string;
   deleted_at:    string | null;
@@ -1259,7 +1271,8 @@ export interface ResumenComidaFecha {
 
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
-  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION';
+  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

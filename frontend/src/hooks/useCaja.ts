@@ -16,10 +16,10 @@ export const sinConciliarKey    = (eventoId: number) => ['eventos', eventoId, 'm
 
 // ── Cuentas de empresa (Caja Global — con o sin evento) ───────────────────────
 
-export const cuentasEmpresaKey = (params?: { evento_id?: number | null; tipo?: string; moneda?: string; para_evento?: number }) =>
+export const cuentasEmpresaKey = (params?: { evento_id?: number | null; tipo?: string; moneda?: string; para_evento?: number; estado?: string }) =>
   ['cuentas-empresa', params ?? {}];
 
-export function useCuentasEmpresa(params?: { evento_id?: number | null; tipo?: string; moneda?: string; para_evento?: number }) {
+export function useCuentasEmpresa(params?: { evento_id?: number | null; tipo?: string; moneda?: string; para_evento?: number; estado?: string }) {
   return useQuery<CuentaBancaria[]>({
     queryKey: cuentasEmpresaKey(params),
     queryFn:  () => {
@@ -28,6 +28,7 @@ export function useCuentasEmpresa(params?: { evento_id?: number | null; tipo?: s
       if (params?.tipo)        p.set('tipo',        params.tipo);
       if (params?.moneda)      p.set('moneda',      params.moneda);
       if (params?.para_evento) p.set('para_evento', String(params.para_evento));
+      if (params?.estado)      p.set('estado',      params.estado);
       return api.get(`/cuentas?${p}`).then(r => r.data);
     },
   });
@@ -43,9 +44,23 @@ export function useCuentasParaEvento(eventoId: number) {
 export function useCreateCuentaEmpresa() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { nombre: string; tipo: string; moneda: string; saldo_inicial: number }) =>
+    mutationFn: (data: { nombre: string; tipo: string; moneda: string; saldo_inicial: number; saldo_minimo?: number | null }) =>
       api.post('/cuentas', data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cuentas-empresa'] }),
+  });
+}
+
+// Cambia el estado de rendición de una cuenta (ver PATCH /api/cuentas/:id/estado).
+export function useUpdateEstadoCuenta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, estado, notas_rendicion }: { id: number; estado: string; notas_rendicion?: string | null }) =>
+      api.patch(`/cuentas/${id}/estado`, { estado, notas_rendicion }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
+      qc.invalidateQueries({ queryKey: ['cuentas'] });
+      qc.invalidateQueries({ queryKey: ['calendario'] });
+    },
   });
 }
 
@@ -59,7 +74,7 @@ export function useCuentas(eventoId: number) {
 export function useCreateCuenta(eventoId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { nombre: string; tipo: string; moneda: string; saldo_inicial: number }) =>
+    mutationFn: (data: { nombre: string; tipo: string; moneda: string; saldo_inicial: number; saldo_minimo?: number | null }) =>
       api.post(`/eventos/${eventoId}/cuentas`, data).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: cuentasKey(eventoId) });
@@ -133,6 +148,20 @@ export function useCuentaDetalle(id: number) {
     queryKey: cuentaDetalleKey(id),
     queryFn:  () => api.get(`/cuentas/${id}`).then(r => r.data),
     enabled:  id > 0,
+  });
+}
+
+// Edita datos generales de la cuenta (saldo_minimo, etc.) desde el detalle en
+// Caja Global, sin depender de un eventoId (a diferencia de useUpdateCuenta).
+export function useUpdateCuentaDetalle(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<CuentaBancaria>) =>
+      api.put(`/cuentas/${id}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: cuentaDetalleKey(id) });
+      qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
+    },
   });
 }
 

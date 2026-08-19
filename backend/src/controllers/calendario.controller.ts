@@ -9,7 +9,8 @@ import { fmtDate } from '../lib/excelExporter';
 
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
-  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION';
+  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -27,13 +28,15 @@ interface CalendarioItem {
 }
 
 const COLORES: Record<TipoCalendario, string> = {
-  EVENTO:          '#1E3A5F',
-  FACTURA_VENCE:   '#DC2626',
-  ECHEQ_COBRO:     '#F59E0B',
-  JORNADA:         '#065F46',
-  PARTE_DIARIO:    '#4C1D95',
-  STOCK_RETORNO:   '#92400E',
-  LIQUIDACION:     '#374151',
+  EVENTO:               '#1E3A5F',
+  FACTURA_VENCE:        '#DC2626',
+  ECHEQ_COBRO:          '#F59E0B',
+  JORNADA:              '#065F46',
+  PARTE_DIARIO:         '#4C1D95',
+  STOCK_RETORNO:        '#92400E',
+  LIQUIDACION:          '#374151',
+  RENDICION_PENDIENTE:  '#7C3AED',
+  SALDO_MINIMO:         '#DC2626',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -45,6 +48,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   partes:        'PARTE_DIARIO',
   stock:         'STOCK_RETORNO',
   liquidaciones: 'LIQUIDACION',
+  rendiciones:   'RENDICION_PENDIENTE',
+  saldos_bajos:  'SALDO_MINIMO',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -300,6 +305,90 @@ async function resolveLiquidaciones(empresaFiltro: number | undefined, desde: Da
   }));
 }
 
+// Cuentas pendientes de rendición y cuentas con saldo por debajo del mínimo no
+// tienen una fecha de negocio propia (no son un vencimiento puntual) — se
+// anclan al día de hoy, así aparecen mientras la condición siga vigente en
+// vez de fijarse a una fecha pasada que se pierde al navegar el calendario.
+// Por eso sólo se resuelven si "hoy" cae dentro del rango [desde, hasta]
+// pedido — fuera de ese rango no hay ninguna fecha en la que deban aparecer.
+
+async function resolveRendicionesPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const cuentas = await prisma.cuentaBancaria.findMany({
+    where: {
+      deleted_at: null,
+      estado: 'PENDIENTE_RENDICION',
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: {
+      empresa:     { select: { nombre: true } },
+      responsable: { select: { nombre: true } },
+    },
+  });
+
+  return cuentas.map(c => {
+    // updated_at queda fijo en el momento del PATCH /estado que marcó
+    // PENDIENTE_RENDICION (ninguna otra escritura toca la cuenta mientras
+    // está en este estado), así que sirve como "desde cuándo está pendiente".
+    const diasTranscurridos = Math.floor((hoy.getTime() - c.updated_at.getTime()) / 86_400_000);
+    const urgencia: Urgencia = diasTranscurridos > 7 ? 'critical' : diasTranscurridos > 3 ? 'warning' : 'normal';
+    return {
+      id:             `rendicion-${c.id}`,
+      tipo:           'RENDICION_PENDIENTE' as const,
+      titulo:         `Rendición pendiente — ${c.nombre}`,
+      fecha:          hoy,
+      empresa_id:     c.empresa_id,
+      empresa_nombre: c.empresa.nombre,
+      color:          COLORES.RENDICION_PENDIENTE,
+      urgencia,
+      metadata:       { cuenta_id: c.id, responsable: c.responsable?.nombre ?? null, dias_transcurridos: diasTranscurridos },
+    };
+  });
+}
+
+async function resolveSaldosMinimos(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const cuentas = await prisma.cuentaBancaria.findMany({
+    where: {
+      deleted_at:   null,
+      saldo_minimo: { not: null },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: {
+      empresa: { select: { nombre: true } },
+      movimientos: {
+        where:   { deleted_at: null },
+        orderBy: { orden: 'asc' },
+        select:  { saldo_corriente: true },
+      },
+    },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const c of cuentas) {
+    const movs        = c.movimientos;
+    const last         = movs[movs.length - 1];
+    const saldoActual  = last ? Number(last.saldo_corriente) : Number(c.saldo_inicial);
+    const saldoMinimo  = Number(c.saldo_minimo);
+    if (saldoActual >= saldoMinimo) continue;
+
+    items.push({
+      id:             `saldo-minimo-${c.id}`,
+      tipo:           'SALDO_MINIMO' as const,
+      titulo:         `Saldo bajo en ${c.nombre}`,
+      fecha:          hoy,
+      empresa_id:     c.empresa_id,
+      empresa_nombre: c.empresa.nombre,
+      color:          COLORES.SALDO_MINIMO,
+      urgencia:       'critical' as const,
+      metadata:       { cuenta_id: c.id, saldo_actual: saldoActual, saldo_minimo: saldoMinimo, diferencia: parseFloat((saldoMinimo - saldoActual).toFixed(2)) },
+    });
+  }
+  return items;
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -363,6 +452,8 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('PARTE_DIARIO'))  tareas.push(resolvePartesDiario(empresaFiltro, desde, hasta));
   if (tiposActivos.has('STOCK_RETORNO')) tareas.push(resolveStockRetornos(empresaFiltro, desde, hasta));
   if (tiposActivos.has('LIQUIDACION') && isAdmin)   tareas.push(resolveLiquidaciones(empresaFiltro, desde, hasta));
+  if (tiposActivos.has('RENDICION_PENDIENTE') && isAdmin) tareas.push(resolveRendicionesPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('SALDO_MINIMO') && isAdmin)         tareas.push(resolveSaldosMinimos(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

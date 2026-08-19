@@ -1,6 +1,6 @@
 ﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { TipoCuenta, Moneda, type Prisma } from '@prisma/client';
+import { TipoCuenta, Moneda, EstadoCuenta, type Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
@@ -18,7 +18,11 @@ async function getTabMap(empresaId: number): Promise<Map<string, string>> {
 }
 
 function mapCuenta(c: any) {
-  return { ...c, saldo_inicial: Number(c.saldo_inicial) };
+  return {
+    ...c,
+    saldo_inicial: Number(c.saldo_inicial),
+    saldo_minimo:  c.saldo_minimo != null ? Number(c.saldo_minimo) : null,
+  };
 }
 
 // Cuentas "del evento" = propias (CuentaBancaria.evento_id) + vinculadas
@@ -60,6 +64,7 @@ const createCuentaSchema = z.object({
   tipo:          z.enum(['EFECTIVO', 'BANCO']),
   moneda:        z.enum(['ARS', 'USD']).default('ARS'),
   saldo_inicial: z.number().default(0),
+  saldo_minimo:  z.number().min(0).nullable().optional(),
 });
 
 const updateCuentaSchema = z.object({
@@ -67,6 +72,12 @@ const updateCuentaSchema = z.object({
   tipo:          z.enum(['EFECTIVO', 'BANCO']).optional(),
   moneda:        z.enum(['ARS', 'USD']).optional(),
   saldo_inicial: z.number().optional(),
+  saldo_minimo:  z.number().min(0).nullable().optional(),
+});
+
+const estadoCuentaSchema = z.object({
+  estado:          z.enum(['ABIERTA', 'PENDIENTE_RENDICION', 'CERRADA']),
+  notas_rendicion: z.string().nullable().optional(),
 });
 
 const createMovCajaSchema = z.object({
@@ -93,6 +104,7 @@ export async function listCuentasEmpresa(req: Request, res: Response) {
   const tipoRaw       = req.query.tipo;
   const monedaRaw     = req.query.moneda;
   const paraEventoRaw = req.query.para_evento;
+  const estadoRaw     = req.query.estado;
 
   const where: Prisma.CuentaBancariaWhereInput = { deleted_at: null, ...withTenant(req.empresaId!) };
 
@@ -119,12 +131,16 @@ export async function listCuentasEmpresa(req: Request, res: Response) {
   if (typeof monedaRaw === 'string' && (monedaRaw === 'ARS' || monedaRaw === 'USD')) {
     where.moneda = monedaRaw;
   }
+  if (typeof estadoRaw === 'string' && ['ABIERTA', 'PENDIENTE_RENDICION', 'CERRADA'].includes(estadoRaw)) {
+    where.estado = estadoRaw as EstadoCuenta;
+  }
 
   const cuentas = await prisma.cuentaBancaria.findMany({
     where,
     orderBy: { id: 'asc' },
     include: {
-      evento: { select: { id: true, nombre: true } },
+      evento:      { select: { id: true, nombre: true } },
+      responsable: { select: { id: true, nombre: true } },
       movimientos: {
         where:   { deleted_at: null },
         orderBy: { orden: 'asc' },
@@ -137,7 +153,8 @@ export async function listCuentasEmpresa(req: Request, res: Response) {
     const movs        = c.movimientos;
     const last        = movs[movs.length - 1];
     const saldo_actual = last ? Number(last.saldo_corriente) : Number(c.saldo_inicial);
-    return { ...mapCuenta(c), saldo_actual, movimientos: undefined };
+    const alerta_saldo_minimo = c.saldo_minimo != null && saldo_actual < Number(c.saldo_minimo);
+    return { ...mapCuenta(c), saldo_actual, alerta_saldo_minimo, movimientos: undefined };
   }));
 }
 
@@ -148,7 +165,8 @@ export async function getCuenta(req: Request, res: Response) {
   const cuenta = await prisma.cuentaBancaria.findFirst({
     where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: {
-      evento: { select: { id: true, nombre: true } },
+      evento:      { select: { id: true, nombre: true } },
+      responsable: { select: { id: true, nombre: true } },
       movimientos: {
         where:   { deleted_at: null },
         orderBy: { orden: 'asc' },
@@ -161,7 +179,8 @@ export async function getCuenta(req: Request, res: Response) {
   const movs        = cuenta.movimientos;
   const last         = movs[movs.length - 1];
   const saldo_actual = last ? Number(last.saldo_corriente) : Number(cuenta.saldo_inicial);
-  res.json({ ...mapCuenta(cuenta), saldo_actual, movimientos: undefined });
+  const alerta_saldo_minimo = cuenta.saldo_minimo != null && saldo_actual < Number(cuenta.saldo_minimo);
+  res.json({ ...mapCuenta(cuenta), saldo_actual, alerta_saldo_minimo, movimientos: undefined });
 }
 
 // POST /api/cuentas — crea una cuenta de empresa, sin evento asociado.
@@ -181,6 +200,8 @@ export async function createCuentaEmpresa(req: Request, res: Response) {
         tipo:          parsed.data.tipo as TipoCuenta,
         moneda:        parsed.data.moneda as Moneda,
         saldo_inicial: parsed.data.saldo_inicial,
+        saldo_minimo:  parsed.data.saldo_minimo ?? null,
+        fecha_apertura: new Date(),
       },
     });
     await registrarAuditoria({
@@ -317,6 +338,8 @@ export async function createCuenta(req: Request, res: Response) {
         tipo:          parsed.data.tipo as TipoCuenta,
         moneda:        parsed.data.moneda as Moneda,
         saldo_inicial: parsed.data.saldo_inicial,
+        saldo_minimo:  parsed.data.saldo_minimo ?? null,
+        fecha_apertura: new Date(),
       },
     });
     await registrarAuditoria({
@@ -348,7 +371,7 @@ export async function updateCuenta(req: Request, res: Response) {
   const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
-  const { nombre, tipo, moneda, saldo_inicial } = parsed.data;
+  const { nombre, tipo, moneda, saldo_inicial, saldo_minimo } = parsed.data;
 
   const updated = await prisma.$transaction(async tx => {
     const c = await tx.cuentaBancaria.update({
@@ -358,6 +381,7 @@ export async function updateCuenta(req: Request, res: Response) {
         ...(tipo          !== undefined && { tipo: tipo as TipoCuenta }),
         ...(moneda        !== undefined && { moneda: moneda as Moneda }),
         ...(saldo_inicial !== undefined && { saldo_inicial }),
+        ...(saldo_minimo  !== undefined && { saldo_minimo }),
       },
     });
     if (saldo_inicial !== undefined) {
@@ -371,8 +395,70 @@ export async function updateCuenta(req: Request, res: Response) {
       entidadId:    id,
       eventoId:     existing.evento_id ?? undefined,
       descripcion:  `Actualizó cuenta bancaria "${existing.nombre}"`,
-      datosAntes:   { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda, saldo_inicial: Number(existing.saldo_inicial) },
+      datosAntes:   { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda, saldo_inicial: Number(existing.saldo_inicial), saldo_minimo: existing.saldo_minimo != null ? Number(existing.saldo_minimo) : null },
       datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return c;
+  });
+
+  res.json(mapCuenta(updated));
+}
+
+// PATCH /api/cuentas/:id/estado — ciclo de rendición de una cuenta (viaje/evento).
+// ABIERTA → PENDIENTE_RENDICION: cualquier usuario con acceso a la ruta.
+// PENDIENTE_RENDICION → CERRADA: solo ADMIN (confirma la rendición).
+// CERRADA es terminal — no puede volver atrás.
+export async function updateEstadoCuenta(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = estadoCuentaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+
+  const { estado: target, notas_rendicion } = parsed.data;
+
+  if (existing.estado === 'CERRADA') {
+    res.status(400).json({ error: 'Esta cuenta ya está cerrada y no puede modificarse' });
+    return;
+  }
+  if (existing.estado === 'ABIERTA' && target !== 'PENDIENTE_RENDICION') {
+    res.status(400).json({ error: 'Transición de estado inválida' });
+    return;
+  }
+  if (existing.estado === 'PENDIENTE_RENDICION' && target !== 'CERRADA') {
+    res.status(400).json({ error: 'Transición de estado inválida' });
+    return;
+  }
+  if (target === 'CERRADA' && req.user!.rol !== 'ADMIN') {
+    res.status(403).json({ error: 'Sólo un administrador puede confirmar la rendición' });
+    return;
+  }
+
+  const updated = await prisma.$transaction(async tx => {
+    const c = await tx.cuentaBancaria.update({
+      where: { id },
+      data: {
+        estado: target as EstadoCuenta,
+        ...(notas_rendicion !== undefined && { notas_rendicion }),
+        ...(target === 'CERRADA' && { fecha_cierre: new Date() }),
+      },
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'UPDATE',
+      entidad:      'CuentaBancaria',
+      entidadId:    id,
+      eventoId:     existing.evento_id ?? undefined,
+      descripcion:  `Cambió el estado de la cuenta "${existing.nombre}" de ${existing.estado} a ${target}`,
+      datosAntes:   { estado: existing.estado },
+      datosDespues: { estado: target, notas_rendicion },
       ip:           req.ip,
       tx:           tx as any,
     });

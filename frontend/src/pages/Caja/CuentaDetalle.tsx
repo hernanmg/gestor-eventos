@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Check, X as XIcon, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Check, X as XIcon, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  useCuentaDetalle, useMovimientosCuenta,
+  useCuentaDetalle, useMovimientosCuenta, useUpdateCuentaDetalle,
   useCreateMovimientoCuenta, useUpdateMovimientoCuenta, useDeleteMovimientoCuenta,
 } from '@/hooks/useCaja';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { EstadoBadge, MarcarPendienteDialog, ConfirmarRendicionDialog } from '@/components/domain/CuentaEstadoControls';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { MovimientoCaja } from '@/types';
@@ -117,10 +118,25 @@ export default function CuentaDetallePage() {
   const { user } = useAuth();
   const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
 
+  const isAdmin = user?.rol === 'ADMIN';
+
   const { data: cuenta, isLoading: loadingCuenta } = useCuentaDetalle(cuentaId);
   const { data: movimientos = [], isLoading: loadingMovs } = useMovimientosCuenta(cuentaId);
   const createMov = useCreateMovimientoCuenta(cuentaId);
   const deleteMov = useDeleteMovimientoCuenta(cuentaId);
+  const updateCuenta = useUpdateCuentaDetalle(cuentaId);
+
+  const [editSaldoMinimo, setEditSaldoMinimo] = useState<string | null>(null);
+  const [pendienteOpen,   setPendienteOpen]   = useState(false);
+  const [rendicionOpen,   setRendicionOpen]   = useState(false);
+
+  const handleSaldoMinimoSave = () => {
+    if (editSaldoMinimo === null) return;
+    const trimmed = editSaldoMinimo.trim();
+    const val = trimmed === '' ? null : parseFloat(trimmed);
+    updateCuenta.mutate({ saldo_minimo: val });
+    setEditSaldoMinimo(null);
+  };
 
   const [filtroEvento, setFiltroEvento] = useState('todos'); // 'todos' | 'sin-evento' | '<id>'
   const [filtroDesde,  setFiltroDesde]  = useState('');
@@ -228,18 +244,65 @@ export default function CuentaDetallePage() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">{cuenta.nombre}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold">{cuenta.nombre}</h1>
+            <EstadoBadge estado={cuenta.estado} />
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>{cuenta.tipo}</span>
             <span>{cuenta.moneda}</span>
             {cuenta.evento && <span>Cuenta propia de <strong className="text-foreground">{cuenta.evento.nombre}</strong></span>}
+            <span className="flex items-center gap-1">
+              Saldo mínimo:
+              {canEdit && editSaldoMinimo !== null ? (
+                <input
+                  autoFocus
+                  type="number"
+                  step="0.01"
+                  value={editSaldoMinimo}
+                  onChange={e => setEditSaldoMinimo(e.target.value)}
+                  onBlur={handleSaldoMinimoSave}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter')  handleSaldoMinimoSave();
+                    if (e.key === 'Escape') setEditSaldoMinimo(null);
+                  }}
+                  className="ml-1 w-28 border border-ring rounded px-1 py-0.5 text-xs text-right focus:outline-none"
+                  placeholder="Ej: 500000"
+                />
+              ) : (
+                <span
+                  className={cn('ml-1 font-medium text-foreground', canEdit && 'cursor-pointer hover:underline')}
+                  onClick={() => canEdit && setEditSaldoMinimo(cuenta.saldo_minimo != null ? String(cuenta.saldo_minimo) : '')}
+                >
+                  {cuenta.saldo_minimo != null ? formatCurrency(cuenta.saldo_minimo, cuenta.moneda) : 'sin definir'}
+                </span>
+              )}
+            </span>
           </div>
+          {cuenta.estado === 'ABIERTA' && (
+            <Button variant="outline" size="sm" className="h-6 text-xs mt-2" onClick={() => setPendienteOpen(true)}>
+              Marcar pendiente de rendición
+            </Button>
+          )}
+          {cuenta.estado === 'PENDIENTE_RENDICION' && isAdmin && (
+            <Button size="sm" className="h-6 text-xs mt-2" onClick={() => setRendicionOpen(true)}>
+              Confirmar rendición
+            </Button>
+          )}
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground">Saldo total</p>
           <p className="text-2xl font-bold tabular-nums">{formatCurrency(cuenta.saldo_actual ?? cuenta.saldo_inicial, cuenta.moneda)}</p>
+          {cuenta.alerta_saldo_minimo && (
+            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700 mt-1">
+              <AlertTriangle size={11} /> Saldo bajo
+            </span>
+          )}
         </div>
       </div>
+
+      {pendienteOpen && <MarcarPendienteDialog cuenta={cuenta} open onClose={() => setPendienteOpen(false)} />}
+      {rendicionOpen && <ConfirmarRendicionDialog cuenta={cuenta} open onClose={() => setRendicionOpen(false)} />}
 
       {/* Resumen por evento */}
       <div className="rounded-lg border bg-white overflow-hidden">

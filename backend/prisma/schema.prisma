@@ -36,6 +36,12 @@ enum TipoCuenta {
   BANCO
 }
 
+enum EstadoCuenta {
+  ABIERTA             // operativa, recibiendo movimientos
+  PENDIENTE_RENDICION // el responsable volvió, falta rendir
+  CERRADA             // rendición confirmada por admin
+}
+
 enum EstadoEcheq {
   PENDIENTE
   COBRADO
@@ -257,6 +263,7 @@ model Usuario {
   // (rol VIEWER + empleado no-null ⇒ vista de autoservicio RRHH).
   empleado       Empleado?
   movimientosResponsable Movimiento[]
+  cuentasResponsable     CuentaBancaria[]
 }
 
 // Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
@@ -496,9 +503,22 @@ model CuentaBancaria {
   tipo          TipoCuenta
   moneda        Moneda     @default(ARS)
   saldo_inicial Decimal    @default(0) @db.Decimal(15, 2)
+  // Si el saldo actual cae por debajo de este valor → alerta (ej. Caja Reserva).
+  saldo_minimo  Decimal?   @db.Decimal(12, 2)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
   deleted_at    DateTime?
+
+  // ── Estado de cuenta / rendición ─────────────────────────────────────────────
+  // Ciclo de vida de la caja de un viaje/evento: se abre operativa, al volver
+  // el responsable pasa a pendiente de rendición, y el admin cierra al
+  // confirmar la rendición. Ver PATCH /api/cuentas/:id/estado.
+  estado          EstadoCuenta @default(ABIERTA)
+  responsable_id  Int?
+  responsable     Usuario?     @relation(fields: [responsable_id], references: [id])
+  fecha_apertura  DateTime?
+  fecha_cierre    DateTime?
+  notas_rendicion String?
 
   movimientos       MovimientoCaja[]
   eventos_vinculados EventoCuenta[]
