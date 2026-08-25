@@ -12,6 +12,13 @@ import {
   exportarLiquidacionPDF,
 } from '../controllers/rrhh.controller';
 import { importarEmpleados, importarJornadas } from '../controllers/rrhhImporter.controller';
+import {
+  listEmpresasSueldos, listCuentasPorEmpresa,
+  listAcuerdos, getAcuerdoEmpleado, createAcuerdo, updateAcuerdo,
+  upsertSplits, deleteSplits,
+  listLiquidacionesAdmin, getLiquidacionAdmin, generarLiquidacionAdmin, updateLiquidacionAdmin,
+  aprobarLiquidacionAdmin, cancelarLiquidacionAdmin, exportarLiquidacionAdminPDF,
+} from '../controllers/sueldosAdmin.controller';
 
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -59,5 +66,25 @@ router.patch('/liquidaciones/:id/cancelar', requireRole('ADMIN'), asyncHandler(c
 // ── Importadores ──────────────────────────────────────────────────────────────
 router.post('/importar/empleados',       requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarEmpleados));
 router.post('/importar/jornadas',        requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarJornadas));
+
+// ── Sueldos administrativos (régimen mensual fijo, distinto de Jornada/Liquidacion) ──
+router.get('/empresas',                     requireRole('ADMIN'), asyncHandler(listEmpresasSueldos));
+router.get('/cuentas-empresa/:empresaId',   requireRole('ADMIN'), asyncHandler(listCuentasPorEmpresa));
+
+router.get('/acuerdos',                     requireRole('ADMIN'), asyncHandler(listAcuerdos));
+router.get('/acuerdos/:empleadoId',         requireRole('ADMIN'), asyncHandler(getAcuerdoEmpleado));
+router.post('/acuerdos',                    requireRole('ADMIN'), asyncHandler(createAcuerdo));
+router.put('/acuerdos/:id',                 requireRole('ADMIN'), asyncHandler(updateAcuerdo));
+
+router.post('/empleados/:id/splits',        requireRole('ADMIN'), asyncHandler(upsertSplits));
+router.delete('/empleados/:id/splits',      requireRole('ADMIN'), asyncHandler(deleteSplits));
+
+router.get('/liquidaciones-admin',                  requireRole('ADMIN'), asyncHandler(listLiquidacionesAdmin));
+router.get('/liquidaciones-admin/:id',              requireRole('ADMIN'), asyncHandler(getLiquidacionAdmin));
+router.get('/liquidaciones-admin/:id/exportar',     requireRole('ADMIN'), asyncHandler(exportarLiquidacionAdminPDF));
+router.post('/liquidaciones-admin/generar',         requireRole('ADMIN'), asyncHandler(generarLiquidacionAdmin));
+router.put('/liquidaciones-admin/:id',              requireRole('ADMIN'), asyncHandler(updateLiquidacionAdmin));
+router.patch('/liquidaciones-admin/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarLiquidacionAdmin));
+router.patch('/liquidaciones-admin/:id/cancelar',   requireRole('ADMIN'), asyncHandler(cancelarLiquidacionAdmin));
 
 export default router;
