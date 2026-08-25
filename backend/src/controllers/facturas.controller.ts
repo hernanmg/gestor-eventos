@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { recalcularSaldos, recalcularSaldosRubro } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { convertirARS } from '../lib/convertirARS';
 
 // ── Multer PDF ────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,8 @@ const facturaSchema = z.object({
   tab_numero:        z.number().int().min(1).max(5).nullable().optional(),
   rubro_id:          z.number().int().positive().nullable().optional(),
   importe_total:     z.number().positive(),
-  moneda:            z.enum(['ARS', 'USD']).default('ARS'),
+  moneda:            z.enum(['ARS', 'USD', 'EUR']).default('ARS'),
+  tasa_cambio:       z.number().positive().nullable().optional(),
   condicion_pago:    z.enum(['CONTADO', 'DIAS_30', 'DIAS_60', 'DIAS_90', 'ECHEQ', 'OTRO']).default('CONTADO'),
   notas:             z.string().nullable().optional(),
 });
@@ -249,6 +251,7 @@ export async function create(req: Request, res: Response) {
     rubro_id:          b.rubro_id      ? parseInt(b.rubro_id)        : null,
     importe_total:     b.importe_total ? parseFloat(b.importe_total) : undefined,
     moneda:            b.moneda        || 'ARS',
+    tasa_cambio:       b.tasa_cambio   ? parseFloat(b.tasa_cambio)   : null,
     condicion_pago:    b.condicion_pago || 'CONTADO',
     notas:             b.notas         || null,
   };
@@ -298,6 +301,8 @@ export async function create(req: Request, res: Response) {
       importe_total:     d.importe_total,
       importe_pendiente: d.importe_total,
       moneda:            d.moneda as Moneda,
+      tasa_cambio:       d.tasa_cambio ?? null,
+      monto_ars:         convertirARS(d.importe_total, d.moneda as Moneda, d.tasa_cambio ?? null),
       condicion_pago:    d.condicion_pago as CondicionPago,
       notas:             d.notas ?? null,
       pdf_data:          pdfData ?? null,
@@ -330,6 +335,13 @@ export async function update(req: Request, res: Response) {
     if (rubroError) { res.status(400).json({ error: rubroError }); return; }
   }
 
+  // Recalcular monto_ars si cambió algo que lo afecta.
+  const importeFinal = d.importe_total !== undefined ? d.importe_total : Number(f.importe_total);
+  const monedaFinal  = (d.moneda ?? f.moneda) as Moneda;
+  const tasaFinal     = d.tasa_cambio !== undefined ? d.tasa_cambio : (f.tasa_cambio !== null ? Number(f.tasa_cambio) : null);
+  const recomputarArs = d.importe_total !== undefined || d.moneda !== undefined || d.tasa_cambio !== undefined;
+  const montoArsFinal = recomputarArs ? convertirARS(importeFinal, monedaFinal, tasaFinal) : undefined;
+
   const updated = await prisma.factura.update({
     where: { id },
     data: {
@@ -342,6 +354,8 @@ export async function update(req: Request, res: Response) {
       ...(d.rubro_id          !== undefined && { rubro_id:          d.rubro_id }),
       ...(d.importe_total     !== undefined && { importe_total:     d.importe_total }),
       ...(d.moneda            !== undefined && { moneda:            d.moneda as Moneda }),
+      ...(d.tasa_cambio       !== undefined && { tasa_cambio:       d.tasa_cambio }),
+      ...(montoArsFinal       !== undefined && { monto_ars:         montoArsFinal }),
       ...(d.condicion_pago    !== undefined && { condicion_pago:    d.condicion_pago as CondicionPago }),
       ...(d.notas             !== undefined && { notas:             d.notas }),
       updated_by: req.user!.id,
@@ -494,6 +508,8 @@ export async function pagarFactura(req: Request, res: Response) {
           descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
           haber:       importe,
           moneda:      factura.moneda,
+          tasa_cambio: factura.tasa_cambio,
+          monto_ars:   convertirARS(importe, factura.moneda, factura.tasa_cambio !== null ? Number(factura.tasa_cambio) : null),
           proveedor_id: factura.proveedor_id,
           orden:       (lastOrder?.orden ?? 0) + 1,
           saldo:       0,

@@ -452,6 +452,87 @@ function addMacroSheet(wb: ExcelJS.Workbook, name: string, rows: MacroExcelRow[]
   for (const c of [6, 7, 8]) totalsRow.getCell(c).numFmt = NUM_FMT;
 }
 
+// ── Cuenta Corriente Genérica — extracto ──────────────────────────────────────
+// Mismo formato que las cuentas corrientes en las planillas de Mayra: FECHA,
+// CONCEPTO/DETALLE, DEBE, HABER, SALDO.
+
+export async function generateCuentaCorrienteExcel(cuentaId: number): Promise<{ buffer: Buffer; filename: string }> {
+  const cuenta = await prisma.cuentaCorriente.findFirstOrThrow({
+    where:   { id: cuentaId },
+    include: {
+      proveedor:   { select: { nombre: true, cuit: true } },
+      partes:      true,
+      movimientos: { where: { deleted_at: null }, orderBy: [{ fecha: 'asc' }, { id: 'asc' }] },
+    },
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const terceroNombre = cuenta.proveedor?.nombre ?? cuenta.tercero_nombre ?? '—';
+  const terceroCuit    = cuenta.proveedor?.cuit ?? cuenta.tercero_cuit ?? '';
+
+  // Hoja 1 — datos
+  const wsDatos = wb.addWorksheet('DATOS');
+  wsDatos.columns = [{ width: 24 }, { width: 30 }];
+  wsDatos.addRow(['CUENTA CORRIENTE', cuenta.nombre]).font = BOLD;
+  wsDatos.addRow(['Tercero', terceroNombre]);
+  wsDatos.addRow(['CUIT', terceroCuit]);
+  wsDatos.addRow(['Tipo', cuenta.tipo_tercero]);
+  wsDatos.addRow(['Moneda', cuenta.moneda]);
+  const saldoRow = wsDatos.addRow(['Saldo actual', Number(cuenta.saldo_actual)]);
+  saldoRow.font = { bold: true, size: 12 };
+  saldoRow.getCell(2).numFmt = NUM_FMT;
+
+  if (cuenta.tiene_reparto && cuenta.partes.length > 0) {
+    wsDatos.addRow([]);
+    const partesTitle = wsDatos.addRow(['REPARTO POR PARTE']);
+    partesTitle.font = BOLD;
+    applyHeaderStyle(wsDatos.addRow(['PARTE', '%', 'MONTO']), 3);
+    for (const p of cuenta.partes) {
+      const monto = parseFloat((Number(cuenta.saldo_actual) * Number(p.porcentaje) / 100).toFixed(2));
+      const row = wsDatos.addRow([p.nombre, `${Number(p.porcentaje)}%`, monto]);
+      row.getCell(3).numFmt = NUM_FMT;
+    }
+  }
+
+  // Hoja 2 — movimientos
+  const wsMov = wb.addWorksheet('MOVIMIENTOS');
+  wsMov.columns = [
+    { width: 13 }, { width: 30 }, { width: 40 },
+    { width: 16 }, { width: 16 }, { width: 16 },
+  ];
+  applyHeaderStyle(wsMov.addRow(['FECHA', 'CONCEPTO', 'DESCRIPCIÓN', 'DEBE', 'HABER', 'SALDO']), 6);
+
+  let totalDebe = 0, totalHaber = 0;
+  for (const m of cuenta.movimientos) {
+    const monto = Number(m.monto);
+    // AJUSTE se vuelca a la columna que corresponda según su signo (mismo
+    // criterio que recalcularSaldoCCC: positivo suma como DEBE, negativo
+    // resta como HABER).
+    const debe  = m.tipo === 'DEBE'  ? monto : (m.tipo === 'AJUSTE' && monto >= 0 ? monto  : 0);
+    const haber = m.tipo === 'HABER' ? monto : (m.tipo === 'AJUSTE' && monto < 0  ? -monto : 0);
+    totalDebe  += debe;
+    totalHaber += haber;
+    const row = wsMov.addRow([fmtDate(m.fecha), m.concepto, m.descripcion ?? '', debe, haber, Number(m.saldo)]);
+    for (const c of [4, 5, 6]) row.getCell(c).numFmt = NUM_FMT;
+  }
+  const totalsRow = wsMov.addRow(['TOTAL', '', '', totalDebe, totalHaber, Number(cuenta.saldo_actual)]);
+  totalsRow.font = BOLD;
+  for (const c of [4, 5, 6]) totalsRow.getCell(c).numFmt = NUM_FMT;
+
+  const today   = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  const nameSlug = cuenta.nombre.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 40);
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `${nameSlug}-${dateStr}.xlsx`,
+  };
+}
+
 export async function generateMacroExcel(rows: MacroExcelRow[]): Promise<{ buffer: Buffer; filename: string }> {
   const wb = new ExcelJS.Workbook();
   wb.creator  = 'Admin Portal';

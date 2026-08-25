@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -186,8 +186,10 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </NavLink>
           ) : (
           <>
-          {/* Macro — vista cross-evento + KPIs globales, primer ítem, solo admin global */}
-          {user.rol === 'ADMIN' && user.puedeCambiarEmpresa && (
+          {/* Macro — vista cross-evento + KPIs globales (admin global) o vista
+              restringida por área cross-empresa (usuarios con puede_ver_macro,
+              ej. Mayra) */}
+          {user.rol === 'ADMIN' && (user.puedeCambiarEmpresa || user.puedeVerMacro) && (
             <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
               <div className="relative shrink-0">
                 <LayoutGrid size={18} />
@@ -291,6 +293,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   )}
                 </>
               )}
+            </NavLink>
+          )}
+
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/cuentas-corrientes" title={!isOpen ? 'Cuentas Corrientes' : undefined} className={navItem}>
+              <ArrowLeftRight size={18} className="shrink-0" />
+              {isOpen && <span>Cuentas Corrientes</span>}
             </NavLink>
           )}
 

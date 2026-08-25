@@ -1,6 +1,11 @@
-import type { Moneda } from '@/types';
+import type { Moneda, MonedaCCC } from '@/types';
 
-const FORMATTERS: Record<Moneda, Intl.NumberFormat> = {
+// Acepta Moneda (ARS/USD, usado por Evento/Factura/Movimiento) y MonedaCCC
+// (ARS/USD/EUR, usado por Cuenta Corriente Genérica) — unión de literales en
+// vez de uno de los dos tipos, para no forzar EUR en los módulos que no lo usan.
+type MonedaFormateable = Moneda | MonedaCCC;
+
+const FORMATTERS: Record<MonedaFormateable, Intl.NumberFormat> = {
   ARS: new Intl.NumberFormat('es-AR', {
     style:                 'currency',
     currency:              'ARS',
@@ -13,14 +18,22 @@ const FORMATTERS: Record<Moneda, Intl.NumberFormat> = {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }),
+  EUR: new Intl.NumberFormat('es-AR', {
+    style:                 'currency',
+    currency:              'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }),
 };
 
-export function formatCurrency(amount: number, moneda: Moneda = 'ARS'): string {
+export function formatCurrency(amount: number, moneda: MonedaFormateable = 'ARS'): string {
   return FORMATTERS[moneda].format(amount);
 }
 
-export function currencySymbol(moneda: Moneda): string {
-  return moneda === 'USD' ? 'US$' : '$';
+export function currencySymbol(moneda: MonedaFormateable): string {
+  if (moneda === 'USD') return 'US$';
+  if (moneda === 'EUR') return '€';
+  return '$';
 }
 
 // Las fechas de negocio (fecha_inicio, fecha_emision, etc.) llegan del backend

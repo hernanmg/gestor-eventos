@@ -36,6 +36,24 @@ npx prisma migrate deploy   # aplica migraciones sobre la DB
 npx prisma generate          # genera el cliente (ya incluido en postinstall)
 ```
 
+## Migraciones
+
+> **IMPORTANTE:** usá `npm run migrate:safe` en lugar de `npx prisma migrate dev`
+> directamente — corre un backup de la base antes de migrar. Un `prisma migrate`
+> mal apuntado (o cualquier comando que use `--shadow-database-url` contra la
+> DB real en vez de una descartable) puede vaciar los datos sin aviso.
+
+```bash
+npm run migrate:safe   # backup + prisma migrate dev
+npm run backup         # sólo el backup, sin migrar
+```
+
+Para restaurar un backup:
+
+```bash
+psql $DATABASE_URL < backups/backup_<timestamp>.sql
+```
+
 ## Desarrollo
 
 ```bash

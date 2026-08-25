@@ -8,6 +8,7 @@ import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
 import { resolveCuentaIdsEvento } from './caja.controller';
+import { convertirARS } from '../lib/convertirARS';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -31,7 +32,8 @@ const createEcheqSchema = z.object({
   razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
   importe:              z.number().positive(),
-  moneda:               z.enum(['ARS', 'USD']).default('ARS'),
+  moneda:               z.enum(['ARS', 'USD', 'EUR']).default('ARS'),
+  tasa_cambio:          z.number().positive().nullable().optional(),
   fecha_emision:        z.string().nullable().optional(),
   fecha_cobro_estimada: z.string().nullable().optional(),
 }).refine(
@@ -45,7 +47,8 @@ const updateEcheqSchema = z.object({
   razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
   importe:              z.number().positive().optional(),
-  moneda:               z.enum(['ARS', 'USD']).optional(),
+  moneda:               z.enum(['ARS', 'USD', 'EUR']).optional(),
+  tasa_cambio:          z.number().positive().nullable().optional(),
   fecha_emision:        z.string().nullable().optional(),
   fecha_cobro_estimada: z.string().nullable().optional(),
 });
@@ -141,6 +144,8 @@ export async function createEcheq(req: Request, res: Response) {
       detalle:              parsed.data.detalle        ?? null,
       importe:              parsed.data.importe,
       moneda:               parsed.data.moneda                as Moneda,
+      tasa_cambio:          parsed.data.tasa_cambio           ?? null,
+      monto_ars:            convertirARS(parsed.data.importe, parsed.data.moneda as Moneda, parsed.data.tasa_cambio ?? null),
       fecha_emision:        parsed.data.fecha_emision        ? new Date(parsed.data.fecha_emision)        : null,
       fecha_cobro_estimada: parsed.data.fecha_cobro_estimada ? new Date(parsed.data.fecha_cobro_estimada) : null,
       created_by:           req.user!.id,
@@ -178,6 +183,13 @@ export async function updateEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'No se puede modificar un echeq cobrado' }); return;
   }
 
+  // Recalcular monto_ars si cambió algo que lo afecta.
+  const importeFinal   = parsed.data.importe !== undefined ? parsed.data.importe : Number(existing.importe);
+  const monedaFinal    = (parsed.data.moneda ?? existing.moneda) as Moneda;
+  const tasaFinal       = parsed.data.tasa_cambio !== undefined ? parsed.data.tasa_cambio : (existing.tasa_cambio !== null ? Number(existing.tasa_cambio) : null);
+  const recomputarArs   = parsed.data.importe !== undefined || parsed.data.moneda !== undefined || parsed.data.tasa_cambio !== undefined;
+  const montoArsFinal   = recomputarArs ? convertirARS(importeFinal, monedaFinal, tasaFinal) : undefined;
+
   const updated = await prisma.echeq.update({
     where: { id },
     data: {
@@ -187,6 +199,8 @@ export async function updateEcheq(req: Request, res: Response) {
       ...(parsed.data.detalle              !== undefined && { detalle: parsed.data.detalle }),
       ...(parsed.data.importe              !== undefined && { importe: parsed.data.importe }),
       ...(parsed.data.moneda               !== undefined && { moneda: parsed.data.moneda as Moneda }),
+      ...(parsed.data.tasa_cambio          !== undefined && { tasa_cambio: parsed.data.tasa_cambio }),
+      ...(montoArsFinal                    !== undefined && { monto_ars: montoArsFinal }),
       ...(parsed.data.fecha_emision        !== undefined && {
         fecha_emision: parsed.data.fecha_emision ? new Date(parsed.data.fecha_emision) : null,
       }),

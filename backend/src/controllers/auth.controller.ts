@@ -157,14 +157,19 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
   ]);
 
   const global = esAdminGlobal(usuario);
+  // Mayra (y quien se configure) necesita la lista de sus empresas para el
+  // selector de la Macro restringida, aunque no sea admin global.
+  const necesitaListaEmpresas = global || empresaId === null || usuario.puede_ver_macro;
 
   res.cookie(COOKIE_NAME, token, cookieOptions());
   res.json({
     id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, accesos,
     empresaId,
     empresa:              empresaId !== null ? mapEmpresa(empresas.find(e => e.id === empresaId)!) : null,
-    empresasDisponibles:  (global || empresaId === null) ? empresas.map(mapEmpresa) : undefined,
+    empresasDisponibles:  necesitaListaEmpresas ? empresas.map(mapEmpresa) : undefined,
     puedeCambiarEmpresa:  global,
+    puedeVerMacro:        usuario.puede_ver_macro,
+    areasMacro:           usuario.areas_macro,
     empleadoId,
   });
 }
@@ -187,7 +192,10 @@ export async function logout(req: Request, res: Response, _next: NextFunction): 
 export async function me(req: Request, res: Response, _next: NextFunction): Promise<void> {
   const raw = await prisma.usuario.findFirst({
     where:  { id: req.user!.id, deleted_at: null },
-    select: { id: true, nombre: true, email: true, rol: true, activo: true, empresa_id: true },
+    select: {
+      id: true, nombre: true, email: true, rol: true, activo: true, empresa_id: true,
+      puede_ver_macro: true, areas_macro: true,
+    },
   });
 
   if (!raw || !raw.activo) {
@@ -207,8 +215,9 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
   }
   // El admin global siempre necesita la lista completa (para el switcher del
   // sidebar); un usuario normal solo la necesita mientras tiene selección
-  // pendiente (empresaId null).
-  if (global || empresaId === null) {
+  // pendiente (empresaId null) — o si tiene puede_ver_macro, para el selector
+  // de empresa de la Macro restringida (ver MacroMayra.tsx).
+  if (global || empresaId === null || raw.puede_ver_macro) {
     const empresas = await resolveEmpresasAccesibles(raw);
     empresasDisponibles = empresas.map(mapEmpresa);
   }
@@ -220,6 +229,8 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     empresa,
     empresasDisponibles,
     puedeCambiarEmpresa: global,
+    puedeVerMacro:       raw.puede_ver_macro,
+    areasMacro:          raw.areas_macro,
     empleadoId,
   });
 }
@@ -287,6 +298,8 @@ export async function switchEmpresa(req: Request, res: Response): Promise<void> 
     empresa:             mapEmpresa(empresaDestino),
     empresasDisponibles,
     puedeCambiarEmpresa: global,
+    puedeVerMacro:       usuario.puede_ver_macro,
+    areasMacro:          usuario.areas_macro,
     empleadoId,
   });
 }

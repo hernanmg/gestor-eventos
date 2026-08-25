@@ -9,7 +9,8 @@ export interface MovimientoCreatePayload {
   descripcion?:          string | null;
   debe?:                 number;
   haber?:                number;
-  moneda?:               'ARS' | 'USD';
+  moneda?:               'ARS' | 'USD' | 'EUR';
+  tasa_cambio?:          number | null;
   impuesto_subcategoria?: string | null;
   impacta_caja?:         boolean;
   cuenta_id?:            number;
@@ -27,7 +28,8 @@ export interface MovimientoUpdatePayload {
   descripcion?:          string | null;
   debe?:                 number;
   haber?:                number;
-  moneda?:               'ARS' | 'USD';
+  moneda?:               'ARS' | 'USD' | 'EUR';
+  tasa_cambio?:          number | null;
   impuesto_subcategoria?: string | null;
   proveedor_id?:         number | null;
   estado_movimiento?:    EstadoMovimiento;

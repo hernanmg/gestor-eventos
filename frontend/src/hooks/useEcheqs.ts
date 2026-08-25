@@ -52,6 +52,7 @@ export function useCreateEcheq(eventoId: number) {
       detalle?:              string | null;
       importe:               number;
       moneda:                string;
+      tasa_cambio?:          number | null;
       fecha_emision?:        string | null;
       fecha_cobro_estimada?: string | null;
     }) => api.post(`/eventos/${eventoId}/echeqs`, data).then(r => r.data),

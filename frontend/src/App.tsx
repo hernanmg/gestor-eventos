@@ -24,6 +24,8 @@ import ProductoDetallePage  from '@/pages/Stock/ProductoDetalle';
 import FirmarMovimientoPage from '@/pages/Stock/FirmarMovimiento';
 import FacturasPage         from '@/pages/Facturas';
 import FacturaDetalle       from '@/pages/Facturas/FacturaDetalle';
+import CuentasCorrientesPage from '@/pages/CuentasCorrientes';
+import CuentaCorrienteDetalle from '@/pages/CuentasCorrientes/Detalle';
 import ParteDiarioPage      from '@/pages/ParteDiario';
 import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
 import { useAuth }          from '@/hooks/useAuth';
@@ -78,6 +80,8 @@ export default function App() {
             <Route path="/stock/firmar"            element={<FirmarMovimientoPage />} />
             <Route path="/facturas"                element={<FacturasPage />} />
             <Route path="/facturas/:id"            element={<FacturaDetalle />} />
+            <Route path="/cuentas-corrientes"      element={<CuentasCorrientesPage />} />
+            <Route path="/cuentas-corrientes/:id"  element={<CuentaCorrienteDetalle />} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>

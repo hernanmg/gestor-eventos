@@ -21,6 +21,7 @@ import ProveedorCombobox from './ProveedorCombobox';
 import { SaldoCell } from './SaldoCell';
 import { EcheqEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { RUBROS_SISTEMA } from '@/lib/rubrosConstants';
@@ -53,7 +54,7 @@ const ESTADO_SELECT_CLASS: Record<EstadoMovimiento, string> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type EditableField = 'fecha' | 'concepto' | 'descripcion' | 'debe' | 'haber' | 'impuesto_subcategoria' | 'presupuesto' | 'fecha_pago';
+type EditableField = 'fecha' | 'concepto' | 'descripcion' | 'debe' | 'haber' | 'tasa_cambio' | 'impuesto_subcategoria' | 'presupuesto' | 'fecha_pago';
 interface EditCell  { id: number; field: EditableField; value: string; }
 
 interface NewRowData {
@@ -62,6 +63,7 @@ interface NewRowData {
   descripcion:           string;
   monto:                 string;   // va a HABER para EGRESO, a DEBE para INGRESO
   moneda:                Moneda;
+  tasa_cambio:           string;
   impuesto_subcategoria: string;
   impacta_caja:          boolean;
   cuenta_id:             string;
@@ -74,7 +76,7 @@ interface NewRowData {
 
 const EMPTY_ROW: NewRowData = {
   fecha: '', concepto: '', descripcion: '', monto: '',
-  moneda: 'ARS', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
+  moneda: 'ARS', tasa_cambio: '', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
   presupuesto: '', responsable_id: '', fecha_pago: '', avisado_proveedor: false,
 };
 
@@ -87,6 +89,7 @@ function getCellValue(mov: Movimiento, field: EditableField): string {
     case 'descripcion':           return mov.descripcion           ?? '';
     case 'debe':                  return String(Number(mov.debe));
     case 'haber':                 return String(Number(mov.haber));
+    case 'tasa_cambio':           return mov.tasa_cambio !== null ? String(mov.tasa_cambio) : '';
     case 'impuesto_subcategoria': return mov.impuesto_subcategoria ?? '';
     case 'presupuesto':           return mov.presupuesto !== null ? String(mov.presupuesto) : '';
     case 'fecha_pago':            return mov.fecha_pago ? mov.fecha_pago.split('T')[0] : '';
@@ -100,6 +103,7 @@ function buildUpdatePayload(field: EditableField, value: string) {
     case 'descripcion':           return { descripcion:           value || null };
     case 'debe':                  return { debe:                  parseFloat(value) || 0 };
     case 'haber':                 return { haber:                 parseFloat(value) || 0 };
+    case 'tasa_cambio':           return { tasa_cambio:           value ? parseFloat(value) : null };
     case 'impuesto_subcategoria': return { impuesto_subcategoria: value || null };
     case 'presupuesto':           return { presupuesto:           value ? parseFloat(value) : null };
     case 'fecha_pago':            return { fecha_pago:            value || null };
@@ -338,7 +342,14 @@ function SortableRow({
       {/* Debe */}
       <EditableCell
         value={active('debe') ? editCell!.value : getCellValue(mov, 'debe')}
-        display={<span className="tabular-nums">{formatCurrency(Number(mov.debe), mov.moneda)}</span>}
+        display={
+          <span className="tabular-nums">
+            {mov.moneda !== 'ARS' && Number(mov.debe) > 0 && (
+              <span className="mr-1 rounded bg-accent px-1 py-0.5 text-[10px] font-medium text-muted-foreground align-middle">{mov.moneda}</span>
+            )}
+            {formatCurrency(Number(mov.debe), mov.moneda)}
+          </span>
+        }
         type="number"
         editing={active('debe')}
         className={cn(cell, 'w-28 text-right')}
@@ -352,7 +363,14 @@ function SortableRow({
       {/* Haber */}
       <EditableCell
         value={active('haber') ? editCell!.value : getCellValue(mov, 'haber')}
-        display={<span className="tabular-nums">{formatCurrency(Number(mov.haber), mov.moneda)}</span>}
+        display={
+          <span className="tabular-nums">
+            {mov.moneda !== 'ARS' && Number(mov.haber) > 0 && (
+              <span className="mr-1 rounded bg-accent px-1 py-0.5 text-[10px] font-medium text-muted-foreground align-middle">{mov.moneda}</span>
+            )}
+            {formatCurrency(Number(mov.haber), mov.moneda)}
+          </span>
+        }
         type="number"
         editing={active('haber')}
         className={cn(cell, 'w-28 text-right')}
@@ -363,9 +381,27 @@ function SortableRow({
         onKeyDown={onKeyDown}
       />
 
-      {/* Saldo — read only */}
+      {/* Tasa de cambio — sólo editable/relevante si la moneda no es ARS */}
+      {mov.moneda === 'ARS' ? (
+        <td className={cn(cell, 'w-20 text-right text-muted-foreground/40')}>—</td>
+      ) : (
+        <EditableCell
+          value={active('tasa_cambio') ? editCell!.value : getCellValue(mov, 'tasa_cambio')}
+          display={<span className="tabular-nums">{mov.tasa_cambio !== null ? mov.tasa_cambio : <span className="text-amber-600">falta</span>}</span>}
+          type="number"
+          editing={active('tasa_cambio')}
+          className={cn(cell, 'w-20 text-right')}
+          inputClassName="text-right"
+          onClick={() => onCellClick(mov.id, 'tasa_cambio', getCellValue(mov, 'tasa_cambio'))}
+          onChange={onCellChange}
+          onBlur={onCellSave}
+          onKeyDown={onKeyDown}
+        />
+      )}
+
+      {/* Saldo — read only, siempre en ARS (usa monto_ars para consistencia) */}
       <td className="px-2 py-1.5 w-32 text-right">
-        <SaldoCell saldo={mov.saldo} moneda={mov.moneda} />
+        <SaldoCell saldo={mov.saldo} moneda="ARS" />
       </td>
 
       {/* Responsable */}
@@ -554,6 +590,7 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
         debe:                  rubro.tipo === 'INGRESO' ? (parseFloat(newRowData.monto) || 0) : 0,
         haber:                 rubro.tipo === 'EGRESO'  ? (parseFloat(newRowData.monto) || 0) : 0,
         moneda:                newRowData.moneda,
+        tasa_cambio:           newRowData.moneda !== 'ARS' && newRowData.tasa_cambio ? parseFloat(newRowData.tasa_cambio) : null,
         impuesto_subcategoria: isEgImp ? (newRowData.impuesto_subcategoria || null) : null,
         presupuesto:           newRowData.presupuesto ? parseFloat(newRowData.presupuesto) : null,
         fecha_pago:            newRowData.fecha_pago || null,
@@ -578,7 +615,18 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
     setNewRowError(null);
   };
 
-  const colCount = 16 + (isEgImp ? 1 : 0);
+  const colCount = 17 + (isEgImp ? 1 : 0);
+
+  // Subtotales por moneda — sólo se muestran cuando hay movimientos en más
+  // de una moneda dentro del rubro.
+  const subtotalesPorMoneda = movimientos.reduce<Record<string, { debe: number; haber: number }>>((acc, m) => {
+    const cur = acc[m.moneda] ?? { debe: 0, haber: 0 };
+    cur.debe  += Number(m.debe);
+    cur.haber += Number(m.haber);
+    acc[m.moneda] = cur;
+    return acc;
+  }, {});
+  const monedasEnUso = Object.keys(subtotalesPorMoneda);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-muted-foreground">Cargando...</p>;
@@ -603,6 +651,7 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                 <th className="px-2 py-2 text-right w-28">Diferencia</th>
                 <th className="px-2 py-2 text-right w-28">Debe</th>
                 <th className="px-2 py-2 text-right w-28">Haber</th>
+                <th className="px-2 py-2 text-right w-20">Tasa</th>
                 <th className="px-2 py-2 text-right w-32">Saldo</th>
                 <th className="px-2 py-2 text-left w-36">Responsable</th>
                 <th className="px-2 py-2 text-left w-28">Fecha pago</th>
@@ -722,6 +771,8 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                         <span className="block text-xs text-right text-muted-foreground px-1">0.00</span>
                       )}
                     </td>
+                    {/* Tasa — se carga en la fila de opciones de abajo */}
+                    <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
                     <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
                     {/* Responsable */}
                     <td className="px-2 py-1">
@@ -776,17 +827,14 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                   <tr className="bg-accent/10 border-b border-dashed border-border">
                     <td colSpan={isEgImp ? 5 : 4} className="px-3 py-1.5">
                       <div className="flex flex-wrap items-center gap-4 text-xs">
-                        <label className="flex items-center gap-1.5 text-muted-foreground">
-                          Moneda:
-                          <select
-                            value={newRowData.moneda}
-                            onChange={e => setNewRowData(p => ({ ...p, moneda: e.target.value as Moneda }))}
-                            className="border rounded px-1 py-0.5 text-xs"
-                          >
-                            <option value="ARS">ARS</option>
-                            <option value="USD">USD</option>
-                          </select>
-                        </label>
+                        <MonedaTasaCambio
+                          size="sm"
+                          moneda={newRowData.moneda}
+                          monto={parseFloat(newRowData.monto) || 0}
+                          tasaCambio={newRowData.tasa_cambio}
+                          onMonedaChange={m => setNewRowData(p => ({ ...p, moneda: m, tasa_cambio: m === 'ARS' ? '' : p.tasa_cambio }))}
+                          onTasaChange={t => setNewRowData(p => ({ ...p, tasa_cambio: t }))}
+                        />
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
                             type="checkbox"
@@ -835,6 +883,19 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
               )}
             </tbody>
           </table>
+
+          {/* Subtotales por moneda — sólo si hay más de una en el rubro */}
+          {monedasEnUso.length > 1 && (
+            <div className="flex flex-wrap gap-x-6 gap-y-1 px-3 py-2 border-t border-border bg-gray-50/70 text-xs text-muted-foreground">
+              {monedasEnUso.map(m => (
+                <span key={m}>
+                  <span className="font-medium text-foreground">{m}</span>{' '}
+                  Debe: {formatCurrency(subtotalesPorMoneda[m].debe, m as Moneda)}{' · '}
+                  Haber: {formatCurrency(subtotalesPorMoneda[m].haber, m as Moneda)}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Add button */}
           {!newRow && (

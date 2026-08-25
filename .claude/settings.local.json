@@ -45,7 +45,14 @@
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/switch-empresa -H 'Content-Type: application/json' -d '{\"empresaId\":1}')",
       "Bash(curl -s -b /tmp/cookies.txt -c /tmp/cookies.txt http://localhost:3001/api/rubros)",
       "PowerShell(Get-CimInstance *)",
-      "mcp__plugin_engram_engram__mem_get_observation"
+      "mcp__plugin_engram_engram__mem_get_observation",
+      "Bash(pip install *)",
+      "PowerShell(Test-NetConnection *)",
+      "Bash(sed -i \"s/import type { CuentaCorriente, MovimientosCCCResponse, Moneda, TipoTercero, TipoMovCCC } from '@\\\\/types';/import type { CuentaCorriente, MovimientosCCCResponse, MonedaCCC, TipoTercero, TipoMovCCC } from '@\\\\/types';/\" src/hooks/useCuentasCorrientes.ts)",
+      "Bash(sed -i \"s/moneda?:       Moneda;/moneda?:       MonedaCCC;/\" src/hooks/useCuentasCorrientes.ts)",
+      "Bash(sed -i \"s/moneda:         Moneda;/moneda:         MonedaCCC;/\" src/hooks/useCuentasCorrientes.ts)",
+      "Bash(sed -i \"s/moneda:      Moneda;/moneda:      MonedaCCC;/\" src/hooks/useCuentasCorrientes.ts)",
+      "Bash(npx vite *)"
     ]
   }
 }

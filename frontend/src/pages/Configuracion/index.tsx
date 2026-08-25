@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro } from '@/types';
+import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro } from '@/types';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -654,7 +654,7 @@ function UsuarioDialog({
   esAdminGlobal: boolean;
   onClose:       () => void;
   onCreate:      (d: UsuarioFormData) => Promise<void>;
-  onUpdate:      (id: number, d: Partial<UsuarioFormData>) => Promise<void>;
+  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[] }) => Promise<void>;
   isLoading:     boolean;
 }) {
   const isEdit = usuario !== null;
@@ -663,6 +663,21 @@ function UsuarioDialog({
   );
   const [error, setError]           = useState<string | null>(null);
   const [multiEmpresa, setMultiEmpresa] = useState(false);
+  const [puedeVerMacro, setPuedeVerMacro] = useState(usuario?.puede_ver_macro ?? false);
+  const [areasMacro, setAreasMacro]       = useState<AreaMacro[]>(usuario?.areas_macro ?? []);
+
+  // Accesos adicionales (más allá de la empresa "hogar") — determina si el
+  // usuario editado es candidato a la Macro restringida (ver MacroMayra.tsx).
+  const { data: empresaAccesos = [] } = useUsuarioEmpresaAccesos(usuario?.id ?? null);
+  const tieneAccesoMultiEmpresa = empresaAccesos.length >= 1;
+
+  useEffect(() => {
+    setPuedeVerMacro(usuario?.puede_ver_macro ?? false);
+    setAreasMacro(usuario?.areas_macro ?? []);
+  }, [usuario?.id]);
+
+  const toggleArea = (area: AreaMacro) =>
+    setAreasMacro(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
 
   const f = (key: keyof UsuarioFormData) => ({
     value:    form[key],
@@ -675,13 +690,19 @@ function UsuarioDialog({
     setError(null);
     try {
       if (isEdit) {
-        const patch: Partial<UsuarioFormData> = {};
+        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[] } = {};
         if (form.nombre   !== usuario!.nombre)          patch.nombre   = form.nombre;
         if (form.apodo    !== (usuario!.apodo ?? ''))   patch.apodo    = form.apodo;
         if (form.telefono !== (usuario!.telefono ?? '')) patch.telefono = form.telefono;
         if (form.email    !== usuario!.email)           patch.email    = form.email;
         if (form.password)                              patch.password = form.password;
         if (!isSelf && form.rol !== usuario!.rol)        patch.rol      = form.rol;
+        if (esAdminGlobal && tieneAccesoMultiEmpresa) {
+          if (puedeVerMacro !== usuario!.puede_ver_macro) patch.puede_ver_macro = puedeVerMacro;
+          const mismasAreas = areasMacro.length === usuario!.areas_macro.length
+            && areasMacro.every(a => usuario!.areas_macro.includes(a));
+          if (!mismasAreas) patch.areas_macro = areasMacro;
+        }
         await onUpdate(usuario!.id, patch);
       } else {
         await onCreate(form);
@@ -757,6 +778,32 @@ function UsuarioDialog({
               </label>
               {multiEmpresa && (
                 <EmpresaAccesoPanel usuarioId={usuario!.id} empresaHogarId={null} />
+              )}
+            </div>
+          )}
+          {isEdit && esAdminGlobal && tieneAccesoMultiEmpresa && (
+            <div className="border-t border-border pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={puedeVerMacro}
+                  onChange={e => setPuedeVerMacro(e.target.checked)}
+                />
+                Puede ver Macro
+              </label>
+              {puedeVerMacro && (
+                <div className="mt-2 flex flex-wrap gap-3 pl-1">
+                  {(['FINANZAS', 'ADMIN', 'RRHH', 'STOCK'] as AreaMacro[]).map(area => (
+                    <label key={area} className="flex items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={areasMacro.includes(area)} onChange={() => toggleArea(area)} />
+                      {area === 'FINANZAS' ? 'Finanzas' : area === 'ADMIN' ? 'Admin' : area === 'RRHH' ? 'RRHH' : 'Stock'}
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground/50 cursor-not-allowed" title="No disponible para la Macro">
+                    <input type="checkbox" checked={false} disabled />
+                    Logística
+                  </label>
+                </div>
               )}
             </div>
           )}

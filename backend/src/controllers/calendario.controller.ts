@@ -10,7 +10,7 @@ import { fmtDate } from '../lib/excelExporter';
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
-  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO';
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -37,6 +37,7 @@ const COLORES: Record<TipoCalendario, string> = {
   LIQUIDACION:          '#374151',
   RENDICION_PENDIENTE:  '#7C3AED',
   SALDO_MINIMO:         '#DC2626',
+  CTA_CORRIENTE_INACTIVA: '#F59E0B',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -50,6 +51,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   liquidaciones: 'LIQUIDACION',
   rendiciones:   'RENDICION_PENDIENTE',
   saldos_bajos:  'SALDO_MINIMO',
+  cuentas_corrientes: 'CTA_CORRIENTE_INACTIVA',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -389,6 +391,53 @@ async function resolveSaldosMinimos(empresaFiltro: number | undefined, desde: Da
   return items;
 }
 
+// Cuentas corrientes con saldo negativo (a favor del tercero) y sin
+// movimientos hace más de 30 días — mismo criterio de anclaje a "hoy" que
+// resolveRendicionesPendientes/resolveSaldosMinimos: no es un vencimiento de
+// negocio puntual, sino una condición vigente.
+async function resolveCuentasCorrientesInactivas(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const cuentas = await prisma.cuentaCorriente.findMany({
+    where: {
+      deleted_at: null,
+      activa:     true,
+      saldo_actual: { lt: 0 },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: {
+      empresa: { select: { nombre: true } },
+      movimientos: {
+        where:   { deleted_at: null },
+        orderBy: { fecha: 'desc' },
+        take:    1,
+        select:  { fecha: true },
+      },
+    },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const c of cuentas) {
+    const ultimoMovimiento = c.movimientos[0]?.fecha;
+    if (!ultimoMovimiento) continue;
+    const diasSinActividad = Math.floor((hoy.getTime() - ultimoMovimiento.getTime()) / 86_400_000);
+    if (diasSinActividad <= 30) continue;
+
+    items.push({
+      id:             `cta-corriente-${c.id}`,
+      tipo:           'CTA_CORRIENTE_INACTIVA' as const,
+      titulo:         `Sin actividad: ${c.nombre}`,
+      fecha:          hoy,
+      empresa_id:     c.empresa_id,
+      empresa_nombre: c.empresa.nombre,
+      color:          COLORES.CTA_CORRIENTE_INACTIVA,
+      urgencia:       'warning' as const,
+      metadata:       { cuenta_id: c.id, saldo_actual: Number(c.saldo_actual), moneda: c.moneda, dias_sin_actividad: diasSinActividad },
+    });
+  }
+  return items;
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -454,6 +503,7 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('LIQUIDACION') && isAdmin)   tareas.push(resolveLiquidaciones(empresaFiltro, desde, hasta));
   if (tiposActivos.has('RENDICION_PENDIENTE') && isAdmin) tareas.push(resolveRendicionesPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SALDO_MINIMO') && isAdmin)         tareas.push(resolveSaldosMinimos(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('CTA_CORRIENTE_INACTIVA') && isAdmin) tareas.push(resolveCuentasCorrientesInactivas(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

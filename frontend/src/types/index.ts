@@ -12,7 +12,7 @@ export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
 export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
 export type EstadoCuenta = 'ABIERTA' | 'PENDIENTE_RENDICION' | 'CERRADA';
 export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
-export type Moneda       = 'ARS' | 'USD';
+export type Moneda       = 'ARS' | 'USD' | 'EUR';
 export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO'
   | 'JORNALERO' | 'FOFI' | 'NESTORAS' | 'EXTRANJERO' | 'SERENO' | 'OTRO';
 export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
@@ -23,6 +23,10 @@ export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
 export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
+
+// Áreas asignables de la Macro restringida — Logística queda deliberadamente
+// afuera del set (ver backend usuarios.controller.ts#AREAS_MACRO).
+export type AreaMacro = 'FINANZAS' | 'ADMIN' | 'RRHH' | 'STOCK';
 
 export interface Usuario {
   id:         number;
@@ -35,6 +39,8 @@ export interface Usuario {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  puede_ver_macro: boolean;
+  areas_macro:     AreaMacro[];
 }
 
 export interface UsuarioEmpresaAcceso {
@@ -319,8 +325,10 @@ export interface Movimiento {
   descripcion:           string | null;
   debe:                  number;
   haber:                 number;
-  saldo:                 number; // calculado por el backend
+  saldo:                 number; // calculado por el backend, en ARS (ver monto_ars)
   moneda:                Moneda;
+  tasa_cambio:           number | null;
+  monto_ars:             number | null;
   orden:                 number;
   impuesto_subcategoria: string | null;
   proveedor_id:          number | null;
@@ -539,6 +547,8 @@ export interface Echeq {
   detalle:               string | null;
   importe:               number;
   moneda:                Moneda;
+  tasa_cambio:           number | null;
+  monto_ars:             number | null;
   estado:                EstadoEcheq;
   motivo_rechazo:        string | null;
   fecha_emision:         string | null;
@@ -884,6 +894,8 @@ export interface Factura {
   importe_pagado:    number;
   importe_pendiente: number;
   moneda:            Moneda;
+  tasa_cambio:       number | null;
+  monto_ars:         number | null;
   condicion_pago:    CondicionPago;
   estado:            EstadoFactura;
   notas:             string | null;
@@ -937,6 +949,10 @@ export type MeResponse = {
   empresa:              EmpresaResumen | null;
   empresasDisponibles?: EmpresaResumen[];
   puedeCambiarEmpresa:  boolean;
+  // Macro restringida por área (ej. Mayra) — distinto de puedeCambiarEmpresa
+  // (admin global): ve varias empresas pero solo sus areasMacro.
+  puedeVerMacro:        boolean;
+  areasMacro:           AreaMacro[];
   // Empleado de RRHH vinculado a este usuario (rol VIEWER + empleado ⇒
   // autoservicio: sólo ve/carga sus propias jornadas).
   empleadoId:           number | null;
@@ -1272,7 +1288,7 @@ export interface ResumenComidaFecha {
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
-  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO';
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 
@@ -1292,4 +1308,67 @@ export interface CalendarioItem {
 export interface CalendarioResponse {
   items:            CalendarioItem[];
   totales_por_tipo: Partial<Record<TipoCalendario, number>>;
+}
+
+// ── Cuenta Corriente Genérica ────────────────────────────────────────────────
+
+export type TipoTercero = 'PROVEEDOR' | 'CLIENTE' | 'SOCIO' | 'CLUB' | 'OTRO';
+export type TipoMovCCC  = 'DEBE' | 'HABER' | 'AJUSTE';
+// Moneda propia del módulo (incluye EUR) — separada de Moneda (ARS/USD) que
+// usan Evento/Factura/Movimiento/Echeq.
+export type MonedaCCC   = 'ARS' | 'USD' | 'EUR';
+
+export interface ParteCCC {
+  id:         number;
+  nombre:     string;
+  porcentaje: number;
+}
+
+export interface CuentaCorriente {
+  id:              number;
+  nombre:          string;
+  tipo_tercero:    TipoTercero;
+  proveedor_id:    number | null;
+  proveedor?:      { id: number; nombre: string; cuit?: string | null } | null;
+  tercero_nombre:  string | null;
+  tercero_cuit:    string | null;
+  moneda:          MonedaCCC;
+  descripcion:     string | null;
+  activa:          boolean;
+  saldo_actual:    number;
+  tiene_reparto:   boolean;
+  partes?:         ParteCCC[];
+  ultimo_movimiento?: { fecha: string; concepto: string; tipo: TipoMovCCC; monto: number } | null;
+  movimientos?:    MovimientoCCC[];
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+}
+
+export interface MovimientoCCC {
+  id:                number;
+  cuenta_ccc_id:     number;
+  tipo:              TipoMovCCC;
+  fecha:             string;
+  concepto:          string;
+  descripcion:       string | null;
+  monto:             number;
+  moneda:            MonedaCCC;
+  tasa_cambio:       number | null;
+  monto_ars:         number | null;
+  saldo:             number;
+  factura_id:        number | null;
+  factura?:          { id: number; numero_factura: string } | null;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
+  documento_nombre:  string | null;
+  documento_mime:    string | null;
+  documento_tamanio: number | null;
+  created_at:        string;
+  deleted_at:        string | null;
+}
+
+export interface MovimientosCCCResponse {
+  total:       number;
+  movimientos: MovimientoCCC[];
 }

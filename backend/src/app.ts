@@ -27,6 +27,8 @@ import parteDiarioRouter from './routes/parteDiario';
 import { comidasEventoRouter, comidasRouter } from './routes/comidas';
 import calendarioRouter from './routes/calendario';
 import preMacroRouter from './routes/preMacro';
+import { cuentasCorrientesRouter } from './routes/cuentasCorrientes';
+import { macroRouter } from './routes/macro';
 
 const app = express();
 
@@ -98,6 +100,8 @@ app.use('/api/eventos/:id/comidas', comidasEventoRouter);
 app.use('/api/comidas',             comidasRouter);
 app.use('/api/calendario',          calendarioRouter);
 app.use('/api/pre-macro',           preMacroRouter);
+app.use('/api/cuentas-corrientes',  cuentasCorrientesRouter);
+app.use('/api/macro',               macroRouter);
 
 app.use(errorHandler);
 

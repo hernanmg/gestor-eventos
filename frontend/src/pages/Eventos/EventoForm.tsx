@@ -22,7 +22,7 @@ const schema = z.object({
   fecha_fin:       z.string().optional(),
   dias_montaje:    z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
   dias_desmontaje: z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
-  moneda_base:  z.enum(['ARS', 'USD']),
+  moneda_base:  z.enum(['ARS', 'USD', 'EUR']),
   socios:       z.array(socioSchema).default([]),
 }).refine(data => {
   if (!data.socios || data.socios.length === 0) return true;
@@ -79,7 +79,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
       fecha_fin:       data.fecha_fin    || null,
       dias_montaje:    data.dias_montaje,
       dias_desmontaje: data.dias_desmontaje,
-      moneda_base:  data.moneda_base  as 'ARS' | 'USD',
+      moneda_base:  data.moneda_base,
       socios:       data.socios,
     };
     try {
@@ -161,6 +161,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
         >
           <option value="ARS">ARS — Peso argentino</option>
           <option value="USD">USD — Dólar</option>
+          <option value="EUR">EUR — Euro</option>
         </select>
       </div>
 

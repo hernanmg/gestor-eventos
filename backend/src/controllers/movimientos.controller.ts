@@ -8,6 +8,7 @@ import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { generateMacroExcel } from '../lib/excelExporter';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
+import { convertirARS } from '../lib/convertirARS';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
@@ -70,7 +71,8 @@ const createSchema = z.object({
   descripcion:           z.string().nullable().optional(),
   debe:                  z.number().min(0).default(0),
   haber:                 z.number().min(0).default(0),
-  moneda:                z.enum(['ARS', 'USD']).default('ARS'),
+  moneda:                z.enum(['ARS', 'USD', 'EUR']).default('ARS'),
+  tasa_cambio:           z.number().positive().nullable().optional(),
   orden:                 z.number().int().min(1).optional(),
   impuesto_subcategoria: z.string().nullable().optional(),
   impacta_caja:          z.boolean().optional(),
@@ -92,7 +94,8 @@ const updateSchema = z.object({
   descripcion:           z.string().nullable().optional(),
   debe:                  z.number().min(0).optional(),
   haber:                 z.number().min(0).optional(),
-  moneda:                z.enum(['ARS', 'USD']).optional(),
+  moneda:                z.enum(['ARS', 'USD', 'EUR']).optional(),
+  tasa_cambio:           z.number().positive().nullable().optional(),
   impuesto_subcategoria: z.string().nullable().optional(),
   proveedor_id:          z.number().int().positive().nullable().optional(),
   estado_movimiento:     z.enum(['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'PAGADO', 'CANCELADO']).optional(),
@@ -156,26 +159,46 @@ async function resolveMacroWhere(req: Request, res: Response): Promise<MacroWher
 
   const usuario = await prisma.usuario.findFirst({
     where:  { id: req.user!.id, deleted_at: null },
-    select: { empresa_id: true },
+    select: { empresa_id: true, puede_ver_macro: true, areas_macro: true },
   });
   if (!usuario) { res.status(401).json({ error: 'Sesión inválida' }); return { ok: false }; }
 
   const esAdminGlobal = req.user!.rol === 'ADMIN' && usuario.empresa_id === null;
+  // Usuario ADMIN multi-empresa con Macro restringida (ej. Mayra) — no es
+  // admin global, pero puede ver movimientos de todas sus empresas
+  // (UsuarioEmpresaAcceso), acotado a que "FINANZAS" esté en sus áreas.
+  const esMacroRestringida = !esAdminGlobal && usuario.puede_ver_macro === true;
 
-  let empresaFiltro: number | undefined;
+  // undefined ⇒ sin restricción de empresa (solo admin global sin filtro).
+  let empresaIds: number[] | undefined;
+
   if (esAdminGlobal) {
-    empresaFiltro = q.empresa_id; // undefined ⇒ todas las empresas
+    empresaIds = q.empresa_id !== undefined ? [q.empresa_id] : undefined;
+  } else if (esMacroRestringida) {
+    if (!usuario.areas_macro.includes('FINANZAS')) {
+      // Sin el área Finanzas, esta vista (inherentemente financiera) queda
+      // vacía en vez de 403 — evita que la UI rompa si le sacan el área.
+      return { ok: true, where: { id: -1 }, q };
+    }
+    const accesos = await prisma.usuarioEmpresaAcceso.findMany({
+      where:  { usuario_id: req.user!.id },
+      select: { empresa_id: true },
+    });
+    const permitidas = accesos.map(a => a.empresa_id);
+    empresaIds = q.empresa_id !== undefined
+      ? (permitidas.includes(q.empresa_id) ? [q.empresa_id] : [-1])
+      : permitidas;
   } else {
     if (req.user!.empresaId == null) {
       res.status(401).json({ error: 'Sin empresa activa. Seleccioná una empresa.' });
       return { ok: false };
     }
-    empresaFiltro = req.user!.empresaId; // empresa_id del query se ignora
+    empresaIds = [req.user!.empresaId]; // empresa_id del query se ignora
   }
 
   const where: Prisma.MovimientoWhereInput = {
     deleted_at: null,
-    evento:     { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) },
+    evento:     { deleted_at: null, ...(empresaIds !== undefined ? { empresa_id: { in: empresaIds } } : {}) },
   };
   if (q.evento_id       !== undefined) where.evento_id      = q.evento_id;
   if (q.rubro_id         !== undefined) where.rubro_id       = q.rubro_id;
@@ -448,7 +471,7 @@ export async function create(req: Request, res: Response) {
 
   const {
     rubro_id, fecha, concepto, descripcion,
-    debe, haber, moneda, impuesto_subcategoria,
+    debe, haber, moneda, tasa_cambio, impuesto_subcategoria,
     impacta_caja, cuenta_id, proveedor_id,
     estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor,
   } = parsed.data;
@@ -506,6 +529,9 @@ export async function create(req: Request, res: Response) {
       orden = (last?.orden ?? 0) + 1;
     }
 
+    const montoBase = (debe ?? 0) > 0 ? (debe ?? 0) : (haber ?? 0);
+    const montoArs  = convertirARS(montoBase, (moneda ?? 'ARS') as Moneda, tasa_cambio ?? null);
+
     const mov = await tx.movimiento.create({
       data: {
         evento_id:             eventoId,
@@ -517,6 +543,8 @@ export async function create(req: Request, res: Response) {
         debe:                  debe ?? 0,
         haber:                 haber ?? 0,
         moneda:                (moneda ?? 'ARS') as Moneda,
+        tasa_cambio:           tasa_cambio ?? null,
+        monto_ars:             montoArs,
         orden,
         impuesto_subcategoria: impuesto_subcategoria ?? null,
         proveedor_id:          proveedor_id           ?? null,
@@ -595,7 +623,7 @@ export async function update(req: Request, res: Response) {
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
   const {
-    fecha, concepto, descripcion, debe, haber, moneda, impuesto_subcategoria, proveedor_id,
+    fecha, concepto, descripcion, debe, haber, moneda, tasa_cambio, impuesto_subcategoria, proveedor_id,
     estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor,
   } = parsed.data;
 
@@ -627,6 +655,17 @@ export async function update(req: Request, res: Response) {
     if (error) { res.status(400).json({ error }); return; }
   }
 
+  // Recalcular monto_ars si cambió cualquier dato que lo afecta — usa los
+  // valores nuevos cuando vienen en el payload, si no los existentes.
+  const debeFinal      = debe  !== undefined ? debe  : Number(existing.debe);
+  const haberFinal     = haber !== undefined ? haber : Number(existing.haber);
+  const monedaFinal    = (moneda ?? existing.moneda) as Moneda;
+  const tasaFinal       = tasa_cambio !== undefined ? tasa_cambio : (existing.tasa_cambio !== null ? Number(existing.tasa_cambio) : null);
+  const recomputarArs   = debe !== undefined || haber !== undefined || moneda !== undefined || tasa_cambio !== undefined;
+  const montoArsFinal   = recomputarArs
+    ? convertirARS(debeFinal > 0 ? debeFinal : haberFinal, monedaFinal, tasaFinal)
+    : undefined;
+
   const movId = await prisma.$transaction(async tx => {
     await tx.movimiento.update({
       where: { id },
@@ -637,6 +676,8 @@ export async function update(req: Request, res: Response) {
         ...(debe               !== undefined && { debe }),
         ...(haber              !== undefined && { haber }),
         ...(moneda             !== undefined && { moneda: moneda as Moneda }),
+        ...(tasa_cambio        !== undefined && { tasa_cambio }),
+        ...(montoArsFinal      !== undefined && { monto_ars: montoArsFinal }),
         ...(impuesto_subcategoria !== undefined && { impuesto_subcategoria }),
         ...(proveedor_id          !== undefined && { proveedor_id }),
         ...(estado_movimiento     !== undefined && { estado_movimiento: estado_movimiento as EstadoMovimiento }),
@@ -648,7 +689,7 @@ export async function update(req: Request, res: Response) {
       },
     });
 
-    if (debe !== undefined || haber !== undefined) {
+    if (debe !== undefined || haber !== undefined || montoArsFinal !== undefined) {
       await recalcularSaldoDeMovimiento(existing, tx);
     }
 

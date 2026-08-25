@@ -4,7 +4,8 @@ import { useCreateFactura, useUpdateFactura } from '@/hooks/useFacturas';
 import { useRubros } from '@/hooks/useRubros';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
 import { Button } from '@/components/ui/button';
-import type { Factura, ProveedorBusqueda } from '@/types';
+import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
+import type { Factura, Moneda, ProveedorBusqueda } from '@/types';
 import { cn } from '@/lib/utils';
 
 const TIPOS_FACTURA  = ['A', 'B', 'C', 'X'] as const;
@@ -48,7 +49,8 @@ export default function FacturaForm({ eventoId, factura, onClose, onSuccess }: P
     fecha_vencimiento: factura?.fecha_vencimiento?.slice(0, 10) ?? '',
     rubro_id:          factura?.rubro_id ? String(factura.rubro_id) : '',
     importe_total:     factura?.importe_total ? String(factura.importe_total) : '',
-    moneda:            (factura?.moneda ?? 'ARS') as string,
+    moneda:            (factura?.moneda ?? 'ARS') as Moneda,
+    tasa_cambio:       factura?.tasa_cambio ? String(factura.tasa_cambio) : '',
     condicion_pago:    (factura?.condicion_pago ?? 'CONTADO') as string,
     notas:             factura?.notas ?? '',
   });
@@ -117,6 +119,7 @@ export default function FacturaForm({ eventoId, factura, onClose, onSuccess }: P
           rubro_id:          form.rubro_id ? Number(form.rubro_id) : null,
           importe_total:     Number(form.importe_total),
           moneda:            form.moneda as any,
+          tasa_cambio:       form.moneda !== 'ARS' && form.tasa_cambio ? Number(form.tasa_cambio) : null,
           condicion_pago:    form.condicion_pago,
           notas:             form.notas || null,
         });
@@ -130,6 +133,7 @@ export default function FacturaForm({ eventoId, factura, onClose, onSuccess }: P
         fd.append('proveedor_id',    String(proveedor!.id));
         fd.append('importe_total',   form.importe_total);
         fd.append('moneda',          form.moneda);
+        if (form.moneda !== 'ARS' && form.tasa_cambio) fd.append('tasa_cambio', form.tasa_cambio);
         fd.append('condicion_pago',  form.condicion_pago);
         if (form.fecha_vencimiento) fd.append('fecha_vencimiento', form.fecha_vencimiento);
         if (form.rubro_id)          fd.append('rubro_id',          form.rubro_id);
@@ -223,10 +227,13 @@ export default function FacturaForm({ eventoId, factura, onClose, onSuccess }: P
         {/* Moneda */}
         <div>
           <label className={labelCls}>Moneda</label>
-          <select value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))} className={inputCls()}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
+          <MonedaTasaCambio
+            moneda={form.moneda}
+            monto={Number(form.importe_total) || 0}
+            tasaCambio={form.tasa_cambio}
+            onMonedaChange={m => setForm(f => ({ ...f, moneda: m, tasa_cambio: m === 'ARS' ? '' : f.tasa_cambio }))}
+            onTasaChange={t => setForm(f => ({ ...f, tasa_cambio: t }))}
+          />
         </div>
 
         {/* Rubro */}

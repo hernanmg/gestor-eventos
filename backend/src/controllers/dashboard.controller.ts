@@ -83,10 +83,11 @@ export async function getResumen(req: Request, res: Response) {
   }
 
   // Echeqs
-  let ars = 0, usd = 0, vencidos = 0, proximos = 0;
+  let ars = 0, usd = 0, eur = 0, vencidos = 0, proximos = 0;
   for (const e of echeqs) {
-    if (e.moneda === 'ARS') ars += Number(e.importe);
-    else                    usd += Number(e.importe);
+    if (e.moneda === 'ARS')      ars += Number(e.importe);
+    else if (e.moneda === 'EUR') eur += Number(e.importe);
+    else                         usd += Number(e.importe);
     if (e.fecha_cobro_estimada) {
       const f = new Date(e.fecha_cobro_estimada); f.setHours(0, 0, 0, 0);
       if (f < today)      vencidos++;
@@ -108,6 +109,7 @@ export async function getResumen(req: Request, res: Response) {
       proximos_a_vencer:  proximos,
       total_expuesto_ars: parseFloat(ars.toFixed(2)),
       total_expuesto_usd: parseFloat(usd.toFixed(2)),
+      total_expuesto_eur: parseFloat(eur.toFixed(2)),
     },
     eventos_recientes: eventosRecientes,
   });
@@ -215,10 +217,11 @@ export async function getKPIsEvento(req: Request, res: Response) {
   });
 
   // Echeqs
-  let eArs = 0, eUsd = 0;
+  let eArs = 0, eUsd = 0, eEur = 0;
   for (const e of echeqs) {
-    if (e.moneda === 'ARS') eArs += Number(e.importe);
-    else                    eUsd += Number(e.importe);
+    if (e.moneda === 'ARS')      eArs += Number(e.importe);
+    else if (e.moneda === 'EUR') eEur += Number(e.importe);
+    else                         eUsd += Number(e.importe);
   }
 
   res.json({
@@ -241,6 +244,7 @@ export async function getKPIsEvento(req: Request, res: Response) {
       pendientes:         echeqs.length,
       total_expuesto_ars: parseFloat(eArs.toFixed(2)),
       total_expuesto_usd: parseFloat(eUsd.toFixed(2)),
+      total_expuesto_eur: parseFloat(eEur.toFixed(2)),
     },
   });
 }

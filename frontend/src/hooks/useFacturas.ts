@@ -28,6 +28,7 @@ export interface CreateFacturaPayload {
   rubro_id?:         number | null;
   importe_total:     number;
   moneda?:           Moneda;
+  tasa_cambio?:      number | null;
   condicion_pago?:   string;
   notas?:            string | null;
   pdf?:              File | null;

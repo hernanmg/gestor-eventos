@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
-import type { PreMacro, RubroSugerido, Usuario } from '@/types';
+import type { Moneda, PreMacro, RubroSugerido, Usuario } from '@/types';
 
 type Vista = 'wizard' | 'resumen' | 'rubros';
 
@@ -52,7 +52,7 @@ interface FormState {
   contacto_cliente:  string;
   telefono_cliente:  string;
   presupuesto_total: string;
-  moneda:            'ARS' | 'USD';
+  moneda:            Moneda;
   socios:            SocioForm[];
 
   lleva_empleados:         boolean;
@@ -383,10 +383,11 @@ function Paso3({ form, set, usuarios }: StepProps & { usuarios: Usuario[] }) {
           <select
             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={form.moneda}
-            onChange={e => set('moneda', e.target.value as 'ARS' | 'USD')}
+            onChange={e => set('moneda', e.target.value as Moneda)}
           >
             <option value="ARS">ARS — Peso argentino</option>
             <option value="USD">USD — Dólar</option>
+            <option value="EUR">EUR — Euro</option>
           </select>
         </Field>
       </div>

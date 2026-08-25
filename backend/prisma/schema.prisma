@@ -51,6 +51,7 @@ enum EstadoEcheq {
 enum Moneda {
   ARS
   USD
+  EUR
 }
 
 enum UbicacionStock {
@@ -235,6 +236,8 @@ model Empresa {
   asignacionesDiarias   AsignacionDiaria[]
   pedidosComida         PedidoComida[]
   preMacros             PreMacro[]
+  cuentasCorrientes     CuentaCorriente[]
+  movimientosCCC        MovimientoCCC[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -255,6 +258,13 @@ model Usuario {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
+
+  // Vista Macro restringida por área — para usuarios ADMIN multi-empresa que
+  // no son el admin global (ej. Mayra, Gerente Administrativa) pero necesitan
+  // visibilidad cross-empresa acotada a ciertas áreas. Solo el admin global
+  // puede tocar estos dos campos (ver usuarios.controller.ts#update).
+  puede_ver_macro Boolean  @default(false)
+  areas_macro     String[] // subconjunto de ["FINANZAS","ADMIN","RRHH","STOCK"]
 
   eventoAccesos  EventoAcceso[]
   auditoriaLogs  AuditoriaLog[]
@@ -339,6 +349,7 @@ model Evento {
   asignaciones_diarias   AsignacionDiaria[]
   pedidos_comida         PedidoComida[]
   pre_macro              PreMacro?
+  movimientosCCC         MovimientoCCC[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -469,8 +480,15 @@ model Movimiento {
   descripcion           String?
   debe                  Decimal         @default(0) @db.Decimal(15, 2)
   haber                 Decimal         @default(0) @db.Decimal(15, 2)
-  saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO
+  saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO — en ARS (ver monto_ars)
   moneda                Moneda          @default(ARS)
+  // Cotización a ARS al momento del movimiento — sólo aplica si moneda ≠ ARS.
+  tasa_cambio           Decimal?        @db.Decimal(10, 4)
+  // Equivalente en ARS de debe/haber (el que esté distinto de cero). Si
+  // moneda=ARS, monto_ars = debe o haber sin conversión. Se usa para calcular
+  // `saldo` de forma consistente aunque el rubro mezcle movimientos en
+  // distinta moneda — ver lib/recalcularSaldos.ts.
+  monto_ars             Decimal?        @db.Decimal(15, 2)
   orden                 Int // define la secuencia para recálculo de saldo
   impuesto_subcategoria String? // solo para EG-IMP (rubro.codigo = 'EG-IMP')
   proveedor_id          Int?
@@ -522,6 +540,10 @@ model CuentaBancaria {
 
   movimientos       MovimientoCaja[]
   eventos_vinculados EventoCuenta[]
+
+  // Permite upsert idempotente por nombre dentro de una empresa (ver seed.ts
+  // — cuentas de empresa DOS57 sin evento_id, ej. "Caja Pollo").
+  @@unique([nombre, empresa_id])
 }
 
 // Vínculo muchos-a-muchos: una cuenta de empresa (evento_id null, ej. "Caja
@@ -559,6 +581,12 @@ model MovimientoCaja {
   debe                 Decimal        @default(0) @db.Decimal(15, 2)
   haber                Decimal        @default(0) @db.Decimal(15, 2)
   saldo_corriente      Decimal        @default(0) @db.Decimal(15, 2) // CALCULADO
+  // Reservado para uso futuro — hoy la moneda de un movimiento de caja es
+  // siempre la de su CuentaBancaria (no hace falta convertir para sumar
+  // saldo_corriente, que es por-cuenta). Ver lib/convertirARS.ts.
+  moneda               Moneda?
+  tasa_cambio          Decimal?       @db.Decimal(10, 4)
+  monto_ars            Decimal?       @db.Decimal(15, 2)
   orden                Int
   transferencia_par_id Int?
   created_at           DateTime       @default(now())
@@ -597,6 +625,7 @@ model Proveedor {
   facturas       Factura[]
   rubros_evento  RubroEvento[]
   pedidos_comida PedidoComida[]
+  cuentasCorrientes CuentaCorriente[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -619,6 +648,9 @@ model Echeq {
   detalle              String?
   importe              Decimal         @db.Decimal(15, 2)
   moneda               Moneda          @default(ARS)
+  // Cotización a ARS al momento de cargar el echeq — ver comentario en Movimiento.
+  tasa_cambio          Decimal?        @db.Decimal(10, 4)
+  monto_ars            Decimal?        @db.Decimal(15, 2)
   estado               EstadoEcheq     @default(PENDIENTE)
   motivo_rechazo       String?
   fecha_emision        DateTime?
@@ -923,6 +955,9 @@ model Factura {
   importe_pagado    Decimal       @default(0) @db.Decimal(15, 2)
   importe_pendiente Decimal       @default(0) @db.Decimal(15, 2)
   moneda            Moneda        @default(ARS)
+  // Cotización a ARS al momento de cargar la factura — ver comentario en Movimiento.
+  tasa_cambio       Decimal?      @db.Decimal(10, 4)
+  monto_ars         Decimal?      @db.Decimal(15, 2)
   condicion_pago    CondicionPago @default(CONTADO)
   estado            EstadoFactura @default(RECIBIDA)
   notas             String?
@@ -936,7 +971,8 @@ model Factura {
   created_by        Int?
   updated_by        Int?
 
-  pagos PagoFactura[]
+  pagos          PagoFactura[]
+  movimientosCCC MovimientoCCC[]
 }
 
 model PagoFactura {
@@ -1342,4 +1378,125 @@ model SocioPreMacro {
   pre_macro    PreMacro @relation(fields: [pre_macro_id], references: [id])
   nombre       String
   porcentaje   Decimal  @db.Decimal(5, 2)
+}
+
+// ─── CUENTA CORRIENTE GENÉRICA ────────────────────────────────────────────────
+// Patrón recurrente detectado en las planillas de Mayra: tercero → movimientos
+// Debe/Haber → saldo acumulado, con soporte de moneda extranjera y reparto
+// porcentual entre partes (ej. clubes deportivos, proveedores especiales tipo
+// Airasca/Layher BB, socios de negocios compartidos tipo Nave 15).
+
+enum TipoTercero {
+  PROVEEDOR // proveedor ya registrado en el sistema (usa proveedor_id)
+  CLIENTE   // cliente externo, sin ficha propia
+  SOCIO     // socio de negocio compartido (ej. Nave 15, Coworking)
+  CLUB      // club deportivo u organización
+  OTRO      // cualquier otro tercero, texto libre
+}
+
+// Moneda propia del módulo — históricamente separada de Moneda porque ese
+// enum sólo tenía ARS/USD. Moneda ganó EUR con el soporte multi-moneda de
+// Movimiento/Factura/Echeq, así que hoy son equivalentes; se mantiene como
+// tipo aparte por prolijidad de dominio (este módulo es cuenta corriente,
+// no caja de eventos) y para no acoplar CCC a cambios futuros de Moneda.
+enum MonedaCCC {
+  ARS
+  USD
+  EUR
+}
+
+model CuentaCorriente {
+  id         Int         @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa     @relation(fields: [empresa_id], references: [id])
+
+  // Tercero — o bien un Proveedor ya cargado, o bien datos libres
+  tipo_tercero   TipoTercero
+  proveedor_id   Int?
+  proveedor      Proveedor?  @relation(fields: [proveedor_id], references: [id])
+  tercero_nombre String?
+  tercero_cuit   String?
+
+  // Configuración
+  nombre       String // "Cta Cte Airasca", "Cta Cte Talleres"
+  moneda       MonedaCCC @default(ARS)
+  descripcion  String?
+  activa       Boolean @default(true)
+
+  // Saldo desnormalizado — se recalcula sumando los movimientos activos cada
+  // vez que uno se crea/edita/elimina (mismo criterio que Factura.importe_pagado
+  // vía recalcularFactura, en vez de acumular con +=, para no arrastrar drift).
+  // Positivo = a favor nuestro (nos deben) · Negativo = a favor del tercero
+  // (les debemos). Ver TipoMovCCC para la convención de signo por movimiento.
+  saldo_actual Decimal @db.Decimal(15, 2) @default(0)
+
+  // Reparto porcentual entre partes (ej. Nave 15 — DOS57/Jiménez 50/50)
+  tiene_reparto Boolean @default(false)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+
+  partes      ParteCCC[]
+  movimientos MovimientoCCC[]
+}
+
+// Reparto porcentual entre partes de una cuenta corriente (ej: Nave 15 — 50/50).
+// La suma de porcentajes = 100 se valida en el controller, no en el schema.
+model ParteCCC {
+  id            Int             @id @default(autoincrement())
+  cuenta_ccc_id Int
+  cuenta_ccc    CuentaCorriente @relation(fields: [cuenta_ccc_id], references: [id])
+  nombre        String // "DOS57", "Jiménez", "Galera"
+  porcentaje    Decimal         @db.Decimal(5, 2)
+}
+
+// DEBE suma al saldo, HABER resta — saldo = Σ DEBE − Σ HABER (+ AJUSTE con su
+// propio signo). Positivo = el tercero nos debe, negativo = nosotros les debemos.
+enum TipoMovCCC {
+  DEBE   // cargo al tercero — lo que nos debe, aumenta el saldo a favor nuestro
+  HABER  // pago o abono al tercero — reduce el saldo a favor nuestro
+  AJUSTE // corrección manual; el monto lleva signo propio (+/-)
+}
+
+model MovimientoCCC {
+  id            Int             @id @default(autoincrement())
+  cuenta_ccc_id Int
+  cuenta_ccc    CuentaCorriente @relation(fields: [cuenta_ccc_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa         @relation(fields: [empresa_id], references: [id])
+
+  tipo        TipoMovCCC
+  fecha       DateTime
+  concepto    String
+  descripcion String?
+  monto       Decimal    @db.Decimal(15, 2) // DEBE/HABER siempre positivo; AJUSTE lleva signo
+  moneda      MonedaCCC
+  tasa_cambio Decimal?   @db.Decimal(10, 4) // cotización a ARS al momento del movimiento
+  monto_ars   Decimal?   @db.Decimal(15, 2) // monto convertido a ARS con tasa_cambio
+  // Saldo acumulado de la cuenta después de este movimiento — persistido y
+  // recalculado en cada alta/baja (ver lib/recalcularSaldoCCC.ts), mismo
+  // criterio que Movimiento.saldo.
+  saldo       Decimal    @db.Decimal(15, 2) @default(0)
+
+  // Vínculo opcional con otros módulos
+  factura_id Int?
+  factura    Factura? @relation(fields: [factura_id], references: [id])
+  evento_id  Int?
+  evento     Evento?  @relation(fields: [evento_id], references: [id])
+
+  // Documento adjunto — mismo patrón que Factura.pdf_data (bytes en DB +
+  // endpoint de descarga dedicado, no hay storage externo en este proyecto)
+  documento_data    Bytes?
+  documento_nombre  String?
+  documento_mime    String?
+  documento_tamanio Int?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
 }

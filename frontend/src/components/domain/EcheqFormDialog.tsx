@@ -5,6 +5,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useCreateEcheq } from '@/hooks/useEcheqs';
 import ProveedorCombobox from './ProveedorCombobox';
+import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import type { Moneda, ProveedorBusqueda } from '@/types';
 
 interface Props {
@@ -20,6 +21,7 @@ interface FormData {
   detalle:              string;
   importe:              string;
   moneda:               Moneda;
+  tasa_cambio:          string;
   fecha_emision:        string;
   fecha_cobro_estimada: string;
 }
@@ -30,6 +32,7 @@ const EMPTY: FormData = {
   detalle:              '',
   importe:              '',
   moneda:               'ARS',
+  tasa_cambio:          '',
   fecha_emision:        '',
   fecha_cobro_estimada: '',
 };
@@ -79,6 +82,7 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
         detalle:              form.detalle.trim()              || null,
         importe:              parseFloat(form.importe),
         moneda:               form.moneda,
+        tasa_cambio:          form.moneda !== 'ARS' && form.tasa_cambio ? parseFloat(form.tasa_cambio) : null,
         fecha_emision:        form.fecha_emision              || null,
         fecha_cobro_estimada: form.fecha_cobro_estimada       || null,
       });
@@ -143,14 +147,18 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
             <input {...field('detalle')} className={input} placeholder="Descripción opcional" />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className={label}>Moneda</label>
-              <select {...field('moneda')} className={input}>
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
+          <div>
+            <label className={label}>Moneda</label>
+            <MonedaTasaCambio
+              moneda={form.moneda}
+              monto={parseFloat(form.importe) || 0}
+              tasaCambio={form.tasa_cambio}
+              onMonedaChange={m => setForm(p => ({ ...p, moneda: m, tasa_cambio: m === 'ARS' ? '' : p.tasa_cambio }))}
+              onTasaChange={t => setForm(p => ({ ...p, tasa_cambio: t }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>Fecha emisión</label>
               <input type="date" {...field('fecha_emision')} className={input} />

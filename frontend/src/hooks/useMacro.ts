@@ -6,6 +6,50 @@ import type { MovimientoUpdatePayload } from '@/hooks/useMovimientos';
 
 const MACRO_KEY = ['macro', 'movimientos'] as const;
 
+// ── Resumen financiero (Macro restringida — Mayra y quien se configure) ──────
+
+export interface TotalesMonedaMacro {
+  ingresos: number;
+  egresos:  number;
+  saldo:    number;
+}
+
+export interface MovimientosPorMonedaMacro {
+  ARS: TotalesMonedaMacro;
+  USD: TotalesMonedaMacro;
+  EUR: TotalesMonedaMacro;
+  total_en_ars: TotalesMonedaMacro;
+}
+
+export interface ResumenFinancieroEmpresa {
+  empresa_id:     number;
+  empresa_nombre: string;
+  // Legado — alias de movimientos_por_moneda.total_en_ars.
+  total_ingresos_mes: number;
+  total_egresos_mes:  number;
+  saldo_neto_mes:     number;
+  movimientos_por_moneda: MovimientosPorMonedaMacro;
+  facturas_pendientes: number;
+  facturas_vencidas:   number;
+  echeqs_pendientes:   number;
+  cuentas_corrientes:  { nombre: string; saldo: number; moneda: string }[];
+  liquidaciones_pendientes: number;
+  anticipos_pendientes:     number;
+  alertas_stock:            number;
+}
+
+export function useResumenFinancieroMacro(mes?: number, anio?: number) {
+  const params = new URLSearchParams();
+  if (mes)  params.set('mes', String(mes));
+  if (anio) params.set('anio', String(anio));
+
+  return useQuery<ResumenFinancieroEmpresa[]>({
+    queryKey:  ['macro', 'resumen-financiero', mes ?? null, anio ?? null],
+    queryFn:   () => api.get(`/macro/resumen-financiero?${params}`).then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+}
+
 function toParams(filtros: MacroFiltros): Record<string, string> {
   const params: Record<string, string> = {};
   if (filtros.empresa_id        !== undefined) params.empresa_id        = String(filtros.empresa_id);

@@ -47,12 +47,14 @@ function BigNumber({ value, colored = false, moneda }: { value: number; colored?
 // ── Row 1: Metric Cards ───────────────────────────────────────────────────────
 
 function MetricsRow({ data }: { data: ResumenDashboard }) {
-  const arsData = (data.por_moneda ?? []).find(p => p.moneda === 'ARS');
-  const usdData = (data.por_moneda ?? []).find(p => p.moneda === 'USD');
-  const hasUSD  = usdData !== undefined;
+  // Un card "Saldo neto {moneda}" por cada moneda con actividad — dinámico en
+  // vez de hardcodear ARS/USD, para que EUR (u otra moneda futura) aparezca
+  // sin tocar este componente.
+  const porMoneda = data.por_moneda ?? [];
+  const totalCards = 2 + porMoneda.length; // Eventos + Echeqs + 1 por moneda
 
   return (
-    <div className={cn('grid gap-4 grid-cols-2', hasUSD ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
+    <div className={cn('grid gap-4 grid-cols-2', totalCards >= 4 ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
       {/* Eventos activos */}
       <Card title="Eventos">
         <BigNumber value={data.eventos.activos} />
@@ -64,27 +66,16 @@ function MetricsRow({ data }: { data: ResumenDashboard }) {
         </div>
       </Card>
 
-      {/* Saldo neto ARS */}
-      <Card title="Saldo neto ARS">
-        <BigNumber value={arsData?.saldo_neto ?? 0} colored moneda="ARS" />
-        {arsData && (
+      {/* Saldo neto por moneda */}
+      {porMoneda.map(pm => (
+        <Card key={pm.moneda} title={`Saldo neto ${pm.moneda}`}>
+          <BigNumber value={pm.saldo_neto} colored moneda={pm.moneda as Moneda} />
           <div className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>Ingresos: {formatCurrency(arsData.total_ingresos, 'ARS')}</span>
-            <span>Egresos: {formatCurrency(arsData.total_egresos, 'ARS')}</span>
-          </div>
-        )}
-      </Card>
-
-      {/* Saldo neto USD (only when present) */}
-      {hasUSD && (
-        <Card title="Saldo neto USD">
-          <BigNumber value={usdData!.saldo_neto} colored moneda="USD" />
-          <div className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground">
-            <span>Ingresos: {formatCurrency(usdData!.total_ingresos, 'USD')}</span>
-            <span>Egresos: {formatCurrency(usdData!.total_egresos, 'USD')}</span>
+            <span>Ingresos: {formatCurrency(pm.total_ingresos, pm.moneda as Moneda)}</span>
+            <span>Egresos: {formatCurrency(pm.total_egresos, pm.moneda as Moneda)}</span>
           </div>
         </Card>
-      )}
+      ))}
 
       {/* Echeqs expuestos */}
       <Card title="Echeqs expuestos" className={data.echeqs.vencidos > 0 ? 'border-destructive/40' : ''}>
@@ -100,6 +91,7 @@ function MetricsRow({ data }: { data: ResumenDashboard }) {
         <div className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground">
           {data.echeqs.total_expuesto_ars > 0 && <span>ARS {formatCurrency(data.echeqs.total_expuesto_ars, 'ARS')}</span>}
           {data.echeqs.total_expuesto_usd > 0 && <span>USD {formatCurrency(data.echeqs.total_expuesto_usd, 'USD')}</span>}
+          {data.echeqs.total_expuesto_eur > 0 && <span>EUR {formatCurrency(data.echeqs.total_expuesto_eur, 'EUR')}</span>}
           {data.echeqs.proximos_a_vencer > 0 && (
             <span className="text-amber-600">{data.echeqs.proximos_a_vencer} vence{data.echeqs.proximos_a_vencer === 1 ? '' : 'n'} en 7 días</span>
           )}
@@ -388,6 +380,7 @@ function EventKPIDetail({ kpis }: { kpis: KPIsEvento }) {
               <div className="mt-1 text-xs text-muted-foreground">
                 {kpis.echeqs.total_expuesto_ars > 0 && <div>ARS {formatCurrency(kpis.echeqs.total_expuesto_ars, 'ARS')}</div>}
                 {kpis.echeqs.total_expuesto_usd > 0 && <div>USD {formatCurrency(kpis.echeqs.total_expuesto_usd, 'USD')}</div>}
+                {kpis.echeqs.total_expuesto_eur > 0 && <div>EUR {formatCurrency(kpis.echeqs.total_expuesto_eur, 'EUR')}</div>}
               </div>
             </Card>
           </div>

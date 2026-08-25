@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient, Tipo, TipoRubro } from '@prisma/client';
+import { PrismaClient, Tipo, TipoRubro, TipoCuenta, Moneda } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { RUBROS_SISTEMA } from '../src/lib/rubrosConstants';
 
@@ -288,6 +288,9 @@ async function main() {
     rol:         'ADMIN' | 'OPERADOR';
     empresa_id:  number | null;
     accesoExtra?: { empresa_id: number; rol: 'ADMIN' | 'OPERADOR' | 'VIEWER' }[];
+    // Vista Macro restringida por área (ver Usuario.puede_ver_macro/areas_macro).
+    puedeVerMacro?: boolean;
+    areasMacro?:    string[];
   };
 
   const USUARIOS_REALES: UsuarioSeed[] = [
@@ -301,6 +304,10 @@ async function main() {
     {
       nombre: 'Mayra Ontivero', email: 'mayra.dos57@gmail.com', telefono: '351 706-2733', rol: 'ADMIN', empresa_id: dos57.id,
       accesoExtra: [{ empresa_id: enjoy.id, rol: 'ADMIN' }],
+      // Gerente Administrativa DOS57 + Enjoy — Macro cross-empresa restringida
+      // a Finanzas/Admin/RRHH/Stock (sin Logística).
+      puedeVerMacro: true,
+      areasMacro:    ['FINANZAS', 'ADMIN', 'RRHH', 'STOCK'],
     },
 
     // ── DOS57 — operadores ──────────────────────────────────────────────────────
@@ -320,7 +327,10 @@ async function main() {
   for (const u of USUARIOS_REALES) {
     const usuario = await prisma.usuario.upsert({
       where:  { email: u.email },
-      update: { nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true },
+      update: {
+        nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true,
+        puede_ver_macro: u.puedeVerMacro ?? false, areas_macro: u.areasMacro ?? [],
+      },
       create: {
         email:         u.email,
         nombre:        u.nombre,
@@ -328,6 +338,8 @@ async function main() {
         password_hash: passwordHashInicial,
         rol:           u.rol,
         empresa_id:    u.empresa_id,
+        puede_ver_macro: u.puedeVerMacro ?? false,
+        areas_macro:     u.areasMacro ?? [],
       },
     });
 
@@ -368,6 +380,27 @@ async function main() {
     });
     console.log(`✓ Usuario huérfano "${usuario.email}" asignado a Enjoy Producciones`);
   }
+
+  // ── Cuentas de empresa DOS57 (sin evento — caja general/reserva/personal) ──
+  const CUENTAS_DOS57: { nombre: string; tipo: TipoCuenta; moneda: Moneda; saldo_inicial: number }[] = [
+    { nombre: 'Caja General DOS57', tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Caja Reserva',       tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Caja Pollo',         tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Caja Jazmín',        tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+  ];
+
+  for (const cuenta of CUENTAS_DOS57) {
+    await prisma.cuentaBancaria.upsert({
+      where: { nombre_empresa_id: { nombre: cuenta.nombre, empresa_id: dos57.id } },
+      update: {},
+      create: {
+        ...cuenta,
+        empresa_id: dos57.id,
+        evento_id:  null, // cuenta de empresa, sin evento
+      },
+    });
+  }
+  console.log(`✓ Cuentas de empresa DOS57: ${CUENTAS_DOS57.length} cargadas`);
 }
 
 main()

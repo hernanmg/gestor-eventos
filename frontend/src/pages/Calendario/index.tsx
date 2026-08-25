@@ -22,6 +22,7 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   LIQUIDACION:          'Liquidaciones',
   RENDICION_PENDIENTE:  'Rendiciones',
   SALDO_MINIMO:         'Saldo bajo',
+  CTA_CORRIENTE_INACTIVA: 'Cuentas corrientes',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -34,6 +35,7 @@ const COLORES: Record<TipoCalendario, string> = {
   LIQUIDACION:          '#374151',
   RENDICION_PENDIENTE:  '#7C3AED',
   SALDO_MINIMO:         '#DC2626',
+  CTA_CORRIENTE_INACTIVA: '#F59E0B',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -80,6 +82,7 @@ function getDetailLink(item: CalendarioItem): string {
     case 'LIQUIDACION':    return '/rrhh?tab=liquidaciones';
     case 'RENDICION_PENDIENTE': return `/caja/${m.cuenta_id}`;
     case 'SALDO_MINIMO':        return `/caja/${m.cuenta_id}`;
+    case 'CTA_CORRIENTE_INACTIVA': return `/cuentas-corrientes/${m.cuenta_id}`;
     default:               return '/calendario';
   }
 }
@@ -95,6 +98,7 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'EVENTO':         return [`Estado: ${m.estado}`];
     case 'RENDICION_PENDIENTE': return [`Responsable: ${m.responsable ?? '—'}`, `${m.dias_transcurridos} día${m.dias_transcurridos !== 1 ? 's' : ''} pendiente`];
     case 'SALDO_MINIMO':        return [`Saldo actual: $${Number(m.saldo_actual).toLocaleString('es-AR')}`, `Mínimo: $${Number(m.saldo_minimo).toLocaleString('es-AR')}`];
+    case 'CTA_CORRIENTE_INACTIVA': return [`Saldo: ${m.moneda} ${Number(m.saldo_actual).toLocaleString('es-AR')}`, `${m.dias_sin_actividad} días sin actividad`];
     default:               return [];
   }
 }

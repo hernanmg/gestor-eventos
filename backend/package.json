@@ -12,6 +12,8 @@
     "db:seed": "ts-node --files prisma/seed.ts",
     "db:reset": "psql $DATABASE_URL -f prisma/reset-db.sql",
     "db:studio": "prisma studio",
+    "backup": "bash scripts/backup-before-migrate.sh",
+    "migrate:safe": "npm run backup && npx prisma migrate dev",
     "seed": "ts-node --files prisma/seed.ts",
     "seed:demo": "ts-node --files prisma/seed-demo.ts",
     "import:dos57": "ts-node --files scripts/importarEmpleadosDos57.ts",

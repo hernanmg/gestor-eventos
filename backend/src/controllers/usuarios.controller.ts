@@ -26,7 +26,12 @@ async function esAdminGlobal(usuarioId: number): Promise<boolean> {
 const SAFE_SELECT = {
   id: true, email: true, nombre: true, apodo: true, telefono: true, rol: true,
   activo: true, created_at: true, updated_at: true, deleted_at: true,
+  puede_ver_macro: true, areas_macro: true,
 };
+
+// Áreas asignables de la Macro restringida — Logística queda deliberadamente
+// afuera (ver Usuario.areas_macro en schema.prisma).
+const AREAS_MACRO = ['FINANZAS', 'ADMIN', 'RRHH', 'STOCK'] as const;
 
 // 'PANOLERO' (sin Ñ) — es el identificador que usa Prisma Client en JS/TS
 // para Rol.PAÑOLERO (ver types/express.d.ts para el porqué).
@@ -51,6 +56,8 @@ const updateSchema = z.object({
   password: z.string().min(8).optional(),
   rol:      z.enum(ROLES).optional(),
   activo:   z.boolean().optional(),
+  puede_ver_macro: z.boolean().optional(),
+  areas_macro:     z.array(z.enum(AREAS_MACRO)).optional(),
 });
 
 const accesoSchema = z.object({
@@ -134,12 +141,18 @@ export async function update(req: Request, res: Response) {
     res.status(400).json({ error: 'No podés quitarte el rol ADMIN a vos mismo' }); return;
   }
 
+  // Otorgar/restringir la vista Macro es una decisión cross-tenant — mismo
+  // criterio que createEmpresaAcceso/deleteEmpresaAcceso: solo el admin global.
+  if ((parsed.data.puede_ver_macro !== undefined || parsed.data.areas_macro !== undefined) && !(await esAdminGlobal(req.user!.id))) {
+    res.status(403).json({ error: 'Solo el admin global puede configurar el acceso a la Macro' }); return;
+  }
+
   if (parsed.data.email && parsed.data.email !== existing.email) {
     const dupe = await prisma.usuario.findFirst({ where: { email: parsed.data.email, deleted_at: null } });
     if (dupe) { res.status(400).json({ error: 'Ya existe un usuario con ese email' }); return; }
   }
 
-  const { nombre, apodo, telefono, email, password, rol, activo } = parsed.data;
+  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro } = parsed.data;
 
   const data: Record<string, unknown> = {
     ...(nombre   !== undefined && { nombre }),
@@ -148,6 +161,8 @@ export async function update(req: Request, res: Response) {
     ...(email    !== undefined && { email }),
     ...(rol      !== undefined && { rol: rol as Rol }),
     ...(activo   !== undefined && { activo }),
+    ...(puede_ver_macro !== undefined && { puede_ver_macro }),
+    ...(areas_macro     !== undefined && { areas_macro }),
   };
   if (password) data.password_hash = await bcrypt.hash(password, 10);
 
