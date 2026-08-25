@@ -8,17 +8,19 @@ import JornadasTab from './Jornadas';
 import JornadasPropias from './Jornadas/Propias';
 import AnticiposTab from './Anticipos';
 import LiquidacionesTab from './Liquidaciones';
+import SueldosAdminTab from './SueldosAdmin';
 
-type TabKey = 'empleados' | 'jornadas' | 'anticipos' | 'liquidaciones';
+type TabKey = 'empleados' | 'jornadas' | 'anticipos' | 'liquidaciones' | 'sueldos-admin';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'empleados',     label: 'Empleados' },
-  { key: 'jornadas',      label: 'Jornadas' },
-  { key: 'anticipos',     label: 'Anticipos' },
-  { key: 'liquidaciones', label: 'Liquidaciones' },
+  { key: 'empleados',      label: 'Empleados' },
+  { key: 'jornadas',       label: 'Jornadas' },
+  { key: 'anticipos',      label: 'Anticipos' },
+  { key: 'liquidaciones',  label: 'Liquidaciones' },
+  { key: 'sueldos-admin',  label: 'Sueldos Admin' },
 ];
 
-const TAB_KEYS: TabKey[] = ['empleados', 'jornadas', 'anticipos', 'liquidaciones'];
+const TAB_KEYS: TabKey[] = ['empleados', 'jornadas', 'anticipos', 'liquidaciones', 'sueldos-admin'];
 
 export default function RRHHPage() {
   const { user } = useAuth();
@@ -76,6 +78,7 @@ export default function RRHHPage() {
       {activeTab === 'jornadas'      && <JornadasTab empleadoIdInicial={filtroEmpleadoId} />}
       {activeTab === 'anticipos'     && <AnticiposTab empleadoIdInicial={filtroEmpleadoId} />}
       {activeTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={filtroEmpleadoId} />}
+      {activeTab === 'sueldos-admin' && <SueldosAdminTab empleadoIdInicial={filtroEmpleadoId} />}
     </div>
   );
 }

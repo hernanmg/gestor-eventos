@@ -1175,6 +1175,113 @@ export interface LiquidacionDetalle extends Liquidacion {
   movimiento?: { id: number; tipo: Tipo; tab_numero: number; evento_id: number } | null;
 }
 
+// ── Sueldos Administrativos (DOS57) ───────────────────────────────────────────
+// Régimen distinto de Jornada/Liquidacion: sueldo mensual fijo con conceptos
+// variables, acuerdo individual, y posible split de costo entre empresas.
+
+export type EstadoLiquidacionAdmin = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+
+export interface EmpresaMini {
+  id:           number;
+  nombre:       string;
+  nombre_corto: string | null;
+}
+
+export interface CuentaMini {
+  id:     number;
+  nombre: string;
+  tipo:   TipoCuenta;
+  moneda: Moneda;
+}
+
+export interface SplitEmpresa {
+  empresa_id:     number;
+  empresa_nombre: string;
+  porcentaje:     number;
+  monto?:         number; // presente cuando viene de un cálculo/snapshot
+}
+
+export interface AcuerdoSueldo {
+  id:                  number;
+  empleado_id:         number;
+  empleado?:           { id: number; nombre: string; apellido: string; dni: string | null; categoria: CategoriaEmpleado };
+  empresa_id:          number;
+  empresa?:            EmpresaMini;
+  fecha_inicio:        string;
+  vigencia_meses:      number | null;
+  escalafon:           string | null;
+  tipo_seguro:         string | null;
+  sueldo_basico:       number;
+  horas_acordadas_mes: number;
+  premio_incentivo:    number | null;
+  viatico:             number | null;
+  premio_presentismo:  number | null;
+  valor_hora_extra:    number | null;
+  telefono:            number | null;
+  activo:              boolean;
+  notas:               string | null;
+  created_at:          string;
+  updated_at:          string;
+  splits?:             SplitEmpresa[];
+  preview?: {
+    horas_extras:         number;
+    importe_horas_extras: number;
+    premio_incentivo:     number;
+    viatico:              number;
+    premio_presentismo:   number;
+    antiguedad_anios:     number;
+    importe_antiguedad:   number;
+    telefono:             number;
+    subtotal_bruto:       number;
+    total_a_cobrar:       number;
+  };
+}
+
+export interface LiquidacionAdminMovimientoCaja {
+  id:            number;
+  cuenta_id:     number;
+  cuenta_nombre: string;
+  empresa_id:    number;
+  monto:         number;
+  descripcion:   string | null;
+}
+
+export interface LiquidacionAdmin {
+  id:                   number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; dni: string | null; categoria: CategoriaEmpleado };
+  empresa_id:           number;
+  acuerdo_id:           number;
+  acuerdo?:             AcuerdoSueldo;
+  periodo_mes:          number;
+  periodo_anio:         number;
+  sueldo_basico:        number;
+  horas_acordadas:      number;
+  escalafon:            string | null;
+  horas_trabajadas:     number;
+  horas_extras:         number;
+  valor_hora_extra:     number | null;
+  importe_horas_extras: number;
+  premio_incentivo:     number;
+  viatico:              number;
+  premio_presentismo:   number;
+  antiguedad_anios:     number;
+  importe_antiguedad:   number;
+  telefono:             number;
+  vacaciones_aguinaldo: number;
+  vales_descuentos:     number;
+  subtotal_bruto:       number;
+  total_a_cobrar:       number;
+  splits:               SplitEmpresa[] | null;
+  estado:               EstadoLiquidacionAdmin;
+  observaciones:        string | null;
+  created_at:           string;
+  updated_at:           string;
+  aprobado_por:         number | null;
+  aprobado_at:          string | null;
+  movimientos_caja?:    LiquidacionAdminMovimientoCaja[];
+}
+
 // ── Parte Diario de Personal (DOS57) ──────────────────────────────────────────
 
 export type EstadoAsignacionDiaria = 'ASIGNADO' | 'LIBRE' | 'VACACIONES' | 'AUSENTE' | 'NO_CITADO';
