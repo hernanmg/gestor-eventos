@@ -241,6 +241,8 @@ model Empresa {
   acuerdosSueldo        AcuerdoSueldo[]
   splitsEmpleados       EmpleadoEmpresaSplit[]
   liquidacionesAdmin    LiquidacionAdmin[]
+  escalafonesAdmin      EscalafonAdmin[]
+  prestamosEmpleados    PrestamoEmpleado[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -1201,6 +1203,7 @@ model Empleado {
   acuerdo_sueldo       AcuerdoSueldo?
   splits_empresa       EmpleadoEmpresaSplit[]
   liquidaciones_admin  LiquidacionAdmin[]
+  prestamos            PrestamoEmpleado[]
 }
 
 model Jornada {
@@ -1364,53 +1367,129 @@ enum EstadoLiquidacionAdmin {
 
 // Liquidación mensual administrativa — un registro por empleado/mes/año.
 model LiquidacionAdmin {
-  id                   Int                    @id @default(autoincrement())
-  empleado_id          Int
-  empleado             Empleado               @relation(fields: [empleado_id], references: [id])
-  empresa_id           Int // empresa principal (snapshot del acuerdo)
-  empresa              Empresa                @relation(fields: [empresa_id], references: [id])
-  acuerdo_id           Int
-  acuerdo              AcuerdoSueldo          @relation(fields: [acuerdo_id], references: [id])
+  id                    Int                    @id @default(autoincrement())
+  empleado_id           Int
+  empleado              Empleado               @relation(fields: [empleado_id], references: [id])
+  empresa_id            Int // empresa principal (snapshot del acuerdo)
+  empresa               Empresa                @relation(fields: [empresa_id], references: [id])
+  acuerdo_id            Int
+  acuerdo               AcuerdoSueldo          @relation(fields: [acuerdo_id], references: [id])
   // Período
-  periodo_mes          Int // 1-12
-  periodo_anio         Int
+  periodo_mes           Int // 1-12
+  periodo_anio          Int
   // Snapshots del acuerdo al momento de liquidar — estables aunque después se
   // edite/renegocie el acuerdo (mismo criterio que Liquidacion.tipo_liquidacion).
-  sueldo_basico        Decimal                @db.Decimal(12, 2)
-  horas_acordadas      Int
-  escalafon            String?
+  sueldo_basico         Decimal                @db.Decimal(12, 2)
+  horas_acordadas       Int
+  escalafon             String?
   // Conceptos calculados
-  horas_trabajadas     Decimal                @db.Decimal(8, 2)
-  horas_extras         Decimal                @db.Decimal(8, 2)
-  valor_hora_extra     Decimal?               @db.Decimal(10, 2)
-  importe_horas_extras Decimal                @default(0) @db.Decimal(12, 2)
-  premio_incentivo     Decimal                @default(0) @db.Decimal(12, 2)
-  viatico              Decimal                @default(0) @db.Decimal(12, 2)
-  premio_presentismo   Decimal                @default(0) @db.Decimal(12, 2)
-  antiguedad_anios     Int                    @default(0)
-  importe_antiguedad   Decimal                @default(0) @db.Decimal(12, 2)
-  telefono             Decimal                @default(0) @db.Decimal(12, 2)
-  vacaciones_aguinaldo Decimal                @default(0) @db.Decimal(12, 2)
-  vales_descuentos     Decimal                @default(0) @db.Decimal(12, 2)
+  horas_trabajadas      Decimal                @db.Decimal(8, 2)
+  horas_extras          Decimal                @db.Decimal(8, 2)
+  valor_hora_extra      Decimal?               @db.Decimal(10, 2)
+  importe_horas_extras  Decimal                @default(0) @db.Decimal(12, 2)
+  premio_incentivo      Decimal                @default(0) @db.Decimal(12, 2)
+  viatico               Decimal                @default(0) @db.Decimal(12, 2)
+  premio_presentismo    Decimal                @default(0) @db.Decimal(12, 2)
+  antiguedad_anios      Int                    @default(0)
+  importe_antiguedad    Decimal                @default(0) @db.Decimal(12, 2)
+  telefono              Decimal                @default(0) @db.Decimal(12, 2)
+  vacaciones_aguinaldo  Decimal                @default(0) @db.Decimal(12, 2)
+  vales_descuentos      Decimal                @default(0) @db.Decimal(12, 2)
+  // Cuotas de PrestamoEmpleado descontadas al aprobar — separado de
+  // vales_descuentos porque cada una queda trazada en PagoPrestamoEmpleado
+  // (afecta cuotas_pagadas/saldado del préstamo), a diferencia de un
+  // descuento manual suelto. Ver aprobarLiquidacionAdmin.
+  prestamos_descontados Decimal                @default(0) @db.Decimal(12, 2)
   // Totales
-  subtotal_bruto       Decimal                @db.Decimal(12, 2)
-  total_a_cobrar       Decimal                @db.Decimal(12, 2)
+  subtotal_bruto        Decimal                @db.Decimal(12, 2)
+  total_a_cobrar        Decimal                @db.Decimal(12, 2)
   // Split entre empresas (snapshot al momento de liquidar) —
   // [{ empresa_id, empresa_nombre, porcentaje, monto }]
-  splits               Json?
+  splits                Json?
   // Estado
-  estado               EstadoLiquidacionAdmin @default(BORRADOR)
-  observaciones        String?
+  estado                EstadoLiquidacionAdmin @default(BORRADOR)
+  observaciones         String?
   // Al aprobar → uno o más MovimientoCaja de egreso (uno por empresa del
   // split, o uno solo si no hay split) — ver aprobarLiquidacionAdmin.
-  movimientos_caja     MovimientoCaja[]       @relation("LiquidacionAdminMovimientos")
+  movimientos_caja      MovimientoCaja[]       @relation("LiquidacionAdminMovimientos")
+  // Cuotas de préstamo descontadas al aprobar esta liquidación.
+  pagos_prestamos       PagoPrestamoEmpleado[]
   // audit
-  created_at           DateTime               @default(now())
-  updated_at           DateTime               @updatedAt
-  aprobado_por         Int?
-  aprobado_at          DateTime?
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
+  aprobado_por          Int?
+  aprobado_at           DateTime?
 
   @@unique([empleado_id, periodo_mes, periodo_anio])
+}
+
+// ─── ESCALAFONES ADMINISTRATIVOS (valores por categoría, configurables) ──────
+// Los montos de Viático/Presentismo/Teléfono/Incentivo varían por escalafón
+// (ADM 1/2/3) y cambian con cada aumento negociado por Matías. Se configuran
+// acá y sirven para pre-cargar el paso 3 del wizard de AcuerdoSueldo — no hay
+// FK real entre AcuerdoSueldo.escalafon (texto libre, admite "otro" fuera de
+// tabla) y este modelo: el match es por nombre, sólo para pre-carga.
+model EscalafonAdmin {
+  id                 Int       @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre             String // "ADM 1", "ADM 2", "ADM 3"
+  orden              Int // para ordenar en la UI
+  // Valores configurables
+  viatico            Decimal?  @db.Decimal(12, 2)
+  premio_presentismo Decimal?  @db.Decimal(12, 2)
+  telefono           Decimal?  @db.Decimal(12, 2)
+  premio_incentivo   Decimal?  @db.Decimal(12, 2)
+  // audit
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+
+  @@unique([empresa_id, nombre])
+}
+
+// ─── PRÉSTAMOS A EMPLEADOS ────────────────────────────────────────────────────
+// Distinto de Anticipo (adelanto simple, se descuenta entero en la próxima
+// liquidación): un préstamo se paga en cuotas y puede quedar pendiente entre
+// varios meses. Sólo aplica al régimen de Sueldos Administrativos — se
+// descuenta explícitamente al aprobar una LiquidacionAdmin, no automático.
+model PrestamoEmpleado {
+  id              Int       @id @default(autoincrement())
+  empleado_id     Int
+  empleado        Empleado  @relation(fields: [empleado_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime
+  detalle         String // "RECARGA MATAFUEGO", "Adelanto", etc.
+  monto_total     Decimal   @db.Decimal(12, 2)
+  // Pago en cuotas
+  cantidad_cuotas Int       @default(1)
+  cuotas_pagadas  Int       @default(0)
+  monto_cuota     Decimal   @db.Decimal(12, 2)
+  // Estado
+  saldado         Boolean   @default(false)
+  // audit
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+
+  pagos PagoPrestamoEmpleado[]
+}
+
+// Una cuota efectivamente descontada — vinculada a la LiquidacionAdmin que la
+// generó (null si en el futuro se registra un pago fuera de una liquidación).
+model PagoPrestamoEmpleado {
+  id                   Int               @id @default(autoincrement())
+  prestamo_id          Int
+  prestamo             PrestamoEmpleado  @relation(fields: [prestamo_id], references: [id])
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  monto                Decimal           @db.Decimal(12, 2)
+  fecha                DateTime
+  // audit
+  created_at           DateTime          @default(now())
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

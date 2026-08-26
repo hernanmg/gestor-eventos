@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useEmpleados } from '@/hooks/useRRHH';
 import { useAuth } from '@/hooks/useAuth';
+import { useEscalafones } from '@/hooks/useEscalafones';
 import {
   useAcuerdos, useCreateAcuerdo, useUpdateAcuerdo, useUpsertSplits, useEmpresasSueldos,
   type AcuerdoPayload,
@@ -17,14 +18,17 @@ const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:o
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
 const EMPTY_FORM = {
-  empleado_id: '', escalafon: '', tipo_seguro: '', fecha_inicio: '', vigencia_meses: '',
-  sueldo_basico: '', horas_acordadas_mes: '200', premio_incentivo: '', viatico: '', premio_presentismo: '',
-  telefono: '', valor_hora_extra: '', notas: '',
+  empleado_id: '', escalafon: '', escalafonOtro: '', tipo_seguro: '', fecha_inicio: '', vigencia_meses: '',
+  sueldo_basico: '', horas_acordadas_mes: '200', valor_hora_extra: '',
+  premio_incentivo: '', viatico: '', premio_presentismo: '', telefono: '', notas: '',
 };
 
 type Step = 1 | 2 | 3;
 
-// ── Dialog: Nuevo acuerdo (wizard de 3 pasos) ─────────────────────────────────
+// ── Dialog: Nuevo acuerdo (wizard de 3 pasos — Mejora 2) ──────────────────────
+// Paso 1: empleado + escalafón (dispara pre-carga de paso 3) + seguro/fechas.
+// Paso 2: sueldo básico + split entre empresas, combinados.
+// Paso 3: conceptos pre-cargados desde el escalafón, editables + preview total.
 
 function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
   open: boolean; onClose: () => void; empleadosDisponibles: { id: number; nombre: string; apellido: string }[];
@@ -36,7 +40,8 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
   const [splits, setSplits] = useState<{ empresa_id: string; porcentaje: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: empresas = [] } = useEmpresasSueldos();
+  const { data: empresas = [] }    = useEmpresasSueldos();
+  const { data: escalafones = [] } = useEscalafones();
   const createMut = useCreateAcuerdo();
   const splitsMut  = useUpsertSplits();
 
@@ -45,10 +50,31 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
+  // Al elegir un escalafón conocido → pre-carga los conceptos del paso 3.
+  const handleEscalafonChange = (nombre: string) => {
+    const match = escalafones.find(e => e.nombre === nombre);
+    setForm(p => ({
+      ...p,
+      escalafon:          nombre,
+      premio_incentivo:   match?.premio_incentivo   !== null && match?.premio_incentivo   !== undefined ? String(match.premio_incentivo)   : '',
+      viatico:            match?.viatico            !== null && match?.viatico            !== undefined ? String(match.viatico)            : '',
+      premio_presentismo: match?.premio_presentismo !== null && match?.premio_presentismo !== undefined ? String(match.premio_presentismo) : '',
+      telefono:           match?.telefono           !== null && match?.telefono           !== undefined ? String(match.telefono)           : '',
+    }));
+  };
+
+  const escalafonFinal = form.escalafon === '__otro__' ? form.escalafonOtro : form.escalafon;
+
   const sumaPorcentaje = splits.reduce((s, x) => s + (parseFloat(x.porcentaje) || 0), 0);
   const splitValido     = !splitActivo || (splits.length > 0 && Math.abs(sumaPorcentaje - 100) < 0.01);
 
   const preview = previewSueldoBasico(form);
+  const totalSinAntiguedad =
+    (parseFloat(form.sueldo_basico) || 0)
+    + (parseFloat(form.premio_incentivo) || 0)
+    + (parseFloat(form.viatico) || 0)
+    + (parseFloat(form.premio_presentismo) || 0)
+    + (parseFloat(form.telefono) || 0);
 
   const validStep1 = !!form.empleado_id && !!form.fecha_inicio;
   const validStep2 = !!form.sueldo_basico && !!form.horas_acordadas_mes;
@@ -61,7 +87,7 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
         empleado_id:         Number(form.empleado_id),
         fecha_inicio:        form.fecha_inicio,
         vigencia_meses:      form.vigencia_meses ? Number(form.vigencia_meses) : null,
-        escalafon:           form.escalafon || null,
+        escalafon:           escalafonFinal || null,
         tipo_seguro:         form.tipo_seguro || null,
         sueldo_basico:       Number(form.sueldo_basico),
         horas_acordadas_mes: Number(form.horas_acordadas_mes),
@@ -91,6 +117,7 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
     setSplits(p => p.map((s, idx) => idx === i ? { ...s, [field]: value } : s));
 
   const isPending = createMut.isPending || splitsMut.isPending;
+  const sueldoBasicoNum = parseFloat(form.sueldo_basico) || 0;
 
   return (
     <Dialog open={open} onOpenChange={o => !o && handleClose()}>
@@ -112,12 +139,17 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Escalafón</label>
-                <select value={form.escalafon} onChange={e => set('escalafon', e.target.value)} className={inputCls}>
+                <select value={form.escalafon} onChange={e => handleEscalafonChange(e.target.value)} className={inputCls}>
                   <option value="">—</option>
-                  <option value="ADM 1">ADM 1</option>
-                  <option value="ADM 2">ADM 2</option>
-                  <option value="ADM 3">ADM 3</option>
+                  {escalafones.map(esc => <option key={esc.id} value={esc.nombre}>{esc.nombre}</option>)}
+                  <option value="__otro__">Otro...</option>
                 </select>
+                {form.escalafon === '__otro__' && (
+                  <input
+                    value={form.escalafonOtro} onChange={e => set('escalafonOtro', e.target.value)}
+                    placeholder="Nombre del escalafón" className={cn(inputCls, 'mt-1.5')}
+                  />
+                )}
               </div>
               <div>
                 <label className={labelCls}>Tipo de seguro</label>
@@ -139,16 +171,76 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
 
         {step === 2 && (
           <div className="space-y-3 mt-1">
+            <div>
+              <label className={labelCls}>Sueldo básico acordado ($) *</label>
+              <input type="number" min="0" step="0.01" value={form.sueldo_basico} onChange={e => set('sueldo_basico', e.target.value)} className={inputCls} />
+              <p className="text-xs text-muted-foreground mt-0.5">Este es el sueldo total del empleado.</p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Sueldo básico ($) *</label>
-                <input type="number" min="0" step="0.01" value={form.sueldo_basico} onChange={e => set('sueldo_basico', e.target.value)} className={inputCls} />
-              </div>
               <div>
                 <label className={labelCls}>Horas acordadas/mes *</label>
                 <input type="number" min="1" value={form.horas_acordadas_mes} onChange={e => set('horas_acordadas_mes', e.target.value)} className={inputCls} />
               </div>
+              <div>
+                <label className={labelCls}>Valor hora extra ($)</label>
+                <input type="number" min="0" step="0.01" value={form.valor_hora_extra} onChange={e => set('valor_hora_extra', e.target.value)} className={inputCls} />
+              </div>
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer text-sm pt-1">
+              <input type="checkbox" checked={splitActivo} onChange={e => { setSplitActivo(e.target.checked); if (e.target.checked && splits.length === 0) addSplitRow(); }} />
+              ¿Este empleado trabaja para más de una empresa?
+            </label>
+
+            {!splitActivo && (
+              <p className="text-xs text-muted-foreground">
+                100% a cargo de {user?.empresa?.nombre_corto ?? user?.empresa?.nombre ?? 'la empresa activa'}.
+              </p>
+            )}
+
+            {splitActivo && (
+              <div className="space-y-2">
+                {splits.map((s, i) => {
+                  const empresaSel = empresas.find(e => String(e.id) === s.empresa_id);
+                  const pct = parseFloat(s.porcentaje) || 0;
+                  return (
+                    <div key={i} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <select value={s.empresa_id} onChange={e => updateSplitRow(i, 'empresa_id', e.target.value)} className={inputCls}>
+                          <option value="">Empresa...</option>
+                          {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre_corto ?? emp.nombre}</option>)}
+                        </select>
+                        <input
+                          type="number" min="0" max="100" step="0.01" placeholder="%"
+                          value={s.porcentaje} onChange={e => updateSplitRow(i, 'porcentaje', e.target.value)}
+                          className={cn(inputCls, 'w-24 text-right')}
+                        />
+                        <button type="button" onClick={() => removeSplitRow(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      {empresaSel && pct > 0 && sueldoBasicoNum > 0 && (
+                        <p className="text-xs text-muted-foreground pl-1">
+                          {empresaSel.nombre_corto ?? empresaSel.nombre} ({pct}%) → {formatCurrency(sueldoBasicoNum * pct / 100)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                <Button type="button" variant="ghost" size="sm" onClick={addSplitRow} className="text-xs">
+                  <Plus size={12} className="mr-1" /> Agregar empresa
+                </Button>
+                <div className={cn('text-xs font-medium', Math.abs(sumaPorcentaje - 100) < 0.01 ? 'text-green-600' : 'text-destructive')}>
+                  Suma: {sumaPorcentaje.toFixed(2)}% {Math.abs(sumaPorcentaje - 100) >= 0.01 && '— debe sumar 100%'}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-3 mt-1">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Premio incentivo ($)</label>
@@ -169,10 +261,11 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
                 <input type="number" min="0" step="0.01" value={form.telefono} onChange={e => set('telefono', e.target.value)} className={inputCls} />
               </div>
             </div>
-            <div>
-              <label className={labelCls}>Valor hora extra ($)</label>
-              <input type="number" min="0" step="0.01" value={form.valor_hora_extra} onChange={e => set('valor_hora_extra', e.target.value)} className={cn(inputCls, 'max-w-[48%]')} />
-            </div>
+            {escalafonFinal && (
+              <p className="text-xs text-muted-foreground">
+                Valores pre-cargados desde el escalafón "{escalafonFinal}" — podés editarlos libremente.
+              </p>
+            )}
             <div>
               <label className={labelCls}>Notas</label>
               <textarea value={form.notas} onChange={e => set('notas', e.target.value)} rows={2} className={cn(inputCls, 'resize-none')} />
@@ -180,56 +273,18 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
 
             {form.fecha_inicio && form.sueldo_basico && (
               <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Preview estimado (sin horas extras)</p>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Básico + Incentivo + Viático + Presentismo + Teléfono</span>
+                  <span>{formatCurrency(totalSinAntiguedad)}</span>
+                </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Antigüedad ({preview.antiguedad_anios} año{preview.antiguedad_anios !== 1 ? 's' : ''})</span>
                   <span>{formatCurrency(preview.importe_antiguedad)}</span>
                 </div>
                 <div className="flex justify-between font-semibold pt-1 border-t border-border">
-                  <span>Sueldo estimado</span><span>{formatCurrency(preview.subtotal_bruto)}</span>
+                  <span>TOTAL ESTIMADO</span><span>{formatCurrency(preview.subtotal_bruto)}</span>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-3 mt-1">
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
-              <input type="checkbox" checked={splitActivo} onChange={e => { setSplitActivo(e.target.checked); if (e.target.checked && splits.length === 0) addSplitRow(); }} />
-              ¿Este empleado trabaja para más de una empresa?
-            </label>
-
-            {!splitActivo && (
-              <p className="text-xs text-muted-foreground">
-                100% a cargo de {user?.empresa?.nombre_corto ?? user?.empresa?.nombre ?? 'la empresa activa'}.
-              </p>
-            )}
-
-            {splitActivo && (
-              <div className="space-y-2">
-                {splits.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <select value={s.empresa_id} onChange={e => updateSplitRow(i, 'empresa_id', e.target.value)} className={inputCls}>
-                      <option value="">Empresa...</option>
-                      {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre_corto ?? emp.nombre}</option>)}
-                    </select>
-                    <input
-                      type="number" min="0" max="100" step="0.01" placeholder="%"
-                      value={s.porcentaje} onChange={e => updateSplitRow(i, 'porcentaje', e.target.value)}
-                      className={cn(inputCls, 'w-24 text-right')}
-                    />
-                    <button type="button" onClick={() => removeSplitRow(i)} className="text-muted-foreground hover:text-destructive shrink-0">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                <Button type="button" variant="ghost" size="sm" onClick={addSplitRow} className="text-xs">
-                  <Plus size={12} className="mr-1" /> Agregar empresa
-                </Button>
-                <div className={cn('text-xs font-medium', Math.abs(sumaPorcentaje - 100) < 0.01 ? 'text-green-600' : 'text-destructive')}>
-                  Suma: {sumaPorcentaje.toFixed(2)}% {Math.abs(sumaPorcentaje - 100) >= 0.01 && '— debe sumar 100%'}
-                </div>
+                <p className="text-[11px] text-muted-foreground pt-0.5">Sin horas extras.</p>
               </div>
             )}
           </div>

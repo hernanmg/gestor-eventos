@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
-  AcuerdoSueldo, LiquidacionAdmin, EmpresaMini, CuentaMini, EstadoLiquidacionAdmin,
+  AcuerdoSueldo, LiquidacionAdmin, EmpresaMini, CuentaMini, EstadoLiquidacionAdmin, PrestamoEmpleado,
 } from '@/types';
 
-const ACUERDOS_KEY      = ['rrhh', 'acuerdos'];
-const LIQ_ADMIN_KEY      = ['rrhh', 'liquidaciones-admin'];
+const ACUERDOS_KEY  = ['rrhh', 'acuerdos'];
+const LIQ_ADMIN_KEY = ['rrhh', 'liquidaciones-admin'];
+const PRESTAMOS_KEY = ['rrhh', 'prestamos'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Empresas / Cuentas — soporte para selectores de split y cuenta de pago
@@ -156,9 +157,16 @@ export function useUpdateLiquidacionAdmin() {
 export function useAprobarLiquidacionAdmin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, cuentas_pago }: { id: number; cuentas_pago: { empresa_id: number; cuenta_id: number }[] }) =>
-      api.patch(`/rrhh/liquidaciones-admin/${id}/aprobar`, { cuentas_pago }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY }),
+    mutationFn: ({ id, cuentas_pago, prestamos_a_descontar }: {
+      id: number;
+      cuentas_pago: { empresa_id: number; cuenta_id: number }[];
+      prestamos_a_descontar?: { prestamo_id: number; monto: number }[];
+    }) =>
+      api.patch(`/rrhh/liquidaciones-admin/${id}/aprobar`, { cuentas_pago, prestamos_a_descontar }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY });
+      qc.invalidateQueries({ queryKey: PRESTAMOS_KEY });
+    },
   });
 }
 
@@ -178,4 +186,40 @@ export async function descargarLiquidacionAdminPDF(id: number): Promise<void> {
   a.download = `sueldo-${id}.pdf`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRÉSTAMOS A EMPLEADOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function usePrestamosEmpleado(empleadoId: number | null) {
+  return useQuery<PrestamoEmpleado[]>({
+    queryKey: [...PRESTAMOS_KEY, empleadoId],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/prestamos`).then(r => r.data),
+    enabled:  empleadoId !== null,
+  });
+}
+
+export interface PrestamoPayload {
+  fecha:           string;
+  detalle:         string;
+  monto_total:     number;
+  cantidad_cuotas: number;
+  monto_cuota?:    number;
+}
+
+export function useCreatePrestamo(empleadoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PrestamoPayload) => api.post(`/rrhh/empleados/${empleadoId}/prestamos`, data).then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: [...PRESTAMOS_KEY, empleadoId] }),
+  });
+}
+
+export function useDeletePrestamo(empleadoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/rrhh/prestamos/${id}`).then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: [...PRESTAMOS_KEY, empleadoId] }),
+  });
 }

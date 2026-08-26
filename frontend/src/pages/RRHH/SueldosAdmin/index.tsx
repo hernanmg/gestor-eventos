@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import AcuerdosTab from './AcuerdosTab';
 import LiquidacionesTab from './LiquidacionesTab';
+import EscalafonesTab from './EscalafonesTab';
 
-type SubTabKey = 'acuerdos' | 'liquidaciones';
+type SubTabKey = 'acuerdos' | 'liquidaciones' | 'escalafones';
 
 const SUB_TABS: { key: SubTabKey; label: string }[] = [
   { key: 'acuerdos',      label: 'Acuerdos' },
   { key: 'liquidaciones', label: 'Liquidaciones' },
+  { key: 'escalafones',   label: 'Escalafones' },
 ];
 
 export default function SueldosAdminTab({ empleadoIdInicial }: { empleadoIdInicial?: number | null }) {
@@ -32,6 +34,7 @@ export default function SueldosAdminTab({ empleadoIdInicial }: { empleadoIdInici
 
       {subTab === 'acuerdos'      && <AcuerdosTab />}
       {subTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={empleadoIdInicial} />}
+      {subTab === 'escalafones'   && <EscalafonesTab />}
     </div>
   );
 }

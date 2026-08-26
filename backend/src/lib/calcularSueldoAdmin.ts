@@ -98,7 +98,7 @@ export interface SplitCalculado {
 // suma de montos sea exactamente `total` (evita drift por redondeo).
 export function calcularSplits(
   total:  number,
-  splits: (Pick<EmpleadoEmpresaSplit, 'empresa_id' | 'porcentaje'> & { empresa_nombre: string })[],
+  splits: { empresa_id: number; porcentaje: number | EmpleadoEmpresaSplit['porcentaje']; empresa_nombre: string }[],
 ): SplitCalculado[] {
   if (splits.length === 0) return [];
 

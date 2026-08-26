@@ -18,7 +18,11 @@ import {
   upsertSplits, deleteSplits,
   listLiquidacionesAdmin, getLiquidacionAdmin, generarLiquidacionAdmin, updateLiquidacionAdmin,
   aprobarLiquidacionAdmin, cancelarLiquidacionAdmin, exportarLiquidacionAdminPDF,
+  listPrestamosEmpleado, createPrestamo, deletePrestamo,
 } from '../controllers/sueldosAdmin.controller';
+import {
+  listEscalafones, getValoresEscalafon, createEscalafon, updateEscalafon, deleteEscalafon,
+} from '../controllers/escalafones.controller';
 
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -86,5 +90,17 @@ router.post('/liquidaciones-admin/generar',         requireRole('ADMIN'), asyncH
 router.put('/liquidaciones-admin/:id',              requireRole('ADMIN'), asyncHandler(updateLiquidacionAdmin));
 router.patch('/liquidaciones-admin/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarLiquidacionAdmin));
 router.patch('/liquidaciones-admin/:id/cancelar',   requireRole('ADMIN'), asyncHandler(cancelarLiquidacionAdmin));
+
+// ── Escalafones administrativos (valores por categoría, configurables) ───────
+router.get('/escalafones',                  requireRole('ADMIN'), asyncHandler(listEscalafones));
+router.get('/escalafones/:nombre/valores',  requireRole('ADMIN'), asyncHandler(getValoresEscalafon));
+router.post('/escalafones',                 requireRole('ADMIN'), asyncHandler(createEscalafon));
+router.put('/escalafones/:id',              requireRole('ADMIN'), asyncHandler(updateEscalafon));
+router.delete('/escalafones/:id',           requireRole('ADMIN'), asyncHandler(deleteEscalafon));
+
+// ── Préstamos a empleados (distinto de Anticipo — se paga en cuotas) ─────────
+router.get('/empleados/:id/prestamos',      requireRole('ADMIN'), asyncHandler(listPrestamosEmpleado));
+router.post('/empleados/:id/prestamos',     requireRole('ADMIN'), asyncHandler(createPrestamo));
+router.delete('/prestamos/:id',             requireRole('ADMIN'), asyncHandler(deletePrestamo));
 
 export default router;

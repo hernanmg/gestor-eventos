@@ -3,8 +3,9 @@ import { Plus, Download } from 'lucide-react';
 import { useEmpleados } from '@/hooks/useRRHH';
 import {
   useAcuerdos, useAcuerdoEmpleado, useCuentasPorEmpresa,
-  useLiquidacionesAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
+  useLiquidacionesAdmin, useLiquidacionAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
   useAprobarLiquidacionAdmin, useCancelarLiquidacionAdmin, descargarLiquidacionAdminPDF,
+  usePrestamosEmpleado,
   type LiquidacionAdminFiltros, type GenerarLiquidacionAdminPayload,
 } from '@/hooks/useSueldosAdmin';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,8 +29,8 @@ const MESES = [
 
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
-function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo }: {
-  empleadoId: number; horasTrabajadas: string; valesDescuentos: string; vacacionesAguinaldo: string;
+function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0 }: {
+  empleadoId: number; horasTrabajadas: string; valesDescuentos: string; vacacionesAguinaldo: string; prestamosDescuento?: number;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
   if (!acuerdo) return null;
@@ -53,7 +54,7 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
     + (acuerdo.telefono ?? 0)
     + importeExtras
     + vacac;
-  const total = subtotal - vales;
+  const total = subtotal - vales - prestamosDescuento;
 
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
@@ -70,6 +71,7 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
         {acuerdo.telefono           ? (<><span>Teléfono</span><span className="text-right">{formatCurrency(acuerdo.telefono)}</span></>) : null}
         {vacac > 0 ? (<><span>Vacaciones/Aguinaldo/Extras</span><span className="text-right">{formatCurrency(vacac)}</span></>) : null}
         {vales > 0 ? (<><span>Vales/Descuentos</span><span className="text-right text-destructive">-{formatCurrency(vales)}</span></>) : null}
+        {prestamosDescuento > 0 ? (<><span>Préstamos</span><span className="text-right text-destructive">-{formatCurrency(prestamosDescuento)}</span></>) : null}
       </div>
       <div className="flex justify-between font-semibold pt-1 border-t border-border">
         <span>Total a cobrar</span><span>{formatCurrency(total)}</span>
@@ -101,16 +103,31 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
     empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
     horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '',
   });
+  const [prestamosSel, setPrestamosSel] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (open) {
       setForm({ empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()), horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '' });
+      setPrestamosSel(new Set());
       setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k: keyof typeof form, v: string) => {
+    setForm(p => ({ ...p, [k]: v }));
+    if (k === 'empleado_id') setPrestamosSel(new Set());
+  };
+
+  const empleadoIdNum = form.empleado_id ? Number(form.empleado_id) : null;
+  const { data: prestamos = [] } = usePrestamosEmpleado(empleadoIdNum);
+  const prestamosPendientes = prestamos.filter(p => !p.saldado);
+  const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
+  const togglePrestamo = (id: number) => setPrestamosSel(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,12 +191,31 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             </div>
           </div>
 
+          {prestamosPendientes.length > 0 && (
+            <div className="space-y-1.5">
+              <label className={labelCls}>Préstamos y descuentos</label>
+              {prestamosPendientes.map(p => (
+                <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={prestamosSel.has(p.id)} onChange={() => togglePrestamo(p.id)} />
+                  {p.detalle} — Cuota {formatCurrency(p.monto_cuota)} ({p.cuotas_pagadas + 1} de {p.cantidad_cuotas})
+                </label>
+              ))}
+              {totalPrestamosSel > 0 && (
+                <p className="text-xs text-muted-foreground">Total de descuentos: {formatCurrency(totalPrestamosSel)}</p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Esta selección es sólo para el preview — se confirma al aprobar la liquidación.
+              </p>
+            </div>
+          )}
+
           {form.empleado_id && (
             <GenerarPreview
               empleadoId={Number(form.empleado_id)}
               horasTrabajadas={form.horas_trabajadas}
               valesDescuentos={form.vales_descuentos}
               vacacionesAguinaldo={form.vacaciones_aguinaldo}
+              prestamosDescuento={totalPrestamosSel}
             />
           )}
 
@@ -282,16 +318,36 @@ function CuentaSelectEmpresa({ empresaId, empresaLabel, monto, value, onChange }
 
 function AprobarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin | null; onClose: () => void }) {
   const aprobarMut = useAprobarLiquidacionAdmin();
+  const { data: detalle } = useLiquidacionAdmin(liquidacion?.id ?? null);
   const [cuentas, setCuentas] = useState<Record<number, string>>({});
+  // prestamo_id -> monto (string) — sólo presente si está tildado
+  const [prestamosSel, setPrestamosSel] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { setCuentas({}); setError(null); }, [liquidacion]);
+  useEffect(() => { setCuentas({}); setPrestamosSel({}); setError(null); }, [liquidacion]);
 
   if (!liquidacion) return null;
 
-  const desglose = liquidacion.splits && liquidacion.splits.length > 0
+  const prestamosPendientes = detalle?.prestamos_pendientes ?? [];
+  const totalPrestamos = Object.values(prestamosSel).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const totalNeto = Math.round((liquidacion.subtotal_bruto - liquidacion.vales_descuentos - totalPrestamos) * 100) / 100;
+
+  const togglePrestamo = (id: number, montoCuota: number, checked: boolean) => {
+    setPrestamosSel(prev => {
+      const next = { ...prev };
+      if (checked) next[id] = String(montoCuota); else delete next[id];
+      return next;
+    });
+  };
+
+  // Desglose para elegir cuenta — recalculado sobre el total neto (post
+  // préstamos) para que el monto por cuenta sea el que efectivamente se paga.
+  // El backend recalcula esto con precisión exacta al aprobar; acá es sólo
+  // para mostrar un monto de referencia por empresa.
+  const splitsBase = liquidacion.splits && liquidacion.splits.length > 0
     ? liquidacion.splits
-    : [{ empresa_id: liquidacion.empresa_id, empresa_nombre: liquidacion.empleado ? 'Empresa principal' : '', porcentaje: 100, monto: liquidacion.total_a_cobrar }];
+    : [{ empresa_id: liquidacion.empresa_id, empresa_nombre: '', porcentaje: 100 }];
+  const desglose = splitsBase.map(d => ({ ...d, monto: Math.round(totalNeto * d.porcentaje / 100 * 100) / 100 }));
 
   const faltaCuenta = desglose.some(d => !cuentas[d.empresa_id]);
 
@@ -301,6 +357,7 @@ function AprobarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin
       await aprobarMut.mutateAsync({
         id: liquidacion.id,
         cuentas_pago: desglose.map(d => ({ empresa_id: d.empresa_id, cuenta_id: Number(cuentas[d.empresa_id]) })),
+        prestamos_a_descontar: Object.entries(prestamosSel).map(([prestamo_id, monto]) => ({ prestamo_id: Number(prestamo_id), monto: parseFloat(monto) })),
       });
       onClose();
     } catch (err) {
@@ -314,8 +371,46 @@ function AprobarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin
         <DialogHeader><DialogTitle>Aprobar liquidación — {liquidacion.empleado?.apellido}, {liquidacion.empleado?.nombre}</DialogTitle></DialogHeader>
         <div className="space-y-3 mt-1">
           <p className="text-sm text-muted-foreground">
-            Total: <span className="font-semibold text-foreground">{formatCurrency(liquidacion.total_a_cobrar)}</span> — elegí desde qué cuenta se paga cada parte.
+            Total: <span className="font-semibold text-foreground">{formatCurrency(liquidacion.total_a_cobrar)}</span>
           </p>
+
+          {prestamosPendientes.length > 0 && (
+            <div className="space-y-1.5 rounded-md border border-border p-2.5">
+              <p className="text-xs font-medium">Préstamos a descontar</p>
+              {prestamosPendientes.map(p => {
+                const checked = p.id in prestamosSel;
+                return (
+                  <div key={p.id} className="flex items-center gap-2 text-xs">
+                    <input type="checkbox" checked={checked} onChange={e => togglePrestamo(p.id, p.monto_cuota, e.target.checked)} />
+                    <span className="flex-1">{p.detalle} — cuota {p.cuotas_pagadas + 1} de {p.cantidad_cuotas}</span>
+                    {checked ? (
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={prestamosSel[p.id]}
+                        onChange={e => setPrestamosSel(prev => ({ ...prev, [p.id]: e.target.value }))}
+                        className="w-24 border border-input rounded px-1.5 py-0.5 text-right"
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">{formatCurrency(p.monto_cuota)}</span>
+                    )}
+                  </div>
+                );
+              })}
+              {totalPrestamos > 0 && (
+                <p className="text-xs text-destructive pt-1 border-t border-border">
+                  Descuentos: {formatCurrency(totalPrestamos)} ({prestamosPendientes.filter(p => p.id in prestamosSel).map(p => p.detalle).join(', ')})
+                </p>
+              )}
+            </div>
+          )}
+
+          {totalPrestamos > 0 && (
+            <p className="text-sm">
+              Total a cobrar neto: <span className="font-semibold text-foreground">{formatCurrency(totalNeto)}</span>
+            </p>
+          )}
+
+          <p className="text-xs text-muted-foreground">Elegí desde qué cuenta se paga cada parte.</p>
           {desglose.map(d => (
             <CuentaSelectEmpresa
               key={d.empresa_id}

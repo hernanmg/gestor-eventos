@@ -1273,6 +1273,7 @@ export interface LiquidacionAdmin {
   subtotal_bruto:       number;
   total_a_cobrar:       number;
   splits:               SplitEmpresa[] | null;
+  prestamos_descontados: number;
   estado:               EstadoLiquidacionAdmin;
   observaciones:        string | null;
   created_at:           string;
@@ -1280,6 +1281,50 @@ export interface LiquidacionAdmin {
   aprobado_por:         number | null;
   aprobado_at:          string | null;
   movimientos_caja?:    LiquidacionAdminMovimientoCaja[];
+  // Presente sólo en la respuesta de generar/get (BORRADOR) — informativo,
+  // la selección real se envía en prestamos_a_descontar al aprobar.
+  prestamos_pendientes?: PrestamoPendiente[];
+}
+
+// ── Escalafones administrativos (valores por categoría) ──────────────────────
+
+export interface EscalafonAdmin {
+  id:                 number;
+  empresa_id:         number;
+  nombre:             string;
+  orden:              number;
+  viatico:            number | null;
+  premio_presentismo: number | null;
+  telefono:           number | null;
+  premio_incentivo:   number | null;
+  created_at:         string;
+  updated_at:         string;
+}
+
+// ── Préstamos a empleados (distinto de Anticipo — se paga en cuotas) ─────────
+
+export interface PrestamoPendiente {
+  id:              number;
+  detalle:         string;
+  monto_cuota:     number;
+  cuotas_pagadas:  number;
+  cantidad_cuotas: number;
+}
+
+export interface PrestamoEmpleado {
+  id:                number;
+  empleado_id:       number;
+  empresa_id:        number;
+  fecha:             string;
+  detalle:           string;
+  monto_total:       number;
+  cantidad_cuotas:   number;
+  cuotas_pagadas:    number;
+  monto_cuota:       number;
+  saldado:           boolean;
+  saldo_pendiente:   number;
+  cuotas_pendientes: number;
+  created_at:        string;
 }
 
 // ── Parte Diario de Personal (DOS57) ──────────────────────────────────────────

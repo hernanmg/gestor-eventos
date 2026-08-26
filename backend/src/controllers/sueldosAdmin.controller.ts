@@ -38,9 +38,22 @@ function mapDecimalsLiquidacionAdmin(l: any) {
     telefono:             Number(l.telefono),
     vacaciones_aguinaldo: Number(l.vacaciones_aguinaldo),
     vales_descuentos:     Number(l.vales_descuentos),
+    prestamos_descontados: Number(l.prestamos_descontados),
     subtotal_bruto:       Number(l.subtotal_bruto),
     total_a_cobrar:       Number(l.total_a_cobrar),
   };
+}
+
+function mapDecimalsPrestamo(p: any) {
+  return {
+    ...p,
+    monto_total: Number(p.monto_total),
+    monto_cuota: Number(p.monto_cuota),
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 const EMPLEADO_SELECT = { id: true, nombre: true, apellido: true, dni: true, categoria: true } as const;
@@ -378,6 +391,13 @@ export async function getLiquidacionAdmin(req: Request, res: Response) {
   });
   if (!liquidacion) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
 
+  const prestamosPendientes = liquidacion.estado === EstadoLiquidacionAdmin.BORRADOR
+    ? await prisma.prestamoEmpleado.findMany({
+        where:  { empleado_id: liquidacion.empleado_id, deleted_at: null, saldado: false },
+        select: { id: true, detalle: true, monto_cuota: true, cuotas_pagadas: true, cantidad_cuotas: true },
+      })
+    : [];
+
   res.json({
     ...mapDecimalsLiquidacionAdmin(liquidacion),
     acuerdo: mapDecimalsAcuerdo(liquidacion.acuerdo),
@@ -385,6 +405,7 @@ export async function getLiquidacionAdmin(req: Request, res: Response) {
       id: m.id, cuenta_id: m.cuenta_id, cuenta_nombre: m.cuenta.nombre, empresa_id: m.cuenta.empresa_id,
       monto: Number(m.haber) - Number(m.debe), descripcion: m.descripcion,
     })),
+    prestamos_pendientes: prestamosPendientes.map(p => ({ ...p, monto_cuota: Number(p.monto_cuota) })),
   });
 }
 
@@ -469,7 +490,15 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
       tx:           prisma as any,
     });
 
-    res.status(201).json(mapDecimalsLiquidacionAdmin(liquidacion));
+    const prestamosPendientes = await prisma.prestamoEmpleado.findMany({
+      where:  { empleado_id: d.empleado_id, deleted_at: null, saldado: false },
+      select: { id: true, detalle: true, monto_cuota: true, cuotas_pagadas: true, cantidad_cuotas: true },
+    });
+
+    res.status(201).json({
+      ...mapDecimalsLiquidacionAdmin(liquidacion),
+      prestamos_pendientes: prestamosPendientes.map(p => ({ ...p, monto_cuota: Number(p.monto_cuota) })),
+    });
   } catch (err: any) {
     if (err.code === 'P2002') {
       res.status(400).json({ error: 'Ya existe liquidación para ese período' }); return;
@@ -545,6 +574,10 @@ const aprobarSchema = z.object({
     empresa_id: z.number().int().positive(),
     cuenta_id:  z.number().int().positive(),
   })).min(1),
+  prestamos_a_descontar: z.array(z.object({
+    prestamo_id: z.number().int().positive(),
+    monto:       z.number().positive(),
+  })).optional(),
 });
 
 export async function aprobarLiquidacionAdmin(req: Request, res: Response) {
@@ -563,12 +596,38 @@ export async function aprobarLiquidacionAdmin(req: Request, res: Response) {
     res.status(400).json({ error: `No se puede aprobar una liquidación en estado ${liquidacion.estado}` }); return;
   }
 
+  // Préstamos a descontar — validar que existen, son del mismo empleado y no
+  // están saldados, antes de tocar nada.
+  const prestamosADescontar = parsed.data.prestamos_a_descontar ?? [];
+  let prestamos: Awaited<ReturnType<typeof prisma.prestamoEmpleado.findMany>> = [];
+  if (prestamosADescontar.length > 0) {
+    prestamos = await prisma.prestamoEmpleado.findMany({
+      where: { id: { in: prestamosADescontar.map(p => p.prestamo_id) }, deleted_at: null },
+    });
+    for (const p of prestamosADescontar) {
+      const prestamo = prestamos.find(x => x.id === p.prestamo_id);
+      if (!prestamo || prestamo.empleado_id !== liquidacion.empleado_id) {
+        res.status(400).json({ error: `El préstamo #${p.prestamo_id} no corresponde a este empleado` }); return;
+      }
+      if (prestamo.saldado) {
+        res.status(400).json({ error: `El préstamo "${prestamo.detalle}" ya está saldado` }); return;
+      }
+    }
+  }
+  const totalPrestamos = round2(prestamosADescontar.reduce((s, p) => s + p.monto, 0));
+
+  // Total neto luego de descontar los préstamos elegidos — el efectivo que
+  // realmente sale de caja es menor al total_a_cobrar original.
+  const totalNeto = round2(Number(liquidacion.subtotal_bruto) - Number(liquidacion.vales_descuentos) - totalPrestamos);
+
   // Desglose por empresa — el split guardado, o un único ítem con la empresa
-  // principal si el empleado no tiene split configurado.
+  // principal si el empleado no tiene split configurado. Recalculado sobre el
+  // total NETO (post-préstamos) para que la plata que efectivamente se paga
+  // por cuenta coincida con lo que el empleado cobra.
   const splitsGuardados = (liquidacion.splits as unknown as SplitCalculado[] | null) ?? [];
   const desglose: SplitCalculado[] = splitsGuardados.length > 0
-    ? splitsGuardados
-    : [{ empresa_id: liquidacion.empresa_id, empresa_nombre: '', porcentaje: 100, monto: Number(liquidacion.total_a_cobrar) }];
+    ? calcularSplits(totalNeto, splitsGuardados.map(s => ({ empresa_id: s.empresa_id, porcentaje: s.porcentaje, empresa_nombre: s.empresa_nombre })))
+    : [{ empresa_id: liquidacion.empresa_id, empresa_nombre: '', porcentaje: 100, monto: totalNeto }];
 
   // Validar que cada empresa del desglose tiene una cuenta elegida, y que esa
   // cuenta pertenece efectivamente a esa empresa.
@@ -618,12 +677,37 @@ export async function aprobarLiquidacionAdmin(req: Request, res: Response) {
       await recalcularSaldosCaja(cuentaId, tx as any);
     }
 
+    // Préstamos descontados — una cuota por préstamo elegido, vinculada a esta
+    // liquidación. Incrementa cuotas_pagadas y marca saldado si corresponde.
+    for (const p of prestamosADescontar) {
+      const prestamo = prestamos.find(x => x.id === p.prestamo_id)!;
+      await tx.pagoPrestamoEmpleado.create({
+        data: {
+          prestamo_id:          p.prestamo_id,
+          liquidacion_admin_id: id,
+          monto:                p.monto,
+          fecha:                new Date(),
+        },
+      });
+      const cuotasPagadas = prestamo.cuotas_pagadas + 1;
+      await tx.prestamoEmpleado.update({
+        where: { id: p.prestamo_id },
+        data: {
+          cuotas_pagadas: cuotasPagadas,
+          saldado:        cuotasPagadas >= prestamo.cantidad_cuotas,
+        },
+      });
+    }
+
     const updated = await tx.liquidacionAdmin.update({
       where: { id },
       data: {
-        estado:       EstadoLiquidacionAdmin.APROBADA,
-        aprobado_por: req.user!.id,
-        aprobado_at:  new Date(),
+        estado:                EstadoLiquidacionAdmin.APROBADA,
+        prestamos_descontados: totalPrestamos,
+        total_a_cobrar:        totalNeto,
+        splits:                splitsGuardados.length > 0 ? (desglose as any) : undefined,
+        aprobado_por:          req.user!.id,
+        aprobado_at:           new Date(),
       },
     });
 
@@ -633,8 +717,8 @@ export async function aprobarLiquidacionAdmin(req: Request, res: Response) {
       accion:       'APROBAR',
       entidad:      'LiquidacionAdmin',
       entidadId:    id,
-      descripcion:  `Aprobó liquidación de ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre} — ${periodoLabel} por $${Number(liquidacion.total_a_cobrar)}`,
-      datosDespues: { movimientosCreados, cuentas_pago: parsed.data.cuentas_pago },
+      descripcion:  `Aprobó liquidación de ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre} — ${periodoLabel} por $${totalNeto}${totalPrestamos > 0 ? ` (préstamos descontados: $${totalPrestamos})` : ''}`,
+      datosDespues: { movimientosCreados, cuentas_pago: parsed.data.cuentas_pago, prestamos_a_descontar: prestamosADescontar },
       ip:           req.ip,
       tx:           tx as any,
     });
@@ -722,4 +806,108 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
     'Content-Length':      String(buffer.length),
   });
   res.end(buffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRÉSTAMOS A EMPLEADOS — distinto de Anticipo (adelanto simple): se paga en
+// cuotas y puede quedar pendiente entre liquidaciones. La cuota efectivamente
+// pagada se registra en PagoPrestamoEmpleado sólo al aprobar una
+// LiquidacionAdmin (ver aprobarLiquidacionAdmin).
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listPrestamosEmpleado(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  const prestamos = await prisma.prestamoEmpleado.findMany({
+    where:   { empleado_id: empleadoId, deleted_at: null },
+    orderBy: { fecha: 'desc' },
+  });
+
+  res.json(prestamos.map(p => {
+    const montoCuota = Number(p.monto_cuota);
+    return {
+      ...mapDecimalsPrestamo(p),
+      saldo_pendiente:   round2(Number(p.monto_total) - montoCuota * p.cuotas_pagadas),
+      cuotas_pendientes: p.cantidad_cuotas - p.cuotas_pagadas,
+    };
+  }));
+}
+
+const prestamoSchema = z.object({
+  fecha:           z.string().min(1),
+  detalle:         z.string().min(1),
+  monto_total:     z.number().positive(),
+  cantidad_cuotas: z.number().int().positive().default(1),
+  monto_cuota:     z.number().positive().optional(),
+});
+
+export async function createPrestamo(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const parsed = prestamoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+  const d = parsed.data;
+
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  const montoCuota = d.monto_cuota ?? round2(d.monto_total / d.cantidad_cuotas);
+
+  const prestamo = await prisma.prestamoEmpleado.create({
+    data: {
+      empleado_id:     empleadoId,
+      empresa_id:      req.empresaId!,
+      fecha:           new Date(d.fecha),
+      detalle:         d.detalle,
+      monto_total:     d.monto_total,
+      cantidad_cuotas: d.cantidad_cuotas,
+      monto_cuota:     montoCuota,
+      created_by:      req.user!.id,
+    },
+  });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
+    accion:       'CREATE',
+    entidad:      'PrestamoEmpleado',
+    entidadId:    prestamo.id,
+    descripcion:  `Registró préstamo "${d.detalle}" de $${d.monto_total} para ${empleado.apellido}, ${empleado.nombre}`,
+    datosDespues: { monto_total: d.monto_total, cantidad_cuotas: d.cantidad_cuotas, monto_cuota: montoCuota },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
+  res.status(201).json({
+    ...mapDecimalsPrestamo(prestamo),
+    saldo_pendiente:   Number(prestamo.monto_total),
+    cuotas_pendientes: prestamo.cantidad_cuotas,
+  });
+}
+
+export async function deletePrestamo(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const prestamo = await prisma.prestamoEmpleado.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!prestamo) { res.status(404).json({ error: 'Préstamo no encontrado' }); return; }
+  if (prestamo.cuotas_pagadas > 0) {
+    res.status(400).json({ error: 'No se puede eliminar un préstamo con cuotas ya pagadas' }); return;
+  }
+
+  await prisma.prestamoEmpleado.update({ where: { id }, data: { deleted_at: new Date() } });
+
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'DELETE',
+    entidad:     'PrestamoEmpleado',
+    entidadId:   id,
+    descripcion: `Eliminó préstamo "${prestamo.detalle}"`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  res.json({ message: 'Préstamo eliminado correctamente' });
 }
