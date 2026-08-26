@@ -5,12 +5,13 @@ import {
   useAcuerdos, useAcuerdoEmpleado, useCuentasPorEmpresa,
   useLiquidacionesAdmin, useLiquidacionAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
   useAprobarLiquidacionAdmin, useCancelarLiquidacionAdmin, descargarLiquidacionAdminPDF,
-  usePrestamosEmpleado,
+  usePrestamosEmpleado, useHorasPeriodo, useResumenMensual,
   type LiquidacionAdminFiltros, type GenerarLiquidacionAdminPayload,
 } from '@/hooks/useSueldosAdmin';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { EstadoLiquidacionAdmin, LiquidacionAdmin } from '@/types';
@@ -36,8 +37,14 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
   if (!acuerdo) return null;
 
   const horas   = parseFloat(horasTrabajadas) || 0;
-  const extras  = Math.max(0, horas - acuerdo.horas_acordadas_mes);
+  // Sueldo básico, viático, teléfono, antigüedad e incentivo son fijos — no
+  // se tocan por horas. El Premio Presentismo se pierde entero si no llegó
+  // al mínimo acordado, y las horas extras sólo existen si lo superó (mismo
+  // criterio que calcularSueldoAdmin.ts en el backend).
+  const cumpleHoras   = horas >= acuerdo.horas_acordadas_mes;
+  const extras        = cumpleHoras ? Math.max(0, horas - acuerdo.horas_acordadas_mes) : 0;
   const importeExtras = extras * (acuerdo.valor_hora_extra ?? 0);
+  const premioPresentismo = cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0;
   const vales   = parseFloat(valesDescuentos) || 0;
   const vacac   = parseFloat(vacacionesAguinaldo) || 0;
 
@@ -49,7 +56,7 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
     acuerdo.sueldo_basico
     + (acuerdo.premio_incentivo ?? 0)
     + (acuerdo.viatico ?? 0)
-    + (acuerdo.premio_presentismo ?? 0)
+    + premioPresentismo
     + antiguedad
     + (acuerdo.telefono ?? 0)
     + importeExtras
@@ -67,12 +74,24 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
         <span>Antigüedad ({aniosAntiguedad} año{aniosAntiguedad !== 1 ? 's' : ''})</span><span className="text-right">{formatCurrency(antiguedad)}</span>
         {acuerdo.premio_incentivo   ? (<><span>Premio incentivo</span><span className="text-right">{formatCurrency(acuerdo.premio_incentivo)}</span></>) : null}
         {acuerdo.viatico            ? (<><span>Viático</span><span className="text-right">{formatCurrency(acuerdo.viatico)}</span></>) : null}
-        {acuerdo.premio_presentismo ? (<><span>Premio presentismo</span><span className="text-right">{formatCurrency(acuerdo.premio_presentismo)}</span></>) : null}
+        {acuerdo.premio_presentismo ? (
+          <>
+            <span>Premio presentismo</span>
+            {!cumpleHoras ? (
+              <span className="text-right text-destructive line-through">{formatCurrency(acuerdo.premio_presentismo)}</span>
+            ) : (
+              <span className="text-right">{formatCurrency(premioPresentismo)}</span>
+            )}
+          </>
+        ) : null}
         {acuerdo.telefono           ? (<><span>Teléfono</span><span className="text-right">{formatCurrency(acuerdo.telefono)}</span></>) : null}
         {vacac > 0 ? (<><span>Vacaciones/Aguinaldo/Extras</span><span className="text-right">{formatCurrency(vacac)}</span></>) : null}
         {vales > 0 ? (<><span>Vales/Descuentos</span><span className="text-right text-destructive">-{formatCurrency(vales)}</span></>) : null}
         {prestamosDescuento > 0 ? (<><span>Préstamos</span><span className="text-right text-destructive">-{formatCurrency(prestamosDescuento)}</span></>) : null}
       </div>
+      {!cumpleHoras && horas > 0 && acuerdo.premio_presentismo ? (
+        <p className="text-xs text-destructive">No alcanzó las horas acordadas — pierde el premio presentismo.</p>
+      ) : null}
       <div className="flex justify-between font-semibold pt-1 border-t border-border">
         <span>Total a cobrar</span><span>{formatCurrency(total)}</span>
       </div>
@@ -88,6 +107,31 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Panel: horas registradas en el sistema para el período elegido ───────────
+
+function HorasPeriodoPanel({ empleadoId, mes, anio, onUsar }: {
+  empleadoId: number; mes: number; anio: number; onUsar: (horas: number) => void;
+}) {
+  const { data, isLoading } = useHorasPeriodo(empleadoId, mes, anio);
+  if (isLoading || !data) return null;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">📊 Horas registradas en el sistema</p>
+      <p className="text-xs text-muted-foreground">Período: {MESES[mes - 1]} {anio}</p>
+      <p className="text-xs text-muted-foreground">Jornadas aprobadas: {data.cantidad_jornadas} día{data.cantidad_jornadas !== 1 ? 's' : ''}</p>
+      <p className="text-xs text-muted-foreground">Total horas trabajadas: {data.total_horas} hs</p>
+      <p className="text-xs text-muted-foreground">Horas acordadas: {data.horas_acordadas} hs</p>
+      <p className="text-xs text-muted-foreground">
+        Horas extras: {data.horas_extras} hs {data.horas_extras === 0 && '(no superó el mínimo)'}
+      </p>
+      <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => onUsar(data.total_horas)}>
+        Usar este valor
+      </Button>
     </div>
   );
 }
@@ -176,6 +220,15 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               <input type="number" value={form.periodo_anio} onChange={e => set('periodo_anio', e.target.value)} className={inputCls} />
             </div>
           </div>
+          {empleadoIdNum && (
+            <HorasPeriodoPanel
+              empleadoId={empleadoIdNum}
+              mes={Number(form.periodo_mes)}
+              anio={Number(form.periodo_anio)}
+              onUsar={horas => set('horas_trabajadas', String(horas))}
+            />
+          )}
+
           <div>
             <label className={labelCls}>Horas trabajadas *</label>
             <input type="number" min="0" step="0.5" value={form.horas_trabajadas} onChange={e => set('horas_trabajadas', e.target.value)} className={inputCls} required />
@@ -183,31 +236,35 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Vales/Descuentos/Multas ($)</label>
-              <input type="number" min="0" step="0.01" value={form.vales_descuentos} onChange={e => set('vales_descuentos', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.vales_descuentos} onChange={v => set('vales_descuentos', v)} />
             </div>
             <div>
               <label className={labelCls}>Vacaciones/Aguinaldos/Extras ($)</label>
-              <input type="number" min="0" step="0.01" value={form.vacaciones_aguinaldo} onChange={e => set('vacaciones_aguinaldo', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
             </div>
           </div>
 
-          {prestamosPendientes.length > 0 && (
-            <div className="space-y-1.5">
-              <label className={labelCls}>Préstamos y descuentos</label>
-              {prestamosPendientes.map(p => (
-                <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input type="checkbox" checked={prestamosSel.has(p.id)} onChange={() => togglePrestamo(p.id)} />
-                  {p.detalle} — Cuota {formatCurrency(p.monto_cuota)} ({p.cuotas_pagadas + 1} de {p.cantidad_cuotas})
-                </label>
-              ))}
-              {totalPrestamosSel > 0 && (
-                <p className="text-xs text-muted-foreground">Total de descuentos: {formatCurrency(totalPrestamosSel)}</p>
-              )}
-              <p className="text-[11px] text-muted-foreground">
-                Esta selección es sólo para el preview — se confirma al aprobar la liquidación.
-              </p>
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <label className={labelCls}>💰 Préstamos a descontar este mes</label>
+            {prestamosPendientes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin préstamos pendientes.</p>
+            ) : (
+              <>
+                {prestamosPendientes.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={prestamosSel.has(p.id)} onChange={() => togglePrestamo(p.id)} />
+                    {p.detalle} — Cuota {formatCurrency(p.monto_cuota)} ({p.cuotas_pagadas + 1} de {p.cantidad_cuotas})
+                  </label>
+                ))}
+                {totalPrestamosSel > 0 && (
+                  <p className="text-xs text-muted-foreground">Total de descuentos: {formatCurrency(totalPrestamosSel)}</p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Esta selección es sólo para el preview — se confirma al aprobar la liquidación.
+                </p>
+              </>
+            )}
+          </div>
 
           {form.empleado_id && (
             <GenerarPreview
@@ -280,11 +337,11 @@ function EditarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Vales/Descuentos ($)</label>
-              <input type="number" min="0" step="0.01" value={form.vales_descuentos} onChange={e => setForm(p => ({ ...p, vales_descuentos: e.target.value }))} className={inputCls} />
+              <MoneyInput value={form.vales_descuentos} onChange={v => setForm(p => ({ ...p, vales_descuentos: v }))} />
             </div>
             <div>
               <label className={labelCls}>Vacaciones/Aguinaldo ($)</label>
-              <input type="number" min="0" step="0.01" value={form.vacaciones_aguinaldo} onChange={e => setForm(p => ({ ...p, vacaciones_aguinaldo: e.target.value }))} className={inputCls} />
+              <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => setForm(p => ({ ...p, vacaciones_aguinaldo: v }))} />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -384,11 +441,10 @@ function AprobarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin
                     <input type="checkbox" checked={checked} onChange={e => togglePrestamo(p.id, p.monto_cuota, e.target.checked)} />
                     <span className="flex-1">{p.detalle} — cuota {p.cuotas_pagadas + 1} de {p.cantidad_cuotas}</span>
                     {checked ? (
-                      <input
-                        type="number" min="0" step="0.01"
+                      <MoneyInput
                         value={prestamosSel[p.id]}
-                        onChange={e => setPrestamosSel(prev => ({ ...prev, [p.id]: e.target.value }))}
-                        className="w-24 border border-input rounded px-1.5 py-0.5 text-right"
+                        onChange={v => setPrestamosSel(prev => ({ ...prev, [p.id]: v }))}
+                        className="w-24"
                       />
                     ) : (
                       <span className="text-muted-foreground">{formatCurrency(p.monto_cuota)}</span>
@@ -443,6 +499,10 @@ export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInic
   const { data: liquidaciones = [], isLoading } = useLiquidacionesAdmin(filtros);
   const { data: empleados = [] } = useEmpleados();
   const cancelarMut = useCancelarLiquidacionAdmin();
+
+  // Totales de nómina — sólo tiene sentido mostrarlos cuando el filtro está
+  // acotado a un mes y año puntuales (si no, "TOTAL NÓMINA" no tendría período).
+  const { data: resumen } = useResumenMensual(filtros.mes ?? null, filtros.anio ?? null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editando, setEditando]   = useState<LiquidacionAdmin | null>(null);
@@ -523,6 +583,25 @@ export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInic
                 </tr>
               ))}
             </tbody>
+            {resumen && liquidaciones.length > 0 && (
+              <tfoot className="bg-gray-50 border-t-2 border-border">
+                <tr>
+                  <td colSpan={2} className="px-3 py-2 text-sm font-semibold">TOTAL NÓMINA {resumen.periodo.toUpperCase()}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{formatCurrency(resumen.totales.basico)}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{formatCurrency(resumen.totales.extras)}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{formatCurrency(resumen.totales.descuentos + resumen.totales.prestamos)}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{formatCurrency(resumen.totales.total)}</td>
+                  <td colSpan={2} />
+                </tr>
+                {resumen.totales.por_empresa.map(pe => (
+                  <tr key={pe.empresa_nombre}>
+                    <td colSpan={5} className="px-3 py-1 text-right text-xs text-muted-foreground">TOTAL {pe.empresa_nombre.toUpperCase()}</td>
+                    <td className="px-3 py-1 text-right text-xs text-muted-foreground">{formatCurrency(pe.monto)}</td>
+                    <td colSpan={2} />
+                  </tr>
+                ))}
+              </tfoot>
+            )}
           </table>
         </div>
       )}

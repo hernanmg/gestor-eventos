@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, X, Pencil, Trash2 } from 'lucide-react';
 import { useEmpleados } from '@/hooks/useRRHH';
 import { useAuth } from '@/hooks/useAuth';
 import { useEscalafones } from '@/hooks/useEscalafones';
@@ -10,9 +10,13 @@ import {
 import { previewSueldoBasico } from '@/lib/calcularSueldoAdmin';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
+import PrestamosSection from '@/components/domain/PrestamosSection';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { AcuerdoSueldo } from '@/types';
+import api from '@/lib/api';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -25,14 +29,16 @@ const EMPTY_FORM = {
 
 type Step = 1 | 2 | 3;
 
-// ── Dialog: Nuevo acuerdo (wizard de 3 pasos — Mejora 2) ──────────────────────
+// ── Dialog: Nuevo / Editar acuerdo (wizard de 3 pasos) ────────────────────────
 // Paso 1: empleado + escalafón (dispara pre-carga de paso 3) + seguro/fechas.
 // Paso 2: sueldo básico + split entre empresas, combinados.
 // Paso 3: conceptos pre-cargados desde el escalafón, editables + preview total.
 
-function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
+function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
   open: boolean; onClose: () => void; empleadosDisponibles: { id: number; nombre: string; apellido: string }[];
+  acuerdo?: AcuerdoSueldo | null; // presente = modo edición
 }) {
+  const isEdit = !!acuerdo;
   const { user } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -43,10 +49,50 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
   const { data: empresas = [] }    = useEmpresasSueldos();
   const { data: escalafones = [] } = useEscalafones();
   const createMut = useCreateAcuerdo();
+  const updateMut = useUpdateAcuerdo();
   const splitsMut  = useUpsertSplits();
 
-  const reset = () => { setStep(1); setForm(EMPTY_FORM); setSplitActivo(false); setSplits([]); setError(null); };
-  const handleClose = () => { reset(); onClose(); };
+  const activeEmpresaId = user?.empresa?.id ? String(user.empresa.id) : '';
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setError(null);
+    if (acuerdo) {
+      setForm({
+        empleado_id:         String(acuerdo.empleado_id),
+        escalafon:           acuerdo.escalafon ?? '',
+        escalafonOtro:       '',
+        tipo_seguro:         acuerdo.tipo_seguro ?? '',
+        fecha_inicio:        acuerdo.fecha_inicio.slice(0, 10),
+        vigencia_meses:      acuerdo.vigencia_meses !== null ? String(acuerdo.vigencia_meses) : '',
+        sueldo_basico:       String(acuerdo.sueldo_basico),
+        horas_acordadas_mes: String(acuerdo.horas_acordadas_mes),
+        valor_hora_extra:    acuerdo.valor_hora_extra !== null ? String(acuerdo.valor_hora_extra) : '',
+        premio_incentivo:    acuerdo.premio_incentivo !== null ? String(acuerdo.premio_incentivo) : '',
+        viatico:             acuerdo.viatico !== null ? String(acuerdo.viatico) : '',
+        premio_presentismo:  acuerdo.premio_presentismo !== null ? String(acuerdo.premio_presentismo) : '',
+        telefono:            acuerdo.telefono !== null ? String(acuerdo.telefono) : '',
+        notas:               acuerdo.notas ?? '',
+      });
+      // Todo acuerdo tiene al menos 1 split (el 100% a la empresa activa por
+      // defecto) — sólo es un split "real" si involucra más de una empresa.
+      const splitsGuardados = acuerdo.splits ?? [];
+      if (splitsGuardados.length > 1) {
+        setSplitActivo(true);
+        setSplits(splitsGuardados.map(s => ({ empresa_id: String(s.empresa_id), porcentaje: String(s.porcentaje) })));
+      } else {
+        setSplitActivo(false);
+        setSplits([]);
+      }
+    } else {
+      setForm(EMPTY_FORM);
+      setSplitActivo(false);
+      setSplits([]);
+    }
+  }, [open, acuerdo]);
+
+  const handleClose = () => onClose();
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
@@ -98,16 +144,28 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
         telefono:            form.telefono           ? Number(form.telefono)           : null,
         notas:               form.notas || null,
       };
-      await createMut.mutateAsync(payload);
+
+      if (isEdit) {
+        await updateMut.mutateAsync({ id: acuerdo!.id, data: payload });
+      } else {
+        await createMut.mutateAsync(payload);
+      }
+
       if (splitActivo && splits.length > 0) {
         await splitsMut.mutateAsync({
           empleadoId: Number(form.empleado_id),
           splits:     splits.map(s => ({ empresa_id: Number(s.empresa_id), porcentaje: parseFloat(s.porcentaje) })),
         });
+      } else if (isEdit) {
+        // Se desactivó el split — vuelve a 100% empresa activa.
+        await splitsMut.mutateAsync({
+          empleadoId: Number(form.empleado_id),
+          splits:     [{ empresa_id: Number(activeEmpresaId), porcentaje: 100 }],
+        });
       }
       handleClose();
     } catch (err) {
-      setError(getApiErrorMessage(err) ?? 'Error al crear el acuerdo');
+      setError(getApiErrorMessage(err) ?? 'Error al guardar el acuerdo');
     }
   };
 
@@ -116,24 +174,30 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
   const updateSplitRow = (i: number, field: 'empresa_id' | 'porcentaje', value: string) =>
     setSplits(p => p.map((s, idx) => idx === i ? { ...s, [field]: value } : s));
 
-  const isPending = createMut.isPending || splitsMut.isPending;
+  const isPending = createMut.isPending || updateMut.isPending || splitsMut.isPending;
   const sueldoBasicoNum = parseFloat(form.sueldo_basico) || 0;
 
   return (
     <Dialog open={open} onOpenChange={o => !o && handleClose()}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Nuevo acuerdo de sueldo — paso {step} de 3</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{isEdit ? 'Editar' : 'Nuevo'} acuerdo de sueldo — paso {step} de 3</DialogTitle></DialogHeader>
 
         {step === 1 && (
           <div className="space-y-3 mt-1">
             <div>
               <label className={labelCls}>Empleado *</label>
-              <select value={form.empleado_id} onChange={e => set('empleado_id', e.target.value)} className={inputCls}>
-                <option value="">Seleccionar...</option>
-                {empleadosDisponibles.map(e => <option key={e.id} value={e.id}>{e.apellido}, {e.nombre}</option>)}
-              </select>
-              {empleadosDisponibles.length === 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Todos los empleados ya tienen un acuerdo activo.</p>
+              {isEdit ? (
+                <p className="text-sm py-1.5">{acuerdo!.empleado?.apellido}, {acuerdo!.empleado?.nombre}</p>
+              ) : (
+                <>
+                  <select value={form.empleado_id} onChange={e => set('empleado_id', e.target.value)} className={inputCls}>
+                    <option value="">Seleccionar...</option>
+                    {empleadosDisponibles.map(e => <option key={e.id} value={e.id}>{e.apellido}, {e.nombre}</option>)}
+                  </select>
+                  {empleadosDisponibles.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">Todos los empleados ya tienen un acuerdo activo.</p>
+                  )}
+                </>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -173,7 +237,7 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
           <div className="space-y-3 mt-1">
             <div>
               <label className={labelCls}>Sueldo básico acordado ($) *</label>
-              <input type="number" min="0" step="0.01" value={form.sueldo_basico} onChange={e => set('sueldo_basico', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.sueldo_basico} onChange={v => set('sueldo_basico', v)} />
               <p className="text-xs text-muted-foreground mt-0.5">Este es el sueldo total del empleado.</p>
             </div>
 
@@ -184,12 +248,22 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
               </div>
               <div>
                 <label className={labelCls}>Valor hora extra ($)</label>
-                <input type="number" min="0" step="0.01" value={form.valor_hora_extra} onChange={e => set('valor_hora_extra', e.target.value)} className={inputCls} />
+                <MoneyInput value={form.valor_hora_extra} onChange={v => set('valor_hora_extra', v)} />
               </div>
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer text-sm pt-1">
-              <input type="checkbox" checked={splitActivo} onChange={e => { setSplitActivo(e.target.checked); if (e.target.checked && splits.length === 0) addSplitRow(); }} />
+              <input
+                type="checkbox" checked={splitActivo}
+                onChange={e => {
+                  const checked = e.target.checked;
+                  setSplitActivo(checked);
+                  if (checked && splits.length === 0) {
+                    // Primera fila pre-cargada con la empresa activa al 100%.
+                    setSplits([{ empresa_id: activeEmpresaId, porcentaje: '100' }]);
+                  }
+                }}
+              />
               ¿Este empleado trabaja para más de una empresa?
             </label>
 
@@ -244,21 +318,21 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Premio incentivo ($)</label>
-                <input type="number" min="0" step="0.01" value={form.premio_incentivo} onChange={e => set('premio_incentivo', e.target.value)} className={inputCls} />
+                <MoneyInput value={form.premio_incentivo} onChange={v => set('premio_incentivo', v)} />
               </div>
               <div>
                 <label className={labelCls}>Viático ($)</label>
-                <input type="number" min="0" step="0.01" value={form.viatico} onChange={e => set('viatico', e.target.value)} className={inputCls} />
+                <MoneyInput value={form.viatico} onChange={v => set('viatico', v)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Premio presentismo ($)</label>
-                <input type="number" min="0" step="0.01" value={form.premio_presentismo} onChange={e => set('premio_presentismo', e.target.value)} className={inputCls} />
+                <MoneyInput value={form.premio_presentismo} onChange={v => set('premio_presentismo', v)} />
               </div>
               <div>
                 <label className={labelCls}>Teléfono ($)</label>
-                <input type="number" min="0" step="0.01" value={form.telefono} onChange={e => set('telefono', e.target.value)} className={inputCls} />
+                <MoneyInput value={form.telefono} onChange={v => set('telefono', v)} />
               </div>
             </div>
             {escalafonFinal && (
@@ -302,7 +376,7 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
             </Button>
           ) : (
             <Button type="button" size="sm" disabled={isPending || !splitValido} onClick={handleSubmit}>
-              {isPending ? 'Guardando…' : 'Crear acuerdo'}
+              {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear acuerdo'}
             </Button>
           )}
         </div>
@@ -311,30 +385,97 @@ function NuevoAcuerdoDialog({ open, onClose, empleadosDisponibles }: {
   );
 }
 
-// ── Toggle activo (desactivar/reactivar acuerdo) ──────────────────────────────
+// ── Dialog: confirmar eliminación — nunca borra con un solo click ────────────
 
-function ToggleActivo({ acuerdo }: { acuerdo: AcuerdoSueldo }) {
-  const updateMut = useUpdateAcuerdo();
+function ConfirmarEliminarDialog({ acuerdo, onClose, onDeleted }: {
+  acuerdo: AcuerdoSueldo | null; onClose: () => void; onDeleted: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!acuerdo) return null;
+
+  const handleConfirm = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await api.delete(`/rrhh/acuerdos/${acuerdo.id}`);
+      onDeleted();
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'No se pudo eliminar el acuerdo');
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
-    <button
-      onClick={() => updateMut.mutate({ id: acuerdo.id, data: { activo: !acuerdo.activo } })}
-      disabled={updateMut.isPending}
-      className={cn(
-        'rounded-full px-2 py-0.5 text-xs font-medium transition',
-        acuerdo.activo ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-      )}
-    >
-      {acuerdo.activo ? 'Activo' : 'Inactivo'}
-    </button>
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Eliminar acuerdo</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1">
+          <p className="text-sm">
+            ¿Eliminar el acuerdo de sueldo de <strong>{acuerdo.empleado?.apellido}, {acuerdo.empleado?.nombre}</strong>?
+            Esta acción se puede revertir sólo por soporte técnico.
+          </p>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={handleConfirm}>
+              {pending ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Drawer: detalle del acuerdo + préstamos activos ───────────────────────────
+
+function AcuerdoDrawer({ acuerdo, onClose }: { acuerdo: AcuerdoSueldo | null; onClose: () => void }) {
+  if (!acuerdo) return null;
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-white border-l border-border shadow-xl overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="text-lg font-semibold">{acuerdo.empleado?.apellido}, {acuerdo.empleado?.nombre}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-accent"><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-2">Datos del acuerdo</p>
+            <dl className="text-sm space-y-1.5">
+              <div className="flex justify-between"><dt className="text-muted-foreground">Escalafón</dt><dd>{acuerdo.escalafon ?? '-'}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Sueldo básico</dt><dd>{formatCurrency(acuerdo.sueldo_basico)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Horas acordadas</dt><dd>{acuerdo.horas_acordadas_mes}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Inicio</dt><dd>{formatDate(acuerdo.fecha_inicio)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Vigencia</dt><dd>{acuerdo.vigencia_meses ? `${acuerdo.vigencia_meses} meses` : 'Indefinida'}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Tipo de seguro</dt><dd>{acuerdo.tipo_seguro ?? '-'}</dd></div>
+              {acuerdo.splits && acuerdo.splits.length > 0 && (
+                <div className="flex justify-between"><dt className="text-muted-foreground">Split</dt>
+                  <dd>{acuerdo.splits.map(s => `${s.porcentaje}% ${s.empresa_nombre}`).join(' / ')}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+
+          <PrestamosSection empleadoId={acuerdo.empleado_id} />
+        </div>
+      </div>
+    </>
   );
 }
 
 // ── Tab ────────────────────────────────────────────────────────────────────────
 
 export default function AcuerdosTab() {
-  const { data: acuerdos = [], isLoading } = useAcuerdos();
+  const { data: acuerdos = [], isLoading, refetch } = useAcuerdos();
   const { data: empleados = [] } = useEmpleados();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editando, setEditando] = useState<AcuerdoSueldo | null>(null);
+  const [eliminando, setEliminando] = useState<AcuerdoSueldo | null>(null);
+  const [detalle, setDetalle] = useState<AcuerdoSueldo | null>(null);
 
   const empleadosSinAcuerdo = empleados.filter(e => !acuerdos.some(a => a.empleado_id === e.id));
 
@@ -358,15 +499,20 @@ export default function AcuerdosTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Inicio</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Vigencia</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Split empresas</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Estado</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {acuerdos.length === 0 ? (
-                <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay acuerdos cargados.</td></tr>
+                <tr><td colSpan={9} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay acuerdos cargados.</td></tr>
               ) : acuerdos.map(a => (
                 <tr key={a.id} className="hover:bg-muted/20">
-                  <td className="px-3 py-2.5 font-medium">{a.empleado ? `${a.empleado.apellido}, ${a.empleado.nombre}` : '-'}</td>
+                  <td className="px-3 py-2.5 font-medium">
+                    <button className="hover:underline text-left" onClick={() => setDetalle(a)}>
+                      {a.empleado ? `${a.empleado.apellido}, ${a.empleado.nombre}` : '-'}
+                    </button>
+                  </td>
                   <td className="px-3 py-2.5">{a.escalafon ?? '-'}</td>
                   <td className="px-3 py-2.5 text-right">{formatCurrency(a.sueldo_basico)}</td>
                   <td className="px-3 py-2.5 text-right">{a.horas_acordadas_mes}</td>
@@ -385,7 +531,17 @@ export default function AcuerdosTab() {
                       <span className="text-xs text-muted-foreground">100% {a.empresa?.nombre_corto ?? a.empresa?.nombre}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right"><ToggleActivo acuerdo={a} /></td>
+                  {/* Estado: sólo informativo — no clickeable (ver Fix 2) */}
+                  <td className="px-3 py-2.5">
+                    <Badge variant={a.activo ? 'success' : 'muted'}>{a.activo ? 'Activo' : 'Inactivo'}</Badge>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="outline" size="sm" title="Ver préstamos activos y cargar uno nuevo" onClick={() => setDetalle(a)}>💰 Préstamos</Button>
+                      <Button variant="ghost" size="icon" title="Editar" onClick={() => setEditando(a)}><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="icon" title="Eliminar" onClick={() => setEliminando(a)} className="text-destructive hover:text-destructive"><Trash2 size={14} /></Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -393,7 +549,19 @@ export default function AcuerdosTab() {
         </div>
       )}
 
-      <NuevoAcuerdoDialog open={dialogOpen} onClose={() => setDialogOpen(false)} empleadosDisponibles={empleadosSinAcuerdo} />
+      <AcuerdoWizardDialog open={dialogOpen} onClose={() => setDialogOpen(false)} empleadosDisponibles={empleadosSinAcuerdo} />
+      <AcuerdoWizardDialog
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        empleadosDisponibles={empleadosSinAcuerdo}
+        acuerdo={editando}
+      />
+      <ConfirmarEliminarDialog
+        acuerdo={eliminando}
+        onClose={() => setEliminando(null)}
+        onDeleted={() => { setEliminando(null); refetch(); }}
+      />
+      <AcuerdoDrawer acuerdo={detalle} onClose={() => setDetalle(null)} />
     </div>
   );
 }

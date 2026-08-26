@@ -29,6 +29,57 @@ export function useCuentasPorEmpresa(empresaId: number | null) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// HORAS DEL PERÍODO — panel informativo en "Generar liquidación"
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface HorasPeriodo {
+  total_horas:       number;
+  cantidad_jornadas: number;
+  horas_acordadas:   number;
+  horas_extras:      number;
+}
+
+export function useHorasPeriodo(empleadoId: number | null, mes: number | null, anio: number | null) {
+  return useQuery<HorasPeriodo>({
+    queryKey: ['rrhh', 'horas-periodo', empleadoId, mes, anio],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/horas-periodo`, { params: { mes, anio } }).then(r => r.data),
+    enabled:  empleadoId !== null && mes !== null && anio !== null,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESUMEN MENSUAL — nómina consolidada del período
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ResumenMensualEmpleado {
+  empleado_id:     number;
+  empleado_nombre: string;
+  basico:     number;
+  extras:     number;
+  descuentos: number;
+  prestamos:  number;
+  total:      number;
+  splits:     { empresa_nombre: string; monto: number }[];
+}
+
+export interface ResumenMensual {
+  periodo:   string;
+  empleados: ResumenMensualEmpleado[];
+  totales: {
+    basico: number; extras: number; descuentos: number; prestamos: number; total: number;
+    por_empresa: { empresa_nombre: string; monto: number }[];
+  };
+}
+
+export function useResumenMensual(mes: number | null, anio: number | null) {
+  return useQuery<ResumenMensual>({
+    queryKey: ['rrhh', 'liquidaciones-admin', 'resumen-mensual', mes, anio],
+    queryFn:  () => api.get('/rrhh/liquidaciones-admin/resumen-mensual', { params: { mes, anio } }).then(r => r.data),
+    enabled:  mes !== null && anio !== null,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ACUERDOS
 // ═══════════════════════════════════════════════════════════════════════════
 

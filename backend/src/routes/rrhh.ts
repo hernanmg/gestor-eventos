@@ -14,10 +14,11 @@ import {
 import { importarEmpleados, importarJornadas } from '../controllers/rrhhImporter.controller';
 import {
   listEmpresasSueldos, listCuentasPorEmpresa,
-  listAcuerdos, getAcuerdoEmpleado, createAcuerdo, updateAcuerdo,
+  listAcuerdos, getAcuerdoEmpleado, createAcuerdo, updateAcuerdo, deleteAcuerdo, restaurarAcuerdo,
   upsertSplits, deleteSplits,
   listLiquidacionesAdmin, getLiquidacionAdmin, generarLiquidacionAdmin, updateLiquidacionAdmin,
   aprobarLiquidacionAdmin, cancelarLiquidacionAdmin, exportarLiquidacionAdminPDF,
+  getResumenMensual, getHorasPeriodo,
   listPrestamosEmpleado, createPrestamo, deletePrestamo,
 } from '../controllers/sueldosAdmin.controller';
 import {
@@ -79,10 +80,16 @@ router.get('/acuerdos',                     requireRole('ADMIN'), asyncHandler(l
 router.get('/acuerdos/:empleadoId',         requireRole('ADMIN'), asyncHandler(getAcuerdoEmpleado));
 router.post('/acuerdos',                    requireRole('ADMIN'), asyncHandler(createAcuerdo));
 router.put('/acuerdos/:id',                 requireRole('ADMIN'), asyncHandler(updateAcuerdo));
+router.delete('/acuerdos/:id',              requireRole('ADMIN'), asyncHandler(deleteAcuerdo));
+router.patch('/acuerdos/:id/restaurar',     requireRole('ADMIN'), asyncHandler(restaurarAcuerdo));
 
 router.post('/empleados/:id/splits',        requireRole('ADMIN'), asyncHandler(upsertSplits));
 router.delete('/empleados/:id/splits',      requireRole('ADMIN'), asyncHandler(deleteSplits));
+router.get('/empleados/:id/horas-periodo',  requireRole('ADMIN'), asyncHandler(getHorasPeriodo));
 
+// resumen-mensual va ANTES de /:id — si no, Express matchea "resumen-mensual"
+// como si fuera un id.
+router.get('/liquidaciones-admin/resumen-mensual',  requireRole('ADMIN'), asyncHandler(getResumenMensual));
 router.get('/liquidaciones-admin',                  requireRole('ADMIN'), asyncHandler(listLiquidacionesAdmin));
 router.get('/liquidaciones-admin/:id',              requireRole('ADMIN'), asyncHandler(getLiquidacionAdmin));
 router.get('/liquidaciones-admin/:id/exportar',     requireRole('ADMIN'), asyncHandler(exportarLiquidacionAdminPDF));

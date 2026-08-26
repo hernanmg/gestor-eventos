@@ -6,6 +6,7 @@ import {
 } from '@/hooks/useEscalafones';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { EscalafonAdmin } from '@/types';
@@ -76,21 +77,21 @@ function EscalafonDialog({ escalafon, onClose }: { escalafon: EscalafonAdmin | '
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Viático ($)</label>
-              <input type="number" min="0" step="0.01" value={form.viatico} onChange={e => set('viatico', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.viatico} onChange={v => set('viatico', v)} />
             </div>
             <div>
               <label className={labelCls}>Premio presentismo ($)</label>
-              <input type="number" min="0" step="0.01" value={form.premio_presentismo} onChange={e => set('premio_presentismo', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.premio_presentismo} onChange={v => set('premio_presentismo', v)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Teléfono ($)</label>
-              <input type="number" min="0" step="0.01" value={form.telefono} onChange={e => set('telefono', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.telefono} onChange={v => set('telefono', v)} />
             </div>
             <div>
               <label className={labelCls}>Premio incentivo ($)</label>
-              <input type="number" min="0" step="0.01" value={form.premio_incentivo} onChange={e => set('premio_incentivo', e.target.value)} className={inputCls} />
+              <MoneyInput value={form.premio_incentivo} onChange={v => set('premio_incentivo', v)} />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}

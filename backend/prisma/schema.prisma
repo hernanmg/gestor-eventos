@@ -1324,35 +1324,36 @@ model EmpleadoEmpresaSplit {
 // (ver validación en updateAcuerdo: no se puede tocar si ya hay liquidaciones
 // APROBADAS, para no invalidar snapshots históricos).
 model AcuerdoSueldo {
-  id                  Int      @id @default(autoincrement())
-  empleado_id         Int      @unique
-  empleado            Empleado @relation(fields: [empleado_id], references: [id])
+  id                  Int       @id @default(autoincrement())
+  empleado_id         Int       @unique
+  empleado            Empleado  @relation(fields: [empleado_id], references: [id])
   empresa_id          Int // empresa principal del acuerdo
-  empresa             Empresa  @relation(fields: [empresa_id], references: [id])
+  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
   // Acuerdo
   fecha_inicio        DateTime
   vigencia_meses      Int? // null = indefinido
   escalafon           String? // "ADM 1", "ADM 2", "ADM 3"
   tipo_seguro         String? // "ART", "SANCOR", "FEDERAL PATRONAL"
   // Sueldo base
-  sueldo_basico       Decimal  @db.Decimal(12, 2)
-  horas_acordadas_mes Int      @default(200)
+  sueldo_basico       Decimal   @db.Decimal(12, 2)
+  horas_acordadas_mes Int       @default(200)
   // Conceptos fijos (configurables por acuerdo)
-  premio_incentivo    Decimal? @db.Decimal(12, 2)
-  viatico             Decimal? @db.Decimal(12, 2)
-  premio_presentismo  Decimal? @db.Decimal(12, 2)
+  premio_incentivo    Decimal?  @db.Decimal(12, 2)
+  viatico             Decimal?  @db.Decimal(12, 2)
+  premio_presentismo  Decimal?  @db.Decimal(12, 2)
   // Horas extras
-  valor_hora_extra    Decimal? @db.Decimal(10, 2)
+  valor_hora_extra    Decimal?  @db.Decimal(10, 2)
   // Teléfono (algunos empleados lo tienen) — antigüedad NO vive acá: se
   // recalcula siempre desde fecha_inicio con la tabla fija de
   // calcularSueldoAdmin.ts, nunca se persiste en el acuerdo.
-  telefono            Decimal? @db.Decimal(10, 2)
+  telefono            Decimal?  @db.Decimal(10, 2)
   // Estado del acuerdo
-  activo              Boolean  @default(true)
+  activo              Boolean   @default(true)
   notas               String?
   // audit
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
   created_by          Int?
 
   liquidaciones LiquidacionAdmin[]

@@ -42,6 +42,10 @@ export interface ResultadoSueldoAdmin {
   premio_incentivo:     number;
   viatico:              number;
   premio_presentismo:   number;
+  // true cuando horas_trabajadas < horas_acordadas_mes — perdió el
+  // presentismo (premio_presentismo ya viene en 0 en ese caso). El frontend
+  // lo usa para mostrar el aviso "No alcanzó las horas acordadas".
+  presentismo_perdido:  boolean;
   antiguedad_anios:     number;
   importe_antiguedad:   number;
   telefono:             number;
@@ -56,15 +60,21 @@ export function calcularSueldoAdmin(
   vacacionesAguinaldo:  number = 0,
   fechaReferencia:      Date = new Date(),
 ): ResultadoSueldoAdmin {
-  const horasExtras         = Math.max(0, round2(horasTrabajadas - acuerdo.horas_acordadas_mes));
+  // El sueldo básico, viático, teléfono, antigüedad e incentivo son fijos —
+  // no se tocan por horas. Sólo el Premio Presentismo depende de haber
+  // llegado al mínimo acordado (regla del Excel de Mayra), y las horas
+  // extras sólo existen si se superó ese mínimo.
+  const cumpleHoras         = horasTrabajadas >= acuerdo.horas_acordadas_mes;
+  const horasExtras         = cumpleHoras ? round2(horasTrabajadas - acuerdo.horas_acordadas_mes) : 0;
   const importeHorasExtras  = round2(horasExtras * Number(acuerdo.valor_hora_extra ?? 0));
+  const premioPresentismo   = cumpleHoras ? Number(acuerdo.premio_presentismo ?? 0) : 0;
   const antiguedad          = calcularAntiguedad(acuerdo.fecha_inicio, fechaReferencia);
 
   const subtotalBruto = round2(
     Number(acuerdo.sueldo_basico)
     + Number(acuerdo.premio_incentivo ?? 0)
     + Number(acuerdo.viatico ?? 0)
-    + Number(acuerdo.premio_presentismo ?? 0)
+    + premioPresentismo
     + antiguedad.monto
     + Number(acuerdo.telefono ?? 0)
     + importeHorasExtras
@@ -77,7 +87,8 @@ export function calcularSueldoAdmin(
     importe_horas_extras: importeHorasExtras,
     premio_incentivo:     Number(acuerdo.premio_incentivo ?? 0),
     viatico:              Number(acuerdo.viatico ?? 0),
-    premio_presentismo:   Number(acuerdo.premio_presentismo ?? 0),
+    premio_presentismo:   premioPresentismo,
+    presentismo_perdido:  !cumpleHoras,
     antiguedad_anios:     antiguedad.anios,
     importe_antiguedad:   antiguedad.monto,
     telefono:             Number(acuerdo.telefono ?? 0),

@@ -94,7 +94,7 @@ export async function listCuentasPorEmpresa(req: Request, res: Response) {
 
 export async function listAcuerdos(req: Request, res: Response) {
   const acuerdos = await prisma.acuerdoSueldo.findMany({
-    where:   { ...withTenant(req.empresaId!), activo: true },
+    where:   { ...withTenant(req.empresaId!), activo: true, deleted_at: null },
     include: {
       empleado: { select: EMPLEADO_SELECT },
       empresa:  { select: EMPRESA_SELECT },
@@ -126,7 +126,7 @@ export async function listAcuerdos(req: Request, res: Response) {
 export async function getAcuerdoEmpleado(req: Request, res: Response) {
   const empleadoId = Number(req.params.empleadoId);
   const acuerdo = await prisma.acuerdoSueldo.findFirst({
-    where:   { empleado_id: empleadoId, ...withTenant(req.empresaId!) },
+    where:   { empleado_id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) },
     include: {
       empleado: { select: EMPLEADO_SELECT },
       empresa:  { select: EMPRESA_SELECT },
@@ -179,28 +179,41 @@ export async function createAcuerdo(req: Request, res: Response) {
   const empleado = await prisma.empleado.findFirst({ where: { id: d.empleado_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
 
-  const existente = await prisma.acuerdoSueldo.findUnique({ where: { empleado_id: d.empleado_id } });
+  const existente = await prisma.acuerdoSueldo.findFirst({ where: { empleado_id: d.empleado_id, deleted_at: null } });
   if (existente) { res.status(400).json({ error: 'Este empleado ya tiene un acuerdo de sueldo' }); return; }
 
-  const acuerdo = await prisma.acuerdoSueldo.create({
-    data: {
-      empleado_id:         d.empleado_id,
-      empresa_id:          req.empresaId!,
-      fecha_inicio:        new Date(d.fecha_inicio),
-      vigencia_meses:      d.vigencia_meses     ?? null,
-      escalafon:           d.escalafon          ?? null,
-      tipo_seguro:         d.tipo_seguro        ?? null,
-      sueldo_basico:       d.sueldo_basico,
-      horas_acordadas_mes: d.horas_acordadas_mes,
-      premio_incentivo:    d.premio_incentivo   ?? null,
-      viatico:             d.viatico            ?? null,
-      premio_presentismo:  d.premio_presentismo ?? null,
-      valor_hora_extra:    d.valor_hora_extra   ?? null,
-      telefono:            d.telefono           ?? null,
-      notas:               d.notas              ?? null,
-      created_by:          req.user!.id,
-    },
-    include: { empleado: { select: EMPLEADO_SELECT }, empresa: { select: EMPRESA_SELECT } },
+  const acuerdo = await prisma.$transaction(async tx => {
+    const nuevo = await tx.acuerdoSueldo.create({
+      data: {
+        empleado_id:         d.empleado_id,
+        empresa_id:          req.empresaId!,
+        fecha_inicio:        new Date(d.fecha_inicio),
+        vigencia_meses:      d.vigencia_meses     ?? null,
+        escalafon:           d.escalafon          ?? null,
+        tipo_seguro:         d.tipo_seguro        ?? null,
+        sueldo_basico:       d.sueldo_basico,
+        horas_acordadas_mes: d.horas_acordadas_mes,
+        premio_incentivo:    d.premio_incentivo   ?? null,
+        viatico:             d.viatico            ?? null,
+        premio_presentismo:  d.premio_presentismo ?? null,
+        valor_hora_extra:    d.valor_hora_extra   ?? null,
+        telefono:            d.telefono           ?? null,
+        notas:               d.notas              ?? null,
+        created_by:          req.user!.id,
+      },
+      include: { empleado: { select: EMPLEADO_SELECT }, empresa: { select: EMPRESA_SELECT } },
+    });
+
+    // Split por defecto — 100% a la empresa activa de la sesión. Si el
+    // frontend llama después a POST /empleados/:id/splits con un reparto
+    // real, ese endpoint reemplaza esta fila (deleteMany + createMany).
+    await tx.empleadoEmpresaSplit.upsert({
+      where:  { empleado_id_empresa_id: { empleado_id: d.empleado_id, empresa_id: req.empresaId! } },
+      update: {},
+      create: { empleado_id: d.empleado_id, empresa_id: req.empresaId!, porcentaje: 100 },
+    });
+
+    return nuevo;
   });
 
   await registrarAuditoria({
@@ -230,7 +243,7 @@ export async function updateAcuerdo(req: Request, res: Response) {
   }
   const d = parsed.data;
 
-  const existing = await prisma.acuerdoSueldo.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
+  const existing = await prisma.acuerdoSueldo.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Acuerdo no encontrado' }); return; }
 
   const tieneAprobadas = await prisma.liquidacionAdmin.findFirst({
@@ -274,6 +287,63 @@ export async function updateAcuerdo(req: Request, res: Response) {
   });
 
   res.json(mapDecimalsAcuerdo(updated));
+}
+
+export async function deleteAcuerdo(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const existing = await prisma.acuerdoSueldo.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Acuerdo no encontrado' }); return; }
+
+  const tieneAprobadas = await prisma.liquidacionAdmin.findFirst({
+    where: { acuerdo_id: id, estado: { in: [EstadoLiquidacionAdmin.APROBADA, EstadoLiquidacionAdmin.PAGADA] } },
+  });
+  if (tieneAprobadas) {
+    res.status(400).json({ error: 'No se puede eliminar: hay liquidaciones aprobadas vinculadas a este acuerdo' }); return;
+  }
+
+  await prisma.acuerdoSueldo.update({ where: { id }, data: { deleted_at: new Date() } });
+
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'DELETE',
+    entidad:     'AcuerdoSueldo',
+    entidadId:   id,
+    descripcion: `Eliminó acuerdo de sueldo #${id}`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  res.json({ message: 'Acuerdo eliminado correctamente' });
+}
+
+export async function restaurarAcuerdo(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const existing = await prisma.acuerdoSueldo.findFirst({ where: { id, deleted_at: { not: null }, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Acuerdo eliminado no encontrado' }); return; }
+
+  // Si mientras tanto se creó otro acuerdo activo para el mismo empleado, no
+  // se puede restaurar sin generar un duplicado (AcuerdoSueldo.empleado_id
+  // es único entre acuerdos no eliminados en la práctica del negocio).
+  const otroActivo = await prisma.acuerdoSueldo.findFirst({ where: { empleado_id: existing.empleado_id, deleted_at: null } });
+  if (otroActivo) {
+    res.status(400).json({ error: 'Este empleado ya tiene otro acuerdo de sueldo activo — no se puede restaurar' }); return;
+  }
+
+  const restaurado = await prisma.acuerdoSueldo.update({ where: { id }, data: { deleted_at: null } });
+
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'UPDATE',
+    entidad:     'AcuerdoSueldo',
+    entidadId:   id,
+    descripcion: `Restauró acuerdo de sueldo #${id}`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  res.json(mapDecimalsAcuerdo(restaurado));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -439,7 +509,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
   const d = parsed.data;
 
   const acuerdo = await prisma.acuerdoSueldo.findFirst({
-    where:   { empleado_id: d.empleado_id, activo: true, ...withTenant(req.empresaId!) },
+    where:   { empleado_id: d.empleado_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) },
     include: { empleado: { select: EMPLEADO_SELECT } },
   });
   if (!acuerdo) { res.status(404).json({ error: 'Este empleado no tiene un acuerdo de sueldo activo' }); return; }
@@ -767,7 +837,28 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
   });
   if (!liquidacion) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
 
+  const desde = new Date(Date.UTC(liquidacion.periodo_anio, liquidacion.periodo_mes - 1, 1));
+  const hasta = new Date(Date.UTC(liquidacion.periodo_anio, liquidacion.periodo_mes, 1));
+
+  const [empresa, jornadas, pagosPrestamos] = await Promise.all([
+    prisma.empresa.findUnique({ where: { id: req.empresaId! }, select: { nombre: true, logo_data: true, logo_mime: true } }),
+    prisma.jornada.findMany({
+      where:  { empleado_id: liquidacion.empleado_id, estado: 'APROBADA', fecha: { gte: desde, lt: hasta }, deleted_at: null },
+      select: { fecha: true, horas_normales: true, horas_extras: true },
+      orderBy: { fecha: 'asc' },
+    }),
+    prisma.pagoPrestamoEmpleado.findMany({
+      where:   { liquidacion_admin_id: id },
+      include: { prestamo: { select: { detalle: true } } },
+    }),
+  ]);
+
+  const logoDataUrl = empresa?.logo_data && empresa.logo_mime
+    ? `data:${empresa.logo_mime};base64,${Buffer.from(empresa.logo_data).toString('base64')}`
+    : null;
+
   const html = templateLiquidacionAdmin({
+    empresa: { nombre: empresa?.nombre ?? '', logo_data_url: logoDataUrl },
     empleado: {
       nombre:   liquidacion.empleado.nombre,
       apellido: liquidacion.empleado.apellido,
@@ -790,10 +881,13 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
     telefono:             Number(liquidacion.telefono),
     vacaciones_aguinaldo: Number(liquidacion.vacaciones_aguinaldo),
     vales_descuentos:     Number(liquidacion.vales_descuentos),
+    prestamos_descontados: Number(liquidacion.prestamos_descontados),
     subtotal_bruto:       Number(liquidacion.subtotal_bruto),
     total_a_cobrar:       Number(liquidacion.total_a_cobrar),
     splits:               liquidacion.splits as any,
     estado:               liquidacion.estado,
+    jornadas:             jornadas.map(j => ({ fecha: j.fecha!, horas: round2(Number(j.horas_normales) + Number(j.horas_extras)) })),
+    prestamos_pagos:      pagosPrestamos.map(p => ({ detalle: p.prestamo.detalle, monto: Number(p.monto) })),
     fecha_generacion:     new Date(),
   });
 
@@ -806,6 +900,119 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
     'Content-Length':      String(buffer.length),
   });
   res.end(buffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HORAS DEL PERÍODO — resumen de Jornadas APROBADAS de un empleado en un mes,
+// usado para pre-cargar "Horas trabajadas" al generar una liquidación.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const horasPeriodoSchema = z.object({
+  mes:  z.coerce.number().int().min(1).max(12),
+  anio: z.coerce.number().int().min(2000).max(2100),
+});
+
+export async function getHorasPeriodo(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const parsed = horasPeriodoSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Se requieren mes y anio' }); return;
+  }
+  const { mes, anio } = parsed.data;
+
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  const desde = new Date(Date.UTC(anio, mes - 1, 1));
+  const hasta = new Date(Date.UTC(anio, mes, 1)); // exclusivo
+
+  const [jornadas, acuerdo] = await Promise.all([
+    prisma.jornada.findMany({
+      where:  { empleado_id: empleadoId, estado: 'APROBADA', fecha: { gte: desde, lt: hasta }, deleted_at: null },
+      select: { horas_normales: true, horas_extras: true },
+    }),
+    prisma.acuerdoSueldo.findFirst({ where: { empleado_id: empleadoId, activo: true, deleted_at: null } }),
+  ]);
+
+  const totalHoras = round2(jornadas.reduce((s, j) => s + Number(j.horas_normales) + Number(j.horas_extras), 0));
+  const horasAcordadas = acuerdo?.horas_acordadas_mes ?? 0;
+  const horasExtras = round2(Math.max(0, totalHoras - horasAcordadas));
+
+  res.json({
+    total_horas:       totalHoras,
+    cantidad_jornadas: jornadas.length,
+    horas_acordadas:   horasAcordadas,
+    horas_extras:      horasExtras,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESUMEN MENSUAL — nómina consolidada del período, con desglose por empresa.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const resumenMensualSchema = z.object({
+  mes:  z.coerce.number().int().min(1).max(12),
+  anio: z.coerce.number().int().min(2000).max(2100),
+});
+
+const MESES_LABEL = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+export async function getResumenMensual(req: Request, res: Response) {
+  const parsed = resumenMensualSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Se requieren mes y anio' }); return;
+  }
+  const { mes, anio } = parsed.data;
+
+  const liquidaciones = await prisma.liquidacionAdmin.findMany({
+    where: {
+      periodo_mes: mes, periodo_anio: anio, ...withTenant(req.empresaId!),
+      estado: { not: EstadoLiquidacionAdmin.CANCELADA },
+    },
+    include: { empleado: { select: EMPLEADO_SELECT } },
+  });
+
+  const empleados = liquidaciones.map(l => {
+    const splits = (l.splits as unknown as SplitCalculado[] | null) ?? [];
+    return {
+      empleado_id:     l.empleado_id,
+      empleado_nombre: `${l.empleado.apellido}, ${l.empleado.nombre}`,
+      basico:          Number(l.sueldo_basico),
+      extras:          Number(l.importe_horas_extras),
+      descuentos:      Number(l.vales_descuentos),
+      prestamos:       Number(l.prestamos_descontados),
+      total:           Number(l.total_a_cobrar),
+      splits:          splits.map(s => ({ empresa_nombre: s.empresa_nombre, monto: s.monto })),
+    };
+  });
+
+  const totales = {
+    basico:     round2(empleados.reduce((s, e) => s + e.basico, 0)),
+    extras:     round2(empleados.reduce((s, e) => s + e.extras, 0)),
+    descuentos: round2(empleados.reduce((s, e) => s + e.descuentos, 0)),
+    prestamos:  round2(empleados.reduce((s, e) => s + e.prestamos, 0)),
+    total:      round2(empleados.reduce((s, e) => s + e.total, 0)),
+    por_empresa: [] as { empresa_nombre: string; monto: number }[],
+  };
+
+  const porEmpresaMap = new Map<string, number>();
+  for (const e of empleados) {
+    if (e.splits.length > 0) {
+      for (const s of e.splits) {
+        porEmpresaMap.set(s.empresa_nombre, round2((porEmpresaMap.get(s.empresa_nombre) ?? 0) + s.monto));
+      }
+    }
+  }
+  totales.por_empresa = [...porEmpresaMap.entries()].map(([empresa_nombre, monto]) => ({ empresa_nombre, monto }));
+
+  res.json({
+    periodo: `${MESES_LABEL[mes - 1]} ${anio}`,
+    empleados,
+    totales,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
