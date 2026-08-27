@@ -29,6 +29,8 @@ import calendarioRouter from './routes/calendario';
 import preMacroRouter from './routes/preMacro';
 import { cuentasCorrientesRouter } from './routes/cuentasCorrientes';
 import { macroRouter } from './routes/macro';
+import flotaRouter from './routes/flota';
+import notificacionesRouter from './routes/notificaciones';
 
 const app = express();
 
@@ -102,6 +104,8 @@ app.use('/api/calendario',          calendarioRouter);
 app.use('/api/pre-macro',           preMacroRouter);
 app.use('/api/cuentas-corrientes',  cuentasCorrientesRouter);
 app.use('/api/macro',               macroRouter);
+app.use('/api/flota',               flotaRouter);
+app.use('/api/notificaciones',      notificacionesRouter);
 
 app.use(errorHandler);
 

@@ -23,6 +23,9 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   RENDICION_PENDIENTE:  'Rendiciones',
   SALDO_MINIMO:         'Saldo bajo',
   CTA_CORRIENTE_INACTIVA: 'Cuentas corrientes',
+  SEGURO_VENCE:         'Seguros',
+  PATENTE_VENCE:        'Patentes',
+  TALLER_RETIRO:        'Taller',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -36,6 +39,9 @@ const COLORES: Record<TipoCalendario, string> = {
   RENDICION_PENDIENTE:  '#7C3AED',
   SALDO_MINIMO:         '#DC2626',
   CTA_CORRIENTE_INACTIVA: '#F59E0B',
+  SEGURO_VENCE:         '#F59E0B',
+  PATENTE_VENCE:        '#F59E0B',
+  TALLER_RETIRO:        '#4C1D95',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -83,6 +89,9 @@ function getDetailLink(item: CalendarioItem): string {
     case 'RENDICION_PENDIENTE': return `/caja/${m.cuenta_id}`;
     case 'SALDO_MINIMO':        return `/caja/${m.cuenta_id}`;
     case 'CTA_CORRIENTE_INACTIVA': return `/cuentas-corrientes/${m.cuenta_id}`;
+    case 'SEGURO_VENCE':   return `/flota?tab=vehiculos&vehiculo=${m.camion_id}`;
+    case 'PATENTE_VENCE':  return `/flota?tab=patentes&vehiculo=${m.camion_id}`;
+    case 'TALLER_RETIRO':  return '/flota?tab=taller';
     default:               return '/calendario';
   }
 }
@@ -99,6 +108,9 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'RENDICION_PENDIENTE': return [`Responsable: ${m.responsable ?? '—'}`, `${m.dias_transcurridos} día${m.dias_transcurridos !== 1 ? 's' : ''} pendiente`];
     case 'SALDO_MINIMO':        return [`Saldo actual: $${Number(m.saldo_actual).toLocaleString('es-AR')}`, `Mínimo: $${Number(m.saldo_minimo).toLocaleString('es-AR')}`];
     case 'CTA_CORRIENTE_INACTIVA': return [`Saldo: ${m.moneda} ${Number(m.saldo_actual).toLocaleString('es-AR')}`, `${m.dias_sin_actividad} días sin actividad`];
+    case 'SEGURO_VENCE':   return [`Estado: ${m.estado}`];
+    case 'PATENTE_VENCE':  return [];
+    case 'TALLER_RETIRO':  return m.taller_nombre ? [`Taller: ${m.taller_nombre}`] : [];
     default:               return [];
   }
 }

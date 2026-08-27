@@ -10,7 +10,8 @@ import { fmtDate } from '../lib/excelExporter';
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
-  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA';
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
+  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -38,6 +39,9 @@ const COLORES: Record<TipoCalendario, string> = {
   RENDICION_PENDIENTE:  '#7C3AED',
   SALDO_MINIMO:         '#DC2626',
   CTA_CORRIENTE_INACTIVA: '#F59E0B',
+  SEGURO_VENCE:         '#F59E0B',
+  PATENTE_VENCE:        '#F59E0B',
+  TALLER_RETIRO:        '#4C1D95',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -52,6 +56,9 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   rendiciones:   'RENDICION_PENDIENTE',
   saldos_bajos:  'SALDO_MINIMO',
   cuentas_corrientes: 'CTA_CORRIENTE_INACTIVA',
+  seguros:       'SEGURO_VENCE',
+  patentes_flota: 'PATENTE_VENCE',
+  taller:        'TALLER_RETIRO',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -438,6 +445,93 @@ async function resolveCuentasCorrientesInactivas(empresaFiltro: number | undefin
   return items;
 }
 
+// Seguros y patentes de Flota — vencimientos dentro del rango pedido, mismo
+// criterio de color/urgencia que el módulo Flota (ver flota.controller.ts
+// updateEstadoSeguros/computeEstadoSeguro): vencido = crítico/rojo, por vencer
+// (<=30 días) = warning/amarillo.
+async function resolveSegurosVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const seguros = await prisma.seguroVehiculo.findMany({
+    where: {
+      deleted_at: null,
+      estado: { not: 'CANCELADO' },
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  return seguros.map(s => {
+    const vencido = s.fecha_vencimiento < hoy;
+    return {
+      id:             `seguro-${s.id}`,
+      tipo:           'SEGURO_VENCE' as const,
+      titulo:         `Seguro de ${s.camion.codigo} — ${s.aseguradora}`,
+      fecha:          s.fecha_vencimiento,
+      empresa_id:     s.empresa_id,
+      empresa_nombre: s.empresa.nombre,
+      color:          vencido ? '#DC2626' : '#F59E0B',
+      urgencia:       vencido ? 'critical' as const : computeUrgencia(s.fecha_vencimiento, hoy),
+      metadata:       { camion_id: s.camion_id, estado: s.estado },
+    };
+  });
+}
+
+async function resolvePatentesVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const patentes = await prisma.patenteVehiculo.findMany({
+    where: {
+      deleted_at: null,
+      estado: 'PENDIENTE',
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  return patentes.map(p => ({
+    id:             `patente-${p.id}`,
+    tipo:           'PATENTE_VENCE' as const,
+    titulo:         `Patente ${p.tipo} ${p.anio} — ${p.camion.codigo}`,
+    fecha:          p.fecha_vencimiento,
+    empresa_id:     p.empresa_id,
+    empresa_nombre: p.empresa.nombre,
+    color:          '#F59E0B',
+    urgencia:       computeUrgencia(p.fecha_vencimiento, hoy),
+    metadata:       { camion_id: p.camion_id },
+  }));
+}
+
+// Servicios de taller EN_PROCESO con retiro estimado dentro del rango pedido —
+// mismo criterio de urgencia que FIX 5 del módulo Flota: atrasado (fecha_estimada
+// < hoy) es crítico, dentro de los próximos 3 días es warning, el resto normal.
+async function resolveTallerRetiro(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const servicios = await prisma.servicioTaller.findMany({
+    where: {
+      deleted_at: null,
+      estado: 'EN_PROCESO',
+      fecha_estimada: { not: null, gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  const en3Dias = new Date(hoy.getTime() + 3 * 86_400_000);
+
+  return servicios.map(s => {
+    const atrasado = s.fecha_estimada! < hoy;
+    return {
+      id:             `taller-${s.id}`,
+      tipo:           'TALLER_RETIRO' as const,
+      titulo:         `${s.camion.codigo} — ${s.descripcion} (retiro estimado)`,
+      fecha:          s.fecha_estimada!,
+      empresa_id:     s.empresa_id,
+      empresa_nombre: s.empresa.nombre,
+      color:          COLORES.TALLER_RETIRO,
+      urgencia:       atrasado ? 'critical' as const : s.fecha_estimada! <= en3Dias ? 'warning' as const : 'normal' as const,
+      metadata:       { camion_id: s.camion_id, servicio_id: s.id, taller_nombre: s.taller_nombre, estado: s.estado },
+    };
+  });
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -504,6 +598,9 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('RENDICION_PENDIENTE') && isAdmin) tareas.push(resolveRendicionesPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SALDO_MINIMO') && isAdmin)         tareas.push(resolveSaldosMinimos(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('CTA_CORRIENTE_INACTIVA') && isAdmin) tareas.push(resolveCuentasCorrientesInactivas(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('SEGURO_VENCE'))  tareas.push(resolveSegurosVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('PATENTE_VENCE')) tareas.push(resolvePatentesVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('TALLER_RETIRO')) tareas.push(resolveTallerRetiro(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

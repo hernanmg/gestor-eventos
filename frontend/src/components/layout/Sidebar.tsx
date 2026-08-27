@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
 import { useAlertasFacturas } from '@/hooks/useFacturas';
+import { useAlertasFlota } from '@/hooks/useFlota';
+import NotificacionesBell from './NotificacionesBell';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoBlobUrl } from '@/hooks/useEmpresas';
 import { FEATURES } from '@/lib/features';
@@ -52,12 +54,14 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const { data: alertasData }        = useAlertasDashboard();
   const { data: stockAlertasData }   = useAlertasStock();
   const { data: facturasAlertas }    = useAlertasFacturas();
+  const { data: flotaAlertas }       = useAlertasFlota();
   const { data: pendSalida }         = usePendientesFirma('salida');
   const { data: pendLlegada }        = usePendientesFirma('llegada');
   const { data: pendRetorno }        = usePendientesFirma('retorno');
   const errorCount      = (alertasData?.alertas ?? []).filter(a => a.severidad === 'ERROR').length;
   const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
   const facturasAlerts  = (facturasAlertas?.vencidas ?? 0) + (facturasAlertas?.vencen_pronto ?? 0);
+  const flotaAlertCount = (flotaAlertas?.items ?? []).filter(a => a.urgencia === 'critical').length;
   const pendientesFirma = (pendSalida?.asignaciones.length ?? 0) + (pendLlegada?.asignaciones.length ?? 0) + (pendRetorno?.asignaciones.length ?? 0);
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
@@ -128,13 +132,16 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               </div>
             )
           )}
-          <button
-            onClick={onToggle}
-            className="rounded p-1.5 hover:bg-accent transition-colors ml-auto"
-            aria-label={isOpen ? 'Colapsar menú' : 'Expandir menú'}
-          >
-            {isOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
+          <div className="flex items-center gap-1 ml-auto">
+            {isOpen && <NotificacionesBell />}
+            <button
+              onClick={onToggle}
+              className="rounded p-1.5 hover:bg-accent transition-colors"
+              aria-label={isOpen ? 'Colapsar menú' : 'Expandir menú'}
+            >
+              {isOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
 
           {isOpen && empresaMenuOpen && user.puedeCambiarEmpresa && (
             <div className="absolute left-3 top-14 z-10 w-56 rounded-md border border-border bg-white py-1 shadow-md">
@@ -270,6 +277,27 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
                     {pendientesFirma > 99 ? '99+' : pendientesFirma}
                   </span>
+                </>
+              )}
+            </NavLink>
+          )}
+
+          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/flota" title={!isOpen ? 'Flota' : undefined} className={navItem}>
+              <div className="relative shrink-0">
+                <Truck size={18} />
+                {!isOpen && flotaAlertCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                )}
+              </div>
+              {isOpen && (
+                <>
+                  <span className="flex-1">Flota</span>
+                  {flotaAlertCount > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>

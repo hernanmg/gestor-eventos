@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -87,6 +87,64 @@ export function MovimientoEstadoBadge({ estado }: { estado: EstadoMovimiento }) 
   return (
     <Badge variant={MOVIMIENTO_VARIANT[estado]} className={cn(estado === 'CANCELADO' && 'line-through')}>
       {MOVIMIENTO_LABEL[estado]}
+    </Badge>
+  );
+}
+
+// ── Flota ─────────────────────────────────────────────────────────────────────
+
+const SEGURO_VARIANT: Record<EstadoSeguro, VariantProps<typeof badgeVariants>['variant']> = {
+  VIGENTE:     'success',
+  POR_VENCER:  'warning',
+  VENCIDO:     'destructive',
+  CANCELADO:   'muted',
+};
+
+export const SEGURO_LABEL: Record<EstadoSeguro, string> = {
+  VIGENTE:    'Vigente',
+  POR_VENCER: 'Por vencer',
+  VENCIDO:    'Vencido',
+  CANCELADO:  'Cancelado',
+};
+
+export function SeguroEstadoBadge({ estado }: { estado: EstadoSeguro }) {
+  return <Badge variant={SEGURO_VARIANT[estado]}>{SEGURO_LABEL[estado]}</Badge>;
+}
+
+const PATENTE_VARIANT: Record<EstadoPatente, VariantProps<typeof badgeVariants>['variant']> = {
+  PAGADA:     'success',
+  PENDIENTE:  'warning',
+  VENCIDA:    'destructive',
+};
+
+export const PATENTE_LABEL: Record<EstadoPatente, string> = {
+  PAGADA:    'Pagada',
+  PENDIENTE: 'Pendiente',
+  VENCIDA:   'Vencida',
+};
+
+export function PatenteEstadoBadge({ estado }: { estado: EstadoPatente }) {
+  return <Badge variant={PATENTE_VARIANT[estado]}>{PATENTE_LABEL[estado]}</Badge>;
+}
+
+const SERVICIO_TALLER_VARIANT: Record<EstadoServicioTaller, VariantProps<typeof badgeVariants>['variant']> = {
+  PRESUPUESTADO: 'muted',
+  EN_PROCESO:    'info',
+  FINALIZADO:    'success',
+  CANCELADO:     'destructive',
+};
+
+export const SERVICIO_TALLER_LABEL: Record<EstadoServicioTaller, string> = {
+  PRESUPUESTADO: 'Presupuestado',
+  EN_PROCESO:    'En proceso',
+  FINALIZADO:    'Finalizado',
+  CANCELADO:     'Cancelado',
+};
+
+export function ServicioTallerEstadoBadge({ estado }: { estado: EstadoServicioTaller }) {
+  return (
+    <Badge variant={SERVICIO_TALLER_VARIANT[estado]} className={cn(estado === 'CANCELADO' && 'line-through')}>
+      {SERVICIO_TALLER_LABEL[estado]}
     </Badge>
   );
 }

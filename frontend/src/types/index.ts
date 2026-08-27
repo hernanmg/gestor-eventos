@@ -665,6 +665,111 @@ export interface Camion {
   activo:      boolean;
   created_at:  string;
   updated_at:  string;
+  // ── Módulo Flota ──────────────────────────────────────────────────────────
+  marca?:            string | null;
+  modelo?:           string | null;
+  anio?:             number | null;
+  color?:            string | null;
+  titular?:          string | null;
+  numero_telepase?:  string | null;
+  en_servicio?:      boolean;
+  fecha_baja?:       string | null;
+  motivo_baja?:      string | null;
+}
+
+// ── Flota — seguros, patentes, peajes, taller ─────────────────────────────────
+
+export type EstadoSeguro = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'CANCELADO';
+export type TipoPatente = 'MUNICIPAL' | 'PROVINCIAL' | 'NACIONAL';
+export type EstadoPatente = 'PAGADA' | 'PENDIENTE' | 'VENCIDA';
+export type TipoServicioTaller = 'MANTENIMIENTO' | 'REPARACION' | 'NEUMATICOS' | 'CHAPERIA_PINTURA' | 'ELECTRICIDAD' | 'OTROS';
+export type EstadoServicioTaller = 'PRESUPUESTADO' | 'EN_PROCESO' | 'FINALIZADO' | 'CANCELADO';
+
+export interface VehiculoFlota extends Camion {
+  seguro_vigente?:  SeguroVehiculo | null;
+  proxima_patente?: PatenteVehiculo | null;
+  en_taller?:       ServicioTaller | null;
+}
+
+export interface VehiculoFlotaDetalle extends Camion {
+  seguros:          SeguroVehiculo[];
+  patentes:         PatenteVehiculo[];
+  gastos_peaje:     GastoPeaje[];
+  servicios_taller: ServicioTaller[];
+}
+
+export interface SeguroVehiculo {
+  id:                number;
+  camion_id:         number;
+  camion?:           { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  aseguradora:       string;
+  numero_poliza:     string | null;
+  tipo_cobertura:    string | null;
+  fecha_inicio:      string;
+  fecha_vencimiento: string;
+  importe_anual:     number | null;
+  moneda:            Moneda;
+  estado:            EstadoSeguro;
+  documento_nombre:  string | null;
+  notas:             string | null;
+  created_at?:       string;
+}
+
+export interface PatenteVehiculo {
+  id:                 number;
+  camion_id:          number;
+  camion?:            { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  tipo:               TipoPatente;
+  anio:               number;
+  cuota:              number | null;
+  importe:            number;
+  fecha_vencimiento:  string;
+  fecha_pago:         string | null;
+  estado:             EstadoPatente;
+  comprobante_nombre: string | null;
+  notas:              string | null;
+}
+
+export interface GastoPeaje {
+  id:                   number;
+  camion_id:            number;
+  camion?:              { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  fecha:                string;
+  ruta:                 string | null;
+  importe:              number;
+  evento_id:            number | null;
+  evento?:              { id: number; nombre: string } | null;
+  es_carga_telepase:    boolean;
+  saldo_telepase_post:  number | null;
+  notas:                string | null;
+}
+
+export interface ServicioTaller {
+  id:                  number;
+  camion_id:           number;
+  camion?:             { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  taller_nombre:       string | null;
+  tipo:                TipoServicioTaller;
+  descripcion:         string;
+  fecha_ingreso:       string;
+  fecha_estimada:      string | null;
+  fecha_retiro:        string | null;
+  estado:              EstadoServicioTaller;
+  presupuesto:         number | null;
+  importe_final:       number | null;
+  saldo_pendiente:     number | null;
+  cuenta_corriente_id: number | null;
+  notas:               string | null;
+}
+
+export interface AlertaFlotaItem {
+  id:       string;
+  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO';
+  titulo:   string;
+  fecha:    string;
+  color:    string;
+  urgencia: UrgenciaCalendario;
+  metadata: Record<string, unknown>;
 }
 
 export interface CunaProducto {
@@ -1440,7 +1545,8 @@ export interface ResumenComidaFecha {
 export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
-  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA';
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
+  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

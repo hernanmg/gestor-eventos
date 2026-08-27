@@ -243,6 +243,10 @@ model Empresa {
   liquidacionesAdmin    LiquidacionAdmin[]
   escalafonesAdmin      EscalafonAdmin[]
   prestamosEmpleados    PrestamoEmpleado[]
+  segurosVehiculo       SeguroVehiculo[]
+  patentesVehiculo      PatenteVehiculo[]
+  gastosPeaje           GastoPeaje[]
+  serviciosTaller       ServicioTaller[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -355,6 +359,7 @@ model Evento {
   pedidos_comida         PedidoComida[]
   pre_macro              PreMacro?
   movimientosCCC         MovimientoCCC[]
+  gastos_peaje           GastoPeaje[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -837,11 +842,154 @@ model Camion {
   updated_at  DateTime  @updatedAt
   deleted_at  DateTime?
 
+  // ── Módulo Flota — identificación extendida ──────────────────────────────────
+  marca           String?
+  modelo          String?
+  anio            Int?
+  color           String?
+  titular         String? // nombre del titular registral
+  numero_telepase String?
+  en_servicio     Boolean   @default(true)
+  fecha_baja      DateTime?
+  motivo_baja     String?
+
   asignaciones         AsignacionStock[]
   jornadas             Jornada[]
   asignaciones_diarias AsignacionDiaria[]
+  seguros              SeguroVehiculo[]
+  patentes             PatenteVehiculo[]
+  gastos_peaje         GastoPeaje[]
+  servicios_taller     ServicioTaller[]
 
   @@unique([codigo, empresa_id])
+}
+
+// ── Módulo Flota — seguros, patentes, peajes y taller ─────────────────────────
+
+enum EstadoSeguro {
+  VIGENTE
+  POR_VENCER // vence en los próximos 30 días
+  VENCIDO
+  CANCELADO
+}
+
+model SeguroVehiculo {
+  id                Int          @id @default(autoincrement())
+  camion_id         Int
+  camion            Camion       @relation(fields: [camion_id], references: [id])
+  empresa_id        Int
+  empresa           Empresa      @relation(fields: [empresa_id], references: [id])
+  aseguradora       String
+  numero_poliza     String?
+  tipo_cobertura    String?
+  fecha_inicio      DateTime
+  fecha_vencimiento DateTime
+  importe_anual     Decimal?     @db.Decimal(12, 2)
+  moneda            Moneda       @default(ARS)
+  estado            EstadoSeguro @default(VIGENTE)
+  documento_data    Bytes? // póliza en PDF — mismo patrón que Factura.pdf_data
+  documento_nombre  String?
+  documento_mime    String?
+  notas             String?
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+}
+
+enum TipoPatente {
+  MUNICIPAL
+  PROVINCIAL
+  NACIONAL
+}
+
+enum EstadoPatente {
+  PAGADA
+  PENDIENTE
+  VENCIDA
+}
+
+model PatenteVehiculo {
+  id                 Int           @id @default(autoincrement())
+  camion_id          Int
+  camion             Camion        @relation(fields: [camion_id], references: [id])
+  empresa_id         Int
+  empresa            Empresa       @relation(fields: [empresa_id], references: [id])
+  tipo               TipoPatente
+  anio               Int
+  cuota              Int? // 1, 2, 3... si se paga en cuotas
+  importe            Decimal       @db.Decimal(12, 2)
+  fecha_vencimiento  DateTime
+  fecha_pago         DateTime?
+  estado             EstadoPatente @default(PENDIENTE)
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+}
+
+model GastoPeaje {
+  id                  Int       @id @default(autoincrement())
+  camion_id           Int
+  camion              Camion    @relation(fields: [camion_id], references: [id])
+  empresa_id          Int
+  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha               DateTime
+  ruta                String?
+  importe             Decimal   @db.Decimal(10, 2)
+  evento_id           Int?
+  evento              Evento?   @relation(fields: [evento_id], references: [id])
+  es_carga_telepase   Boolean   @default(false)
+  saldo_telepase_post Decimal?  @db.Decimal(10, 2)
+  notas               String?
+  created_at          DateTime  @default(now())
+  deleted_at          DateTime?
+  created_by          Int?
+}
+
+enum TipoServicioTaller {
+  MANTENIMIENTO // service, aceite, filtros
+  REPARACION // falla específica
+  NEUMATICOS
+  CHAPERIA_PINTURA
+  ELECTRICIDAD
+  OTROS
+}
+
+enum EstadoServicioTaller {
+  PRESUPUESTADO
+  EN_PROCESO
+  FINALIZADO
+  CANCELADO
+}
+
+model ServicioTaller {
+  id                  Int                  @id @default(autoincrement())
+  camion_id           Int
+  camion              Camion               @relation(fields: [camion_id], references: [id])
+  empresa_id          Int
+  empresa             Empresa              @relation(fields: [empresa_id], references: [id])
+  taller_nombre       String?
+  tipo                TipoServicioTaller
+  descripcion         String
+  fecha_ingreso       DateTime
+  fecha_estimada      DateTime?
+  fecha_retiro        DateTime?
+  estado              EstadoServicioTaller @default(PRESUPUESTADO)
+  presupuesto         Decimal?             @db.Decimal(12, 2)
+  importe_final       Decimal?             @db.Decimal(12, 2)
+  saldo_pendiente     Decimal?             @db.Decimal(12, 2)
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente?     @relation(fields: [cuenta_corriente_id], references: [id])
+  notas               String?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
 }
 
 // Cuna/rack — unidad logística estandarizada de DOS57
@@ -1649,8 +1797,9 @@ model CuentaCorriente {
   created_by Int?
   updated_by Int?
 
-  partes      ParteCCC[]
-  movimientos MovimientoCCC[]
+  partes          ParteCCC[]
+  movimientos     MovimientoCCC[]
+  serviciosTaller ServicioTaller[]
 }
 
 // Reparto porcentual entre partes de una cuenta corriente (ej: Nave 15 — 50/50).
