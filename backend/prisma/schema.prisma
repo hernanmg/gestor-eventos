@@ -247,6 +247,8 @@ model Empresa {
   patentesVehiculo      PatenteVehiculo[]
   gastosPeaje           GastoPeaje[]
   serviciosTaller       ServicioTaller[]
+  planesAFIP            PlanAFIP[]
+  prestamosBancarios    PrestamoBancario[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -1639,6 +1641,137 @@ model PagoPrestamoEmpleado {
   fecha                DateTime
   // audit
   created_at           DateTime          @default(now())
+}
+
+// ─── AFIP Y PRÉSTAMOS BANCARIOS ───────────────────────────────────────────────
+
+enum EstadoPlanAFIP {
+  ACTIVO
+  CANCELADO
+  FINALIZADO
+  CADUCADO
+}
+
+model PlanAFIP {
+  id                   Int            @id @default(autoincrement())
+  empresa_id           Int
+  empresa              Empresa        @relation(fields: [empresa_id], references: [id])
+  // Datos del plan
+  numero_plan          String? // N° asignado por AFIP
+  descripcion          String // "Moratoria 2024", "SIRADIG", etc.
+  fecha_inicio         DateTime
+  capital_original     Decimal        @db.Decimal(15, 2)
+  cantidad_cuotas      Int
+  valor_cuota_aprox    Decimal?       @db.Decimal(12, 2)
+  interes_financiero   Decimal?       @db.Decimal(5, 2) // % anual
+  interes_resarcitorio Decimal?       @db.Decimal(5, 2) // % punitorio
+  estado               EstadoPlanAFIP @default(ACTIVO)
+  notas                String?
+  // Titular (puede ser la empresa o un socio a título personal)
+  titular_nombre       String? // "DOS57 SRL" o "Sergio Bibiloni"
+  titular_cuit         String?
+  // audit
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+
+  cuotas     CuotaPlanAFIP[]
+  documentos DocumentoPlanAFIP[]
+}
+
+model CuotaPlanAFIP {
+  id              Int       @id @default(autoincrement())
+  plan_id         Int
+  plan            PlanAFIP  @relation(fields: [plan_id], references: [id])
+  numero_cuota    Int
+  fecha_debito    DateTime // fecha en que se debita
+  capital         Decimal?  @db.Decimal(12, 2)
+  interes         Decimal?  @db.Decimal(12, 2)
+  total_cuota     Decimal   @db.Decimal(12, 2)
+  fecha_pago_real DateTime? // null si no se pagó
+  pagada          Boolean   @default(false)
+  notas           String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+}
+
+model DocumentoPlanAFIP {
+  id           Int      @id @default(autoincrement())
+  plan_id      Int
+  plan         PlanAFIP @relation(fields: [plan_id], references: [id])
+  nombre       String
+  descripcion  String? // "Adhesión", "Comprobante cuota 3", etc.
+  archivo_data Bytes // PDF/imagen en DB (mismo patrón que Factura)
+  archivo_mime String
+  archivo_size Int
+  created_at   DateTime @default(now())
+  created_by   Int?
+}
+
+enum EstadoPrestamo {
+  ACTIVO
+  CANCELADO_ANTICIPADO
+  FINALIZADO
+}
+
+model PrestamoBancario {
+  id                  Int            @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa        @relation(fields: [empresa_id], references: [id])
+  // Datos del préstamo
+  entidad             String // "Bancor", "Galicia", "Nación"
+  numero_operacion    String?
+  tipo                String? // "Personal", "Hipotecario", "Prendario"
+  fecha_otorgamiento  DateTime
+  capital_original    Decimal        @db.Decimal(15, 2)
+  moneda              Moneda         @default(ARS)
+  tasa_nominal_anual  Decimal?       @db.Decimal(5, 2) // % TNA
+  tasa_efectiva_anual Decimal?       @db.Decimal(5, 2) // % TEA
+  cantidad_cuotas     Int
+  dia_debito          Int? // día del mes que se debita (ej: 10)
+  estado              EstadoPrestamo @default(ACTIVO)
+  notas               String?
+  // audit
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+
+  cuotas     CuotaPrestamo[]
+  documentos DocumentoPrestamo[]
+}
+
+model CuotaPrestamo {
+  id                Int              @id @default(autoincrement())
+  prestamo_id       Int
+  prestamo          PrestamoBancario @relation(fields: [prestamo_id], references: [id])
+  numero_cuota      Int
+  fecha_vencimiento DateTime
+  capital           Decimal?         @db.Decimal(12, 2)
+  interes           Decimal?         @db.Decimal(12, 2)
+  iva_interes       Decimal?         @db.Decimal(12, 2)
+  seguro            Decimal?         @db.Decimal(12, 2)
+  otros_impuestos   Decimal?         @db.Decimal(12, 2)
+  total_cuota       Decimal          @db.Decimal(12, 2)
+  fecha_pago_real   DateTime?
+  pagada            Boolean          @default(false)
+  notas             String?
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+}
+
+model DocumentoPrestamo {
+  id           Int              @id @default(autoincrement())
+  prestamo_id  Int
+  prestamo     PrestamoBancario @relation(fields: [prestamo_id], references: [id])
+  nombre       String
+  descripcion  String?
+  archivo_data Bytes
+  archivo_mime String
+  archivo_size Int
+  created_at   DateTime         @default(now())
+  created_by   Int?
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

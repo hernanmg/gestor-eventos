@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -328,6 +328,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/cuentas-corrientes" title={!isOpen ? 'Cuentas Corrientes' : undefined} className={navItem}>
               <ArrowLeftRight size={18} className="shrink-0" />
               {isOpen && <span>Cuentas Corrientes</span>}
+            </NavLink>
+          )}
+
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/afip-prestamos" title={!isOpen ? 'AFIP / Créditos' : undefined} className={navItem}>
+              <Landmark size={18} className="shrink-0" />
+              {isOpen && <span>AFIP / Créditos</span>}
             </NavLink>
           )}
 

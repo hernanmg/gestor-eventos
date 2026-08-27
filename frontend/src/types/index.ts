@@ -772,6 +772,115 @@ export interface AlertaFlotaItem {
   metadata: Record<string, unknown>;
 }
 
+// ── AFIP y Préstamos Bancarios ───────────────────────────────────────────────
+
+export type EstadoPlanAFIP = 'ACTIVO' | 'CANCELADO' | 'FINALIZADO' | 'CADUCADO';
+export type EstadoPrestamo = 'ACTIVO' | 'CANCELADO_ANTICIPADO' | 'FINALIZADO';
+
+export interface CuotaPlanAFIP {
+  id:              number;
+  plan_id:         number;
+  numero_cuota:    number;
+  fecha_debito:    string;
+  capital:         number | null;
+  interes:         number | null;
+  total_cuota:     number;
+  fecha_pago_real: string | null;
+  pagada:          boolean;
+  notas:           string | null;
+}
+
+export interface DocumentoPlanAFIP {
+  id:           number;
+  plan_id:      number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  archivo_size: number;
+  created_at:   string;
+}
+
+export interface PlanAFIP {
+  id:                   number;
+  empresa_id:           number;
+  empresa?:             { id: number; nombre: string; nombre_corto: string | null };
+  numero_plan:          string | null;
+  descripcion:          string;
+  fecha_inicio:         string;
+  capital_original:     number;
+  cantidad_cuotas:      number;
+  valor_cuota_aprox:    number | null;
+  interes_financiero:   number | null;
+  interes_resarcitorio: number | null;
+  estado:               EstadoPlanAFIP;
+  notas:                string | null;
+  titular_nombre:       string | null;
+  titular_cuit:         string | null;
+  created_at:           string;
+  // Resumen calculado (siempre presente en list/detail)
+  cuotas_pagadas:       number;
+  cuotas_pendientes:    number;
+  proxima_cuota:        CuotaPlanAFIP | null;
+  total_pagado:         number;
+  saldo_pendiente:      number;
+  // Solo en detail
+  cuotas?:              CuotaPlanAFIP[];
+  documentos?:          DocumentoPlanAFIP[];
+}
+
+export interface CuotaPrestamo {
+  id:                number;
+  prestamo_id:       number;
+  numero_cuota:      number;
+  fecha_vencimiento: string;
+  capital:           number | null;
+  interes:           number | null;
+  iva_interes:       number | null;
+  seguro:            number | null;
+  otros_impuestos:   number | null;
+  total_cuota:       number;
+  fecha_pago_real:   string | null;
+  pagada:            boolean;
+  notas:             string | null;
+}
+
+export interface DocumentoPrestamo {
+  id:           number;
+  prestamo_id:  number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  archivo_size: number;
+  created_at:   string;
+}
+
+export interface PrestamoBancario {
+  id:                  number;
+  empresa_id:          number;
+  empresa?:            { id: number; nombre: string; nombre_corto: string | null };
+  entidad:             string;
+  numero_operacion:    string | null;
+  tipo:                string | null;
+  fecha_otorgamiento:  string;
+  capital_original:    number;
+  moneda:              Moneda;
+  tasa_nominal_anual:  number | null;
+  tasa_efectiva_anual: number | null;
+  cantidad_cuotas:     number;
+  dia_debito:          number | null;
+  estado:              EstadoPrestamo;
+  notas:               string | null;
+  created_at:          string;
+  // Resumen calculado (siempre presente en list/detail)
+  cuotas_pagadas:          number;
+  cuotas_pendientes:       number;
+  proxima_cuota:           CuotaPrestamo | null;
+  saldo_capital_pendiente: number;
+  // Solo en detail
+  cuotas?:      CuotaPrestamo[];
+  documentos?:  DocumentoPrestamo[];
+}
+
 export interface CunaProducto {
   id:          number;
   cuna_id:     number;
@@ -1546,7 +1655,8 @@ export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
-  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO';
+  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

@@ -11,7 +11,8 @@ export type TipoCalendario =
   | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
-  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO';
+  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -42,6 +43,8 @@ const COLORES: Record<TipoCalendario, string> = {
   SEGURO_VENCE:         '#F59E0B',
   PATENTE_VENCE:        '#F59E0B',
   TALLER_RETIRO:        '#4C1D95',
+  CUOTA_AFIP:           '#DC2626',
+  CUOTA_PRESTAMO:       '#92400E',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -59,6 +62,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   seguros:       'SEGURO_VENCE',
   patentes_flota: 'PATENTE_VENCE',
   taller:        'TALLER_RETIRO',
+  cuotas_afip:   'CUOTA_AFIP',
+  cuotas_prestamo: 'CUOTA_PRESTAMO',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -532,6 +537,52 @@ async function resolveTallerRetiro(empresaFiltro: number | undefined, desde: Dat
   });
 }
 
+async function resolveCuotasAFIP(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const cuotas = await prisma.cuotaPlanAFIP.findMany({
+    where: {
+      pagada:       false,
+      fecha_debito: { gte: desde, lte: hasta },
+      plan: { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) },
+    },
+    include: { plan: { select: { descripcion: true, cantidad_cuotas: true, empresa_id: true, empresa: { select: { nombre: true } } } } },
+  });
+
+  return cuotas.map(c => ({
+    id:             `cuota-afip-${c.id}`,
+    tipo:           'CUOTA_AFIP' as const,
+    titulo:         `AFIP — ${c.plan.descripcion} (cuota ${c.numero_cuota}/${c.plan.cantidad_cuotas})`,
+    fecha:          c.fecha_debito,
+    empresa_id:     c.plan.empresa_id,
+    empresa_nombre: c.plan.empresa.nombre,
+    color:          COLORES.CUOTA_AFIP,
+    urgencia:       computeUrgencia(c.fecha_debito, hoy),
+    metadata:       { plan_id: c.plan_id, total_cuota: Number(c.total_cuota) },
+  }));
+}
+
+async function resolveCuotasPrestamo(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const cuotas = await prisma.cuotaPrestamo.findMany({
+    where: {
+      pagada:            false,
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      prestamo: { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) },
+    },
+    include: { prestamo: { select: { entidad: true, cantidad_cuotas: true, empresa_id: true, empresa: { select: { nombre: true } } } } },
+  });
+
+  return cuotas.map(c => ({
+    id:             `cuota-prestamo-${c.id}`,
+    tipo:           'CUOTA_PRESTAMO' as const,
+    titulo:         `${c.prestamo.entidad} — cuota ${c.numero_cuota}/${c.prestamo.cantidad_cuotas} ($${Number(c.total_cuota).toLocaleString('es-AR')})`,
+    fecha:          c.fecha_vencimiento,
+    empresa_id:     c.prestamo.empresa_id,
+    empresa_nombre: c.prestamo.empresa.nombre,
+    color:          COLORES.CUOTA_PRESTAMO,
+    urgencia:       computeUrgencia(c.fecha_vencimiento, hoy),
+    metadata:       { prestamo_id: c.prestamo_id, total_cuota: Number(c.total_cuota) },
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -601,6 +652,10 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('SEGURO_VENCE'))  tareas.push(resolveSegurosVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('PATENTE_VENCE')) tareas.push(resolvePatentesVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('TALLER_RETIRO')) tareas.push(resolveTallerRetiro(empresaFiltro, desde, hasta, hoyUTC));
+  // CUOTA_AFIP/CUOTA_PRESTAMO enlazan a /afip-prestamos, exclusivo de ADMIN
+  // (matriz de permisos) — mismo criterio que JORNADA/LIQUIDACION más arriba.
+  if (tiposActivos.has('CUOTA_AFIP') && isAdmin)     tareas.push(resolveCuotasAFIP(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('CUOTA_PRESTAMO') && isAdmin) tareas.push(resolveCuotasPrestamo(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

@@ -31,6 +31,7 @@ import { cuentasCorrientesRouter } from './routes/cuentasCorrientes';
 import { macroRouter } from './routes/macro';
 import flotaRouter from './routes/flota';
 import notificacionesRouter from './routes/notificaciones';
+import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
 
 const app = express();
 
@@ -106,6 +107,8 @@ app.use('/api/cuentas-corrientes',  cuentasCorrientesRouter);
 app.use('/api/macro',               macroRouter);
 app.use('/api/flota',               flotaRouter);
 app.use('/api/notificaciones',      notificacionesRouter);
+app.use('/api/afip',                afipRouter);
+app.use('/api/prestamos',           prestamosRouter);
 
 app.use(errorHandler);
 

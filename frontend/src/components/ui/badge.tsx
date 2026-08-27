@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -147,4 +147,40 @@ export function ServicioTallerEstadoBadge({ estado }: { estado: EstadoServicioTa
       {SERVICIO_TALLER_LABEL[estado]}
     </Badge>
   );
+}
+
+// ── AFIP y Préstamos Bancarios ───────────────────────────────────────────────
+
+const PLAN_AFIP_VARIANT: Record<EstadoPlanAFIP, VariantProps<typeof badgeVariants>['variant']> = {
+  ACTIVO:     'info',
+  FINALIZADO: 'success',
+  CADUCADO:   'destructive',
+  CANCELADO:  'muted',
+};
+
+export const PLAN_AFIP_LABEL: Record<EstadoPlanAFIP, string> = {
+  ACTIVO:     'Activo',
+  FINALIZADO: 'Finalizado',
+  CADUCADO:   'Caducado',
+  CANCELADO:  'Cancelado',
+};
+
+export function PlanAfipEstadoBadge({ estado }: { estado: EstadoPlanAFIP }) {
+  return <Badge variant={PLAN_AFIP_VARIANT[estado]}>{PLAN_AFIP_LABEL[estado]}</Badge>;
+}
+
+const PRESTAMO_VARIANT: Record<EstadoPrestamo, VariantProps<typeof badgeVariants>['variant']> = {
+  ACTIVO:                'info',
+  FINALIZADO:            'success',
+  CANCELADO_ANTICIPADO:  'muted',
+};
+
+export const PRESTAMO_LABEL: Record<EstadoPrestamo, string> = {
+  ACTIVO:               'Activo',
+  FINALIZADO:           'Finalizado',
+  CANCELADO_ANTICIPADO: 'Cancelado anticipado',
+};
+
+export function PrestamoEstadoBadge({ estado }: { estado: EstadoPrestamo }) {
+  return <Badge variant={PRESTAMO_VARIANT[estado]}>{PRESTAMO_LABEL[estado]}</Badge>;
 }

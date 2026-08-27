@@ -26,6 +26,8 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   SEGURO_VENCE:         'Seguros',
   PATENTE_VENCE:        'Patentes',
   TALLER_RETIRO:        'Taller',
+  CUOTA_AFIP:           'Cuotas AFIP',
+  CUOTA_PRESTAMO:       'Cuotas créditos',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -42,6 +44,8 @@ const COLORES: Record<TipoCalendario, string> = {
   SEGURO_VENCE:         '#F59E0B',
   PATENTE_VENCE:        '#F59E0B',
   TALLER_RETIRO:        '#4C1D95',
+  CUOTA_AFIP:           '#DC2626',
+  CUOTA_PRESTAMO:       '#92400E',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -92,6 +96,8 @@ function getDetailLink(item: CalendarioItem): string {
     case 'SEGURO_VENCE':   return `/flota?tab=vehiculos&vehiculo=${m.camion_id}`;
     case 'PATENTE_VENCE':  return `/flota?tab=patentes&vehiculo=${m.camion_id}`;
     case 'TALLER_RETIRO':  return '/flota?tab=taller';
+    case 'CUOTA_AFIP':     return '/afip-prestamos?tab=afip';
+    case 'CUOTA_PRESTAMO': return '/afip-prestamos?tab=prestamos';
     default:               return '/calendario';
   }
 }
@@ -111,6 +117,8 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'SEGURO_VENCE':   return [`Estado: ${m.estado}`];
     case 'PATENTE_VENCE':  return [];
     case 'TALLER_RETIRO':  return m.taller_nombre ? [`Taller: ${m.taller_nombre}`] : [];
+    case 'CUOTA_AFIP':     return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
+    case 'CUOTA_PRESTAMO': return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     default:               return [];
   }
 }

@@ -193,6 +193,48 @@ async function resolvePrestamosVencidos(empresaId: number, hoy: Date): Promise<N
   return items;
 }
 
+async function resolveCuotasAFIP(empresaId: number, hoy: Date, en7dias: Date): Promise<NotificacionItem[]> {
+  const cuotas = await prisma.cuotaPlanAFIP.findMany({
+    where: {
+      pagada:       false,
+      fecha_debito: { lte: en7dias },
+      plan:         { empresa_id: empresaId, deleted_at: null },
+    },
+    include: { plan: { select: { descripcion: true } } },
+    orderBy: { fecha_debito: 'asc' },
+  });
+  return cuotas.map(c => ({
+    id:          `cuota-afip-${c.id}`,
+    tipo:        'CUOTA_AFIP',
+    titulo:      `AFIP — ${c.plan.descripcion} (cuota ${c.numero_cuota})`,
+    descripcion: `Vence el ${c.fecha_debito.toLocaleDateString('es-AR')} — $${Number(c.total_cuota).toLocaleString('es-AR')}`,
+    urgencia:    (c.fecha_debito < hoy ? 'critical' : 'warning') as Urgencia,
+    link:        '/afip-prestamos?tab=afip',
+    fecha:       c.fecha_debito,
+  }));
+}
+
+async function resolveCuotasPrestamo(empresaId: number, hoy: Date, en7dias: Date): Promise<NotificacionItem[]> {
+  const cuotas = await prisma.cuotaPrestamo.findMany({
+    where: {
+      pagada:            false,
+      fecha_vencimiento: { lte: en7dias },
+      prestamo:          { empresa_id: empresaId, deleted_at: null },
+    },
+    include: { prestamo: { select: { entidad: true } } },
+    orderBy: { fecha_vencimiento: 'asc' },
+  });
+  return cuotas.map(c => ({
+    id:          `cuota-prestamo-${c.id}`,
+    tipo:        'CUOTA_PRESTAMO',
+    titulo:      `${c.prestamo.entidad} — cuota ${c.numero_cuota}`,
+    descripcion: `Vence el ${c.fecha_vencimiento.toLocaleDateString('es-AR')} — $${Number(c.total_cuota).toLocaleString('es-AR')}`,
+    urgencia:    (c.fecha_vencimiento < hoy ? 'critical' : 'warning') as Urgencia,
+    link:        '/afip-prestamos?tab=prestamos',
+    fecha:       c.fecha_vencimiento,
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -200,6 +242,7 @@ export async function getNotificaciones(req: Request, res: Response) {
   const hoy = new Date();
   const hace3Dias = new Date(hoy.getTime() - 3 * MS_DIA);
   const hace7Dias = new Date(hoy.getTime() - 7 * MS_DIA);
+  const en7Dias   = new Date(hoy.getTime() + 7 * MS_DIA);
 
   const resultados = await Promise.all([
     resolveSeguros(empresaId),
@@ -210,6 +253,8 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveLiquidacionesBorrador(empresaId, hace7Dias),
     resolveJornadasPendientes(empresaId, hace3Dias),
     resolvePrestamosVencidos(empresaId, hoy),
+    resolveCuotasAFIP(empresaId, hoy, en7Dias),
+    resolveCuotasPrestamo(empresaId, hoy, en7Dias),
   ]);
 
   const items = resultados
