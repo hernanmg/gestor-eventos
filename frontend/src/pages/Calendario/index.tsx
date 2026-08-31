@@ -28,6 +28,7 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   TALLER_RETIRO:        'Taller',
   CUOTA_AFIP:           'Cuotas AFIP',
   CUOTA_PRESTAMO:       'Cuotas créditos',
+  FACTURA_EMITIDA_VENCE: 'Facturas a Cobrar',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -46,6 +47,7 @@ const COLORES: Record<TipoCalendario, string> = {
   TALLER_RETIRO:        '#4C1D95',
   CUOTA_AFIP:           '#DC2626',
   CUOTA_PRESTAMO:       '#92400E',
+  FACTURA_EMITIDA_VENCE: '#065F46',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -98,6 +100,7 @@ function getDetailLink(item: CalendarioItem): string {
     case 'TALLER_RETIRO':  return '/flota?tab=taller';
     case 'CUOTA_AFIP':     return '/afip-prestamos?tab=afip';
     case 'CUOTA_PRESTAMO': return '/afip-prestamos?tab=prestamos';
+    case 'FACTURA_EMITIDA_VENCE': return `/facturas-emitidas?abrir=${m.factura_id}`;
     default:               return '/calendario';
   }
 }
@@ -119,6 +122,7 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'TALLER_RETIRO':  return m.taller_nombre ? [`Taller: ${m.taller_nombre}`] : [];
     case 'CUOTA_AFIP':     return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     case 'CUOTA_PRESTAMO': return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
+    case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
     default:               return [];
   }
 }

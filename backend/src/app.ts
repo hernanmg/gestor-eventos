@@ -32,6 +32,7 @@ import { macroRouter } from './routes/macro';
 import flotaRouter from './routes/flota';
 import notificacionesRouter from './routes/notificaciones';
 import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
+import { facturasEmitidasRouter } from './routes/facturasEmitidas';
 
 const app = express();
 
@@ -109,6 +110,7 @@ app.use('/api/flota',               flotaRouter);
 app.use('/api/notificaciones',      notificacionesRouter);
 app.use('/api/afip',                afipRouter);
 app.use('/api/prestamos',           prestamosRouter);
+app.use('/api/facturas-emitidas',   facturasEmitidasRouter);
 
 app.use(errorHandler);
 

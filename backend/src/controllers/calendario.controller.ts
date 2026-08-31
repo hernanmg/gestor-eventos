@@ -12,7 +12,7 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO';
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -45,6 +45,7 @@ const COLORES: Record<TipoCalendario, string> = {
   TALLER_RETIRO:        '#4C1D95',
   CUOTA_AFIP:           '#DC2626',
   CUOTA_PRESTAMO:       '#92400E',
+  FACTURA_EMITIDA_VENCE: '#065F46',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -64,6 +65,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   taller:        'TALLER_RETIRO',
   cuotas_afip:   'CUOTA_AFIP',
   cuotas_prestamo: 'CUOTA_PRESTAMO',
+  facturas_emitidas: 'FACTURA_EMITIDA_VENCE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -583,6 +585,37 @@ async function resolveCuotasPrestamo(empresaFiltro: number | undefined, desde: D
   }));
 }
 
+async function resolveFacturasEmitidas(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const facturas = await prisma.facturaEmitida.findMany({
+    where: {
+      deleted_at: null,
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      estado: { in: ['EMITIDA', 'COBRADA_PARCIAL'] },
+    },
+    include: {
+      cobros:  { select: { monto: true } },
+      empresa: { select: { nombre: true } },
+    },
+  });
+
+  return facturas.map(f => {
+    const cobrado         = f.cobros.reduce((s, c) => s + Number(c.monto), 0);
+    const saldoPendiente  = Math.max(0, Number(f.total) - cobrado);
+    return {
+      id:             `factura-emitida-${f.id}`,
+      tipo:           'FACTURA_EMITIDA_VENCE' as const,
+      titulo:         `${f.cliente_nombre} — ${f.tipo_comprobante} $${saldoPendiente.toLocaleString('es-AR')}`,
+      fecha:          f.fecha_vencimiento!,
+      empresa_id:     f.empresa_id,
+      empresa_nombre: f.empresa.nombre,
+      color:          COLORES.FACTURA_EMITIDA_VENCE,
+      urgencia:       computeUrgencia(f.fecha_vencimiento!, hoy),
+      metadata:       { factura_id: f.id, saldo_pendiente: saldoPendiente, moneda: f.moneda, evento_id: f.evento_id },
+    };
+  });
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -656,6 +689,8 @@ export async function getCalendario(req: Request, res: Response) {
   // (matriz de permisos) — mismo criterio que JORNADA/LIQUIDACION más arriba.
   if (tiposActivos.has('CUOTA_AFIP') && isAdmin)     tareas.push(resolveCuotasAFIP(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('CUOTA_PRESTAMO') && isAdmin) tareas.push(resolveCuotasPrestamo(empresaFiltro, desde, hasta, hoyUTC));
+  // FACTURA_EMITIDA_VENCE enlaza a /facturas-emitidas, exclusivo de ADMIN.
+  if (tiposActivos.has('FACTURA_EMITIDA_VENCE') && isAdmin) tareas.push(resolveFacturasEmitidas(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

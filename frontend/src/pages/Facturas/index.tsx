@@ -135,7 +135,7 @@ export default function FacturasPage() {
     <div className="p-4 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Cuentas a pagar</h1>
+          <h1 className="text-xl font-semibold">Facturas a Pagar</h1>
           <p className="text-sm text-muted-foreground">Facturas de todos los eventos</p>
         </div>
         <Button size="sm" onClick={() => setShowCreate(true)}>

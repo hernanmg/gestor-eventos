@@ -235,6 +235,32 @@ async function resolveCuotasPrestamo(empresaId: number, hoy: Date, en7dias: Date
   }));
 }
 
+async function resolveFacturasEmitidasVencidas(empresaId: number, hoy: Date): Promise<NotificacionItem[]> {
+  const facturas = await prisma.facturaEmitida.findMany({
+    where: {
+      empresa_id: empresaId,
+      deleted_at: null,
+      estado: { in: ['EMITIDA', 'COBRADA_PARCIAL'] },
+      fecha_vencimiento: { lt: hoy },
+    },
+    include: { cobros: { select: { monto: true } } },
+    orderBy: { fecha_vencimiento: 'asc' },
+  });
+  return facturas.map(f => {
+    const cobrado        = f.cobros.reduce((s, c) => s + Number(c.monto), 0);
+    const saldoPendiente = Math.max(0, Number(f.total) - cobrado);
+    return {
+      id:          `factura-emitida-${f.id}`,
+      tipo:        'FACTURA_EMITIDA_VENCIDA',
+      titulo:      `Sin cobrar — ${f.cliente_nombre}`,
+      descripcion: `${f.tipo_comprobante} vencida el ${f.fecha_vencimiento!.toLocaleDateString('es-AR')} — $${saldoPendiente.toLocaleString('es-AR')}`,
+      urgencia:    'critical' as Urgencia,
+      link:        `/facturas-emitidas?abrir=${f.id}`,
+      fecha:       f.fecha_vencimiento!,
+    };
+  });
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -255,6 +281,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolvePrestamosVencidos(empresaId, hoy),
     resolveCuotasAFIP(empresaId, hoy, en7Dias),
     resolveCuotasPrestamo(empresaId, hoy, en7Dias),
+    resolveFacturasEmitidasVencidas(empresaId, hoy),
   ]);
 
   const items = resultados

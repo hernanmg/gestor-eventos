@@ -30,6 +30,7 @@ import ParteDiarioPage      from '@/pages/ParteDiario';
 import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
 import FlotaPage            from '@/pages/Flota';
 import AFIPPrestamosPage    from '@/pages/AFIPPrestamos';
+import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
 import { useAuth }          from '@/hooks/useAuth';
 
 const queryClient = new QueryClient({
@@ -86,6 +87,7 @@ export default function App() {
             <Route path="/cuentas-corrientes/:id"  element={<CuentaCorrienteDetalle />} />
             <Route path="/flota"                   element={<FlotaPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
+            <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>

@@ -249,6 +249,8 @@ model Empresa {
   serviciosTaller       ServicioTaller[]
   planesAFIP            PlanAFIP[]
   prestamosBancarios    PrestamoBancario[]
+  facturasEmitidas      FacturaEmitida[]
+  repartosFacturaEmitida RepartoFacturaEmitida[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -362,6 +364,7 @@ model Evento {
   pre_macro              PreMacro?
   movimientosCCC         MovimientoCCC[]
   gastos_peaje           GastoPeaje[]
+  facturas_emitidas      FacturaEmitida[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -552,6 +555,7 @@ model CuentaBancaria {
 
   movimientos        MovimientoCaja[]
   eventos_vinculados EventoCuenta[]
+  cobros_facturas_emitidas CobroFacturaEmitida[]
 
   // Permite upsert idempotente por nombre dentro de una empresa (ver seed.ts
   // — cuentas de empresa DOS57 sin evento_id, ej. "Caja Pollo").
@@ -1991,4 +1995,121 @@ model MovimientoCCC {
   deleted_at DateTime?
   created_by Int?
   updated_by Int?
+}
+
+// ─── FACTURACIÓN EMITIDA A CLIENTES (cuentas a cobrar) ───────────────────────
+// Inverso de Factura (cuentas a pagar): acá nosotros facturamos a un cliente y
+// seguimos el cobro. Puede o no estar asociada a un evento (ej. DOS57
+// facturando el vallado de un partido, o alquiler de estructuras Layher sin
+// evento formal), y el cobro puede repartirse entre varias razones sociales
+// (ver RepartoFacturaEmitida — caso Talleres/Hockey).
+
+enum TipoComprobanteEmitido {
+  FACTURA_A
+  FACTURA_B
+  FACTURA_C
+  FACTURA_MIPYMES_FCE_A
+  FACTURA_MIPYMES_FCE_B
+  NOTA_CREDITO_A
+  NOTA_CREDITO_B
+  NOTA_CREDITO_C
+  NOTA_DEBITO_A
+  NOTA_DEBITO_B
+  RECIBO
+}
+
+enum EstadoFacturaEmitida {
+  EMITIDA // generada, pendiente de cobro
+  COBRADA_PARCIAL // cobro parcial registrado
+  COBRADA // cobro total confirmado
+  INCOBRABLE // se dio por perdida
+  ANULADA
+}
+
+enum CondicionCliente {
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTISTA
+  EXENTO
+  CONSUMIDOR_FINAL
+  EXTERIOR
+}
+
+model FacturaEmitida {
+  id                Int                    @id @default(autoincrement())
+  empresa_id        Int
+  empresa           Empresa                @relation(fields: [empresa_id], references: [id])
+  // Comprobante AFIP
+  tipo_comprobante  TipoComprobanteEmitido
+  punto_venta       Int                    @default(1)
+  numero            String? // número de factura
+  fecha_emision     DateTime
+  // Cliente
+  cliente_nombre    String
+  cliente_cuit      String?
+  condicion_cliente CondicionCliente?
+  // Montos
+  neto_gravado      Decimal?               @db.Decimal(15, 2)
+  iva               Decimal?               @db.Decimal(15, 2)
+  otros_impuestos   Decimal?               @db.Decimal(15, 2)
+  total             Decimal                @db.Decimal(15, 2)
+  moneda            Moneda                 @default(ARS)
+  tasa_cambio       Decimal?               @db.Decimal(10, 4)
+  total_ars         Decimal?               @db.Decimal(15, 2)
+  // Cobro
+  forma_pago        String? // "Transferencia", "Echeq", "Efectivo"
+  fecha_vencimiento DateTime?
+  estado            EstadoFacturaEmitida   @default(EMITIDA)
+  // Vínculo opcional con evento
+  evento_id         Int?
+  evento            Evento?                @relation(fields: [evento_id], references: [id])
+  // Descripción del servicio
+  concepto          String?
+  observaciones     String?
+  // Documento adjunto (PDF) — mismo patrón que Factura.pdf_data
+  pdf_data          Bytes?
+  pdf_nombre        String?
+  pdf_mime_type     String?
+  pdf_tamanio       Int?
+  // audit
+  created_at        DateTime               @default(now())
+  updated_at        DateTime               @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+  updated_by        Int?
+
+  // Cobros parciales o totales
+  cobros   CobroFacturaEmitida[]
+  // Reparto entre razones sociales (opcional)
+  repartos RepartoFacturaEmitida[]
+}
+
+// Cobros parciales o totales
+model CobroFacturaEmitida {
+  id                 Int             @id @default(autoincrement())
+  factura_emitida_id Int
+  factura_emitida    FacturaEmitida  @relation(fields: [factura_emitida_id], references: [id])
+  fecha              DateTime
+  monto              Decimal         @db.Decimal(15, 2)
+  moneda             Moneda          @default(ARS)
+  forma_cobro        String? // "Transferencia", "Echeq", "Efectivo"
+  cuenta_destino_id  Int? // CuentaBancaria donde ingresó
+  cuenta_destino     CuentaBancaria? @relation(fields: [cuenta_destino_id], references: [id])
+  referencia         String? // N° de transferencia, echeq, etc.
+  notas              String?
+  created_at         DateTime        @default(now())
+  created_by         Int?
+}
+
+// Reparto entre razones sociales (caso Talleres, Hockey, etc.)
+model RepartoFacturaEmitida {
+  id                 Int            @id @default(autoincrement())
+  factura_emitida_id Int
+  factura_emitida    FacturaEmitida @relation(fields: [factura_emitida_id], references: [id])
+  razon_social       String // "DOS57 SRL", "Sergio Bibiloni", "Enjoy"
+  cuit               String?
+  porcentaje         Decimal        @db.Decimal(5, 2)
+  monto              Decimal        @db.Decimal(15, 2)
+  // Si corresponde a una empresa del sistema
+  empresa_id         Int?
+  empresa            Empresa?       @relation(fields: [empresa_id], references: [id])
 }

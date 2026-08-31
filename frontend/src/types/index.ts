@@ -1138,6 +1138,103 @@ export interface PagoFactura {
   echeq?:        { id: number; estado: EstadoEcheq; numero: string } | null;
 }
 
+// ── Facturación emitida a clientes (cuentas a cobrar) ────────────────────────
+
+export type TipoComprobanteEmitido =
+  | 'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C' | 'FACTURA_MIPYMES_FCE_A' | 'FACTURA_MIPYMES_FCE_B'
+  | 'NOTA_CREDITO_A' | 'NOTA_CREDITO_B' | 'NOTA_CREDITO_C' | 'NOTA_DEBITO_A' | 'NOTA_DEBITO_B' | 'RECIBO';
+
+export type EstadoFacturaEmitida = 'EMITIDA' | 'COBRADA_PARCIAL' | 'COBRADA' | 'INCOBRABLE' | 'ANULADA';
+
+export type CondicionCliente = 'RESPONSABLE_INSCRIPTO' | 'MONOTRIBUTISTA' | 'EXENTO' | 'CONSUMIDOR_FINAL' | 'EXTERIOR';
+
+export interface CobroFacturaEmitida {
+  id:                 number;
+  factura_emitida_id: number;
+  fecha:              string;
+  monto:              number;
+  moneda:             Moneda;
+  forma_cobro:        string | null;
+  cuenta_destino_id:  number | null;
+  cuenta_destino?:    { id: number; nombre: string } | null;
+  referencia:         string | null;
+  notas:              string | null;
+  created_at:         string;
+}
+
+export interface RepartoFacturaEmitida {
+  id:                 number;
+  factura_emitida_id: number;
+  razon_social:       string;
+  cuit:               string | null;
+  porcentaje:         number;
+  monto:              number;
+  empresa_id:         number | null;
+}
+
+export interface FacturaEmitida {
+  id:                number;
+  empresa_id:        number;
+  tipo_comprobante:  TipoComprobanteEmitido;
+  punto_venta:       number;
+  numero:            string | null;
+  fecha_emision:     string;
+  cliente_nombre:    string;
+  cliente_cuit:      string | null;
+  condicion_cliente: CondicionCliente | null;
+  neto_gravado:      number | null;
+  iva:               number | null;
+  otros_impuestos:   number | null;
+  total:             number;
+  moneda:            Moneda;
+  tasa_cambio:       number | null;
+  total_ars:         number | null;
+  forma_pago:        string | null;
+  fecha_vencimiento: string | null;
+  estado:            EstadoFacturaEmitida;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
+  concepto:          string | null;
+  observaciones:     string | null;
+  pdf_nombre:        string | null;
+  pdf_mime_type:      string | null;
+  pdf_tamanio:        number | null;
+  created_at:        string;
+  updated_at:        string;
+  deleted_at:        string | null;
+  // Resumen calculado — siempre presente en list/detail
+  total_cobrado:     number;
+  saldo_pendiente:   number;
+  cantidad_cobros:   number;
+  // Solo en detail (y en la respuesta de create/update)
+  cobros?:           CobroFacturaEmitida[];
+  repartos?:         RepartoFacturaEmitida[];
+}
+
+export interface ClienteFacturacionBusqueda {
+  cliente_nombre:    string;
+  cliente_cuit:      string | null;
+  condicion_cliente: CondicionCliente | null;
+}
+
+export interface FacturasEmitidasResponse {
+  items:      FacturaEmitida[];
+  total:      number;
+  page:       number;
+  limit:      number;
+  totalPages: number;
+}
+
+export interface ResumenFacturasEmitidas {
+  total_emitido:              number;
+  total_cobrado:               number;
+  total_pendiente:              number;
+  vencidas_sin_cobrar:          number;
+  vencidas_sin_cobrar_monto:    number;
+  por_estado:                   Record<EstadoFacturaEmitida, number>;
+  por_mes:                      { mes: string; total_emitido: number; total_cobrado: number }[];
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 // Subconjunto devuelto por GET /api/auth/me y POST /api/auth/login
 
@@ -1656,7 +1753,7 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO';
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -183,4 +183,30 @@ export const PRESTAMO_LABEL: Record<EstadoPrestamo, string> = {
 
 export function PrestamoEstadoBadge({ estado }: { estado: EstadoPrestamo }) {
   return <Badge variant={PRESTAMO_VARIANT[estado]}>{PRESTAMO_LABEL[estado]}</Badge>;
+}
+
+// ── Facturación emitida a clientes ────────────────────────────────────────────
+
+const FACTURA_EMITIDA_VARIANT: Record<EstadoFacturaEmitida, VariantProps<typeof badgeVariants>['variant']> = {
+  EMITIDA:         'muted',
+  COBRADA_PARCIAL: 'warning',
+  COBRADA:         'success',
+  INCOBRABLE:      'destructive',
+  ANULADA:         'muted',
+};
+
+export const FACTURA_EMITIDA_LABEL: Record<EstadoFacturaEmitida, string> = {
+  EMITIDA:         'Emitida',
+  COBRADA_PARCIAL: 'Cobrada parcial',
+  COBRADA:         'Cobrada',
+  INCOBRABLE:      'Incobrable',
+  ANULADA:         'Anulada',
+};
+
+export function FacturaEmitidaEstadoBadge({ estado }: { estado: EstadoFacturaEmitida }) {
+  return (
+    <Badge variant={FACTURA_EMITIDA_VARIANT[estado]} className={cn((estado === 'ANULADA' || estado === 'INCOBRABLE') && 'line-through')}>
+      {FACTURA_EMITIDA_LABEL[estado]}
+    </Badge>
+  );
 }

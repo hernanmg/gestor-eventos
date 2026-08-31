@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
 import { useAlertasFacturas } from '@/hooks/useFacturas';
 import { useAlertasFlota } from '@/hooks/useFlota';
+import { useResumenFacturasEmitidas } from '@/hooks/useFacturasEmitidas';
 import NotificacionesBell from './NotificacionesBell';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoBlobUrl } from '@/hooks/useEmpresas';
@@ -54,6 +55,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const { data: alertasData }        = useAlertasDashboard();
   const { data: stockAlertasData }   = useAlertasStock();
   const { data: facturasAlertas }    = useAlertasFacturas();
+  const { data: facturasEmitidasResumen } = useResumenFacturasEmitidas();
   const { data: flotaAlertas }       = useAlertasFlota();
   const { data: pendSalida }         = usePendientesFirma('salida');
   const { data: pendLlegada }        = usePendientesFirma('llegada');
@@ -61,6 +63,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const errorCount      = (alertasData?.alertas ?? []).filter(a => a.severidad === 'ERROR').length;
   const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
   const facturasAlerts  = (facturasAlertas?.vencidas ?? 0) + (facturasAlertas?.vencen_pronto ?? 0);
+  const facturasEmitidasVencidas = facturasEmitidasResumen?.vencidas_sin_cobrar ?? 0;
   const flotaAlertCount = (flotaAlertas?.items ?? []).filter(a => a.urgencia === 'critical').length;
   const pendientesFirma = (pendSalida?.asignaciones.length ?? 0) + (pendLlegada?.asignaciones.length ?? 0) + (pendRetorno?.asignaciones.length ?? 0);
 
@@ -304,7 +307,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           )}
 
           {user.rol === 'ADMIN' && (
-            <NavLink to="/facturas" title={!isOpen ? 'Facturas' : undefined} className={navItem}>
+            <NavLink to="/facturas" title={!isOpen ? 'Facturas a Pagar' : undefined} className={navItem}>
               <div className="relative shrink-0">
                 <FileText size={18} />
                 {!isOpen && facturasAlerts > 0 && (
@@ -313,10 +316,31 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               </div>
               {isOpen && (
                 <>
-                  <span className="flex-1">Facturas</span>
+                  <span className="flex-1">Facturas a Pagar</span>
                   {facturasAlerts > 0 && (
                     <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
                       {facturasAlerts > 99 ? '99+' : facturasAlerts}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          )}
+
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/facturas-emitidas" title={!isOpen ? 'Facturas a Cobrar' : undefined} className={navItem}>
+              <div className="relative shrink-0">
+                <Receipt size={18} />
+                {!isOpen && facturasEmitidasVencidas > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                )}
+              </div>
+              {isOpen && (
+                <>
+                  <span className="flex-1">Facturas a Cobrar</span>
+                  {facturasEmitidasVencidas > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {facturasEmitidasVencidas > 99 ? '99+' : facturasEmitidasVencidas}
                     </span>
                   )}
                 </>
