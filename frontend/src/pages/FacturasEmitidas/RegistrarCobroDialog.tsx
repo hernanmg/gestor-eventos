@@ -5,6 +5,7 @@ import { useRegistrarCobro } from '@/hooks/useFacturasEmitidas';
 import { useCuentasEmpresa } from '@/hooks/useCaja';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { FORMAS_PAGO } from './labels';
 import type { Moneda } from '@/types';
@@ -82,7 +83,7 @@ export default function RegistrarCobroDialog({ facturaId, saldoPendiente, moneda
           </div>
           <div>
             <label className={label}>Monto * (máx. {formatCurrency(saldoPendiente, moneda)})</label>
-            <input type="number" min={0.01} max={saldoPendiente} step={0.01} value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className={input} />
+            <MoneyInput value={form.monto} onChange={v => setForm(f => ({ ...f, monto: v }))} className={input} />
           </div>
           <div className="col-span-2">
             <label className={label}>Forma de cobro</label>

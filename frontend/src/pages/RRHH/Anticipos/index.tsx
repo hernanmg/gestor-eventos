@@ -6,6 +6,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { TipoAnticipo } from '@/types';
 
@@ -65,7 +66,7 @@ function AnticipoDialog({ open, onClose, empleadoIdFijo }: { open: boolean; onCl
                 {Object.entries(TIPO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <div><label className={labelCls}>Monto *</label><input type="number" step="0.01" min="0.01" value={form.monto} onChange={e => setForm(p => ({ ...p, monto: e.target.value }))} className={inputCls} required /></div>
+            <div><label className={labelCls}>Monto *</label><MoneyInput value={form.monto} onChange={v => setForm(p => ({ ...p, monto: v }))} className={inputCls} required /></div>
           </div>
           <div><label className={labelCls}>Fecha *</label><input type="date" value={form.fecha} onChange={e => setForm(p => ({ ...p, fecha: e.target.value }))} className={inputCls} required /></div>
           <div><label className={labelCls}>Motivo</label><input value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))} className={inputCls} /></div>

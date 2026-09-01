@@ -5,6 +5,8 @@ import {
   type EmpleadoPayload, type EmpleadoFiltros,
 } from '@/hooks/useRRHH';
 import PrestamosSection from '@/components/domain/PrestamosSection';
+import CuitInput from '@/components/ui/CuitInput';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -117,6 +119,17 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
     },
   });
 
+  // Igual que f(), pero para los MoneyInput — EmpleadoPayload tipa estos
+  // campos como number, pero el form los mantiene como string crudo mientras
+  // se edita (se convierten recién en handleSubmit vía numOrNull/Number).
+  const money = (key: keyof EmpleadoPayload) => ({
+    value:    String((form[key] ?? '') as string | number),
+    onChange: (v: string) => {
+      setForm(p => ({ ...p, [key]: v }));
+      if (fieldErrors?.[key]) setFieldErrors(p => p && { ...p, [key]: '' });
+    },
+  });
+
   // Mensaje de error debajo del input correspondiente, si el último submit
   // devolvió un 400 con detalle por campo (validación Zod del backend).
   const fieldError = (key: keyof EmpleadoPayload) =>
@@ -167,7 +180,7 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
             <div><label className={labelCls}>Nombre *</label><input {...f('nombre')} className={inputCls} required />{fieldError('nombre')}</div>
             <div><label className={labelCls}>Apellido *</label><input {...f('apellido')} className={inputCls} required />{fieldError('apellido')}</div>
             <div><label className={labelCls}>DNI *</label><input {...f('dni')} className={inputCls} required />{fieldError('dni')}</div>
-            <div><label className={labelCls}>CUIT</label><input {...f('cuit')} className={inputCls} />{fieldError('cuit')}</div>
+            <div><label className={labelCls}>CUIT</label><CuitInput value={String(form.cuit ?? '')} onChange={v => { setForm(p => ({ ...p, cuit: v })); if (fieldErrors?.cuit) setFieldErrors(p => p && { ...p, cuit: '' }); }} className={inputCls} />{fieldError('cuit')}</div>
             <div><label className={labelCls}>Email</label><input type="email" {...f('email')} className={inputCls} />{fieldError('email')}</div>
             <div><label className={labelCls}>Teléfono</label><input {...f('telefono')} className={inputCls} />{fieldError('telefono')}</div>
           </div>
@@ -203,18 +216,18 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
 
             {form.tipo_liquidacion === 'LINEAL' ? (
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={labelCls}>Valor hora</label><input type="number" step="0.01" min="0" {...f('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
-                <div><label className={labelCls}>Valor hora extra</label><input type="number" step="0.01" min="0" {...f('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
+                <div><label className={labelCls}>Valor hora</label><MoneyInput {...money('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
+                <div><label className={labelCls}>Valor hora extra</label><MoneyInput {...money('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={labelCls}>Valor jornada completa ($)</label><input type="number" step="0.01" min="0" {...f('valor_jornada_completa')} className={inputCls} />{fieldError('valor_jornada_completa')}</div>
+                <div><label className={labelCls}>Valor jornada completa ($)</label><MoneyInput {...money('valor_jornada_completa')} className={inputCls} />{fieldError('valor_jornada_completa')}</div>
                 <div><label className={labelCls}>Umbral horas jornada completa</label><input type="number" step="0.5" min="0" {...f('umbral_horas_jornada')} className={inputCls} placeholder="ej: 10" />{fieldError('umbral_horas_jornada')}</div>
-                <div><label className={labelCls}>Valor media jornada ($)</label><input type="number" step="0.01" min="0" {...f('valor_media_jornada')} className={inputCls} />{fieldError('valor_media_jornada')}</div>
+                <div><label className={labelCls}>Valor media jornada ($)</label><MoneyInput {...money('valor_media_jornada')} className={inputCls} />{fieldError('valor_media_jornada')}</div>
                 <div><label className={labelCls}>Umbral horas media jornada</label><input type="number" step="0.5" min="0" {...f('umbral_horas_media')} className={inputCls} placeholder="ej: 5" />{fieldError('umbral_horas_media')}</div>
-                <div><label className={labelCls}>Valor hora extra sobre jornada ($)</label><input type="number" step="0.01" min="0" {...f('valor_hora_extra_jornada')} className={inputCls} />{fieldError('valor_hora_extra_jornada')}</div>
+                <div><label className={labelCls}>Valor hora extra sobre jornada ($)</label><MoneyInput {...money('valor_hora_extra_jornada')} className={inputCls} />{fieldError('valor_hora_extra_jornada')}</div>
                 {form.categoria === 'CHOFER' && (
-                  <div><label className={labelCls}>Valor por viaje ($)</label><input type="number" step="0.01" min="0" {...f('valor_viaje')} className={inputCls} />{fieldError('valor_viaje')}</div>
+                  <div><label className={labelCls}>Valor por viaje ($)</label><MoneyInput {...money('valor_viaje')} className={inputCls} />{fieldError('valor_viaje')}</div>
                 )}
               </div>
             )}

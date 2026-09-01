@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { parseMoney } from '@/lib/formatters';
 import type {
   RubroEvento, RubroEventoAsignacionStock, PedidoItem, EstadoRubroEvento,
   ProveedorBusqueda, Moneda, Evento, UbicacionStock, SugerenciaStock,
@@ -574,8 +575,8 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
           <input
             value={presupuesto}
             onChange={e => setPresupuesto(e.target.value)}
-            onBlur={() => saveField('presupuesto', presupuesto !== '' ? parseFloat(presupuesto) : null)}
-            type="number" step="0.01" min="0"
+            onBlur={() => saveField('presupuesto', presupuesto !== '' ? parseMoney(presupuesto) : null)}
+            type="text" inputMode="decimal"
             className={cn(inputCls, 'text-right')}
           />
         </td>

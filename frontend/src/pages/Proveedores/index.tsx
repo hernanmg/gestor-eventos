@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import CuitInput from '@/components/ui/CuitInput';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
 
@@ -108,7 +109,7 @@ function ProveedorDialog({
             </div>
             <div>
               <label className={label}>CUIT</label>
-              <input {...f('cuit')} className={input} placeholder="30-12345678-9" />
+              <CuitInput value={form.cuit} onChange={v => setForm(p => ({ ...p, cuit: v }))} className={input} />
             </div>
           </div>
           <div>

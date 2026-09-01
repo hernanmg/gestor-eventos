@@ -13,7 +13,8 @@ import {
 import { Button } from '@/components/ui/button';
 import MovimientoCajaTable from '@/components/domain/MovimientoCajaTable';
 import CobrarEcheqDialog from '@/components/domain/CobrarEcheqDialog';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Echeq, Moneda, TipoCuenta, PosicionConsolidada } from '@/types';
 
@@ -98,20 +99,18 @@ function AddCuentaDialog({
             </div>
             <div>
               <label className={label}>Saldo inicial</label>
-              <input
-                type="number" min="0" step="0.01"
+              <MoneyInput
                 value={saldoInicial}
-                onChange={e => setSaldoInicial(e.target.value)}
-                className={cn(input, 'text-right')}
+                onChange={setSaldoInicial}
+                className={input}
               />
             </div>
           </div>
           <div>
             <label className={label}>Saldo mínimo (opcional)</label>
-            <input
-              type="number" min="0" step="0.01"
+            <MoneyInput
               value={saldoMinimo}
-              onChange={e => setSaldoMinimo(e.target.value)}
+              onChange={setSaldoMinimo}
               className={input}
               placeholder="Ej: 500000"
             />
@@ -318,12 +317,10 @@ function TransferenciaDialog({
           </div>
           <div>
             <label className={label}>Importe *</label>
-            <input
-              type="number" min="0.01" step="0.01"
+            <MoneyInput
               value={importe}
-              onChange={e => setImporte(e.target.value)}
-              className={cn(input, 'text-right')}
-              placeholder="0.00"
+              onChange={setImporte}
+              className={input}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -598,7 +595,7 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
 
   const handleSaldoSave = () => {
     if (editSaldo === null || !selectedCuenta) return;
-    const val = parseFloat(editSaldo);
+    const val = parseMoney(editSaldo);
     if (!isNaN(val) && val !== selectedCuenta.saldo_inicial) {
       updateCuenta.mutate({ id: selectedCuenta.id, data: { saldo_inicial: val } });
     }
@@ -747,8 +744,8 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
                 {canEdit && editSaldo !== null ? (
                   <input
                     autoFocus
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={editSaldo}
                     onChange={e => setEditSaldo(e.target.value)}
                     onBlur={handleSaldoSave}

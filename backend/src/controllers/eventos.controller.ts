@@ -18,7 +18,13 @@ const createSchema = z.object({
   dias_desmontaje: z.number().int().nonnegative().optional(),
   socios:          z.array(socioSchema).default([]),
   moneda_base:     z.enum(['ARS', 'USD']).default('ARS'),
-});
+  es_informal:     z.boolean().optional(),
+  facturar:        z.boolean().nullable().optional(),
+  facturar_notas:  z.string().nullable().optional(),
+}).refine(
+  data => !data.es_informal || !!data.fecha_inicio,
+  { message: 'La fecha es requerida', path: ['fecha_inicio'] },
+);
 
 const updateSchema = z.object({
   nombre:          z.string().min(1).optional(),
@@ -29,6 +35,11 @@ const updateSchema = z.object({
   socios:          z.array(socioSchema).optional(),
   moneda_base:     z.enum(['ARS', 'USD']).optional(),
   estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
+});
+
+const marcarFacturarSchema = z.object({
+  facturar: z.boolean(),
+  notas:    z.string().nullable().optional(),
 });
 
 function sociosSumOk(socios: { porcentaje: number }[]): boolean {
@@ -58,6 +69,15 @@ export async function list(req: Request, res: Response) {
   // quedó reservado para uso futuro (matriz de permisos: página vs botón).
   const where: Prisma.EventoWhereInput = { ...withTenant(req.empresaId!), deleted_at: null };
 
+  // ?es_informal=true|false|all (default: all)
+  const esInformalParam = req.query.es_informal;
+  if (esInformalParam === 'true')  where.es_informal = true;
+  if (esInformalParam === 'false') where.es_informal = false;
+
+  // ?facturar=null → eventos informales sin decidir (usado por el link de la
+  // notificación de facturación pendiente)
+  if (req.query.facturar === 'null') where.facturar = null;
+
   const eventos = await prisma.evento.findMany({
     where,
     orderBy: { created_at: 'desc' },
@@ -82,7 +102,10 @@ export async function create(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base } = parsed.data;
+  const {
+    nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base,
+    es_informal, facturar, facturar_notas,
+  } = parsed.data;
   if (!sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -99,6 +122,9 @@ export async function create(req: Request, res: Response) {
         dias_desmontaje: dias_desmontaje ?? 0,
         socios,
         moneda_base:  moneda_base as Moneda,
+        es_informal:  es_informal ?? false,
+        facturar:     facturar ?? null,
+        facturar_notas: facturar_notas ?? null,
         created_by:   req.user!.id,
         updated_by:   req.user!.id,
       },
@@ -164,6 +190,49 @@ export async function update(req: Request, res: Response) {
       descripcion:  `Actualizó el evento "${existing.nombre}"`,
       datosAntes:   { nombre: existing.nombre, estado: existing.estado, moneda_base: existing.moneda_base },
       datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return updated;
+  });
+
+  res.json(mapEvento(evento));
+}
+
+// ── Marcar decisión de facturación (eventos informales) ──────────────────────
+
+export async function marcarFacturar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const parsed = marcarFacturarSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const { facturar, notas } = parsed.data;
+
+  const evento = await prisma.$transaction(async tx => {
+    const updated = await tx.evento.update({
+      where: { id },
+      data: {
+        facturar,
+        ...(notas !== undefined && { facturar_notas: notas }),
+        updated_by: req.user!.id,
+      },
+      include: includeCount,
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'UPDATE',
+      entidad:      'Evento',
+      entidadId:    id,
+      eventoId:     id,
+      descripcion:  `Marcó facturación del evento "${existing.nombre}": ${facturar ? 'sí' : 'no'}`,
+      datosAntes:   { facturar: existing.facturar, facturar_notas: existing.facturar_notas },
+      datosDespues: { facturar, facturar_notas: notas },
       ip:           req.ip,
       tx:           tx as any,
     });

@@ -261,11 +261,33 @@ async function resolveFacturasEmitidasVencidas(empresaId: number, hoy: Date): Pr
   });
 }
 
+async function resolveEventosSinFacturar(empresaId: number, hace1Dia: Date): Promise<NotificacionItem[]> {
+  const eventos = await prisma.evento.findMany({
+    where: {
+      empresa_id: empresaId, deleted_at: null,
+      es_informal: true, facturar: null,
+      created_at: { lt: hace1Dia },
+    },
+    select: { id: true, nombre: true, created_at: true },
+    orderBy: { created_at: 'asc' },
+  });
+  return eventos.map(e => ({
+    id:          `evento-sin-facturar-${e.id}`,
+    tipo:        'EVENTO_SIN_FACTURAR',
+    titulo:      `Evento sin decisión de facturación: ${e.nombre}`,
+    descripcion: `Cargado el ${e.created_at.toLocaleDateString('es-AR')} — todavía sin marcar si se factura`,
+    urgencia:    'warning' as Urgencia,
+    link:        '/eventos?es_informal=true&facturar=null',
+    fecha:       e.created_at,
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
   const empresaId = req.empresaId!;
   const hoy = new Date();
+  const hace1Dia  = new Date(hoy.getTime() - 1 * MS_DIA);
   const hace3Dias = new Date(hoy.getTime() - 3 * MS_DIA);
   const hace7Dias = new Date(hoy.getTime() - 7 * MS_DIA);
   const en7Dias   = new Date(hoy.getTime() + 7 * MS_DIA);
@@ -282,6 +304,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveCuotasAFIP(empresaId, hoy, en7Dias),
     resolveCuotasPrestamo(empresaId, hoy, en7Dias),
     resolveFacturasEmitidasVencidas(empresaId, hoy),
+    resolveEventosSinFacturar(empresaId, hace1Dia),
   ]);
 
   const items = resultados

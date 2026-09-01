@@ -10,6 +10,7 @@ import { useParteDiario } from '@/hooks/useParteDiario';
 import { useAuth } from '@/hooks/useAuth';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import type { LineaComida, TipoComida, ProveedorBusqueda } from '@/types';
@@ -90,7 +91,19 @@ function LineaRow({ linea, canEdit, onSave, onDelete }: {
       <td className={cell}>{TIPO_LABEL[linea.tipo]}</td>
       <td className={cell}>{linea.area}</td>
       <td className={cn(cell, 'w-24')}><input type="number" min="0" step="1" {...field('cantidad')} className={cn(cellInputCls, 'text-right')} /></td>
-      <td className={cn(cell, 'w-28')}><input type="number" min="0" step="0.01" {...field('valor_unitario')} className={cn(cellInputCls, 'text-right')} /></td>
+      <td className={cn(cell, 'w-28')}>
+        <MoneyInput
+          value={local.valor_unitario}
+          disabled={!canEdit}
+          onChange={v => {
+            setLocal(p => ({ ...p, valor_unitario: v }));
+            if (v !== lineaToLocal(linea).valor_unitario) {
+              onSave(linea.id, { valor_unitario: v !== '' ? Number(v) : null });
+            }
+          }}
+          className={cn(cellInputCls, 'text-right')}
+        />
+      </td>
       <td className={cn(cell, 'text-right text-sm text-muted-foreground')}>{linea.valor_unitario !== null ? subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '—'}</td>
       <td className={cell}><input {...field('detalle')} placeholder="—" className={cellInputCls} /></td>
       <td className="w-8 px-1">
@@ -140,7 +153,7 @@ function AddLineaForm({ onAdd, isPending }: { onAdd: (data: LineaComidaPayload) 
         <datalist id="areas-sugeridas">{AREAS_SUGERIDAS.map(a => <option key={a} value={a} />)}</datalist>
       </td>
       <td className="px-2 py-1.5 w-24"><input type="number" min="0" step="1" value={cantidad} onChange={e => setCantidad(e.target.value)} placeholder="0" className={cn(cellInputCls, 'text-right')} /></td>
-      <td className="px-2 py-1.5 w-28"><input type="number" min="0" step="0.01" value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} placeholder="0.00" className={cn(cellInputCls, 'text-right')} /></td>
+      <td className="px-2 py-1.5 w-28"><MoneyInput value={valorUnitario} onChange={setValorUnitario} className={cn(cellInputCls, 'text-right')} /></td>
       <td className="px-2 py-1.5" />
       <td className="px-2 py-1.5"><input value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="Detalle" className={cellInputCls} /></td>
       <td className="w-8 px-1">

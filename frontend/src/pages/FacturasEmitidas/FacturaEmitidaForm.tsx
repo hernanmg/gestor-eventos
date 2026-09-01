@@ -5,7 +5,9 @@ import { useCreateFacturaEmitida, useUploadPdfFacturaEmitida, type RepartoPayloa
 import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
+import MoneyInput from '@/components/ui/MoneyInput';
 import ClienteCombobox from './ClienteCombobox';
+import CuitInput from '@/components/ui/CuitInput';
 import { TIPO_COMPROBANTE_LABEL, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
 import type { TipoComprobanteEmitido, CondicionCliente, Moneda } from '@/types';
 import { cn } from '@/lib/utils';
@@ -181,7 +183,7 @@ function Paso2({
         </div>
         <div>
           <label className={labelCls}>CUIT del cliente</label>
-          <input value={value.cliente_cuit} onChange={e => onChange({ ...value, cliente_cuit: e.target.value })} className={inputCls} />
+          <CuitInput value={value.cliente_cuit} onChange={v => onChange({ ...value, cliente_cuit: v })} className={inputCls} />
         </div>
         <div>
           <label className={labelCls}>Condición ante AFIP</label>
@@ -193,12 +195,12 @@ function Paso2({
 
         <div>
           <label className={labelCls}>Neto gravado ($)</label>
-          <input type="number" min={0} step={0.01} value={value.neto_gravado} onChange={e => onChange({ ...value, neto_gravado: e.target.value })} className={inputCls} />
+          <MoneyInput value={value.neto_gravado} onChange={v => onChange({ ...value, neto_gravado: v })} className={inputCls} />
         </div>
         <div>
           <label className={labelCls}>IVA ($)</label>
           <div className="flex gap-1">
-            <input type="number" min={0} step={0.01} value={value.iva} onChange={e => onChange({ ...value, iva: e.target.value })} className={inputCls} />
+            <MoneyInput value={value.iva} onChange={v => onChange({ ...value, iva: v })} className={inputCls} />
           </div>
           <div className="flex gap-1 mt-1">
             {PORCENTAJES_IVA.map(pct => (
@@ -211,14 +213,13 @@ function Paso2({
         </div>
         <div>
           <label className={labelCls}>Otros impuestos ($)</label>
-          <input type="number" min={0} step={0.01} value={value.otros_impuestos} onChange={e => onChange({ ...value, otros_impuestos: e.target.value })} className={inputCls} />
+          <MoneyInput value={value.otros_impuestos} onChange={v => onChange({ ...value, otros_impuestos: v })} className={inputCls} />
         </div>
         <div>
           <label className={labelCls}>Total *</label>
-          <input
-            type="number" min={0} step={0.01}
+          <MoneyInput
             value={value.total}
-            onChange={e => onChange({ ...value, total: e.target.value, totalManual: true })}
+            onChange={v => onChange({ ...value, total: v, totalManual: true })}
             className={inputCls}
           />
         </div>
@@ -263,7 +264,7 @@ function Paso2({
               {value.repartos.map((r, idx) => (
                 <div key={idx} className="grid grid-cols-[1fr_1fr_70px_100px_auto] gap-1.5 items-center">
                   <input placeholder="Razón social" value={r.razon_social} onChange={e => updateReparto(idx, { razon_social: e.target.value })} className={cn(inputCls, 'text-xs')} />
-                  <input placeholder="CUIT" value={r.cuit ?? ''} onChange={e => updateReparto(idx, { cuit: e.target.value })} className={cn(inputCls, 'text-xs')} />
+                  <CuitInput placeholder="CUIT" value={r.cuit ?? ''} onChange={v => updateReparto(idx, { cuit: v })} className={cn(inputCls, 'text-xs')} />
                   <input type="number" min={0} max={100} placeholder="%" value={r.porcentaje || ''} onChange={e => updateReparto(idx, { porcentaje: Number(e.target.value) })} className={cn(inputCls, 'text-xs')} />
                   <span className="text-xs text-muted-foreground text-right pr-1">${r.monto.toLocaleString('es-AR')}</span>
                   <button type="button" onClick={() => removeReparto(idx)} className="text-destructive hover:bg-destructive/10 rounded p-1"><Trash2 size={12} /></button>

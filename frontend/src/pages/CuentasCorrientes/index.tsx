@@ -15,6 +15,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
+import CuitInput from '@/components/ui/CuitInput';
 import type { CuentaCorriente, TipoTercero, MonedaCCC, ProveedorBusqueda } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -208,7 +209,7 @@ function CuentaFormDialog({ cuentaId, onClose }: { cuentaId: number | null; onCl
             </div>
             <div>
               <label className={labelCls}>CUIT</label>
-              <input value={form.terceroCuit} onChange={e => setField('terceroCuit', e.target.value)} className={inputCls} />
+              <CuitInput value={form.terceroCuit} onChange={v => setField('terceroCuit', v)} className={inputCls} />
             </div>
           </div>
         )}

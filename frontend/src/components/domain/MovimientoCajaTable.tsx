@@ -8,7 +8,8 @@ import {
 import { SaldoCell } from './SaldoCell';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { MovimientoCaja, Moneda } from '@/types';
 
@@ -41,8 +42,8 @@ function buildUpdatePayload(field: EditableField, value: string) {
   switch (field) {
     case 'fecha':       return { fecha:       value || null };
     case 'descripcion': return { descripcion: value || null };
-    case 'debe':        return { debe:        parseFloat(value) || 0 };
-    case 'haber':       return { haber:       parseFloat(value) || 0 };
+    case 'debe':        return { debe:        parseMoney(value) || 0 };
+    case 'haber':       return { haber:       parseMoney(value) || 0 };
   }
 }
 
@@ -54,7 +55,7 @@ function EditableCell({
 }: {
   value:           string;
   display:         React.ReactNode;
-  type:            'text' | 'number' | 'date';
+  type:            'text' | 'number' | 'date' | 'money';
   editing:         boolean;
   className?:      string;
   inputClassName?: string;
@@ -68,7 +69,8 @@ function EditableCell({
       <td className={className}>
         <input
           autoFocus
-          type={type}
+          type={type === 'money' ? 'text' : type}
+          inputMode={type === 'money' ? 'decimal' : undefined}
           value={value}
           step={type === 'number' ? '0.01' : undefined}
           min={type === 'number' ? '0' : undefined}
@@ -293,7 +295,7 @@ function Row({
       <EditableCell
         value={active('debe') ? editCell!.value : getCellValue(mov, 'debe')}
         display={<span className="tabular-nums">{formatCurrency(Number(mov.debe), moneda)}</span>}
-        type="number"
+        type="money"
         editing={active('debe') && !isTransfer}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -305,7 +307,7 @@ function Row({
       <EditableCell
         value={active('haber') ? editCell!.value : getCellValue(mov, 'haber')}
         display={<span className="tabular-nums">{formatCurrency(Number(mov.haber), moneda)}</span>}
-        type="number"
+        type="money"
         editing={active('haber') && !isTransfer}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -472,19 +474,17 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <input
-                    type="number" min="0" step="0.01" placeholder="0.00"
+                  <MoneyInput
                     value={newRowData.debe}
-                    onChange={e => setNewRowData(p => ({ ...p, debe: e.target.value }))}
-                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                    onChange={v => setNewRowData(p => ({ ...p, debe: v }))}
+                    className="text-xs"
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <input
-                    type="number" min="0" step="0.01" placeholder="0.00"
+                  <MoneyInput
                     value={newRowData.haber}
-                    onChange={e => setNewRowData(p => ({ ...p, haber: e.target.value }))}
-                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                    onChange={v => setNewRowData(p => ({ ...p, haber: v }))}
+                    className="text-xs"
                   />
                 </td>
                 <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>

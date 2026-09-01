@@ -9,7 +9,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { EstadoBadge, MarcarPendienteDialog, ConfirmarRendicionDialog } from '@/components/domain/CuentaEstadoControls';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { MovimientoCaja } from '@/types';
 
@@ -82,11 +83,11 @@ function EditarMovimientoDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Debe</label>
-              <input type="number" min="0" step="0.01" value={form.debe} onChange={e => setForm(p => ({ ...p, debe: e.target.value }))} className={cn(inputCls, 'text-right')} />
+              <MoneyInput value={form.debe} onChange={v => setForm(p => ({ ...p, debe: v }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Haber</label>
-              <input type="number" min="0" step="0.01" value={form.haber} onChange={e => setForm(p => ({ ...p, haber: e.target.value }))} className={cn(inputCls, 'text-right')} />
+              <MoneyInput value={form.haber} onChange={v => setForm(p => ({ ...p, haber: v }))} className={inputCls} />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -133,7 +134,7 @@ export default function CuentaDetallePage() {
   const handleSaldoMinimoSave = () => {
     if (editSaldoMinimo === null) return;
     const trimmed = editSaldoMinimo.trim();
-    const val = trimmed === '' ? null : parseFloat(trimmed);
+    const val = trimmed === '' ? null : parseMoney(trimmed);
     updateCuenta.mutate({ saldo_minimo: val });
     setEditSaldoMinimo(null);
   };
@@ -257,8 +258,8 @@ export default function CuentaDetallePage() {
               {canEdit && editSaldoMinimo !== null ? (
                 <input
                   autoFocus
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={editSaldoMinimo}
                   onChange={e => setEditSaldoMinimo(e.target.value)}
                   onBlur={handleSaldoMinimoSave}
@@ -410,10 +411,10 @@ export default function CuentaDetallePage() {
                   </td>
                   <td className="px-2 py-1 text-xs text-muted-foreground italic">Sin evento</td>
                   <td className="px-2 py-1">
-                    <input type="number" min="0" step="0.01" value={newRowData.debe} onChange={e => setNewRowData(p => ({ ...p, debe: e.target.value }))} className={cn(inputCls, 'text-right')} />
+                    <MoneyInput value={newRowData.debe} onChange={v => setNewRowData(p => ({ ...p, debe: v }))} className={inputCls} />
                   </td>
                   <td className="px-2 py-1">
-                    <input type="number" min="0" step="0.01" value={newRowData.haber} onChange={e => setNewRowData(p => ({ ...p, haber: e.target.value }))} className={cn(inputCls, 'text-right')} />
+                    <MoneyInput value={newRowData.haber} onChange={v => setNewRowData(p => ({ ...p, haber: v }))} className={inputCls} />
                   </td>
                   <td />
                   <td className="px-1 py-1">

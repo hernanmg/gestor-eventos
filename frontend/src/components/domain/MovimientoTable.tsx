@@ -22,7 +22,8 @@ import { SaldoCell } from './SaldoCell';
 import { EcheqEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { RUBROS_SISTEMA } from '@/lib/rubrosConstants';
 import type { Echeq, Movimiento, Rubro, Moneda, ProveedorBusqueda, EstadoMovimiento } from '@/types';
@@ -101,11 +102,11 @@ function buildUpdatePayload(field: EditableField, value: string) {
     case 'fecha':                 return { fecha:                 value || null };
     case 'concepto':              return { concepto:              value || null };
     case 'descripcion':           return { descripcion:           value || null };
-    case 'debe':                  return { debe:                  parseFloat(value) || 0 };
-    case 'haber':                 return { haber:                 parseFloat(value) || 0 };
+    case 'debe':                  return { debe:                  parseMoney(value) || 0 };
+    case 'haber':                 return { haber:                 parseMoney(value) || 0 };
     case 'tasa_cambio':           return { tasa_cambio:           value ? parseFloat(value) : null };
     case 'impuesto_subcategoria': return { impuesto_subcategoria: value || null };
-    case 'presupuesto':           return { presupuesto:           value ? parseFloat(value) : null };
+    case 'presupuesto':           return { presupuesto:           value ? parseMoney(value) : null };
     case 'fecha_pago':            return { fecha_pago:            value || null };
   }
 }
@@ -118,7 +119,7 @@ function EditableCell({
 }: {
   value:          string;
   display:        React.ReactNode;
-  type:           'text' | 'number' | 'date';
+  type:           'text' | 'number' | 'date' | 'money';
   editing:        boolean;
   className?:     string;
   inputClassName?: string;
@@ -132,7 +133,8 @@ function EditableCell({
       <td className={className}>
         <input
           autoFocus
-          type={type}
+          type={type === 'money' ? 'text' : type}
+          inputMode={type === 'money' ? 'decimal' : undefined}
           value={value}
           step={type === 'number' ? '0.01' : undefined}
           min={type === 'number' ? '0' : undefined}
@@ -313,7 +315,7 @@ function SortableRow({
       <EditableCell
         value={active('presupuesto') ? editCell!.value : getCellValue(mov, 'presupuesto')}
         display={<span className="tabular-nums">{mov.presupuesto !== null ? formatCurrency(mov.presupuesto, mov.moneda) : <span className="text-muted-foreground/40">—</span>}</span>}
-        type="number"
+        type="money"
         editing={active('presupuesto')}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -350,7 +352,7 @@ function SortableRow({
             {formatCurrency(Number(mov.debe), mov.moneda)}
           </span>
         }
-        type="number"
+        type="money"
         editing={active('debe')}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -371,7 +373,7 @@ function SortableRow({
             {formatCurrency(Number(mov.haber), mov.moneda)}
           </span>
         }
-        type="number"
+        type="money"
         editing={active('haber')}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -734,11 +736,10 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                     <td className="px-2 py-1 text-xs text-muted-foreground">Pendiente</td>
                     {/* Presupuesto */}
                     <td className="px-2 py-1">
-                      <input
-                        type="number" min="0" step="0.01" placeholder="0.00"
+                      <MoneyInput
                         value={newRowData.presupuesto}
-                        onChange={e => setNewRowData(p => ({ ...p, presupuesto: e.target.value }))}
-                        className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                        onChange={v => setNewRowData(p => ({ ...p, presupuesto: v }))}
+                        className="text-xs"
                       />
                     </td>
                     {/* Real (n/a hasta guardar) */}
@@ -748,11 +749,10 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                     {/* DEBE: activo para INGRESO, vacío para EGRESO */}
                     <td className="px-2 py-1">
                       {rubro.tipo === 'INGRESO' ? (
-                        <input
-                          type="number" min="0" step="0.01" placeholder="0.00"
+                        <MoneyInput
                           value={newRowData.monto}
-                          onChange={e => setNewRowData(p => ({ ...p, monto: e.target.value }))}
-                          className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                          onChange={v => setNewRowData(p => ({ ...p, monto: v }))}
+                          className="text-xs"
                         />
                       ) : (
                         <span className="block text-xs text-right text-muted-foreground px-1">0.00</span>
@@ -761,11 +761,10 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                     {/* HABER: activo para EGRESO, vacío para INGRESO */}
                     <td className="px-2 py-1">
                       {rubro.tipo === 'EGRESO' ? (
-                        <input
-                          type="number" min="0" step="0.01" placeholder="0.00"
+                        <MoneyInput
                           value={newRowData.monto}
-                          onChange={e => setNewRowData(p => ({ ...p, monto: e.target.value }))}
-                          className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                          onChange={v => setNewRowData(p => ({ ...p, monto: v }))}
+                          className="text-xs"
                         />
                       ) : (
                         <span className="block text-xs text-right text-muted-foreground px-1">0.00</span>

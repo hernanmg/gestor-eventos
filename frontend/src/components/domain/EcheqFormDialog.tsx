@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useCreateEcheq } from '@/hooks/useEcheqs';
 import ProveedorCombobox from './ProveedorCombobox';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
+import MoneyInput from '@/components/ui/MoneyInput';
 import type { Moneda, ProveedorBusqueda } from '@/types';
 
 interface Props {
@@ -116,11 +117,10 @@ export default function EcheqFormDialog({ eventoId, movimientoId, open, onClose 
             </div>
             <div>
               <label className={label}>Importe *</label>
-              <input
-                type="number" min="0.01" step="0.01"
-                {...field('importe')}
+              <MoneyInput
+                value={form.importe}
+                onChange={v => setForm(p => ({ ...p, importe: v }))}
                 className={input}
-                placeholder="0.00"
               />
             </div>
           </div>

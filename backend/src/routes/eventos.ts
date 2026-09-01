@@ -3,7 +3,7 @@ import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
-import { list, detail, create, update, remove, conciliatoria } from '../controllers/eventos.controller';
+import { list, detail, create, update, remove, conciliatoria, marcarFacturar } from '../controllers/eventos.controller';
 import {
   list as listMovimientos,
   listSinConciliar,
@@ -33,6 +33,7 @@ router.get('/:id',    requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandl
 router.post('/',      requireRole('ADMIN'), asyncHandler(create));
 router.put('/:id',    requireRole('ADMIN'), asyncHandler(update));
 router.delete('/:id', requireRole('ADMIN'), asyncHandler(remove));
+router.patch('/:id/marcar-facturar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(marcarFacturar));
 
 // Movimientos anidados bajo un evento
 router.get('/:id/movimientos',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listMovimientos));

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Upload, Building2 } from 'lucide-react';
@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import CuitInput from '@/components/ui/CuitInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { Empresa, Moneda } from '@/types';
 
@@ -207,7 +208,7 @@ type DatosFormData = z.infer<typeof datosSchema>;
 
 function DatosEmpresaSection({ empresa }: { empresa: Empresa }) {
   const updateEmpresa = useUpdateEmpresa();
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<DatosFormData>({
+  const { register, handleSubmit, reset, control, formState: { errors } } = useForm<DatosFormData>({
     resolver:      zodResolver(datosSchema),
     defaultValues: {
       razon_social: empresa.razon_social ?? '',
@@ -253,7 +254,13 @@ function DatosEmpresaSection({ empresa }: { empresa: Empresa }) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label className="mb-1">CUIT</Label>
-          <Input {...register('cuit')} placeholder="30-71234567-8" />
+          <Controller
+            name="cuit"
+            control={control}
+            render={({ field }) => (
+              <CuitInput value={field.value ?? ''} onChange={field.onChange} showOwnError={false} />
+            )}
+          />
           {errors.cuit && <p className="text-xs text-destructive mt-1">{errors.cuit.message}</p>}
         </div>
         <div>

@@ -8,6 +8,7 @@ import { useCuentasCorrientes, useCreateCuentaCorriente, type CuentaCorrientePay
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ServicioTallerEstadoBadge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { ServicioTaller, TipoServicioTaller } from '@/types';
@@ -195,7 +196,7 @@ function ServicioDialog({ open, servicio, onClose }: { open: boolean; servicio: 
               </div>
               <div>
                 <label className={labelCls}>Presupuesto inicial</label>
-                <input type="number" step="0.01" value={form.presupuesto} onChange={e => setForm(p => ({ ...p, presupuesto: e.target.value }))} className={inputCls} />
+                <MoneyInput value={form.presupuesto} onChange={v => setForm(p => ({ ...p, presupuesto: v }))} className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Cuenta corriente del taller</label>
@@ -256,7 +257,7 @@ function FinalizarDialog({ servicio, onClose }: { servicio: ServicioTaller | nul
           )}
           <div>
             <label className={labelCls}>Importe final *</label>
-            <input type="number" step="0.01" value={importe} onChange={e => setImporte(e.target.value)} className={inputCls} required />
+            <MoneyInput value={importe} onChange={setImporte} className={inputCls} required />
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">

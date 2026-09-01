@@ -195,6 +195,9 @@ export interface Evento {
   estado:          EstadoEvento;
   socios:          Socio[];
   moneda_base:     Moneda;
+  es_informal:     boolean;
+  facturar:        boolean | null;
+  facturar_notas:  string | null;
   created_at:      string;
   updated_at:      string;
   deleted_at:      string | null;
@@ -214,6 +217,19 @@ export interface EventoPayload {
   dias_desmontaje?: number;
   socios:          Socio[];
   moneda_base:     Moneda;
+  es_informal?:    boolean;
+  facturar?:       boolean | null;
+  facturar_notas?: string | null;
+}
+
+export interface CargaRapidaPayload {
+  nombre:          string;
+  fecha_inicio:    string;
+  tipo_trabajo?:   string | null;
+  cliente?:        string | null;
+  referente_id?:   number | null;
+  facturar:        boolean | null;
+  observaciones?:  string | null;
 }
 
 // ── Pre-Macro (wizard de creación de evento) ──────────────────────────────────

@@ -4,6 +4,7 @@ import { useActivos, useCreateActivo, useUpdateActivo, useDeleteActivo } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate } from '@/lib/formatters';
 import type { Activo, EstadoActivo } from '@/types';
@@ -100,7 +101,7 @@ function ActivoDialog({ open, activo, onClose }: { open: boolean; activo: Activo
             </div>
             <div>
               <label className={labelCls}>Valor de compra</label>
-              <input type="number" min={0} value={form.valor_compra} onChange={e => setForm(p => ({ ...p, valor_compra: e.target.value }))} className={inputCls} />
+              <MoneyInput value={form.valor_compra} onChange={v => setForm(p => ({ ...p, valor_compra: v }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Estado</label>

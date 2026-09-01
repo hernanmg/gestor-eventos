@@ -8,6 +8,7 @@ import {
 import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate } from '@/lib/formatters';
 import type { PanolItem, MovimientoPanol } from '@/types';
@@ -89,7 +90,7 @@ function PanolItemDialog({ open, item, onClose }: { open: boolean; item: PanolIt
             </div>
             <div>
               <label className={labelCls}>Valor</label>
-              <input type="number" min={0} value={form.valor} onChange={e => setForm(p => ({ ...p, valor: e.target.value }))} className={inputCls} />
+              <MoneyInput value={form.valor} onChange={v => setForm(p => ({ ...p, valor: v }))} className={inputCls} />
             </div>
             <div className="col-span-2">
               <label className={labelCls}>Descripción</label>

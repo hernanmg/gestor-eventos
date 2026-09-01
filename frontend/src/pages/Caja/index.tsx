@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EstadoBadge, MarcarPendienteDialog, ConfirmarRendicionDialog } from '@/components/domain/CuentaEstadoControls';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Moneda, TipoCuenta } from '@/types';
@@ -81,20 +82,18 @@ function NuevaCuentaEmpresaDialog({ open, onClose }: { open: boolean; onClose: (
             </div>
             <div>
               <label className={label}>Saldo inicial</label>
-              <input
-                type="number" min="0" step="0.01"
+              <MoneyInput
                 value={saldoInicial}
-                onChange={e => setSaldoInicial(e.target.value)}
-                className={cn(input, 'text-right')}
+                onChange={setSaldoInicial}
+                className={input}
               />
             </div>
           </div>
           <div>
             <label className={label}>Saldo mínimo (opcional)</label>
-            <input
-              type="number" min="0" step="0.01"
+            <MoneyInput
               value={saldoMinimo}
-              onChange={e => setSaldoMinimo(e.target.value)}
+              onChange={setSaldoMinimo}
               className={input}
               placeholder="Ej: 500000"
             />

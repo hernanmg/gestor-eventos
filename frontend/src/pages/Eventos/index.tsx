@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2, FileClock } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2, FileClock, Zap } from 'lucide-react';
 import { useEventos, useDeleteEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
 import { useCreatePreMacro, usePreMacroBorrador, useDiscardPreMacro } from '@/hooks/usePreMacro';
 import { useAuth } from '@/hooks/useAuth';
-import { EstadoBadge } from '@/components/ui/badge';
+import { EstadoBadge, InformalBadge, FacturarBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,13 +13,26 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import EventoForm from './EventoForm';
+import CargaRapidaDialog from './CargaRapidaDialog';
 import { formatDate } from '@/lib/formatters';
 import type { Evento } from '@/types';
 
 export default function EventosPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: eventos = [], isLoading } = useEventos();
+  const [searchParams] = useSearchParams();
+  const { data: eventosRaw = [], isLoading } = useEventos();
+
+  // Filtro por URL (?es_informal=true&facturar=null) — usado por el link de
+  // la campanita de notificaciones ("X eventos sin decisión de facturación").
+  const filtroEsInformal = searchParams.get('es_informal');
+  const filtroFacturar   = searchParams.get('facturar');
+  const eventos = eventosRaw.filter(e => {
+    if (filtroEsInformal === 'true'  && !e.es_informal) return false;
+    if (filtroEsInformal === 'false' &&  e.es_informal) return false;
+    if (filtroFacturar   === 'null'  &&  e.facturar !== null) return false;
+    return true;
+  });
   const { mutate: deleteEvento }          = useDeleteEvento();
   const { exportar }                            = useExportarExcel();
   const { exportar: exportPDF }                = useExportarPDF();
@@ -28,6 +41,7 @@ export default function EventosPage() {
 
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
+  const [cargaRapidaOpen, setCargaRapidaOpen] = useState(false);
 
   const createPreMacro = useCreatePreMacro();
   const { data: borrador } = usePreMacroBorrador();
@@ -92,10 +106,16 @@ export default function EventosPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Eventos</h1>
         {canEdit && (
-          <Button onClick={handleNew} size="sm" disabled={createPreMacro.isPending}>
-            <Plus size={16} className="mr-1.5" />
-            Nuevo evento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleNew} size="sm" disabled={createPreMacro.isPending}>
+              <Plus size={16} className="mr-1.5" />
+              Nuevo evento
+            </Button>
+            <Button onClick={() => setCargaRapidaOpen(true)} size="sm" variant="outline">
+              <Zap size={16} className="mr-1.5" />
+              Carga rápida
+            </Button>
+          </div>
         )}
       </div>
 
@@ -154,7 +174,13 @@ export default function EventosPage() {
               <tbody className="divide-y divide-border">
                 {eventos.map(evento => (
                   <tr key={evento.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium">{evento.nombre}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {evento.nombre}
+                        {evento.es_informal && <InformalBadge />}
+                        {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
+                      </div>
+                    </td>
                     <td className="px-4 py-3"><EstadoBadge estado={evento.estado} /></td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(evento.fecha_inicio)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(evento.fecha_fin)}</td>
@@ -234,7 +260,11 @@ export default function EventosPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{evento.nombre}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium truncate">{evento.nombre}</p>
+                      {evento.es_informal && <InformalBadge />}
+                      {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       {evento.fecha_inicio && <span>Inicio: {formatDate(evento.fecha_inicio)}</span>}
                       {evento.fecha_fin    && <span>Fin: {formatDate(evento.fecha_fin)}</span>}
@@ -310,6 +340,8 @@ export default function EventosPage() {
           />
         </DialogContent>
       </Dialog>
+
+      <CargaRapidaDialog open={cargaRapidaOpen} onClose={() => setCargaRapidaOpen(false)} />
     </div>
   );
 }

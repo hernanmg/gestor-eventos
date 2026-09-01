@@ -5,6 +5,7 @@ import { useRubros } from '@/hooks/useRubros';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
 import { Button } from '@/components/ui/button';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
+import MoneyInput from '@/components/ui/MoneyInput';
 import type { Factura, Moneda, ProveedorBusqueda } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -214,11 +215,9 @@ export default function FacturaForm({ eventoId, factura, onClose, onSuccess }: P
         {/* Importe */}
         <div>
           <label className={labelCls}>Importe total *</label>
-          <input
-            type="number" min={0} step={0.01}
+          <MoneyInput
             value={form.importe_total}
-            onChange={e => { setForm(f => ({ ...f, importe_total: e.target.value })); setFieldErrors(x => ({ ...x, importe_total: undefined })); }}
-            placeholder="0.00"
+            onChange={v => { setForm(f => ({ ...f, importe_total: v })); setFieldErrors(x => ({ ...x, importe_total: undefined })); }}
             className={inputCls(fieldErrors.importe_total)}
           />
           {fieldErrors.importe_total && <p className={errorCls}>{fieldErrors.importe_total}</p>}

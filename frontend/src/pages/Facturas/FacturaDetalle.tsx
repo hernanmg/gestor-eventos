@@ -17,6 +17,7 @@ import {
   type PagoPayload,
 } from '@/hooks/useFacturas';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import api from '@/lib/api';
 import type { EstadoFactura, MedioPago, PagoFactura } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
@@ -109,7 +110,7 @@ function PagarDialog({ facturaId, importePendiente, moneda, onClose }: PagarDial
           </div>
           <div>
             <label className={label}>Importe *</label>
-            <input type="number" min={0.01} step={0.01} value={form.importe} onChange={e => setForm(f => ({ ...f, importe: e.target.value }))} className={input} />
+            <MoneyInput value={form.importe} onChange={v => setForm(f => ({ ...f, importe: v }))} className={input} />
           </div>
           <div className="col-span-2">
             <label className={label}>Medio de pago *</label>

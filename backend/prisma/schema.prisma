@@ -340,6 +340,12 @@ model Evento {
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
   socios          Json         @default("[]")
   moneda_base     Moneda       @default(ARS)
+  // Carga rápida sin presupuesto formal (ver Eventos/index.tsx "Carga rápida")
+  // — true = no requiere ficha/socios/rubros, sólo nombre+fecha+destino.
+  es_informal     Boolean      @default(false)
+  // null=sin decidir, true=sí, false=no — impulsa el flag de notificaciones
+  facturar        Boolean?
+  facturar_notas  String?
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
   deleted_at      DateTime?

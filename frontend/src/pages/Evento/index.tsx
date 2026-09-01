@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
+import { useEvento, useExportarExcel, useExportarPDF, useMarcarFacturar } from '@/hooks/useEvento';
 import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
@@ -10,7 +10,7 @@ import { useAuditoriaEvento } from '@/hooks/useAuditoria';
 import type { AuditoriaLog } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { EstadoBadge } from '@/components/ui/badge';
+import { EstadoBadge, InformalBadge, FacturarBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import MovimientoTable from '@/components/domain/MovimientoTable';
@@ -242,6 +242,11 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
 
 const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
 
+// Evento informal (carga rápida, sin presupuesto) — no tiene ficha, socios ni
+// rubros configurados, así que Ficha/Conciliatoria/Echeqs/Egresos/Ingresos/
+// Facturas/A-Cobrar/Auditoría no aplican. Ver banner "¿Se factura?" abajo.
+const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS'];
+
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
@@ -263,7 +268,9 @@ export default function EventoPage() {
 
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const isAdmin  = user?.rol === 'ADMIN';
-  const MAIN_TABS = MAIN_TABS_ALL.filter(t => !t.adminOnly || isAdmin);
+  const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
+    (!t.adminOnly || isAdmin) && (!evento?.es_informal || INFORMAL_TABS.includes(t.key)),
+  );
   const MAIN_TABS_KEYS_VISIBLES = MAIN_TABS.map(t => t.key);
 
   const tabParam = searchParams.get('tab')?.toUpperCase() as MainTab | null;
@@ -272,6 +279,13 @@ export default function EventoPage() {
   );
   const [subTab,  setSubTab]  = useState<number | null>(null);
   const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
+  const marcarFacturar = useMarcarFacturar();
+
+  // Si el evento carga como informal después del mount (o llega un ?tab=
+  // que no aplica para informales), corrige a Resumen.
+  useEffect(() => {
+    if (evento?.es_informal && !INFORMAL_TABS.includes(mainTab)) setMainTab('RESUMEN');
+  }, [evento?.es_informal]); // eslint-disable-line react-hooks/exhaustive-deps
   // Deep-link "Rubro: X" desde la tab Stock → tab Ficha filtrada por ese rubro
   const [fichaBusqueda, setFichaBusqueda] = useState<string | undefined>(undefined);
   const handleVerRubroEnFicha = (rubroNombre: string) => {
@@ -335,8 +349,42 @@ export default function EventoPage() {
           <h1 className="text-xl font-semibold truncate">{evento.nombre}</h1>
         </div>
         <EstadoBadge estado={evento.estado} />
+        {evento.es_informal && <InformalBadge />}
+        {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
         <ExportDropdown eventoId={eventoId} rubros={rubros} />
       </div>
+
+      {/* Banner de evento informal — decisión de facturación */}
+      {evento.es_informal && (
+        <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 bg-blue-50 border-b border-blue-200 shrink-0">
+          <span className="text-sm text-blue-900">
+            Este es un evento informal. ¿Se factura?
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={evento.facturar === true ? 'default' : 'outline'}
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: true } })}
+            >
+              Sí
+            </Button>
+            <Button
+              size="sm"
+              variant={evento.facturar === false ? 'default' : 'outline'}
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: false } })}
+            >
+              No
+            </Button>
+            {evento.facturar === true && (
+              <Link to="/facturas-emitidas" className="text-xs font-semibold text-blue-900 hover:underline whitespace-nowrap ml-1">
+                Crear factura desde Facturas a Cobrar →
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Banner de éxito (ej: evento recién creado desde la pre-macro) */}
       {successMessage && (

@@ -8,6 +8,8 @@ import { usePreMacro, useUpdatePreMacro, useUpdateRubros, useConfirmarPreMacro }
 import { useUsuarios } from '@/hooks/useUsuarios';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import CuitInput from '@/components/ui/CuitInput';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -353,7 +355,7 @@ function Paso3({ form, set, usuarios }: StepProps & { usuarios: Usuario[] }) {
           <Input value={form.razon_social} onChange={e => set('razon_social', e.target.value)} />
         </Field>
         <Field label="CUIT del pagador">
-          <Input value={form.cuit_pagador} onChange={e => set('cuit_pagador', e.target.value)} placeholder="XX-XXXXXXXX-X" />
+          <CuitInput value={form.cuit_pagador} onChange={v => set('cuit_pagador', v)} />
         </Field>
       </div>
 
@@ -377,7 +379,7 @@ function Paso3({ form, set, usuarios }: StepProps & { usuarios: Usuario[] }) {
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Presupuesto total estimado">
-          <Input type="number" min={0} value={form.presupuesto_total} onChange={e => set('presupuesto_total', e.target.value)} />
+          <MoneyInput value={form.presupuesto_total} onChange={v => set('presupuesto_total', v)} />
         </Field>
         <Field label="Moneda">
           <select

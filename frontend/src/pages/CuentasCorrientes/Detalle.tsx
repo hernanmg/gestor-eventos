@@ -15,6 +15,7 @@ import { useFacturas } from '@/hooks/useFacturas';
 import { useEventos } from '@/hooks/useEvento';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import api from '@/lib/api';
 import type { TipoMovCCC, MonedaCCC, MovimientoCCC } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
@@ -116,7 +117,7 @@ function NuevoMovimientoDialog({ cuenta, onClose }: { cuenta: NonNullable<Return
         </div>
         <div>
           <label className={labelCls}>Monto *</label>
-          <input type="number" step={0.01} value={monto} onChange={e => setMonto(e.target.value)} className={inputCls} />
+          <MoneyInput value={monto} onChange={setMonto} className={inputCls} />
         </div>
         <div className="col-span-2">
           <label className={labelCls}>Concepto *</label>

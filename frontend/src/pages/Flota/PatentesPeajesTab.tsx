@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PatenteEstadoBadge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { PatenteVehiculo } from '@/types';
@@ -89,7 +90,7 @@ function PatenteDialog({ open, onClose }: { open: boolean; onClose: () => void }
             </div>
             <div>
               <label className={labelCls}>Importe *</label>
-              <input type="number" step="0.01" value={form.importe} onChange={e => setForm(p => ({ ...p, importe: e.target.value }))} className={inputCls} required />
+              <MoneyInput value={form.importe} onChange={v => setForm(p => ({ ...p, importe: v }))} className={inputCls} required />
             </div>
             <div className="col-span-2">
               <label className={labelCls}>Fecha vencimiento *</label>
@@ -291,7 +292,7 @@ function PeajeDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
             </div>
             <div>
               <label className={labelCls}>Importe *</label>
-              <input type="number" step="0.01" value={form.importe} onChange={e => setForm(p => ({ ...p, importe: e.target.value }))} className={inputCls} required />
+              <MoneyInput value={form.importe} onChange={v => setForm(p => ({ ...p, importe: v }))} className={inputCls} required />
             </div>
             <div>
               <label className={labelCls}>Ruta</label>
@@ -313,7 +314,7 @@ function PeajeDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
             {form.es_carga_telepase && (
               <div className="col-span-2">
                 <label className={labelCls}>Saldo telepase post-carga</label>
-                <input type="number" step="0.01" value={form.saldo_telepase_post} onChange={e => setForm(p => ({ ...p, saldo_telepase_post: e.target.value }))} className={inputCls} />
+                <MoneyInput value={form.saldo_telepase_post} onChange={v => setForm(p => ({ ...p, saldo_telepase_post: v }))} className={inputCls} />
               </div>
             )}
             <div className="col-span-2">

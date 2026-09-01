@@ -210,3 +210,17 @@ export function FacturaEmitidaEstadoBadge({ estado }: { estado: EstadoFacturaEmi
     </Badge>
   );
 }
+
+// ── Eventos informales (carga rápida) ─────────────────────────────────────────
+
+export function InformalBadge() {
+  return <Badge variant="muted">Informal</Badge>;
+}
+
+// facturar: null=sin decidir, true=sí, false=no — ver módulo "Eventos sin
+// presupuesto" (Evento.es_informal/facturar).
+export function FacturarBadge({ facturar }: { facturar: boolean | null }) {
+  if (facturar === null) return <Badge variant="warning">Sin facturar</Badge>;
+  if (facturar)          return <Badge variant="info">A facturar</Badge>;
+  return <Badge variant="muted">No factura</Badge>;
+}

@@ -14,6 +14,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { FacturaEmitidaEstadoBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
+import MoneyInput from '@/components/ui/MoneyInput';
+import CuitInput from '@/components/ui/CuitInput';
 import RegistrarCobroDialog from './RegistrarCobroDialog';
 import { TIPO_COMPROBANTE_LABEL, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
 import api from '@/lib/api';
@@ -127,7 +129,7 @@ function EditForm({ facturaId, onDone }: { facturaId: number; onDone: () => void
         </div>
         <div>
           <label className={label}>CUIT</label>
-          <input value={form.cliente_cuit} onChange={e => setForm(x => ({ ...x, cliente_cuit: e.target.value }))} className={input} />
+          <CuitInput value={form.cliente_cuit} onChange={v => setForm(x => ({ ...x, cliente_cuit: v }))} className={input} />
         </div>
         <div>
           <label className={label}>Condición ante AFIP</label>
@@ -138,19 +140,19 @@ function EditForm({ facturaId, onDone }: { facturaId: number; onDone: () => void
         </div>
         <div>
           <label className={label}>Neto gravado</label>
-          <input type="number" value={form.neto_gravado} onChange={e => setForm(x => ({ ...x, neto_gravado: e.target.value }))} className={input} />
+          <MoneyInput value={form.neto_gravado} onChange={v => setForm(x => ({ ...x, neto_gravado: v }))} className={input} />
         </div>
         <div>
           <label className={label}>IVA</label>
-          <input type="number" value={form.iva} onChange={e => setForm(x => ({ ...x, iva: e.target.value }))} className={input} />
+          <MoneyInput value={form.iva} onChange={v => setForm(x => ({ ...x, iva: v }))} className={input} />
         </div>
         <div>
           <label className={label}>Otros impuestos</label>
-          <input type="number" value={form.otros_impuestos} onChange={e => setForm(x => ({ ...x, otros_impuestos: e.target.value }))} className={input} />
+          <MoneyInput value={form.otros_impuestos} onChange={v => setForm(x => ({ ...x, otros_impuestos: v }))} className={input} />
         </div>
         <div>
           <label className={label}>Total</label>
-          <input type="number" value={form.total} onChange={e => setForm(x => ({ ...x, total: e.target.value }))} className={input} />
+          <MoneyInput value={form.total} onChange={v => setForm(x => ({ ...x, total: v }))} className={input} />
         </div>
         <div>
           <label className={label}>Moneda</label>

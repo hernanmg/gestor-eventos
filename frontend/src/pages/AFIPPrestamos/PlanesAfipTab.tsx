@@ -8,6 +8,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import CuitInput from '@/components/ui/CuitInput';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { PlanAfipEstadoBadge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -158,11 +160,11 @@ function PlanAfipDialog({ open, plan, onClose }: { open: boolean; plan: PlanAFIP
             </div>
             <div>
               <label className={labelCls}>CUIT titular</label>
-              <input value={form.titular_cuit} onChange={e => setForm(p => ({ ...p, titular_cuit: e.target.value }))} className={inputCls} />
+              <CuitInput value={form.titular_cuit} onChange={v => setForm(p => ({ ...p, titular_cuit: v }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Capital original *</label>
-              <input type="number" step="0.01" value={form.capital_original} onChange={e => setForm(p => ({ ...p, capital_original: e.target.value }))} className={inputCls} required />
+              <MoneyInput value={form.capital_original} onChange={v => setForm(p => ({ ...p, capital_original: v }))} className={inputCls} required />
             </div>
             <div>
               <label className={labelCls}>Cantidad de cuotas *</label>
@@ -170,7 +172,7 @@ function PlanAfipDialog({ open, plan, onClose }: { open: boolean; plan: PlanAFIP
             </div>
             <div>
               <label className={labelCls}>Valor cuota aproximado</label>
-              <input type="number" step="0.01" value={form.valor_cuota_aprox} onChange={e => setForm(p => ({ ...p, valor_cuota_aprox: e.target.value }))} className={inputCls} placeholder="Genera el cronograma" disabled={isEdit} />
+              <MoneyInput value={form.valor_cuota_aprox} onChange={v => setForm(p => ({ ...p, valor_cuota_aprox: v }))} className={inputCls} placeholder="Genera el cronograma" disabled={isEdit} />
             </div>
             <div>
               <label className={labelCls}>Interés financiero (% anual)</label>

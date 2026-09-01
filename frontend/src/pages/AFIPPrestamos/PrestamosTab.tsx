@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge, PrestamoEstadoBadge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
@@ -161,7 +162,7 @@ function PrestamoDialog({ open, prestamo, onClose }: { open: boolean; prestamo: 
             </div>
             <div>
               <label className={labelCls}>Capital original *</label>
-              <input type="number" step="0.01" value={form.capital_original} onChange={e => setForm(p => ({ ...p, capital_original: e.target.value }))} className={inputCls} required />
+              <MoneyInput value={form.capital_original} onChange={v => setForm(p => ({ ...p, capital_original: v }))} className={inputCls} required />
             </div>
             <div>
               <label className={labelCls}>Moneda</label>
@@ -232,12 +233,12 @@ function PrestamoDialog({ open, prestamo, onClose }: { open: boolean; prestamo: 
                         <tr key={idx}>
                           <td className="px-2 py-1">{c.numero_cuota}</td>
                           <td className="px-1 py-1"><input type="date" value={c.fecha_vencimiento} onChange={e => updateFila(idx, { fecha_vencimiento: e.target.value })} className="w-full border-0 bg-transparent px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring rounded" /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.capital ?? ''} onChange={e => updateFila(idx, { capital: e.target.value ? Number(e.target.value) : null })} className={cellInput} /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.interes ?? ''} onChange={e => updateFila(idx, { interes: e.target.value ? Number(e.target.value) : null })} className={cellInput} /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.iva_interes ?? ''} onChange={e => updateFila(idx, { iva_interes: e.target.value ? Number(e.target.value) : null })} className={cellInput} /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.seguro ?? ''} onChange={e => updateFila(idx, { seguro: e.target.value ? Number(e.target.value) : null })} className={cellInput} /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.otros_impuestos ?? ''} onChange={e => updateFila(idx, { otros_impuestos: e.target.value ? Number(e.target.value) : null })} className={cellInput} /></td>
-                          <td className="px-1 py-1"><input type="number" step="0.01" value={c.total_cuota || ''} onChange={e => updateFila(idx, { total_cuota: Number(e.target.value) || 0 })} className={cellInput + ' font-medium'} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.capital != null ? String(c.capital) : ''} onChange={v => updateFila(idx, { capital: v !== '' ? Number(v) : null })} className={cellInput} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.interes != null ? String(c.interes) : ''} onChange={v => updateFila(idx, { interes: v !== '' ? Number(v) : null })} className={cellInput} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.iva_interes != null ? String(c.iva_interes) : ''} onChange={v => updateFila(idx, { iva_interes: v !== '' ? Number(v) : null })} className={cellInput} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.seguro != null ? String(c.seguro) : ''} onChange={v => updateFila(idx, { seguro: v !== '' ? Number(v) : null })} className={cellInput} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.otros_impuestos != null ? String(c.otros_impuestos) : ''} onChange={v => updateFila(idx, { otros_impuestos: v !== '' ? Number(v) : null })} className={cellInput} /></td>
+                          <td className="px-1 py-1"><MoneyInput value={c.total_cuota ? String(c.total_cuota) : ''} onChange={v => updateFila(idx, { total_cuota: v !== '' ? Number(v) : 0 })} className={cellInput + ' font-medium'} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -314,9 +315,9 @@ function CuotaRow({ cuota, onPagar }: { cuota: CuotaPrestamo; onPagar: (c: Cuota
 
   const vencida = !cuota.pagada && new Date(cuota.fecha_vencimiento) < new Date();
   const numField = (value: number | null, key: 'capital' | 'interes' | 'iva_interes' | 'seguro' | 'otros_impuestos') => (
-    <input
-      type="number" step="0.01" defaultValue={value ?? ''}
-      onBlur={e => commit({ [key]: e.target.value ? Number(e.target.value) : null } as Partial<CuotaPrestamo>)}
+    <MoneyInput
+      value={value != null ? String(value) : ''}
+      onChange={v => commit({ [key]: v !== '' ? Number(v) : null } as Partial<CuotaPrestamo>)}
       className={cellInput}
     />
   );

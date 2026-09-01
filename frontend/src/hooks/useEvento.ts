@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { EventoPayload, EventoWithCount } from '@/types';
 
+// Payload de PATCH /eventos/:id/marcar-facturar — separado de EventoPayload
+// porque sólo toca facturar/facturar_notas, no el resto del evento.
+interface MarcarFacturarPayload {
+  facturar: boolean;
+  notas?:   string | null;
+}
+
 export const EVENTOS_KEY = ['eventos'] as const;
 
 export function useEventos() {
@@ -31,6 +38,14 @@ export function useUpdateEvento() {
   const qc = useQueryClient();
   return useMutation<EventoWithCount, Error, { id: number; data: EventoPayload }>({
     mutationFn: ({ id, data }) => api.put(`/eventos/${id}`, data).then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: EVENTOS_KEY }),
+  });
+}
+
+export function useMarcarFacturar() {
+  const qc = useQueryClient();
+  return useMutation<EventoWithCount, Error, { id: number; data: MarcarFacturarPayload }>({
+    mutationFn: ({ id, data }) => api.patch(`/eventos/${id}/marcar-facturar`, data).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: EVENTOS_KEY }),
   });
 }

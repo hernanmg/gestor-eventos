@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SeguroEstadoBadge } from '@/components/ui/badge';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { SeguroVehiculo, Moneda } from '@/types';
@@ -119,7 +120,7 @@ function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: Seguro
             </div>
             <div>
               <label className={labelCls}>Importe anual</label>
-              <input type="number" step="0.01" value={form.importe_anual} onChange={e => setForm(p => ({ ...p, importe_anual: e.target.value }))} className={inputCls} />
+              <MoneyInput value={form.importe_anual} onChange={v => setForm(p => ({ ...p, importe_anual: v }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Moneda</label>
