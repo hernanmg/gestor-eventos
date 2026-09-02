@@ -252,6 +252,8 @@ model Empresa {
   facturasEmitidas       FacturaEmitida[]
   repartosFacturaEmitida RepartoFacturaEmitida[]
   bitacoraViajes         BitacoraViaje[]
+  espaciosCompartidos    EspacioCompartido[]
+  partesEspacioEmpresa   ParteEspacio[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -2038,6 +2040,7 @@ model CuentaCorriente {
   partes          ParteCCC[]
   movimientos     MovimientoCCC[]
   serviciosTaller ServicioTaller[]
+  partesEspacio   ParteEspacio[]
 }
 
 // Reparto porcentual entre partes de una cuenta corriente (ej: Nave 15 — 50/50).
@@ -2096,6 +2099,8 @@ model MovimientoCCC {
   deleted_at DateTime?
   created_by Int?
   updated_by Int?
+
+  repartosLineaGasto RepartoLineaGasto[]
 }
 
 // ─── FACTURACIÓN EMITIDA A CLIENTES (cuentas a cobrar) ───────────────────────
@@ -2213,4 +2218,135 @@ model RepartoFacturaEmitida {
   // Si corresponde a una empresa del sistema
   empresa_id         Int?
   empresa            Empresa?       @relation(fields: [empresa_id], references: [id])
+}
+
+// ─── GASTOS RECURRENTES Y ESPACIOS COMPARTIDOS ───────────────────────────────
+// Espacios operativos compartidos entre partes (ej. Coworking: Galara 40% /
+// Juan Pablo 35% / Enjoy 25%; Nave 15: DOS57 50% / Jiménez 50%) con gastos
+// fijos mensuales (alquiler, servicios, impuestos) que se generan solos al
+// inicio de cada mes y se reparten porcentualmente entre las partes — mismo
+// patrón de reparto que CuentaCorriente/ParteCCC, pero anclado a un mes
+// calendario en vez de a movimientos sueltos.
+
+model EspacioCompartido {
+  id             Int       @id @default(autoincrement())
+  empresa_id     Int
+  empresa        Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre         String // "Coworking", "Nave 15"
+  descripcion    String?
+  direccion      String?
+  activo         Boolean   @default(true)
+  // Día del mes en que se generan las líneas automáticamente
+  dia_generacion Int       @default(1)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+
+  partes     ParteEspacio[]
+  gastosTipo GastoTipoEspacio[]
+  gastosMes  GastoMesEspacio[]
+}
+
+// Partes del espacio con su % de reparto — la suma de porcentajes = 100 se
+// valida en el controller, no en el schema (mismo criterio que ParteCCC).
+model ParteEspacio {
+  id                  Int               @id @default(autoincrement())
+  espacio_id          Int
+  espacio             EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  nombre              String // "Galara", "Juan Pablo", "Enjoy"
+  porcentaje          Decimal           @db.Decimal(5, 2)
+  // Si es una empresa del sistema → vincular
+  empresa_id          Int?
+  empresa             Empresa?          @relation(fields: [empresa_id], references: [id])
+  // Si tiene CuentaCorriente → el sistema carga ahí el cargo (DEBE) automáticamente
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente?  @relation(fields: [cuenta_corriente_id], references: [id])
+
+  repartos RepartoLineaGasto[]
+
+  @@unique([espacio_id, nombre])
+}
+
+// Tipos de gasto fijo recurrente del espacio (alquiler, impuestos, servicios).
+model GastoTipoEspacio {
+  id              Int               @id @default(autoincrement())
+  espacio_id      Int
+  espacio         EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  nombre          String // "Alquiler", "Municipalidad", "Ecogas", "WiFi"
+  monto_estimado  Decimal           @db.Decimal(12, 2)
+  dia_vencimiento Int? // día del mes que vence
+  activo          Boolean           @default(true)
+  // false = gasto variable — no se genera solo, se carga a mano en el mes
+  es_fijo         Boolean           @default(true)
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+
+  lineas LineaGastoEspacio[]
+}
+
+// Instancia mensual de gastos del espacio.
+model GastoMesEspacio {
+  id            Int               @id @default(autoincrement())
+  espacio_id    Int
+  espacio       EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  periodo_mes   Int // 1-12
+  periodo_anio  Int
+  generado_auto Boolean           @default(false)
+  cerrado       Boolean           @default(false)
+  // Total del mes — desnormalizado, recompute completo en cada alta/baja de
+  // línea (mismo criterio que CuentaCorriente.saldo_actual).
+  total_gastos  Decimal           @default(0) @db.Decimal(15, 2)
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+
+  lineas LineaGastoEspacio[]
+
+  @@unique([espacio_id, periodo_mes, periodo_anio])
+}
+
+enum EstadoLineaGasto {
+  PENDIENTE
+  PAGADO
+  ANULADO
+}
+
+// Línea individual de gasto del mes — generada sola desde GastoTipoEspacio o
+// cargada a mano (gasto variable, gasto_tipo_id null).
+model LineaGastoEspacio {
+  id                 Int               @id @default(autoincrement())
+  gasto_mes_id       Int
+  gasto_mes          GastoMesEspacio   @relation(fields: [gasto_mes_id], references: [id])
+  gasto_tipo_id      Int?
+  gasto_tipo         GastoTipoEspacio? @relation(fields: [gasto_tipo_id], references: [id])
+  nombre             String // descripción del gasto
+  monto_real         Decimal           @db.Decimal(12, 2)
+  fecha_vencimiento  DateTime?
+  estado             EstadoLineaGasto  @default(PENDIENTE)
+  fecha_pago         DateTime?
+  // Comprobante adjunto — mismo patrón que Factura.pdf_data (bytes en DB, sin storage externo)
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+
+  // Reparto calculado por parte (snapshot al momento de generar/editar la línea)
+  repartos RepartoLineaGasto[]
+}
+
+// Reparto de cada línea entre las partes del espacio.
+model RepartoLineaGasto {
+  id                Int               @id @default(autoincrement())
+  linea_id          Int
+  linea             LineaGastoEspacio @relation(fields: [linea_id], references: [id])
+  parte_id          Int
+  parte             ParteEspacio      @relation(fields: [parte_id], references: [id])
+  porcentaje        Decimal           @db.Decimal(5, 2)
+  monto             Decimal           @db.Decimal(12, 2)
+  // Si la parte tiene CuentaCorriente → movimiento DEBE creado automáticamente
+  movimiento_ccc_id Int?
+  movimiento_ccc    MovimientoCCC?    @relation(fields: [movimiento_ccc_id], references: [id])
 }

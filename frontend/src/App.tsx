@@ -31,6 +31,8 @@ import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
 import FlotaPage            from '@/pages/Flota';
 import AFIPPrestamosPage    from '@/pages/AFIPPrestamos';
 import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
+import EspaciosCompartidosPage from '@/pages/EspaciosCompartidos';
+import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
 import { useAuth }          from '@/hooks/useAuth';
 
 const queryClient = new QueryClient({
@@ -88,6 +90,8 @@ export default function App() {
             <Route path="/flota"                   element={<FlotaPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
+            <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />
+            <Route path="/espacios-compartidos/:id" element={<EspacioCompartidoDetallePage />} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>

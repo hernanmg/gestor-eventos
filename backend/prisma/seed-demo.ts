@@ -1299,6 +1299,36 @@ async function main() {
     console.log(`✓ Activos empresa #${empresaId}: 3 creados`);
   }
 
+  // ── ESPACIOS COMPARTIDOS ─────────────────────────────────────────────────────
+  const espacioExistente = await prisma.espacioCompartido.findFirst({ where: { nombre: 'Coworking', empresa_id: EMPRESA_ID, deleted_at: null } });
+  if (!espacioExistente) {
+    await prisma.espacioCompartido.create({
+      data: {
+        empresa_id:     EMPRESA_ID,
+        nombre:         'Coworking',
+        descripcion:    'Oficina compartida — gastos fijos mensuales repartidos entre las partes',
+        dia_generacion: 1,
+        partes: {
+          create: [
+            { nombre: 'Galara',      porcentaje: 40 },
+            { nombre: 'Juan Pablo',  porcentaje: 35 },
+            { nombre: 'Enjoy',       porcentaje: 25, empresa_id: EMPRESA_ID },
+          ],
+        },
+        gastosTipo: {
+          create: [
+            { nombre: 'Alquiler',      monto_estimado: 500000, dia_vencimiento: 5 },
+            { nombre: 'Municipalidad', monto_estimado: 45000,  dia_vencimiento: 10 },
+            { nombre: 'Rentas',        monto_estimado: 38000,  dia_vencimiento: 10 },
+            { nombre: 'Ecogas',        monto_estimado: 25000,  dia_vencimiento: 15 },
+            { nombre: 'WiFi',          monto_estimado: 18000,  dia_vencimiento: 20 },
+          ],
+        },
+      },
+    });
+    console.log('✓ Espacio compartido "Coworking" creado (empresa Enjoy)');
+  }
+
   // ── RESUMEN ───────────────────────────────────────────────────────────────────
   console.log('\n══════════════════════════════════════════════════');
   console.log('  SEED DE DEMO COMPLETADO');

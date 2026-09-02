@@ -12,7 +12,7 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE';
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -46,6 +46,7 @@ const COLORES: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           '#DC2626',
   CUOTA_PRESTAMO:       '#92400E',
   FACTURA_EMITIDA_VENCE: '#065F46',
+  GASTO_ESPACIO_VENCE:  '#3730A3',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -66,6 +67,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   cuotas_afip:   'CUOTA_AFIP',
   cuotas_prestamo: 'CUOTA_PRESTAMO',
   facturas_emitidas: 'FACTURA_EMITIDA_VENCE',
+  gastos_espacios: 'GASTO_ESPACIO_VENCE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -616,6 +618,30 @@ async function resolveFacturasEmitidas(empresaFiltro: number | undefined, desde:
   });
 }
 
+async function resolveGastosEspacio(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const lineas = await prisma.lineaGastoEspacio.findMany({
+    where: {
+      deleted_at: null,
+      estado: 'PENDIENTE',
+      fecha_vencimiento: { not: null, gte: desde, lte: hasta },
+      gasto_mes: { espacio: { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) } },
+    },
+    include: { gasto_mes: { include: { espacio: { include: { empresa: { select: { nombre: true } } } } } } },
+  });
+
+  return lineas.map(l => ({
+    id:             `gasto-espacio-${l.id}`,
+    tipo:           'GASTO_ESPACIO_VENCE' as const,
+    titulo:         `${l.gasto_mes.espacio.nombre} — ${l.nombre}`,
+    fecha:          l.fecha_vencimiento!,
+    empresa_id:     l.gasto_mes.espacio.empresa_id,
+    empresa_nombre: l.gasto_mes.espacio.empresa.nombre,
+    color:          COLORES.GASTO_ESPACIO_VENCE,
+    urgencia:       computeUrgencia(l.fecha_vencimiento!, hoy),
+    metadata:       { espacio_id: l.gasto_mes.espacio_id, linea_id: l.id, monto: Number(l.monto_real) },
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -691,6 +717,8 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('CUOTA_PRESTAMO') && isAdmin) tareas.push(resolveCuotasPrestamo(empresaFiltro, desde, hasta, hoyUTC));
   // FACTURA_EMITIDA_VENCE enlaza a /facturas-emitidas, exclusivo de ADMIN.
   if (tiposActivos.has('FACTURA_EMITIDA_VENCE') && isAdmin) tareas.push(resolveFacturasEmitidas(empresaFiltro, desde, hasta, hoyUTC));
+  // GASTO_ESPACIO_VENCE enlaza a /espacios-compartidos, exclusivo de ADMIN.
+  if (tiposActivos.has('GASTO_ESPACIO_VENCE') && isAdmin) tareas.push(resolveGastosEspacio(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

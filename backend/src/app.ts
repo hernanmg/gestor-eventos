@@ -33,6 +33,7 @@ import flotaRouter from './routes/flota';
 import notificacionesRouter from './routes/notificaciones';
 import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
 import { facturasEmitidasRouter } from './routes/facturasEmitidas';
+import { espaciosCompartidosRouter } from './routes/espaciosCompartidos';
 
 const app = express();
 
@@ -111,6 +112,7 @@ app.use('/api/notificaciones',      notificacionesRouter);
 app.use('/api/afip',                afipRouter);
 app.use('/api/prestamos',           prestamosRouter);
 app.use('/api/facturas-emitidas',   facturasEmitidasRouter);
+app.use('/api/espacios-compartidos', espaciosCompartidosRouter);
 
 app.use(errorHandler);
 

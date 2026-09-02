@@ -325,6 +325,28 @@ async function resolveEventosSinDecisionFacturacion(req: Request): Promise<Notif
   });
 }
 
+async function resolveGastosEspacioVencidos(empresaId: number, hoy: Date): Promise<NotificacionItem[]> {
+  const lineas = await prisma.lineaGastoEspacio.findMany({
+    where: {
+      deleted_at: null,
+      estado: 'PENDIENTE',
+      fecha_vencimiento: { not: null, lt: hoy },
+      gasto_mes: { espacio: { deleted_at: null, empresa_id: empresaId } },
+    },
+    include: { gasto_mes: { include: { espacio: { select: { id: true, nombre: true } } } } },
+    orderBy: { fecha_vencimiento: 'asc' },
+  });
+  return lineas.map(l => ({
+    id:          `gasto-espacio-${l.id}`,
+    tipo:        'GASTO_ESPACIO_VENCIDO',
+    titulo:      `${l.gasto_mes.espacio.nombre} — ${l.nombre}`,
+    descripcion: `Vencido el ${l.fecha_vencimiento!.toLocaleDateString('es-AR')} — $${Number(l.monto_real).toLocaleString('es-AR')}`,
+    urgencia:    'critical',
+    link:        `/espacios-compartidos/${l.gasto_mes.espacio.id}`,
+    fecha:       l.fecha_vencimiento!,
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -347,6 +369,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveCuotasPrestamo(empresaId, hoy, en7Dias),
     resolveFacturasEmitidasVencidas(empresaId, hoy),
     resolveEventosSinDecisionFacturacion(req),
+    resolveGastosEspacioVencidos(empresaId, hoy),
   ]);
 
   const items = resultados

@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -207,6 +207,28 @@ export function FacturaEmitidaEstadoBadge({ estado }: { estado: EstadoFacturaEmi
   return (
     <Badge variant={FACTURA_EMITIDA_VARIANT[estado]} className={cn((estado === 'ANULADA' || estado === 'INCOBRABLE') && 'line-through')}>
       {FACTURA_EMITIDA_LABEL[estado]}
+    </Badge>
+  );
+}
+
+// ── Gastos recurrentes / Espacios Compartidos ─────────────────────────────────
+
+const LINEA_GASTO_VARIANT: Record<EstadoLineaGasto, VariantProps<typeof badgeVariants>['variant']> = {
+  PENDIENTE: 'warning',
+  PAGADO:    'success',
+  ANULADO:   'muted',
+};
+
+export const LINEA_GASTO_LABEL: Record<EstadoLineaGasto, string> = {
+  PENDIENTE: 'Pendiente',
+  PAGADO:    'Pagado',
+  ANULADO:   'Anulado',
+};
+
+export function LineaGastoEstadoBadge({ estado }: { estado: EstadoLineaGasto }) {
+  return (
+    <Badge variant={LINEA_GASTO_VARIANT[estado]} className={cn(estado === 'ANULADO' && 'line-through')}>
+      {LINEA_GASTO_LABEL[estado]}
     </Badge>
   );
 }

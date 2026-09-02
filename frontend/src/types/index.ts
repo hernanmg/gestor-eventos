@@ -1912,3 +1912,81 @@ export interface MovimientosCCCResponse {
   total:       number;
   movimientos: MovimientoCCC[];
 }
+
+// ─── GASTOS RECURRENTES Y ESPACIOS COMPARTIDOS ───────────────────────────────
+
+export type EstadoLineaGasto = 'PENDIENTE' | 'PAGADO' | 'ANULADO';
+
+export interface ParteEspacio {
+  id:                  number;
+  espacio_id:          number;
+  nombre:              string;
+  porcentaje:          number;
+  empresa_id:          number | null;
+  cuenta_corriente_id: number | null;
+}
+
+export interface GastoTipoEspacio {
+  id:              number;
+  espacio_id:      number;
+  nombre:          string;
+  monto_estimado:  number;
+  dia_vencimiento: number | null;
+  activo:          boolean;
+  es_fijo:         boolean;
+}
+
+export interface RepartoLineaGasto {
+  id:                number;
+  linea_id:          number;
+  parte_id:          number;
+  parte?:            { id: number; nombre: string };
+  porcentaje:        number;
+  monto:             number;
+  movimiento_ccc_id: number | null;
+}
+
+export interface LineaGastoEspacio {
+  id:                 number;
+  gasto_mes_id:       number;
+  gasto_tipo_id:      number | null;
+  nombre:             string;
+  monto_real:         number;
+  fecha_vencimiento:  string | null;
+  estado:             EstadoLineaGasto;
+  fecha_pago:         string | null;
+  tiene_comprobante:  boolean;
+  notas:              string | null;
+  repartos?:          RepartoLineaGasto[];
+  created_at:         string;
+}
+
+export interface GastoMesEspacioResumen {
+  id:            number;
+  periodo_mes:   number;
+  periodo_anio:  number;
+  cerrado:       boolean;
+  generado_auto: boolean;
+  total_gastos:  number;
+  pagados:       number;
+  pendientes:    number;
+}
+
+export interface GastoMesEspacio extends GastoMesEspacioResumen {
+  espacio_id: number;
+  lineas:     LineaGastoEspacio[];
+}
+
+export interface EspacioCompartido {
+  id:              number;
+  empresa_id:      number;
+  nombre:          string;
+  descripcion:     string | null;
+  direccion:       string | null;
+  activo:          boolean;
+  dia_generacion:  number;
+  partes:          ParteEspacio[];
+  gastosTipo?:     GastoTipoEspacio[];
+  mes_actual?:     { id: number; total_gastos: number; cerrado: boolean; pagados: number; pendientes: number } | null;
+  created_at:      string;
+}
