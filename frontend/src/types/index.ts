@@ -21,6 +21,9 @@ export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA'
 export type TipoLiquidacion   = 'LINEAL' | 'JORNADA';
 export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
 export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
+export type TipoRecorrido     = 'PROVINCIAL' | 'NACIONAL' | 'NACIONAL_1000';
+export type CategoriaAcuerdo  = 'GENERAL' | 'CHOFER';
+export type TipoAumento       = 'MANUAL' | 'IPC' | 'SIN_AUMENTO';
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
 
@@ -1545,6 +1548,16 @@ export interface AcuerdoSueldo {
   premio_presentismo:  number | null;
   valor_hora_extra:    number | null;
   telefono:            number | null;
+  // Choferes con bitácora de viajes — viático por tipo de recorrido, en vez
+  // del monto fijo `viatico` de arriba (ver BitacoraViaje).
+  viatico_provincial:    number | null;
+  viatico_nacional:      number | null;
+  viatico_nacional_1000: number | null;
+  // % de aumento que representó este acuerdo sobre el anterior — informativo.
+  porcentaje_acuerdo:    number | null;
+  categoria_acuerdo:     CategoriaAcuerdo;
+  // Banco de horas acumuladas (CHOFER) — null si no aplica.
+  horas_pendientes_acum: number | null;
   activo:              boolean;
   notas:               string | null;
   created_at:          string;
@@ -1611,6 +1624,52 @@ export interface LiquidacionAdmin {
   // Presente sólo en la respuesta de generar/get (BORRADOR) — informativo,
   // la selección real se envía en prestamos_a_descontar al aprobar.
   prestamos_pendientes?: PrestamoPendiente[];
+  // Presente sólo en la respuesta de generar, si el empleado tiene registros
+  // de BitacoraViaje en el período (choferes).
+  bitacora_resumen?:     ResumenBitacora;
+  // Aumento aplicado al generar — snapshot, independiente de
+  // AcuerdoSueldo.porcentaje_acuerdo.
+  porcentaje_aumento_aplicado: number | null;
+  tipo_aumento:                TipoAumento | null;
+  ipc_mes_referencia:          string | null;
+  ipc_valor_aplicado:          number | null;
+  // Banco de horas (CHOFER) — null si el acuerdo no es CHOFER.
+  horas_pendientes_anterior:   number | null;
+  horas_pendientes_nuevo:      number | null;
+}
+
+// ── Bitácora de viajes (choferes) ─────────────────────────────────────────────
+
+export interface BitacoraViaje {
+  id:                   number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  empresa_id:           number;
+  fecha:                string;
+  convocatoria:         string | null;
+  dia_semana:           string | null;
+  hora_inicio:          string | null;
+  hora_fin:             string | null;
+  horas_trabajadas:     number | null;
+  ejido:                string | null;
+  recorrido:            string | null;
+  tipo_recorrido:       TipoRecorrido;
+  cantidad_vueltas:     number;
+  valor_por_vuelta:     number | null;
+  viatico_calculado:    number | null;
+  observaciones:        string | null;
+  liquidacion_admin_id: number | null;
+  created_at:           string;
+  updated_at:           string;
+}
+
+export interface ResumenBitacora {
+  mes:  number;
+  anio: number;
+  total_vueltas: { provincial: number; nacional: number; nacional_1000: number };
+  total_horas:   number;
+  total_viatico: number;
+  registros:     BitacoraViaje[];
 }
 
 // ── Escalafones administrativos (valores por categoría) ──────────────────────

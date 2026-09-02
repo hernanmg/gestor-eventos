@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Pencil, Trash2, X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
-  useEmpleados, useEmpleado, useCreateEmpleado, useUpdateEmpleado, useDeleteEmpleado,
+  useEmpleados, useEmpleado, useCreateEmpleado, useUpdateEmpleado, useDeleteEmpleado, useJornadasEmpleado,
   type EmpleadoPayload, type EmpleadoFiltros,
 } from '@/hooks/useRRHH';
+import {
+  useAcuerdoEmpleado, useBitacoraViajesEmpleado, useImportarHistorialConvocatorias,
+  type ResultadoImportarHistorial,
+} from '@/hooks/useSueldosAdmin';
 import PrestamosSection from '@/components/domain/PrestamosSection';
 import CuitInput from '@/components/ui/CuitInput';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { formatCurrency } from '@/lib/formatters';
 import { cn, getApiErrorMessage, getApiFieldErrors } from '@/lib/utils';
 import type { Empleado, CategoriaEmpleado, EstadoEmpleado, TipoLiquidacion } from '@/types';
 
@@ -27,6 +32,22 @@ const TIPO_LIQUIDACION_LABEL: Record<TipoLiquidacion, string> = {
 
 const GRUPOS_SANGUINEOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', '0+', '0-'];
 const TALLES_ROPA = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function diaSemanaDesdeFecha(fechaISO: string): string {
+  const d = new Date(fechaISO);
+  if (isNaN(d.getTime())) return '';
+  return DIAS_SEMANA[d.getUTCDay()];
+}
+
+function diasEnMes(anio: number, mes: number): number {
+  return new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+}
 
 const ESTADO_LABEL: Record<EstadoEmpleado, string> = { ACTIVO: 'Activo', INACTIVO: 'Inactivo', SUSPENDIDO: 'Suspendido' };
 const ESTADO_VARIANT: Record<EstadoEmpleado, 'success' | 'muted' | 'destructive'> = {
@@ -310,6 +331,241 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
   );
 }
 
+// ── Dialog: Importar historial de convocatorias desde Excel ──────────────────
+
+function ImportarHistorialDialog({ open, onClose, empleadoId, mes, anio }: {
+  open: boolean; onClose: () => void; empleadoId: number; mes: number; anio: number;
+}) {
+  const importarMut = useImportarHistorialConvocatorias();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [analisis, setAnalisis]   = useState<ResultadoImportarHistorial | null>(null);
+  const [resultado, setResultado] = useState<ResultadoImportarHistorial | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) { setFile(null); setAnalisis(null); setResultado(null); setError(null); }
+  }, [open]);
+
+  const handleFile = async (f: File) => {
+    if (!f.name.toLowerCase().endsWith('.xlsx')) { setError('Solo se aceptan archivos .xlsx'); return; }
+    setFile(f); setError(null);
+    try {
+      const data = await importarMut.mutateAsync({ file: f, empleadoId, mes, anio, dryRun: true });
+      setAnalisis(data);
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Error al procesar el archivo');
+    }
+  };
+
+  const confirmar = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      const data = await importarMut.mutateAsync({ file, empleadoId, mes, anio, dryRun: false });
+      setResultado(data);
+      setAnalisis(null);
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Error al importar');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Importar historial desde Excel</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1">
+          {resultado ? (
+            <div className="rounded-lg border border-border p-6 text-center space-y-2">
+              <CheckCircle2 size={32} className="text-green-600 mx-auto" />
+              <p className="text-sm font-medium">{resultado.creados ?? 0} creada(s), {resultado.actualizados ?? 0} actualizada(s)</p>
+              {resultado.omitidos > 0 && <p className="text-xs text-destructive">{resultado.omitidos} fila(s) con error</p>}
+              <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Se busca automáticamente la hoja del Excel de sueldos cuyo nombre coincida con este empleado.
+              </p>
+              {!analisis && (
+                <div
+                  onClick={() => inputRef.current?.click()}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-gray-50 p-8 cursor-pointer transition-colors"
+                >
+                  <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                  {importarMut.isPending ? (
+                    <><FileSpreadsheet size={28} className="text-primary animate-pulse" /><p className="text-sm text-muted-foreground">Analizando archivo…</p></>
+                  ) : (
+                    <><Upload size={28} className="text-muted-foreground" /><p className="text-sm font-medium">Hacé clic para subir un .xlsx</p></>
+                  )}
+                </div>
+              )}
+              {error && <p className="flex items-center gap-1.5 text-sm text-destructive"><AlertTriangle size={14} />{error}</p>}
+              {analisis && (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-border p-3 text-sm space-y-1">
+                    <p className="font-medium flex items-center gap-1.5"><CheckCircle2 size={14} className="text-green-600" /> Hoja: {analisis.hoja}</p>
+                    <p className="text-muted-foreground">{analisis.total_filas ?? 0} fila(s) encontradas</p>
+                    {analisis.errores.length > 0 && (
+                      <div className="pt-1.5 border-t border-border">
+                        <p className="text-xs font-medium text-destructive mb-1">{analisis.errores.length} error(es)</p>
+                        <ul className="text-xs text-destructive space-y-0.5 max-h-32 overflow-y-auto">
+                          {analisis.errores.map((e, i) => <li key={i}>Fila {e.fila}: {e.motivo}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => { setAnalisis(null); setFile(null); }}>Cancelar</Button>
+                    <Button size="sm" onClick={confirmar} disabled={importarMut.isPending}>
+                      {importarMut.isPending ? 'Importando…' : 'Confirmar importación'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Tab: historial de convocatorias — vista unificada Jornada + BitacoraViaje ──
+// Tabla día por día del mes elegido: Jornada aporta convocatoria/horas,
+// BitacoraViaje aporta recorrido/vueltas/viático — se muestran juntas por
+// fecha. Aplica a cualquier empleado (no sólo CHOFER): para quien no tiene
+// bitácora, esas columnas simplemente quedan en "-".
+
+type EstadoDia = 'libre' | 'vacaciones' | 'viaje' | 'normal';
+const ESTADO_DIA_CLASS: Record<EstadoDia, string> = {
+  libre: 'bg-gray-100', vacaciones: 'bg-sky-50', viaje: 'bg-orange-50', normal: '',
+};
+
+function HistorialTab({ empleado }: { empleado: Empleado }) {
+  const hoy = new Date();
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [importarOpen, setImportarOpen] = useState(false);
+
+  const { data: jornadas = [] } = useJornadasEmpleado(empleado.id);
+  const { data: bitacora = [] } = useBitacoraViajesEmpleado(empleado.id, mes, anio);
+
+  const jornadaPorFecha = new Map(
+    jornadas
+      .filter(j => { const f = new Date(j.fecha); return f.getUTCFullYear() === anio && f.getUTCMonth() + 1 === mes; })
+      .map(j => [j.fecha.slice(0, 10), j]),
+  );
+  const bitacoraPorFecha = new Map<string, typeof bitacora>();
+  for (const b of bitacora) {
+    const k = b.fecha.slice(0, 10);
+    if (!bitacoraPorFecha.has(k)) bitacoraPorFecha.set(k, []);
+    bitacoraPorFecha.get(k)!.push(b);
+  }
+
+  const dias = Array.from({ length: diasEnMes(anio, mes) }, (_, i) => {
+    const key = `${anio}-${String(mes).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+    const jornada = jornadaPorFecha.get(key) ?? null;
+    const viajes  = bitacoraPorFecha.get(key) ?? [];
+    const convocatoriaNorm = (jornada?.convocatoria ?? '').trim().toUpperCase();
+    const estado: EstadoDia =
+      convocatoriaNorm === 'LIBRE'      ? 'libre' :
+      convocatoriaNorm === 'VACACIONES' ? 'vacaciones' :
+      viajes.length > 0                 ? 'viaje' : 'normal';
+    const horas =
+      jornada ? jornada.horas_normales + jornada.horas_extras :
+      viajes.some(v => v.horas_trabajadas !== null) ? viajes.reduce((s, v) => s + (v.horas_trabajadas ?? 0), 0) : null;
+    const recorrido = viajes.length > 0
+      ? viajes.map(v => [v.ejido, v.recorrido].filter(Boolean).join(' — ')).filter(Boolean).join(' / ') || '—'
+      : null;
+
+    return {
+      key,
+      dia:          diaSemanaDesdeFecha(key),
+      convocatoria: jornada?.convocatoria ?? viajes[0]?.convocatoria ?? null,
+      horas,
+      recorrido,
+      vueltas:      viajes.length > 0 ? viajes.reduce((s, v) => s + v.cantidad_vueltas, 0) : null,
+      viatico:      viajes.length > 0 ? viajes.reduce((s, v) => s + (v.viatico_calculado ?? 0), 0) : null,
+      tieneRegistro: !!jornada || viajes.length > 0,
+      estado,
+    };
+  });
+
+  const totales = dias.reduce((acc, d) => {
+    if (d.horas   !== null) acc.horas   += d.horas;
+    if (d.vueltas !== null) acc.vueltas += d.vueltas;
+    if (d.viatico !== null) acc.viatico += d.viatico;
+    return acc;
+  }, { horas: 0, vueltas: 0, viatico: 0 });
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-2">
+          <select value={mes} onChange={e => setMes(Number(e.target.value))} className="border border-input rounded px-2 py-1 text-xs">
+            {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={anio} onChange={e => setAnio(Number(e.target.value))} className="border border-input rounded px-2 py-1 text-xs">
+            {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+          <Upload size={12} className="mr-1" /> Importar desde Excel
+        </Button>
+      </div>
+
+      <div className="flex gap-3 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gray-200 inline-block" /> Libre</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-200 inline-block" /> Vacaciones</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-orange-200 inline-block" /> Con viaje</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-md border border-border max-h-96 overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b border-border sticky top-0">
+            <tr>
+              <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Fecha</th>
+              <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Día</th>
+              <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Convocatoria</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Hs</th>
+              <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Recorrido</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Vueltas</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Viático</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {dias.map(d => (
+              <tr key={d.key} className={ESTADO_DIA_CLASS[d.estado]}>
+                <td className="px-2 py-1.5">{d.key}</td>
+                <td className="px-2 py-1.5">{d.dia}</td>
+                <td className="px-2 py-1.5">
+                  {d.tieneRegistro ? (d.convocatoria ?? '-') : <span className="text-muted-foreground italic">Sin registro</span>}
+                </td>
+                <td className="px-2 py-1.5 text-right">{d.horas !== null ? d.horas.toFixed(2) : '-'}</td>
+                <td className="px-2 py-1.5">{d.recorrido ?? '-'}</td>
+                <td className="px-2 py-1.5 text-right">{d.vueltas ?? '-'}</td>
+                <td className="px-2 py-1.5 text-right">{d.viatico !== null ? formatCurrency(d.viatico) : '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t-2 border-border">
+            <tr>
+              <td colSpan={3} className="px-2 py-1.5 font-semibold">TOTAL</td>
+              <td className="px-2 py-1.5 text-right font-semibold">{Math.round(totales.horas * 100) / 100}</td>
+              <td />
+              <td className="px-2 py-1.5 text-right font-semibold">{totales.vueltas}</td>
+              <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(totales.viatico)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <ImportarHistorialDialog open={importarOpen} onClose={() => setImportarOpen(false)} empleadoId={empleado.id} mes={mes} anio={anio} />
+    </div>
+  );
+}
+
 // ── Drawer de detalle ──────────────────────────────────────────────────────────
 
 function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones }: {
@@ -319,7 +575,8 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
   onVerLiquidaciones: (id: number) => void;
 }) {
   const { data: empleado, isLoading } = useEmpleado(empleadoId);
-  const [tab, setTab] = useState<'personal' | 'bancarios'>('personal');
+  const [tab, setTab] = useState<'personal' | 'bancarios' | 'historial'>('personal');
+  const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
 
   return (
     <>
@@ -354,12 +611,12 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
             </div>
 
             <div className="flex border-b border-border">
-              {(['personal', 'bancarios'] as const).map(t => (
+              {(['personal', 'bancarios', 'historial'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)} className={cn(
                   'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px',
                   tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
                 )}>
-                  {t === 'personal' ? 'Datos personales' : 'Datos bancarios'}
+                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : 'Historial de convocatorias'}
                 </button>
               ))}
             </div>
@@ -374,18 +631,30 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
                 <div className="flex justify-between"><dt className="text-muted-foreground">Valor hora</dt><dd>${empleado.valor_hora}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Valor hora extra</dt><dd>${empleado.valor_hora_extra}</dd></div>
               </dl>
-            ) : (
+            ) : tab === 'bancarios' ? (
               <dl className="text-sm space-y-1.5">
                 <div className="flex justify-between"><dt className="text-muted-foreground">CBU</dt><dd>{empleado.cbu ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Alias</dt><dd>{empleado.alias ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Banco</dt><dd>{empleado.banco ?? '-'}</dd></div>
               </dl>
+            ) : (
+              <HistorialTab empleado={empleado} />
             )}
 
             {empleado.stats.ultima_jornada && (
               <p className="text-xs text-muted-foreground">
                 Última jornada: {empleado.stats.ultima_jornada.fecha.slice(0, 10)}
               </p>
+            )}
+
+            {acuerdo?.horas_pendientes_acum !== null && acuerdo?.horas_pendientes_acum !== undefined && (
+              <div className="rounded-md border border-border p-2.5">
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">🕒 Banco de horas</p>
+                <p className="text-sm">Horas acumuladas: <span className="font-semibold">{acuerdo.horas_pendientes_acum} hs</span></p>
+                <p className="text-[11px] text-muted-foreground">
+                  {acuerdo.horas_pendientes_acum >= 0 ? 'Positivo — se le deben horas.' : 'Negativo — le queda trabajar horas.'}
+                </p>
+              </div>
             )}
 
             <PrestamosSection empleadoId={empleado.id} />

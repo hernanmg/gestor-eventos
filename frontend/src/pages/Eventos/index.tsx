@@ -15,6 +15,7 @@ import {
 import EventoForm from './EventoForm';
 import CargaRapidaDialog from './CargaRapidaDialog';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import type { Evento } from '@/types';
 
 export default function EventosPage() {
@@ -23,14 +24,18 @@ export default function EventosPage() {
   const [searchParams] = useSearchParams();
   const { data: eventosRaw = [], isLoading } = useEventos();
 
-  // Filtro por URL (?es_informal=true&facturar=null) — usado por el link de
-  // la campanita de notificaciones ("X eventos sin decisión de facturación").
+  // Filtro por URL (?es_informal=true&facturar=null) — soporta links externos
+  // que ya apunten a esta combinación.
   const filtroEsInformal = searchParams.get('es_informal');
-  const filtroFacturar   = searchParams.get('facturar');
+  const filtroFacturarURL = searchParams.get('facturar');
+  const [soloSinFacturar, setSoloSinFacturar] = useState(filtroFacturarURL === 'null');
+
+  const sinFacturarCount = eventosRaw.filter(e => e.facturar === null).length;
+
   const eventos = eventosRaw.filter(e => {
     if (filtroEsInformal === 'true'  && !e.es_informal) return false;
     if (filtroEsInformal === 'false' &&  e.es_informal) return false;
-    if (filtroFacturar   === 'null'  &&  e.facturar !== null) return false;
+    if (soloSinFacturar && e.facturar !== null) return false;
     return true;
   });
   const { mutate: deleteEvento }          = useDeleteEvento();
@@ -117,6 +122,26 @@ export default function EventosPage() {
             </Button>
           </div>
         )}
+      </div>
+
+      {/* Filtros rápidos */}
+      <div className="flex items-center gap-2 mb-4">
+        <Button
+          size="sm"
+          variant={soloSinFacturar ? 'default' : 'outline'}
+          onClick={() => setSoloSinFacturar(v => !v)}
+          className="flex items-center gap-1.5"
+        >
+          Sin facturar
+          {sinFacturarCount > 0 && (
+            <span className={cn(
+              'inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full text-[10px] font-bold',
+              soloSinFacturar ? 'bg-primary-foreground text-primary' : 'bg-amber-500 text-white',
+            )}>
+              {sinFacturarCount}
+            </span>
+          )}
+        </Button>
       </div>
 
       {/* Banner de pre-macro sin completar */}

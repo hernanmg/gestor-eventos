@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -219,6 +219,22 @@ export function InformalBadge() {
 
 // facturar: null=sin decidir, true=sí, false=no — ver módulo "Eventos sin
 // presupuesto" (Evento.es_informal/facturar).
+const TIPO_RECORRIDO_VARIANT: Record<TipoRecorrido, VariantProps<typeof badgeVariants>['variant']> = {
+  PROVINCIAL:    'muted',
+  NACIONAL:      'info',
+  NACIONAL_1000: 'warning',
+};
+
+export const TIPO_RECORRIDO_LABEL: Record<TipoRecorrido, string> = {
+  PROVINCIAL:    'Provincial',
+  NACIONAL:      'Nacional',
+  NACIONAL_1000: 'Nacional +1000km',
+};
+
+export function TipoRecorridoBadge({ tipo }: { tipo: TipoRecorrido }) {
+  return <Badge variant={TIPO_RECORRIDO_VARIANT[tipo]}>{TIPO_RECORRIDO_LABEL[tipo]}</Badge>;
+}
+
 export function FacturarBadge({ facturar }: { facturar: boolean | null }) {
   if (facturar === null) return <Badge variant="warning">Sin facturar</Badge>;
   if (facturar)          return <Badge variant="info">A facturar</Badge>;

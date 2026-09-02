@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2, XCircle, MessageCircleQuestion } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF, useMarcarFacturar } from '@/hooks/useEvento';
 import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
@@ -354,34 +354,72 @@ export default function EventoPage() {
         <ExportDropdown eventoId={eventoId} rubros={rubros} />
       </div>
 
-      {/* Banner de evento informal — decisión de facturación */}
-      {evento.es_informal && (
-        <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 bg-blue-50 border-b border-blue-200 shrink-0">
-          <span className="text-sm text-blue-900">
-            Este es un evento informal. ¿Se factura?
-          </span>
-          <div className="ml-auto flex items-center gap-2">
+      {/* Banner de decisión de facturación — null/true/false, ver [[facturacion_emitida_clientes]] */}
+      {evento.facturar === null && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-blue-50 border-b border-blue-200 shrink-0">
+          <MessageCircleQuestion size={18} className="text-blue-600 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-blue-900">¿Este evento se factura?</p>
+            <p className="text-xs text-blue-700">Decidí ahora para no perder el seguimiento</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button
               size="sm"
-              variant={evento.facturar === true ? 'default' : 'outline'}
               disabled={marcarFacturar.isPending}
               onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: true } })}
             >
-              Sí
+              <CheckCircle2 size={14} className="mr-1.5" />
+              Sí, se factura
             </Button>
             <Button
               size="sm"
-              variant={evento.facturar === false ? 'default' : 'outline'}
+              variant="outline"
               disabled={marcarFacturar.isPending}
               onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: false } })}
             >
-              No
+              <XCircle size={14} className="mr-1.5" />
+              No se factura
             </Button>
-            {evento.facturar === true && (
-              <Link to="/facturas-emitidas" className="text-xs font-semibold text-blue-900 hover:underline whitespace-nowrap ml-1">
-                Crear factura desde Facturas a Cobrar →
-              </Link>
-            )}
+          </div>
+        </div>
+      )}
+
+      {evento.facturar === true && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-green-50 border-b border-green-200 shrink-0">
+          <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-green-900">Este evento se factura</p>
+            <p className="text-xs text-green-700">Podés crear la factura desde "Facturas a Cobrar"</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3 shrink-0">
+            <Link to={`/facturas-emitidas?evento_id=${eventoId}`} className="text-xs font-semibold text-green-900 hover:underline whitespace-nowrap">
+              Crear factura →
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: null } })}
+            >
+              Cambiar decisión
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {evento.facturar === false && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-gray-50 border-b border-border shrink-0">
+          <XCircle size={16} className="text-muted-foreground shrink-0" />
+          <p className="text-sm text-muted-foreground">Este evento no se factura</p>
+          <div className="ml-auto shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: null } })}
+            >
+              Cambiar decisión
+            </Button>
           </div>
         </div>
       )}

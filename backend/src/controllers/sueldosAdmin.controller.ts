@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { EstadoLiquidacionAdmin } from '@prisma/client';
+import { EstadoLiquidacionAdmin, CategoriaAcuerdo, TipoAumento } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
@@ -8,18 +8,24 @@ import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacionAdmin } from '../lib/pdfTemplates/liquidacionAdmin';
 import { calcularSueldoAdmin, calcularSplits, type SplitCalculado } from '../lib/calcularSueldoAdmin';
+import { calcularResumenBitacora } from './bitacoraViajes.controller';
 
 // ── Helpers de mapeo (Decimal → number) ───────────────────────────────────────
 
 function mapDecimalsAcuerdo(a: any) {
   return {
     ...a,
-    sueldo_basico:      Number(a.sueldo_basico),
-    premio_incentivo:   a.premio_incentivo   !== null ? Number(a.premio_incentivo)   : null,
-    viatico:            a.viatico            !== null ? Number(a.viatico)            : null,
-    premio_presentismo: a.premio_presentismo !== null ? Number(a.premio_presentismo) : null,
-    valor_hora_extra:   a.valor_hora_extra   !== null ? Number(a.valor_hora_extra)   : null,
-    telefono:           a.telefono           !== null ? Number(a.telefono)           : null,
+    sueldo_basico:         Number(a.sueldo_basico),
+    premio_incentivo:      a.premio_incentivo      !== null ? Number(a.premio_incentivo)      : null,
+    viatico:               a.viatico               !== null ? Number(a.viatico)               : null,
+    premio_presentismo:    a.premio_presentismo    !== null ? Number(a.premio_presentismo)    : null,
+    valor_hora_extra:      a.valor_hora_extra      !== null ? Number(a.valor_hora_extra)      : null,
+    telefono:              a.telefono              !== null ? Number(a.telefono)              : null,
+    viatico_provincial:    a.viatico_provincial    !== null ? Number(a.viatico_provincial)    : null,
+    viatico_nacional:      a.viatico_nacional      !== null ? Number(a.viatico_nacional)      : null,
+    viatico_nacional_1000: a.viatico_nacional_1000 !== null ? Number(a.viatico_nacional_1000) : null,
+    porcentaje_acuerdo:    a.porcentaje_acuerdo    !== null ? Number(a.porcentaje_acuerdo)    : null,
+    horas_pendientes_acum: a.horas_pendientes_acum !== null ? Number(a.horas_pendientes_acum) : null,
   };
 }
 
@@ -41,6 +47,10 @@ function mapDecimalsLiquidacionAdmin(l: any) {
     prestamos_descontados: Number(l.prestamos_descontados),
     subtotal_bruto:       Number(l.subtotal_bruto),
     total_a_cobrar:       Number(l.total_a_cobrar),
+    porcentaje_aumento_aplicado: l.porcentaje_aumento_aplicado !== null ? Number(l.porcentaje_aumento_aplicado) : null,
+    ipc_valor_aplicado:          l.ipc_valor_aplicado          !== null ? Number(l.ipc_valor_aplicado)          : null,
+    horas_pendientes_anterior:   l.horas_pendientes_anterior   !== null ? Number(l.horas_pendientes_anterior)   : null,
+    horas_pendientes_nuevo:      l.horas_pendientes_nuevo      !== null ? Number(l.horas_pendientes_nuevo)      : null,
   };
 }
 
@@ -166,6 +176,17 @@ const acuerdoSchema = z.object({
   premio_presentismo:  z.number().min(0).nullable().optional(),
   valor_hora_extra:    z.number().min(0).nullable().optional(),
   telefono:            z.number().min(0).nullable().optional(),
+  // Choferes con bitácora de viajes — viático por tipo de recorrido, en vez
+  // del monto fijo de arriba (ver BitacoraViaje / calcularResumenBitacora).
+  viatico_provincial:    z.number().min(0).nullable().optional(),
+  viatico_nacional:      z.number().min(0).nullable().optional(),
+  viatico_nacional_1000: z.number().min(0).nullable().optional(),
+  // % de aumento que representó este acuerdo sobre el anterior — informativo.
+  porcentaje_acuerdo:    z.number().nullable().optional(),
+  categoria_acuerdo:     z.nativeEnum(CategoriaAcuerdo).default('GENERAL'),
+  // Banco de horas inicial (CHOFER) — para cargar un saldo arrastrado desde
+  // fuera del sistema; después sólo se actualiza al aprobar liquidaciones.
+  horas_pendientes_acum: z.number().nullable().optional(),
   notas:               z.string().nullable().optional(),
 });
 
@@ -198,6 +219,12 @@ export async function createAcuerdo(req: Request, res: Response) {
         premio_presentismo:  d.premio_presentismo ?? null,
         valor_hora_extra:    d.valor_hora_extra   ?? null,
         telefono:            d.telefono           ?? null,
+        viatico_provincial:    d.viatico_provincial    ?? null,
+        viatico_nacional:      d.viatico_nacional      ?? null,
+        viatico_nacional_1000: d.viatico_nacional_1000 ?? null,
+        porcentaje_acuerdo:    d.porcentaje_acuerdo    ?? null,
+        categoria_acuerdo:     d.categoria_acuerdo,
+        horas_pendientes_acum: d.horas_pendientes_acum ?? null,
         notas:               d.notas              ?? null,
         created_by:          req.user!.id,
       },
@@ -267,6 +294,12 @@ export async function updateAcuerdo(req: Request, res: Response) {
       ...(d.premio_presentismo  !== undefined && { premio_presentismo: d.premio_presentismo }),
       ...(d.valor_hora_extra    !== undefined && { valor_hora_extra: d.valor_hora_extra }),
       ...(d.telefono            !== undefined && { telefono: d.telefono }),
+      ...(d.viatico_provincial    !== undefined && { viatico_provincial: d.viatico_provincial }),
+      ...(d.viatico_nacional      !== undefined && { viatico_nacional: d.viatico_nacional }),
+      ...(d.viatico_nacional_1000 !== undefined && { viatico_nacional_1000: d.viatico_nacional_1000 }),
+      ...(d.porcentaje_acuerdo    !== undefined && { porcentaje_acuerdo: d.porcentaje_acuerdo }),
+      ...(d.categoria_acuerdo     !== undefined && { categoria_acuerdo: d.categoria_acuerdo }),
+      ...(d.horas_pendientes_acum !== undefined && { horas_pendientes_acum: d.horas_pendientes_acum }),
       ...(d.notas               !== undefined && { notas: d.notas }),
       ...(d.activo              !== undefined && { activo: d.activo }),
     },
@@ -483,9 +516,21 @@ const generarSchema = z.object({
   empleado_id:          z.number().int().positive(),
   periodo_mes:          z.number().int().min(1).max(12),
   periodo_anio:         z.number().int().min(2000).max(2100),
-  horas_trabajadas:     z.number().min(0),
+  // Opcional — para CHOFER el frontend no la pide como obligatoria (el sueldo
+  // no depende de horas); si se manda, sólo se usa para el banco de horas.
+  horas_trabajadas:     z.number().min(0).default(0),
   vales_descuentos:     z.number().min(0).default(0),
   vacaciones_aguinaldo: z.number().min(0).default(0),
+  // Opt-in manual — se envía cuando el usuario clickeó "Usar viático
+  // calculado" sobre el resumen de bitácora en el dialog de generar. Para
+  // acuerdos categoria_acuerdo=CHOFER esto se aplica automáticamente aunque
+  // no se mande (ver generarLiquidacionAdmin).
+  viatico_override:     z.number().min(0).nullable().optional(),
+  // Aumento sobre el básico — manual o traído del INDEC (ver GET /ipc-indec).
+  tipo_aumento:          z.nativeEnum(TipoAumento).nullable().optional(),
+  porcentaje_aumento:    z.number().nullable().optional(),
+  ipc_mes_referencia:    z.string().nullable().optional(),
+  ipc_valor_aplicado:    z.number().nullable().optional(),
 });
 
 async function obtenerSplitsCalculados(empleadoId: number, total: number): Promise<SplitCalculado[]> {
@@ -514,8 +559,30 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
   });
   if (!acuerdo) { res.status(404).json({ error: 'Este empleado no tiene un acuerdo de sueldo activo' }); return; }
 
-  const calculo = calcularSueldoAdmin(acuerdo, d.horas_trabajadas, d.vales_descuentos, d.vacaciones_aguinaldo);
+  // Bitácora de viajes del período (choferes) — informativa siempre que haya
+  // registros. Para acuerdos categoria_acuerdo=CHOFER se aplica automático
+  // como viático efectivo (reemplaza el fijo del acuerdo); para el resto,
+  // sólo si el frontend manda viatico_override (botón "Usar viático calculado").
+  const bitacoraResumen = await calcularResumenBitacora(d.empleado_id, d.periodo_mes, d.periodo_anio);
+  const tieneBitacora    = bitacoraResumen.registros.length > 0;
+  const esChofer         = acuerdo.categoria_acuerdo === CategoriaAcuerdo.CHOFER;
+
+  if ((d.tipo_aumento === TipoAumento.MANUAL || d.tipo_aumento === TipoAumento.IPC) && (d.porcentaje_aumento === null || d.porcentaje_aumento === undefined)) {
+    res.status(400).json({ error: 'Falta el porcentaje de aumento' }); return;
+  }
+
+  const viaticoEfectivo = esChofer && tieneBitacora ? bitacoraResumen.total_viatico : (d.viatico_override ?? undefined);
+
+  const calculo = calcularSueldoAdmin(
+    acuerdo, d.horas_trabajadas, d.vales_descuentos, d.vacaciones_aguinaldo, undefined,
+    viaticoEfectivo, d.porcentaje_aumento ?? undefined,
+  );
   const splits  = await obtenerSplitsCalculados(d.empleado_id, calculo.total_a_cobrar);
+
+  // Banco de horas (CHOFER) — snapshot al generar; se persiste en el acuerdo
+  // recién al aprobar (ver aprobarLiquidacionAdmin).
+  const horasPendientesAnterior = esChofer ? Number(acuerdo.horas_pendientes_acum ?? 0) : null;
+  const horasPendientesNuevo    = esChofer ? round2(horasPendientesAnterior! + d.horas_trabajadas) : null;
 
   try {
     const liquidacion = await prisma.liquidacionAdmin.create({
@@ -525,7 +592,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
         acuerdo_id:   acuerdo.id,
         periodo_mes:  d.periodo_mes,
         periodo_anio: d.periodo_anio,
-        sueldo_basico:   acuerdo.sueldo_basico,
+        sueldo_basico:   calculo.sueldo_basico,
         horas_acordadas: acuerdo.horas_acordadas_mes,
         escalafon:       acuerdo.escalafon,
         horas_trabajadas: d.horas_trabajadas,
@@ -544,6 +611,12 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
         total_a_cobrar:       calculo.total_a_cobrar,
         splits:               splits.length > 0 ? (splits as any) : undefined,
         estado:               EstadoLiquidacionAdmin.BORRADOR,
+        porcentaje_aumento_aplicado: d.porcentaje_aumento ?? null,
+        tipo_aumento:                d.tipo_aumento ?? null,
+        ipc_mes_referencia:          d.ipc_mes_referencia ?? null,
+        ipc_valor_aplicado:          d.ipc_valor_aplicado ?? null,
+        horas_pendientes_anterior:   horasPendientesAnterior,
+        horas_pendientes_nuevo:      horasPendientesNuevo,
       },
       include: { empleado: { select: EMPLEADO_SELECT } },
     });
@@ -560,6 +633,16 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
       tx:           prisma as any,
     });
 
+    // Vincula los registros de bitácora del período a esta liquidación — a
+    // partir de acá quedan congelados si la liquidación pasa a APROBADA
+    // (ver ESTADOS_BLOQUEAN_EDICION en bitacoraViajes.controller.ts).
+    if (tieneBitacora) {
+      await prisma.bitacoraViaje.updateMany({
+        where: { id: { in: bitacoraResumen.registros.map(r => r.id) } },
+        data:  { liquidacion_admin_id: liquidacion.id },
+      });
+    }
+
     const prestamosPendientes = await prisma.prestamoEmpleado.findMany({
       where:  { empleado_id: d.empleado_id, deleted_at: null, saldado: false },
       select: { id: true, detalle: true, monto_cuota: true, cuotas_pagadas: true, cantidad_cuotas: true },
@@ -568,6 +651,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
     res.status(201).json({
       ...mapDecimalsLiquidacionAdmin(liquidacion),
       prestamos_pendientes: prestamosPendientes.map(p => ({ ...p, monto_cuota: Number(p.monto_cuota) })),
+      ...(tieneBitacora && { bitacora_resumen: bitacoraResumen }),
     });
   } catch (err: any) {
     if (err.code === 'P2002') {
@@ -604,8 +688,22 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
   const valesDescuentos    = d.vales_descuentos      ?? Number(liquidacion.vales_descuentos);
   const vacacionesAguinaldo = d.vacaciones_aguinaldo ?? Number(liquidacion.vacaciones_aguinaldo);
 
-  const calculo = calcularSueldoAdmin(liquidacion.acuerdo, horasTrabajadas, valesDescuentos, vacacionesAguinaldo);
+  // El viático y el % de aumento ya persistidos en la liquidación se
+  // preservan tal cual — recalcularlos desde liquidacion.acuerdo perdería un
+  // eventual viatico_override cargado desde bitácora al generar (ver
+  // generarLiquidacionAdmin), y además podría reflejar un acuerdo editado
+  // después de generar esta liquidación pero antes de aprobarla.
+  const aumentoPersistido = liquidacion.porcentaje_aumento_aplicado !== null ? Number(liquidacion.porcentaje_aumento_aplicado) : undefined;
+  const calculo = calcularSueldoAdmin(liquidacion.acuerdo, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, undefined, Number(liquidacion.viatico), aumentoPersistido);
   const splits  = await obtenerSplitsCalculados(liquidacion.empleado_id, calculo.total_a_cobrar);
+
+  // Banco de horas (CHOFER) — recalculado sobre el `anterior` ya persistido
+  // al generar (no se vuelve a leer del acuerdo, mismo criterio que el
+  // viático: evita drift si se aprobó otra liquidación de este empleado
+  // entretanto).
+  const horasPendientesNuevo = liquidacion.horas_pendientes_anterior !== null
+    ? round2(Number(liquidacion.horas_pendientes_anterior) + horasTrabajadas)
+    : null;
 
   const updated = await prisma.liquidacionAdmin.update({
     where: { id },
@@ -620,6 +718,7 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
       subtotal_bruto:       calculo.subtotal_bruto,
       total_a_cobrar:       calculo.total_a_cobrar,
       splits:               splits.length > 0 ? (splits as any) : undefined,
+      ...(horasPendientesNuevo !== null && { horas_pendientes_nuevo: horasPendientesNuevo }),
     },
     include: { empleado: { select: EMPLEADO_SELECT } },
   });
@@ -780,6 +879,15 @@ export async function aprobarLiquidacionAdmin(req: Request, res: Response) {
         aprobado_at:           new Date(),
       },
     });
+
+    // Banco de horas (CHOFER) — recién se persiste en el acuerdo al aprobar,
+    // no al generar el borrador (ver generarLiquidacionAdmin/updateLiquidacionAdmin).
+    if (liquidacion.horas_pendientes_nuevo !== null) {
+      await tx.acuerdoSueldo.update({
+        where: { id: liquidacion.acuerdo_id },
+        data:  { horas_pendientes_acum: liquidacion.horas_pendientes_nuevo },
+      });
+    }
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
@@ -1013,6 +1121,78 @@ export async function getResumenMensual(req: Request, res: Response) {
     empleados,
     totales,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IPC DEL INDEC — para pre-cargar el % de aumento al generar una liquidación.
+// Fuente pública apis.datos.gob.ar, serie 145.3_INGNACUAL_DICI_M_38. El campo
+// "field" de esa serie dice explícitamente "Tasa de variación mensual...
+// Variación intermensual" — el valor que devuelve YA ES el % de variación
+// mensual como fracción (ej. 0.0211377... = 2,11%), no un nivel de índice.
+// Por eso el cálculo es simplemente valor × 100, sin restar contra el punto
+// anterior — confirmado pegándole a la API real: para julio 2026 devuelve
+// 0.0211377242678618 → 2.11% ≈ el "~2,1%" esperado. (Si se tratara como nivel
+// de índice y se calculara ((actual-anterior)/anterior)*100, como sugiere la
+// fórmula típica para series de nivel, daría ~12%, que no coincide.) Se pide
+// limit=2 igual para tener el punto anterior disponible por si se necesita
+// más adelante, aunque el cálculo actual sólo usa el último. El INDEC publica
+// con rezago, así que se usa el ÚLTIMO dato disponible de la serie (no
+// necesariamente el mes/año pedido) y se informa qué mes es realmente en la
+// respuesta (`mes`). Si la API no responde o la serie viene vacía, se
+// devuelve un error claro para que el usuario cargue el % manualmente —
+// nunca se inventa un valor.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ipcQuerySchema = z.object({
+  mes:  z.coerce.number().int().min(1).max(12),
+  anio: z.coerce.number().int().min(2000).max(2100),
+});
+
+const IPC_SERIES_URL = 'https://apis.datos.gob.ar/series/api/series/?ids=145.3_INGNACUAL_DICI_M_38&limit=2&sort=desc';
+
+function mesLabelDesdeFecha(fechaISO: string): string {
+  const [anio, mes] = fechaISO.split('-').map(Number);
+  return `${MESES_LABEL[mes - 1].toLowerCase()} ${anio}`;
+}
+
+export async function getIpcIndec(req: Request, res: Response) {
+  const parsed = ipcQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Se requieren mes y anio' }); return;
+  }
+
+  const ERROR_INDEC = { error: 'No se pudo obtener el IPC del INDEC. Ingresá el porcentaje manualmente.' };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let resp: Awaited<ReturnType<typeof fetch>>;
+    try {
+      resp = await fetch(IPC_SERIES_URL, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!resp.ok) { res.status(502).json(ERROR_INDEC); return; }
+
+    const json = await resp.json() as { data?: [string, number][] };
+    const serie = json.data ?? [];
+    if (serie.length < 1) { res.status(502).json(ERROR_INDEC); return; }
+
+    const [fechaActual, valorActual] = serie[0];
+    const ipcMensual = round2(valorActual * 100);
+
+    res.json({
+      mes:        mesLabelDesdeFecha(fechaActual),
+      ipc_mensual: ipcMensual,
+      // La serie ya no trae 13 puntos (limit=2) — no hay forma de calcular la
+      // variación anual con esta consulta. Se deja el campo en null en vez de
+      // sacarlo del contrato de la respuesta, para no romper al frontend.
+      ipc_anual:   null,
+      fuente:      'INDEC',
+    });
+  } catch {
+    res.status(502).json(ERROR_INDEC);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

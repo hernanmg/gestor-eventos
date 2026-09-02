@@ -4,9 +4,22 @@ export interface HelpLink {
   accion?: string;   // disparar window.dispatchEvent('help:<accion>')
 }
 
+// Link embebido dentro del texto de una sección — HelpPanel lo renderiza como
+// un <Link> de React Router inline, en vez de un botón aparte en "Links
+// rápidos". Ej: "Podés crear la factura desde " + {texto:"Facturas a
+// Cobrar", ruta:"/facturas-emitidas"} + "."
+export interface HelpInlineLink {
+  texto: string;
+  ruta:  string;
+}
+
 export interface HelpSection {
   titulo:    string;
-  contenido: string;
+  // String simple (como siempre) o un array mezclando texto plano con
+  // HelpInlineLink para insertar links navegables en medio del párrafo.
+  contenido: string | (string | HelpInlineLink)[];
+  // "Ver también: [link] · [link]" al pie de esta sección.
+  veTambien?: HelpInlineLink[];
 }
 
 export interface HelpContent {
@@ -61,6 +74,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Importar desde Excel',
         contenido: 'Si ya tenés eventos cargados en el Excel original, podés importarlos directamente desde el menú "Importar Excel". El sistema mapea automáticamente las 10 hojas del formato histórico a los rubros configurados y crea todos los movimientos.',
+      },
+      {
+        titulo: 'Carga rápida de evento',
+        contenido: 'Para eventos pequeños o informales que no necesitan ficha técnica completa. Cargá el trabajo con los datos mínimos y decidí si se factura o no. Los eventos sin decisión de facturación aparecen como alertas en las notificaciones para que administración pueda actuar a tiempo.',
       },
     ],
     links: [
@@ -237,7 +254,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Egresos (5 tabs), Ingresos (5 tabs), Caja, Conciliatoria, Echeqs y Facturas.',
+        contenido: 'Resumen, Egresos (por rubro), Ingresos, Caja, Ficha, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Para eventos informales: Resumen, Caja, Stock, Comidas.',
       },
       {
         titulo: 'Egresos e ingresos',
@@ -246,6 +263,19 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Conciliatoria',
         contenido: 'Resume el total de ingresos menos egresos y calcula el saldo final con la distribución entre socios configurada.',
+      },
+      {
+        titulo: '¿Se factura este evento?',
+        contenido: [
+          'Cada evento tiene una decisión de facturación que debe tomarse a tiempo. Si marcás "Sí se factura", podés crear la factura directamente desde ',
+          { texto: 'Facturas a Cobrar', ruta: '/facturas-emitidas' },
+          ' vinculada a este evento.',
+        ],
+        veTambien: [
+          { texto: 'Facturas a Cobrar', ruta: '/facturas-emitidas' },
+          { texto: 'Caja Global',       ruta: '/caja' },
+          { texto: 'Calendario',        ruta: '/calendario' },
+        ],
       },
     ],
   },
@@ -314,6 +344,22 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Facturas a Cobrar (facturas emitidas a clientes) ───────────────────────
+  '/facturas-emitidas': {
+    titulo: 'Facturas a Cobrar',
+    descripcion: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una. Podés registrar cobros parciales — el sistema actualiza el estado automáticamente (Emitida → Cobrada parcial → Cobrada). Si una factura corresponde a un evento, vinculala para tener todo centralizado.',
+      },
+      {
+        titulo: 'Vencimientos',
+        contenido: 'Las facturas vencidas sin cobrar aparecen en el Calendario y en las notificaciones.',
+      },
+    ],
+  },
+
   // ── Proveedores ─────────────────────────────────────────────────────────────
   '/proveedores': {
     titulo: 'Proveedores',
@@ -338,6 +384,82 @@ const help: Record<string, HelpContent> = {
     ],
     links: [
       { label: 'Nuevo proveedor', accion: 'abrir_modal_nuevo_proveedor' },
+    ],
+  },
+
+  // ── Cuentas corrientes ───────────────────────────────────────────────────────
+  '/cuentas-corrientes': {
+    titulo: 'Cuentas Corrientes',
+    descripcion: 'Registrá cuentas corrientes con clientes, proveedores o socios.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Registrá cuentas corrientes con clientes, proveedores o socios. Cada cuenta tiene movimientos Debe/Haber con saldo acumulado. Soporta ARS, USD y EUR con tasa de cambio por movimiento.',
+      },
+    ],
+  },
+
+  // ── Flota ────────────────────────────────────────────────────────────────────
+  '/flota': {
+    titulo: 'Flota',
+    descripcion: 'Gestioná la flota de vehículos con seguros, patentes, peajes y servicios de taller.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: [
+          'Gestioná la flota de vehículos con seguros, patentes, peajes y servicios de taller. Las alertas de vencimiento aparecen en el ',
+          { texto: 'Calendario', ruta: '/calendario' },
+          '.',
+        ],
+        veTambien: [{ texto: 'Calendario', ruta: '/calendario' }],
+      },
+    ],
+  },
+
+  // ── AFIP y Créditos Bancarios ────────────────────────────────────────────────
+  '/afip-prestamos': {
+    titulo: 'AFIP y Créditos Bancarios',
+    descripcion: 'Seguimiento de planes de pago AFIP y créditos bancarios con cronograma de cuotas.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: [
+          'Seguimiento de planes de pago AFIP y créditos bancarios con cronograma de cuotas. Las cuotas próximas a vencer aparecen en el ',
+          { texto: 'Calendario', ruta: '/calendario' },
+          ' y en las ',
+          { texto: 'notificaciones', ruta: '/notificaciones' },
+          '.',
+        ],
+        veTambien: [{ texto: 'Calendario', ruta: '/calendario' }],
+      },
+    ],
+  },
+
+  // ── Sueldos administrativos ──────────────────────────────────────────────────
+  '/rrhh/sueldos-admin': {
+    titulo: 'Sueldos Administrativos',
+    descripcion: 'Liquidación mensual de personal administrativo con conceptos configurables por escalafón.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Liquidación mensual de personal administrativo con conceptos configurables por escalafón. Si el empleado trabaja para más de una empresa, el costo se divide automáticamente según el porcentaje acordado.',
+      },
+      {
+        titulo: 'Bitácora de Viajes (choferes)',
+        contenido: 'Para choferes con viático variable por recorrido (Provincial/Nacional/Nacional +1000km), cargá cada viaje en la Bitácora de Viajes — el viático del mes se calcula solo y reemplaza el monto fijo del acuerdo al generar la liquidación.',
+      },
+    ],
+  },
+
+  // ── Calendario ───────────────────────────────────────────────────────────────
+  '/calendario': {
+    titulo: 'Calendario',
+    descripcion: 'Vista centralizada de todos los vencimientos y eventos del sistema.',
+    secciones: [
+      {
+        titulo: '¿Qué muestra?',
+        contenido: 'Vista centralizada de todos los vencimientos y eventos del sistema: seguros, patentes, cuotas AFIP, créditos, facturas y más. Filtrá por tipo con los badges de colores.',
+      },
     ],
   },
 
@@ -436,6 +558,18 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Notificaciones (campanita) ──────────────────────────────────────────────
+  '/notificaciones': {
+    titulo: 'Notificaciones',
+    descripcion: 'Alertas del sistema que requieren tu atención — vencimientos, pendientes y decisiones sin tomar.',
+    secciones: [
+      {
+        titulo: 'Evento sin decisión de facturación',
+        contenido: 'Eventos nuevos sin decisión de facturación — hacé click para ir al evento y decidir.',
+      },
+    ],
+  },
+
 };
 
 // ── Routing ──────────────────────────────────────────────────────────────────
@@ -454,4 +588,38 @@ export function getHelpContent(pathname: string): HelpContent | null {
   if (/^\/facturas\/\d+/.test(pathname))                      return help['/facturas/:id']                     ?? null;
 
   return null;
+}
+
+// ── Búsqueda ─────────────────────────────────────────────────────────────────
+
+export interface HelpSearchResult {
+  ruta:       string; // clave de `help` — puede tener ":id", se resuelve en HelpPanel
+  pageTitulo: string;
+  section:    HelpSection;
+}
+
+function contenidoATexto(contenido: HelpSection['contenido']): string {
+  if (typeof contenido === 'string') return contenido;
+  return contenido.map(t => (typeof t === 'string' ? t : t.texto)).join('');
+}
+
+function normalizar(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+}
+
+// Busca en título/contenido de TODAS las secciones de TODAS las páginas
+// (no sólo la página actual) — el buscador del panel de ayuda es global,
+// como un mini-helpdesk, no un filtro de la página en la que estás parado.
+export function searchHelp(query: string): HelpSearchResult[] {
+  const q = normalizar(query.trim());
+  if (!q) return [];
+
+  const resultados: HelpSearchResult[] = [];
+  for (const [ruta, content] of Object.entries(help)) {
+    for (const section of content.secciones) {
+      const haystack = normalizar(`${content.titulo} ${section.titulo} ${contenidoATexto(section.contenido)}`);
+      if (haystack.includes(q)) resultados.push({ ruta, pageTitulo: content.titulo, section });
+    }
+  }
+  return resultados;
 }

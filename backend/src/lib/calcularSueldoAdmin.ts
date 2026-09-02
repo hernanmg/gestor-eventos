@@ -37,6 +37,7 @@ export function calcularAntiguedad(fechaInicio: Date, fechaReferencia: Date = ne
 }
 
 export interface ResultadoSueldoAdmin {
+  sueldo_basico:        number; // con aumento aplicado, si corresponde — ver aumentoPorcentaje
   horas_extras:         number;
   importe_horas_extras: number;
   premio_incentivo:     number;
@@ -44,7 +45,8 @@ export interface ResultadoSueldoAdmin {
   premio_presentismo:   number;
   // true cuando horas_trabajadas < horas_acordadas_mes — perdió el
   // presentismo (premio_presentismo ya viene en 0 en ese caso). El frontend
-  // lo usa para mostrar el aviso "No alcanzó las horas acordadas".
+  // lo usa para mostrar el aviso "No alcanzó las horas acordadas". Para
+  // CHOFER siempre es false — el presentismo no depende de horas.
   presentismo_perdido:  boolean;
   antiguedad_anios:     number;
   importe_antiguedad:   number;
@@ -54,26 +56,45 @@ export interface ResultadoSueldoAdmin {
 }
 
 export function calcularSueldoAdmin(
-  acuerdo:              Pick<AcuerdoSueldo, 'sueldo_basico' | 'horas_acordadas_mes' | 'premio_incentivo' | 'viatico' | 'premio_presentismo' | 'valor_hora_extra' | 'telefono' | 'fecha_inicio'>,
+  acuerdo:              Pick<AcuerdoSueldo, 'sueldo_basico' | 'horas_acordadas_mes' | 'premio_incentivo' | 'viatico' | 'premio_presentismo' | 'valor_hora_extra' | 'telefono' | 'fecha_inicio' | 'categoria_acuerdo'>,
   horasTrabajadas:      number,
   valesDescuentos:      number = 0,
   vacacionesAguinaldo:  number = 0,
   fechaReferencia:      Date = new Date(),
+  // Choferes con bitácora de viajes: el viático efectivo del período viene de
+  // BitacoraViaje (suma de cantidad_vueltas × valor_por_vuelta), no del monto
+  // fijo del acuerdo — ver calcularResumenBitacora() en
+  // bitacoraViajes.controller.ts.
+  viaticoOverride?:     number,
+  // % de aumento sobre el básico (manual o IPC) aplicado en esta liquidación
+  // — ver LiquidacionAdmin.porcentaje_aumento_aplicado.
+  aumentoPorcentaje?:   number,
 ): ResultadoSueldoAdmin {
+  const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
+
+  const sueldoBasico = aumentoPorcentaje
+    ? round2(Number(acuerdo.sueldo_basico) * (1 + aumentoPorcentaje / 100))
+    : Number(acuerdo.sueldo_basico);
+
   // El sueldo básico, viático, teléfono, antigüedad e incentivo son fijos —
   // no se tocan por horas. Sólo el Premio Presentismo depende de haber
   // llegado al mínimo acordado (regla del Excel de Mayra), y las horas
   // extras sólo existen si se superó ese mínimo.
-  const cumpleHoras         = horasTrabajadas >= acuerdo.horas_acordadas_mes;
-  const horasExtras         = cumpleHoras ? round2(horasTrabajadas - acuerdo.horas_acordadas_mes) : 0;
-  const importeHorasExtras  = round2(horasExtras * Number(acuerdo.valor_hora_extra ?? 0));
+  //
+  // CHOFER: no usa horas acordadas ni extras para el cálculo — las horas se
+  // registran para control/banco de horas (ver LiquidacionAdmin.horas_pendientes_*)
+  // pero no impactan el monto, y el presentismo nunca se pierde por horas.
+  const cumpleHoras         = esChofer ? true : horasTrabajadas >= acuerdo.horas_acordadas_mes;
+  const horasExtras         = esChofer ? 0 : (cumpleHoras ? round2(horasTrabajadas - acuerdo.horas_acordadas_mes) : 0);
+  const importeHorasExtras  = esChofer ? 0 : round2(horasExtras * Number(acuerdo.valor_hora_extra ?? 0));
   const premioPresentismo   = cumpleHoras ? Number(acuerdo.premio_presentismo ?? 0) : 0;
   const antiguedad          = calcularAntiguedad(acuerdo.fecha_inicio, fechaReferencia);
+  const viatico             = viaticoOverride ?? Number(acuerdo.viatico ?? 0);
 
   const subtotalBruto = round2(
-    Number(acuerdo.sueldo_basico)
+    sueldoBasico
     + Number(acuerdo.premio_incentivo ?? 0)
-    + Number(acuerdo.viatico ?? 0)
+    + viatico
     + premioPresentismo
     + antiguedad.monto
     + Number(acuerdo.telefono ?? 0)
@@ -83,10 +104,11 @@ export function calcularSueldoAdmin(
   const totalACobrar = round2(subtotalBruto - valesDescuentos);
 
   return {
+    sueldo_basico:         sueldoBasico,
     horas_extras:         horasExtras,
     importe_horas_extras: importeHorasExtras,
     premio_incentivo:     Number(acuerdo.premio_incentivo ?? 0),
-    viatico:              Number(acuerdo.viatico ?? 0),
+    viatico,
     premio_presentismo:   premioPresentismo,
     presentismo_perdido:  !cumpleHoras,
     antiguedad_anios:     antiguedad.anios,

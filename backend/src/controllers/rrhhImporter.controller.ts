@@ -1,9 +1,12 @@
 import type { Request, Response } from 'express';
 import * as XLSX from 'xlsx';
-import { CategoriaEmpleado } from '@prisma/client';
+import { CategoriaEmpleado, TipoRecorrido, EstadoJornada } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { calcularHoras } from './rrhh.controller';
+import {
+  round2, calcularDiaSemana, calcularHorasTrabajadas, resolverValorPorVuelta, ESTADOS_BLOQUEAN_EDICION,
+} from './bitacoraViajes.controller';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -14,6 +17,28 @@ function normalizeHeader(h: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+}
+
+// Como normalizeHeader, pero también colapsa espacios/saltos de línea
+// internos — las planillas reales de sueldos tienen headers con "\r\n"
+// adentro (ej. "Hrs \r\ntrabajadas").
+function normalizeLoose(h: unknown): string {
+  return normalizeHeader(String(h ?? '')).replace(/\s+/g, ' ');
+}
+
+// Las planillas de sueldos DOS57 escriben las horas como TEXTO en formato
+// español "9:00 a. m." / "6:02 p. m." (no como fracción numérica de Excel,
+// a diferencia de otras plantillas de este mismo sistema) — se parsea aparte
+// de excelDateToJs/formatearHoraExcel. Devuelve "HH:MM" (24hs) o null si el
+// valor no matchea ese formato (ej. es una palabra como "VACACIONES").
+function parseHoraAmPm(raw: any): string | null {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?$/i);
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[3].toLowerCase() === 'p') h += 12;
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
 }
 
 function getCell(row: Record<string, any>, aliases: string[]): any {
@@ -260,4 +285,410 @@ export async function importarJornadas(req: Request, res: Response) {
   }
 
   res.json({ preview: false, creados, omitidos, hojas: hojasResultado });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/rrhh/bitacora-viajes/importar?empleado_id=&mes=&anio=
+// Layout real (hoja "VIAJES LUIS" o similar — se busca por nombre de hoja que
+// contenga "VIAJES"): fila 1 nombre, fila 2 mes, fila 3 headers (ITEM | DIA |
+// FECHA | EVENTO | RECORRIDO (3 subcols) | EJIDO (3 subcols) | VUELTAS |
+// OBSERVACION), fila 4 sub-headers (INICIO/DESTINO/FINAL bajo RECORRIDO,
+// PROVINCIAL/NACIONAL/NACIONAL+1000 bajo EJIDO), datos desde fila 5. Se
+// detectan las columnas dinámicamente por texto de header (no por índice
+// fijo) para tolerar variaciones menores entre plantillas. Un solo empleado
+// por archivo (se elige antes de subir). Upsert por
+// [empleado_id, fecha, tipo_recorrido]. Enviar ?dry_run=true para
+// previsualizar sin guardar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ColumnasViajes {
+  headerRow: number;
+  fecha: number; evento: number; observacion: number;
+  inicio: number; destino: number; final: number;
+  provincial: number; nacional: number; nacional1000: number;
+}
+
+function detectarHojaViajes(wb: XLSX.WorkBook): string | null {
+  return wb.SheetNames.find(n => normalizeLoose(n).includes('viajes')) ?? null;
+}
+
+function detectarColumnasViajes(rows: any[][]): ColumnasViajes | null {
+  for (let r = 0; r < Math.min(rows.length, 15); r++) {
+    const row = (rows[r] ?? []).map(normalizeLoose);
+    if (row[0] !== 'item') continue;
+    const sub = (rows[r + 1] ?? []).map(normalizeLoose);
+
+    const fecha       = row.findIndex(c => c === 'fecha');
+    const evento       = row.findIndex(c => c === 'evento');
+    const observacion  = row.findIndex(c => c.startsWith('observacion'));
+    const inicio       = sub.findIndex(c => c === 'inicio');
+    const destino      = sub.findIndex(c => c === 'destino');
+    const final        = sub.findIndex(c => c === 'final');
+    const nacional1000 = sub.findIndex(c => c.includes('nacional') && c.includes('1000'));
+    const provincial    = sub.findIndex(c => c === 'provincial');
+    const nacional      = sub.findIndex((c, i) => c.includes('nacional') && i !== nacional1000);
+
+    if ([fecha, inicio, destino, final, provincial, nacional, nacional1000].some(i => i === -1)) return null;
+    return { headerRow: r, fecha, evento, observacion, inicio, destino, final, provincial, nacional, nacional1000 };
+  }
+  return null;
+}
+
+export async function importarBitacoraViajes(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const dryRun = req.query.dry_run === 'true';
+  const empleadoIdParam = req.query.empleado_id ? Number(req.query.empleado_id) : null;
+  const mesParam  = req.query.mes  ? Number(req.query.mes)  : null;
+  const anioParam = req.query.anio ? Number(req.query.anio) : null;
+  if (!empleadoIdParam) { res.status(400).json({ error: 'Se requiere elegir un empleado (empleado_id)' }); return; }
+
+  const empleado = await prisma.empleado.findFirst({
+    where:  { id: empleadoIdParam, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: { id: true, nombre: true, apellido: true },
+  });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  const acuerdo = await prisma.acuerdoSueldo.findFirst({ where: { empleado_id: empleado.id, activo: true, deleted_at: null } });
+
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
+  }
+
+  const nombreHoja = detectarHojaViajes(wb);
+  if (!nombreHoja) { res.status(400).json({ error: 'No se encontró una hoja de viajes (se busca una hoja cuyo nombre contenga "VIAJES")' }); return; }
+
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[nombreHoja], { header: 1, defval: null, raw: true });
+  const cols = detectarColumnasViajes(rows);
+  if (!cols) { res.status(400).json({ error: `La hoja "${nombreHoja}" no tiene el formato esperado (headers ITEM/FECHA/RECORRIDO/EJIDO)` }); return; }
+
+  const errores: { fila: number; motivo: string }[] = [];
+  const aProcesar: {
+    fila: number; fecha: Date; convocatoria: string | null; recorrido: string | null;
+    tipo_recorrido: TipoRecorrido; cantidad_vueltas: number; observaciones: string | null;
+  }[] = [];
+  let sinRecorrido = 0;
+
+  for (let r = cols.headerRow + 2; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const filaExcel = r + 1;
+    const fechaLocal = excelDateToJs(row[cols.fecha]);
+    if (!fechaLocal) break; // fin de la tabla (fila en blanco o TOTAL)
+    const fecha = new Date(Date.UTC(fechaLocal.getFullYear(), fechaLocal.getMonth(), fechaLocal.getDate()));
+
+    if (mesParam && anioParam && (fecha.getUTCMonth() + 1 !== mesParam || fecha.getUTCFullYear() !== anioParam)) {
+      errores.push({ fila: filaExcel, motivo: 'Fecha fuera del período seleccionado' });
+      continue;
+    }
+
+    const candidatos: { tipo: TipoRecorrido; vueltas: number }[] = [];
+    const provincialVal = row[cols.provincial];
+    const nacionalVal   = row[cols.nacional];
+    const nacional1000Val = row[cols.nacional1000];
+    if (typeof provincialVal === 'number' && provincialVal > 0)   candidatos.push({ tipo: TipoRecorrido.PROVINCIAL,    vueltas: provincialVal });
+    if (typeof nacionalVal === 'number' && nacionalVal > 0)       candidatos.push({ tipo: TipoRecorrido.NACIONAL,      vueltas: nacionalVal });
+    if (typeof nacional1000Val === 'number' && nacional1000Val > 0) candidatos.push({ tipo: TipoRecorrido.NACIONAL_1000, vueltas: nacional1000Val });
+
+    if (candidatos.length === 0) { sinRecorrido++; continue; } // día sin viaje — no es un error
+    if (candidatos.length > 1) {
+      errores.push({ fila: filaExcel, motivo: `Más de un tipo de recorrido cargado en la misma fila — se usó ${candidatos[0].tipo}` });
+    }
+    const { tipo, vueltas } = candidatos[0];
+
+    const evento = cols.evento !== -1 ? row[cols.evento] : null;
+    const partesRecorrido = [row[cols.inicio], row[cols.destino], row[cols.final]].filter(v => v != null && v !== '').map(String);
+    const observacion = cols.observacion !== -1 ? row[cols.observacion] : null;
+
+    aProcesar.push({
+      fila:             filaExcel,
+      fecha,
+      convocatoria:      evento ? String(evento).trim() : null,
+      recorrido:         partesRecorrido.length > 0 ? partesRecorrido.join(' → ') : null,
+      tipo_recorrido:    tipo,
+      cantidad_vueltas:  Math.round(vueltas),
+      observaciones:     observacion ? String(observacion).trim() : null,
+    });
+  }
+
+  const resumenPreview = () => {
+    const totales = { provincial: 0, nacional: 0, nacional_1000: 0 };
+    let viaticoEstimado = 0;
+    for (const item of aProcesar) {
+      const key = item.tipo_recorrido === TipoRecorrido.PROVINCIAL ? 'provincial' : item.tipo_recorrido === TipoRecorrido.NACIONAL ? 'nacional' : 'nacional_1000';
+      totales[key] += item.cantidad_vueltas;
+      const valorPorVuelta = resolverValorPorVuelta(acuerdo, item.tipo_recorrido);
+      if (valorPorVuelta !== null) viaticoEstimado += valorPorVuelta * item.cantidad_vueltas;
+    }
+    return {
+      provincial: totales.provincial, nacional: totales.nacional, nacional_1000: totales.nacional_1000,
+      total_vueltas: totales.provincial + totales.nacional + totales.nacional_1000,
+      viatico_estimado: round2(viaticoEstimado),
+    };
+  };
+
+  if (dryRun) {
+    res.json({
+      preview:         true,
+      empleado_id:     empleado.id,
+      empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
+      creados:         aProcesar.length, // estimado — al confirmar se separa en creados/actualizados reales
+      actualizados:    0,
+      omitidos:        sinRecorrido + errores.length,
+      sin_recorrido:   sinRecorrido,
+      errores,
+      resumen:         resumenPreview(),
+    });
+    return;
+  }
+
+  let creados = 0;
+  let actualizados = 0;
+  for (const item of aProcesar) {
+    const existing = await prisma.bitacoraViaje.findFirst({
+      where:   { empleado_id: empleado.id, fecha: item.fecha, tipo_recorrido: item.tipo_recorrido, deleted_at: null },
+      include: { liquidacion_admin: { select: { estado: true } } },
+    });
+    if (existing?.liquidacion_admin && ESTADOS_BLOQUEAN_EDICION.includes(existing.liquidacion_admin.estado)) {
+      errores.push({ fila: item.fila, motivo: 'Ya está incluido en una liquidación aprobada — no se actualizó' });
+      continue;
+    }
+
+    const valorPorVuelta   = resolverValorPorVuelta(acuerdo, item.tipo_recorrido);
+    const viaticoCalculado = valorPorVuelta !== null ? round2(valorPorVuelta * item.cantidad_vueltas) : null;
+
+    if (existing) {
+      await prisma.bitacoraViaje.update({
+        where: { id: existing.id },
+        data: {
+          convocatoria:      item.convocatoria,
+          recorrido:         item.recorrido,
+          cantidad_vueltas:  item.cantidad_vueltas,
+          valor_por_vuelta:  valorPorVuelta,
+          viatico_calculado: viaticoCalculado,
+          observaciones:     item.observaciones,
+        },
+      });
+      actualizados++;
+    } else {
+      await prisma.bitacoraViaje.create({
+        data: {
+          empleado_id:       empleado.id,
+          ...withTenant(req.empresaId!),
+          fecha:             item.fecha,
+          convocatoria:      item.convocatoria,
+          dia_semana:        calcularDiaSemana(item.fecha),
+          ejido:             null,
+          recorrido:         item.recorrido,
+          tipo_recorrido:    item.tipo_recorrido,
+          cantidad_vueltas:  item.cantidad_vueltas,
+          valor_por_vuelta:  valorPorVuelta,
+          viatico_calculado: viaticoCalculado,
+          observaciones:     item.observaciones,
+          created_by:        req.user!.id,
+        },
+      });
+      creados++;
+    }
+  }
+
+  res.json({
+    preview: false,
+    empleado_id:     empleado.id,
+    empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
+    creados, actualizados,
+    omitidos:      sinRecorrido + errores.length,
+    sin_recorrido: sinRecorrido,
+    errores,
+    resumen: resumenPreview(),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/rrhh/jornadas/importar-historial?empleado_id=&mes=&anio=
+// Historial de convocatorias — se parsea la hoja del Excel de sueldos cuyo
+// nombre matchea el apellido/nombre del empleado (mismo criterio que
+// importarJornadas). Se busca dinámicamente la fila de headers que contenga
+// "Convocatoria" (su posición varía por empleado — ver planilla real). La
+// columna "Convocatoria" está sobrecargada en el Excel real: para días
+// trabajados contiene la HORA de convocatoria en texto ("9:00 a. m."), y para
+// días especiales contiene una palabra de estado libre (VACACIONES, LIBRE,
+// CARPETA, HOME OFFICE, ...) — no un nombre de evento como en la hoja de
+// viajes. Se detecta cuál es parseando como hora; si no matchea, se guarda el
+// texto tal cual en Jornada.convocatoria (cubre cualquier palabra de estado,
+// no sólo LIBRE/VACACIONES). horas_normales = el valor ya calculado por el
+// Excel (columna "Hrs trabajadas") — informativo, no se recalcula. Todas las
+// filas con fecha válida generan una Jornada (upsert por [empleado_id,
+// fecha]) en estado APROBADA. Enviar ?dry_run=true para previsualizar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ColumnasHistorial {
+  headerRow: number;
+  convocatoria: number; fecha: number; inicio: number; fin: number; horas: number;
+}
+
+function detectarColumnasHistorial(rows: any[][]): ColumnasHistorial | null {
+  for (let r = 0; r < Math.min(rows.length, 30); r++) {
+    const row = (rows[r] ?? []).map(normalizeLoose);
+    if (!row.includes('convocatoria')) continue;
+    const convocatoria = row.findIndex(c => c === 'convocatoria');
+    const fecha        = row.findIndex(c => c === 'fecha');
+    const inicio        = row.findIndex(c => c === 'inicio de actividades');
+    const fin            = row.findIndex(c => c === 'fin de actividades');
+    const horas          = row.findIndex(c => c === 'hrs trabajadas');
+    if ([fecha, inicio, fin, horas].some(i => i === -1)) continue;
+    return { headerRow: r, convocatoria, fecha, inicio, fin, horas };
+  }
+  return null;
+}
+
+export async function importarHistorialConvocatorias(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const dryRun = req.query.dry_run === 'true';
+  const empleadoIdParam = req.query.empleado_id ? Number(req.query.empleado_id) : null;
+  const mesParam  = req.query.mes  ? Number(req.query.mes)  : null;
+  const anioParam = req.query.anio ? Number(req.query.anio) : null;
+  if (!empleadoIdParam) { res.status(400).json({ error: 'Se requiere elegir un empleado (empleado_id)' }); return; }
+
+  const empleado = await prisma.empleado.findFirst({
+    where:  { id: empleadoIdParam, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: { id: true, nombre: true, apellido: true },
+  });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
+  }
+
+  // Match exacto primero (nombre/apellido normalizado === nombre de hoja) — un
+  // match por "includes" suelto puede confundir, ej. "LUIS" matchea tanto la
+  // hoja "LUIS" como "VIAJES LUIS" (que es la hoja de viajes, no la de
+  // historial). Sólo se recurre a "includes" si no hay match exacto, y ahí sí
+  // se excluye cualquier hoja que contenga "viajes".
+  const apellidoNorm = normalizeLoose(empleado.apellido);
+  const nombreNorm    = normalizeLoose(empleado.nombre);
+  const nombreHoja =
+    wb.SheetNames.find(n => { const norm = normalizeLoose(n); return norm === apellidoNorm || norm === nombreNorm; }) ??
+    wb.SheetNames.find(n => {
+      const norm = normalizeLoose(n);
+      return !norm.includes('viajes') && (norm.includes(apellidoNorm) || norm.includes(nombreNorm));
+    });
+  if (!nombreHoja) { res.status(400).json({ error: `No se encontró una hoja que coincida con ${empleado.apellido}, ${empleado.nombre}` }); return; }
+
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[nombreHoja], { header: 1, defval: null, raw: true });
+  const cols = detectarColumnasHistorial(rows);
+  if (!cols) { res.status(400).json({ error: `La hoja "${nombreHoja}" no tiene el formato esperado (headers Convocatoria/Fecha/Inicio de Actividades/Fin de Actividades/Hrs trabajadas)` }); return; }
+
+  const errores: { fila: number; motivo: string }[] = [];
+  const aProcesar: {
+    fila: number; fecha: Date; fechaLocal: Date; convocatoria: string | null;
+    horaConvocatoria: string | null; horaIngreso: string | null; horaEgreso: string | null; horas: number;
+  }[] = [];
+
+  for (let r = cols.headerRow + 1; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const filaExcel = r + 1;
+    const fechaLocal = excelDateToJs(row[cols.fecha]);
+    if (!fechaLocal) break; // fin de la tabla
+
+    if (mesParam && anioParam && (fechaLocal.getMonth() + 1 !== mesParam || fechaLocal.getFullYear() !== anioParam)) {
+      errores.push({ fila: filaExcel, motivo: 'Fecha fuera del período seleccionado' });
+      continue;
+    }
+
+    const colARaw = row[cols.convocatoria];
+    const horaConvocatoria = parseHoraAmPm(colARaw);
+    const convocatoria = horaConvocatoria ? null : (colARaw != null && colARaw !== '' ? String(colARaw).trim() : null);
+    const horaIngreso = parseHoraAmPm(row[cols.inicio]);
+    const horaEgreso  = parseHoraAmPm(row[cols.fin]);
+    const horasRaw = row[cols.horas];
+    const horas = typeof horasRaw === 'number' ? horasRaw : (horasRaw ? Number(horasRaw) || 0 : 0);
+
+    aProcesar.push({
+      fila: filaExcel,
+      fecha: new Date(Date.UTC(fechaLocal.getFullYear(), fechaLocal.getMonth(), fechaLocal.getDate())),
+      fechaLocal,
+      convocatoria,
+      horaConvocatoria,
+      horaIngreso,
+      horaEgreso,
+      horas,
+    });
+  }
+
+  if (dryRun) {
+    res.json({
+      preview:         true,
+      empleado_id:     empleado.id,
+      empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
+      hoja:            nombreHoja,
+      total_filas:     aProcesar.length,
+      omitidos:        errores.length,
+      errores,
+      filas: aProcesar.map(f => ({
+        fila_excel: f.fila, fecha: f.fecha.toISOString().slice(0, 10),
+        convocatoria: f.convocatoria, hora_convocatoria: f.horaConvocatoria,
+        hora_ingreso: f.horaIngreso, hora_egreso: f.horaEgreso, horas: f.horas,
+      })),
+    });
+    return;
+  }
+
+  let creados = 0;
+  let actualizados = 0;
+  for (const item of aProcesar) {
+    const horaConvocatoriaDate = combineFechaHora(item.fechaLocal, item.horaConvocatoria);
+    const horaIngresoDate      = combineFechaHora(item.fechaLocal, item.horaIngreso);
+    const horaEgresoDate       = combineFechaHora(item.fechaLocal, item.horaEgreso);
+
+    const existing = await prisma.jornada.findFirst({ where: { empleado_id: empleado.id, fecha: item.fecha, deleted_at: null } });
+    if (existing && existing.estado !== EstadoJornada.APROBADA) {
+      // No se pisa una jornada pendiente/rechazada cargada manualmente por
+      // otra vía — se deja para revisión manual en vez de sobreescribirla.
+      errores.push({ fila: item.fila, motivo: `Ya existe una jornada en estado ${existing.estado} para esta fecha — no se sobreescribió` });
+      continue;
+    }
+
+    const data = {
+      hora_convocatoria: horaConvocatoriaDate,
+      hora_ingreso:       horaIngresoDate,
+      hora_egreso:        horaEgresoDate,
+      horas_normales:     item.horas,
+      horas_extras:       0,
+      convocatoria:       item.convocatoria,
+      estado:             EstadoJornada.APROBADA,
+    };
+
+    if (existing) {
+      await prisma.jornada.update({ where: { id: existing.id }, data });
+      actualizados++;
+    } else {
+      await prisma.jornada.create({
+        data: {
+          empleado_id: empleado.id,
+          ...withTenant(req.empresaId!),
+          fecha: item.fecha,
+          ...data,
+          created_by: req.user!.id,
+          aprobado_por: req.user!.id,
+          aprobado_at: new Date(),
+        },
+      });
+      creados++;
+    }
+  }
+
+  res.json({
+    preview: false,
+    empleado_id:     empleado.id,
+    empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
+    hoja: nombreHoja,
+    creados, actualizados,
+    omitidos: errores.length,
+    errores,
+  });
 }

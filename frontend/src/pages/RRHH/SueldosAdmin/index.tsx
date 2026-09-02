@@ -3,12 +3,14 @@ import { cn } from '@/lib/utils';
 import AcuerdosTab from './AcuerdosTab';
 import LiquidacionesTab from './LiquidacionesTab';
 import EscalafonesTab from './EscalafonesTab';
+import BitacoraTab from './BitacoraTab';
 
-type SubTabKey = 'acuerdos' | 'liquidaciones' | 'escalafones';
+type SubTabKey = 'acuerdos' | 'liquidaciones' | 'escalafones' | 'bitacora';
 
 const SUB_TABS: { key: SubTabKey; label: string }[] = [
   { key: 'acuerdos',      label: 'Acuerdos' },
   { key: 'liquidaciones', label: 'Liquidaciones' },
+  { key: 'bitacora',      label: 'Bitácora de Viajes' },
   { key: 'escalafones',   label: 'Escalafones' },
 ];
 
@@ -34,6 +36,7 @@ export default function SueldosAdminTab({ empleadoIdInicial }: { empleadoIdInici
 
       {subTab === 'acuerdos'      && <AcuerdosTab />}
       {subTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={empleadoIdInicial} />}
+      {subTab === 'bitacora'      && <BitacoraTab empleadoIdInicial={empleadoIdInicial} />}
       {subTab === 'escalafones'   && <EscalafonesTab />}
     </div>
   );

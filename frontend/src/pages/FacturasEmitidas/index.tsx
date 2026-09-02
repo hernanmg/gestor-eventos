@@ -147,6 +147,18 @@ export default function FacturasEmitidasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Pre-seleccionar el filtro de evento cuando se llega desde el banner
+  // "¿Se factura?" del detalle de evento (?evento_id=<id>)
+  useEffect(() => {
+    const eventoIdParam = searchParams.get('evento_id');
+    if (eventoIdParam) {
+      setFiltros(f => ({ ...f, evento_id: Number(eventoIdParam) }));
+      searchParams.delete('evento_id');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const facturas = data?.items ?? [];
   const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
   const facturaCobrar = facturas.find(f => f.id === cobrarId);

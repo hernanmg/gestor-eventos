@@ -2,11 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   AcuerdoSueldo, LiquidacionAdmin, EmpresaMini, CuentaMini, EstadoLiquidacionAdmin, PrestamoEmpleado,
+  BitacoraViaje, ResumenBitacora, TipoRecorrido, CategoriaAcuerdo, TipoAumento,
 } from '@/types';
 
 const ACUERDOS_KEY  = ['rrhh', 'acuerdos'];
 const LIQ_ADMIN_KEY = ['rrhh', 'liquidaciones-admin'];
 const PRESTAMOS_KEY = ['rrhh', 'prestamos'];
+const BITACORA_KEY  = ['rrhh', 'bitacora-viajes'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Empresas / Cuentas — soporte para selectores de split y cuenta de pago
@@ -44,6 +46,26 @@ export function useHorasPeriodo(empleadoId: number | null, mes: number | null, a
     queryKey: ['rrhh', 'horas-periodo', empleadoId, mes, anio],
     queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/horas-periodo`, { params: { mes, anio } }).then(r => r.data),
     enabled:  empleadoId !== null && mes !== null && anio !== null,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IPC DEL INDEC — botón "Traer IPC" en la sección de aumento del dialog de
+// generar liquidación. Es una mutation (no query) porque se dispara sólo al
+// clickear el botón, no automáticamente.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface IpcIndec {
+  mes:         string; // ej: "julio-2026" — mes real que devolvió el INDEC
+  ipc_mensual: number;
+  ipc_anual:   number | null;
+  fuente:      string;
+}
+
+export function useIpcIndec() {
+  return useMutation({
+    mutationFn: ({ mes, anio }: { mes: number; anio: number }) =>
+      api.get<IpcIndec>('/rrhh/ipc-indec', { params: { mes, anio } }).then(r => r.data),
   });
 }
 
@@ -112,6 +134,12 @@ export interface AcuerdoPayload {
   premio_presentismo?: number | null;
   valor_hora_extra?:   number | null;
   telefono?:           number | null;
+  viatico_provincial?:    number | null;
+  viatico_nacional?:      number | null;
+  viatico_nacional_1000?: number | null;
+  porcentaje_acuerdo?:    number | null;
+  categoria_acuerdo?:     CategoriaAcuerdo;
+  horas_pendientes_acum?: number | null;
   notas?:              string | null;
 }
 
@@ -186,6 +214,16 @@ export interface GenerarLiquidacionAdminPayload {
   horas_trabajadas:     number;
   vales_descuentos?:    number;
   vacaciones_aguinaldo?: number;
+  // Se manda cuando el usuario clickeó "Usar viático calculado" sobre el
+  // resumen de bitácora — reemplaza el viático fijo del acuerdo. Para
+  // acuerdos categoria_acuerdo=CHOFER el backend lo aplica automático aunque
+  // esto no se mande.
+  viatico_override?:    number | null;
+  // Aumento sobre el básico — manual o traído del INDEC.
+  tipo_aumento?:         TipoAumento;
+  porcentaje_aumento?:   number;
+  ipc_mes_referencia?:   string;
+  ipc_valor_aplicado?:   number;
 }
 
 export function useGenerarLiquidacionAdmin() {
@@ -272,5 +310,143 @@ export function useDeletePrestamo(empleadoId: number) {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/rrhh/prestamos/${id}`).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: [...PRESTAMOS_KEY, empleadoId] }),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BITÁCORA DE VIAJES (choferes)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface BitacoraFiltros {
+  empleado_id?:    number;
+  mes?:            number;
+  anio?:           number;
+  tipo_recorrido?: TipoRecorrido;
+}
+
+export function useBitacoraViajes(filtros: BitacoraFiltros = {}) {
+  return useQuery<BitacoraViaje[]>({
+    queryKey: [...BITACORA_KEY, filtros],
+    queryFn:  () => api.get('/rrhh/bitacora-viajes', { params: filtros }).then(r => r.data),
+  });
+}
+
+export function useBitacoraViajesEmpleado(empleadoId: number | null, mes: number | null, anio: number | null) {
+  return useQuery<BitacoraViaje[]>({
+    queryKey: [...BITACORA_KEY, 'empleado', empleadoId, mes, anio],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/bitacora-viajes`, { params: { mes, anio } }).then(r => r.data),
+    enabled:  empleadoId !== null,
+  });
+}
+
+export function useResumenBitacora(empleadoId: number | null, mes: number | null, anio: number | null) {
+  return useQuery<ResumenBitacora>({
+    queryKey: [...BITACORA_KEY, 'resumen', empleadoId, mes, anio],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/bitacora-viajes/resumen`, { params: { mes, anio } }).then(r => r.data),
+    enabled:  empleadoId !== null && mes !== null && anio !== null,
+  });
+}
+
+export interface BitacoraPayload {
+  empleado_id?:      number; // no se manda en updates
+  fecha:             string;
+  convocatoria?:      string | null;
+  hora_inicio?:       string | null;
+  hora_fin?:          string | null;
+  ejido?:             string | null;
+  recorrido?:         string | null;
+  tipo_recorrido:     TipoRecorrido;
+  cantidad_vueltas:   number;
+  observaciones?:     string | null;
+}
+
+function invalidateBitacora(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: BITACORA_KEY });
+}
+
+export function useCreateBitacoraViaje() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: BitacoraPayload) => api.post('/rrhh/bitacora-viajes', data).then(r => r.data),
+    onSuccess:  () => invalidateBitacora(qc),
+  });
+}
+
+export function useUpdateBitacoraViaje() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Omit<BitacoraPayload, 'empleado_id'>> }) =>
+      api.put(`/rrhh/bitacora-viajes/${id}`, data).then(r => r.data),
+    onSuccess: () => invalidateBitacora(qc),
+  });
+}
+
+export function useDeleteBitacoraViaje() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/rrhh/bitacora-viajes/${id}`).then(r => r.data),
+    onSuccess:  () => invalidateBitacora(qc),
+  });
+}
+
+export interface ResultadoImportarViajes {
+  preview: boolean;
+  empleado_id: number;
+  empleado_nombre: string;
+  creados: number;
+  actualizados: number;
+  omitidos: number;
+  sin_recorrido: number;
+  errores: { fila: number; motivo: string }[];
+  resumen: { provincial: number; nacional: number; nacional_1000: number; total_vueltas: number; viatico_estimado: number };
+}
+
+export function useImportarBitacoraViajes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, empleadoId, mes, anio, dryRun }: { file: File; empleadoId: number; mes: number; anio: number; dryRun: boolean }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.post<ResultadoImportarViajes>(
+        `/rrhh/bitacora-viajes/importar?empleado_id=${empleadoId}&mes=${mes}&anio=${anio}&dry_run=${dryRun}`,
+        formData,
+      ).then(r => r.data);
+    },
+    onSuccess: (_data, vars) => { if (!vars.dryRun) invalidateBitacora(qc); },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTADOR DE HISTORIAL DE CONVOCATORIAS (Jornadas) — desde la hoja del
+// Excel de sueldos con el nombre del empleado (ej. "LUIS").
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ResultadoImportarHistorial {
+  preview: boolean;
+  empleado_id: number;
+  empleado_nombre: string;
+  hoja: string;
+  creados?: number;
+  actualizados?: number;
+  total_filas?: number;
+  omitidos: number;
+  errores: { fila: number; motivo: string }[];
+  filas?: { fila_excel: number; fecha: string; convocatoria: string | null; hora_convocatoria: string | null; hora_ingreso: string | null; hora_egreso: string | null; horas: number }[];
+}
+
+export function useImportarHistorialConvocatorias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, empleadoId, mes, anio, dryRun }: { file: File; empleadoId: number; mes: number; anio: number; dryRun: boolean }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.post<ResultadoImportarHistorial>(
+        `/rrhh/jornadas/importar-historial?empleado_id=${empleadoId}&mes=${mes}&anio=${anio}&dry_run=${dryRun}`,
+        formData,
+      ).then(r => r.data);
+    },
+    onSuccess: (_data, vars) => {
+      if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['rrhh', 'empleados', vars.empleadoId, 'jornadas'] });
+    },
   });
 }

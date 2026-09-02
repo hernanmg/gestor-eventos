@@ -211,46 +211,47 @@ model Empresa {
   timezone       String @default("America/Argentina/Buenos_Aires")
   updated_by     Int?
 
-  usuarios              Usuario[]
-  usuarioEmpresaAccesos UsuarioEmpresaAcceso[]
-  eventos               Evento[]
-  proveedores           Proveedor[]
-  tabConfigs            TabConfig[]
-  categoriasStock       CategoriaStock[]
-  cuentasBancarias      CuentaBancaria[]
-  productos             Producto[]
-  facturas              Factura[]
-  auditoriaLogs         AuditoriaLog[]
-  empleados             Empleado[]
-  jornadas              Jornada[]
-  anticipos             Anticipo[]
-  liquidaciones         Liquidacion[]
-  camiones              Camion[]
-  cunas                 Cuna[]
-  panolItems            PanolItem[]
-  movimientosPanol      MovimientoPanol[]
-  activos               Activo[]
-  rubros                Rubro[]
-  rubrosEvento          RubroEvento[]
-  partesDiario          ParteDiario[]
-  asignacionesDiarias   AsignacionDiaria[]
-  pedidosComida         PedidoComida[]
-  preMacros             PreMacro[]
-  cuentasCorrientes     CuentaCorriente[]
-  movimientosCCC        MovimientoCCC[]
-  acuerdosSueldo        AcuerdoSueldo[]
-  splitsEmpleados       EmpleadoEmpresaSplit[]
-  liquidacionesAdmin    LiquidacionAdmin[]
-  escalafonesAdmin      EscalafonAdmin[]
-  prestamosEmpleados    PrestamoEmpleado[]
-  segurosVehiculo       SeguroVehiculo[]
-  patentesVehiculo      PatenteVehiculo[]
-  gastosPeaje           GastoPeaje[]
-  serviciosTaller       ServicioTaller[]
-  planesAFIP            PlanAFIP[]
-  prestamosBancarios    PrestamoBancario[]
-  facturasEmitidas      FacturaEmitida[]
+  usuarios               Usuario[]
+  usuarioEmpresaAccesos  UsuarioEmpresaAcceso[]
+  eventos                Evento[]
+  proveedores            Proveedor[]
+  tabConfigs             TabConfig[]
+  categoriasStock        CategoriaStock[]
+  cuentasBancarias       CuentaBancaria[]
+  productos              Producto[]
+  facturas               Factura[]
+  auditoriaLogs          AuditoriaLog[]
+  empleados              Empleado[]
+  jornadas               Jornada[]
+  anticipos              Anticipo[]
+  liquidaciones          Liquidacion[]
+  camiones               Camion[]
+  cunas                  Cuna[]
+  panolItems             PanolItem[]
+  movimientosPanol       MovimientoPanol[]
+  activos                Activo[]
+  rubros                 Rubro[]
+  rubrosEvento           RubroEvento[]
+  partesDiario           ParteDiario[]
+  asignacionesDiarias    AsignacionDiaria[]
+  pedidosComida          PedidoComida[]
+  preMacros              PreMacro[]
+  cuentasCorrientes      CuentaCorriente[]
+  movimientosCCC         MovimientoCCC[]
+  acuerdosSueldo         AcuerdoSueldo[]
+  splitsEmpleados        EmpleadoEmpresaSplit[]
+  liquidacionesAdmin     LiquidacionAdmin[]
+  escalafonesAdmin       EscalafonAdmin[]
+  prestamosEmpleados     PrestamoEmpleado[]
+  segurosVehiculo        SeguroVehiculo[]
+  patentesVehiculo       PatenteVehiculo[]
+  gastosPeaje            GastoPeaje[]
+  serviciosTaller        ServicioTaller[]
+  planesAFIP             PlanAFIP[]
+  prestamosBancarios     PrestamoBancario[]
+  facturasEmitidas       FacturaEmitida[]
   repartosFacturaEmitida RepartoFacturaEmitida[]
+  bitacoraViajes         BitacoraViaje[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -559,8 +560,8 @@ model CuentaBancaria {
   fecha_cierre    DateTime?
   notas_rendicion String?
 
-  movimientos        MovimientoCaja[]
-  eventos_vinculados EventoCuenta[]
+  movimientos              MovimientoCaja[]
+  eventos_vinculados       EventoCuenta[]
   cobros_facturas_emitidas CobroFacturaEmitida[]
 
   // Permite upsert idempotente por nombre dentro de una empresa (ver seed.ts
@@ -1364,6 +1365,7 @@ model Empleado {
   splits_empresa       EmpleadoEmpresaSplit[]
   liquidaciones_admin  LiquidacionAdmin[]
   prestamos            PrestamoEmpleado[]
+  bitacora_viajes      BitacoraViaje[]
 }
 
 model Jornada {
@@ -1484,37 +1486,60 @@ model EmpleadoEmpresaSplit {
 // (ver validación en updateAcuerdo: no se puede tocar si ya hay liquidaciones
 // APROBADAS, para no invalidar snapshots históricos).
 model AcuerdoSueldo {
-  id                  Int       @id @default(autoincrement())
-  empleado_id         Int       @unique
-  empleado            Empleado  @relation(fields: [empleado_id], references: [id])
-  empresa_id          Int // empresa principal del acuerdo
-  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  id                    Int              @id @default(autoincrement())
+  empleado_id           Int              @unique
+  empleado              Empleado         @relation(fields: [empleado_id], references: [id])
+  empresa_id            Int // empresa principal del acuerdo
+  empresa               Empresa          @relation(fields: [empresa_id], references: [id])
   // Acuerdo
-  fecha_inicio        DateTime
-  vigencia_meses      Int? // null = indefinido
-  escalafon           String? // "ADM 1", "ADM 2", "ADM 3"
-  tipo_seguro         String? // "ART", "SANCOR", "FEDERAL PATRONAL"
+  fecha_inicio          DateTime
+  vigencia_meses        Int? // null = indefinido
+  escalafon             String? // "ADM 1", "ADM 2", "ADM 3"
+  tipo_seguro           String? // "ART", "SANCOR", "FEDERAL PATRONAL"
   // Sueldo base
-  sueldo_basico       Decimal   @db.Decimal(12, 2)
-  horas_acordadas_mes Int       @default(200)
+  sueldo_basico         Decimal          @db.Decimal(12, 2)
+  horas_acordadas_mes   Int              @default(200)
   // Conceptos fijos (configurables por acuerdo)
-  premio_incentivo    Decimal?  @db.Decimal(12, 2)
-  viatico             Decimal?  @db.Decimal(12, 2)
-  premio_presentismo  Decimal?  @db.Decimal(12, 2)
+  premio_incentivo      Decimal?         @db.Decimal(12, 2)
+  viatico               Decimal?         @db.Decimal(12, 2)
+  premio_presentismo    Decimal?         @db.Decimal(12, 2)
   // Horas extras
-  valor_hora_extra    Decimal?  @db.Decimal(10, 2)
+  valor_hora_extra      Decimal?         @db.Decimal(10, 2)
   // Teléfono (algunos empleados lo tienen) — antigüedad NO vive acá: se
   // recalcula siempre desde fecha_inicio con la tabla fija de
   // calcularSueldoAdmin.ts, nunca se persiste en el acuerdo.
-  telefono            Decimal?  @db.Decimal(10, 2)
+  telefono              Decimal?         @db.Decimal(10, 2)
+  // Viático por tipo de recorrido (choferes con bitácora de viajes) — cuando
+  // están cargados, el viático efectivo de la liquidación se calcula desde
+  // BitacoraViaje en vez de usar el campo `viatico` fijo de arriba. Ver
+  // resolverValorPorVuelta() en bitacoraViajes.controller.ts.
+  viatico_provincial    Decimal?         @db.Decimal(10, 2)
+  viatico_nacional      Decimal?         @db.Decimal(10, 2)
+  viatico_nacional_1000 Decimal?         @db.Decimal(10, 2)
+  // % de aumento que representa este acuerdo sobre el básico del acuerdo
+  // anterior — sólo informativo/histórico, no participa del cálculo mensual
+  // (ese es LiquidacionAdmin.porcentaje_aumento_aplicado, que se define al
+  // generar cada liquidación, no al renegociar el acuerdo).
+  porcentaje_acuerdo    Decimal?         @db.Decimal(5, 2)
+  // GENERAL = administrativos normales (Mayra, Andre, etc.) — usan horas
+  // acordadas/extras para el cálculo. CHOFER = Luis y similares — el sueldo
+  // NO depende de horas trabajadas (se registran sólo para control/banco de
+  // horas); los premios de viaje salen de BitacoraViaje. Ver
+  // calcularSueldoAdmin.ts.
+  categoria_acuerdo     CategoriaAcuerdo @default(GENERAL)
+  // Banco de horas acumuladas (empleados CHOFER) — puede ser negativo (se le
+  // debe trabajar) o positivo (se le debe pagar/compensar). Se actualiza sólo
+  // al APROBAR una liquidación (ver aprobarLiquidacionAdmin), nunca al
+  // generar un borrador ni al editarlo.
+  horas_pendientes_acum Decimal?         @db.Decimal(8, 2)
   // Estado del acuerdo
-  activo              Boolean   @default(true)
-  notas               String?
+  activo                Boolean          @default(true)
+  notas                 String?
   // audit
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
-  deleted_at          DateTime?
-  created_by          Int?
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
+  deleted_at            DateTime?
+  created_by            Int?
 
   liquidaciones LiquidacionAdmin[]
 }
@@ -1526,60 +1551,86 @@ enum EstadoLiquidacionAdmin {
   CANCELADA
 }
 
+enum CategoriaAcuerdo {
+  GENERAL // administrativos normales (Mayra, Andre, etc.)
+  CHOFER // Luis y similares — sin horas acordadas en el cálculo
+}
+
+enum TipoAumento {
+  MANUAL // % ingresado manualmente por Matías
+  IPC // % traído del INDEC
+  SIN_AUMENTO
+}
+
 // Liquidación mensual administrativa — un registro por empleado/mes/año.
 model LiquidacionAdmin {
-  id                    Int                    @id @default(autoincrement())
-  empleado_id           Int
-  empleado              Empleado               @relation(fields: [empleado_id], references: [id])
-  empresa_id            Int // empresa principal (snapshot del acuerdo)
-  empresa               Empresa                @relation(fields: [empresa_id], references: [id])
-  acuerdo_id            Int
-  acuerdo               AcuerdoSueldo          @relation(fields: [acuerdo_id], references: [id])
+  id                          Int                    @id @default(autoincrement())
+  empleado_id                 Int
+  empleado                    Empleado               @relation(fields: [empleado_id], references: [id])
+  empresa_id                  Int // empresa principal (snapshot del acuerdo)
+  empresa                     Empresa                @relation(fields: [empresa_id], references: [id])
+  acuerdo_id                  Int
+  acuerdo                     AcuerdoSueldo          @relation(fields: [acuerdo_id], references: [id])
   // Período
-  periodo_mes           Int // 1-12
-  periodo_anio          Int
+  periodo_mes                 Int // 1-12
+  periodo_anio                Int
   // Snapshots del acuerdo al momento de liquidar — estables aunque después se
   // edite/renegocie el acuerdo (mismo criterio que Liquidacion.tipo_liquidacion).
-  sueldo_basico         Decimal                @db.Decimal(12, 2)
-  horas_acordadas       Int
-  escalafon             String?
+  sueldo_basico               Decimal                @db.Decimal(12, 2)
+  horas_acordadas             Int
+  escalafon                   String?
   // Conceptos calculados
-  horas_trabajadas      Decimal                @db.Decimal(8, 2)
-  horas_extras          Decimal                @db.Decimal(8, 2)
-  valor_hora_extra      Decimal?               @db.Decimal(10, 2)
-  importe_horas_extras  Decimal                @default(0) @db.Decimal(12, 2)
-  premio_incentivo      Decimal                @default(0) @db.Decimal(12, 2)
-  viatico               Decimal                @default(0) @db.Decimal(12, 2)
-  premio_presentismo    Decimal                @default(0) @db.Decimal(12, 2)
-  antiguedad_anios      Int                    @default(0)
-  importe_antiguedad    Decimal                @default(0) @db.Decimal(12, 2)
-  telefono              Decimal                @default(0) @db.Decimal(12, 2)
-  vacaciones_aguinaldo  Decimal                @default(0) @db.Decimal(12, 2)
-  vales_descuentos      Decimal                @default(0) @db.Decimal(12, 2)
+  horas_trabajadas            Decimal                @db.Decimal(8, 2)
+  horas_extras                Decimal                @db.Decimal(8, 2)
+  valor_hora_extra            Decimal?               @db.Decimal(10, 2)
+  importe_horas_extras        Decimal                @default(0) @db.Decimal(12, 2)
+  premio_incentivo            Decimal                @default(0) @db.Decimal(12, 2)
+  viatico                     Decimal                @default(0) @db.Decimal(12, 2)
+  premio_presentismo          Decimal                @default(0) @db.Decimal(12, 2)
+  antiguedad_anios            Int                    @default(0)
+  importe_antiguedad          Decimal                @default(0) @db.Decimal(12, 2)
+  telefono                    Decimal                @default(0) @db.Decimal(12, 2)
+  vacaciones_aguinaldo        Decimal                @default(0) @db.Decimal(12, 2)
+  vales_descuentos            Decimal                @default(0) @db.Decimal(12, 2)
   // Cuotas de PrestamoEmpleado descontadas al aprobar — separado de
   // vales_descuentos porque cada una queda trazada en PagoPrestamoEmpleado
   // (afecta cuotas_pagadas/saldado del préstamo), a diferencia de un
   // descuento manual suelto. Ver aprobarLiquidacionAdmin.
-  prestamos_descontados Decimal                @default(0) @db.Decimal(12, 2)
+  prestamos_descontados       Decimal                @default(0) @db.Decimal(12, 2)
   // Totales
-  subtotal_bruto        Decimal                @db.Decimal(12, 2)
-  total_a_cobrar        Decimal                @db.Decimal(12, 2)
+  subtotal_bruto              Decimal                @db.Decimal(12, 2)
+  total_a_cobrar              Decimal                @db.Decimal(12, 2)
   // Split entre empresas (snapshot al momento de liquidar) —
   // [{ empresa_id, empresa_nombre, porcentaje, monto }]
-  splits                Json?
+  splits                      Json?
   // Estado
-  estado                EstadoLiquidacionAdmin @default(BORRADOR)
-  observaciones         String?
+  estado                      EstadoLiquidacionAdmin @default(BORRADOR)
+  observaciones               String?
   // Al aprobar → uno o más MovimientoCaja de egreso (uno por empresa del
   // split, o uno solo si no hay split) — ver aprobarLiquidacionAdmin.
-  movimientos_caja      MovimientoCaja[]       @relation("LiquidacionAdminMovimientos")
+  movimientos_caja            MovimientoCaja[]       @relation("LiquidacionAdminMovimientos")
   // Cuotas de préstamo descontadas al aprobar esta liquidación.
-  pagos_prestamos       PagoPrestamoEmpleado[]
+  pagos_prestamos             PagoPrestamoEmpleado[]
+  // Registros de bitácora de viajes (choferes) vinculados a esta liquidación
+  // — se vinculan al generar, si el empleado tiene bitácora en el período.
+  bitacora_viajes             BitacoraViaje[]
+  // Aumento aplicado sobre el básico al generar esta liquidación — snapshot,
+  // independiente de AcuerdoSueldo.porcentaje_acuerdo (que es histórico del
+  // acuerdo, no del período). Ver calcularSueldoAdmin.ts.
+  porcentaje_aumento_aplicado Decimal?               @db.Decimal(5, 2)
+  tipo_aumento                TipoAumento?
+  ipc_mes_referencia          String? // ej: "julio-2026" — mes real que devolvió el INDEC, no necesariamente periodo_mes/anio (hay rezago de publicación)
+  ipc_valor_aplicado          Decimal?               @db.Decimal(5, 2)
+  // Banco de horas (empleados CHOFER) — snapshot al generar; se persiste en
+  // AcuerdoSueldo.horas_pendientes_acum recién al APROBAR (ver
+  // aprobarLiquidacionAdmin), no al generar el borrador.
+  horas_pendientes_anterior   Decimal?               @db.Decimal(8, 2)
+  horas_pendientes_nuevo      Decimal?               @db.Decimal(8, 2)
   // audit
-  created_at            DateTime               @default(now())
-  updated_at            DateTime               @updatedAt
-  aprobado_por          Int?
-  aprobado_at           DateTime?
+  created_at                  DateTime               @default(now())
+  updated_at                  DateTime               @updatedAt
+  aprobado_por                Int?
+  aprobado_at                 DateTime?
 
   @@unique([empleado_id, periodo_mes, periodo_anio])
 }
@@ -1651,6 +1702,50 @@ model PagoPrestamoEmpleado {
   fecha                DateTime
   // audit
   created_at           DateTime          @default(now())
+}
+
+// ─── BITÁCORA DE VIAJES (choferes) ────────────────────────────────────────────
+// Registro diario de viajes de choferes (ej. Luis) — determina el viático
+// mensual según tipo de recorrido. Reemplaza el Excel de bitácora manual.
+// Se vincula a una LiquidacionAdmin recién al generar la liquidación del mes
+// (mismo patrón que PagoPrestamoEmpleado.liquidacion_admin_id).
+
+enum TipoRecorrido {
+  PROVINCIAL // dentro de la provincia
+  NACIONAL // fuera de la provincia
+  NACIONAL_1000 // más de 1000km
+}
+
+model BitacoraViaje {
+  id                   Int               @id @default(autoincrement())
+  empleado_id          Int
+  empleado             Empleado          @relation(fields: [empleado_id], references: [id])
+  empresa_id           Int
+  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
+  // Datos del viaje
+  fecha                DateTime
+  convocatoria         String? // nombre del evento/trabajo
+  dia_semana           String? // calculado automáticamente desde `fecha`
+  hora_inicio          String?
+  hora_fin             String?
+  horas_trabajadas     Decimal?          @db.Decimal(5, 2)
+  // Recorrido
+  ejido                String? // "Córdoba", "Buenos Aires", etc.
+  recorrido            String? // descripción del recorrido
+  tipo_recorrido       TipoRecorrido
+  cantidad_vueltas     Int               @default(1)
+  // Viático calculado
+  valor_por_vuelta     Decimal?          @db.Decimal(10, 2) // snapshot del acuerdo al momento de cargar
+  viatico_calculado    Decimal?          @db.Decimal(10, 2) // cantidad_vueltas × valor_por_vuelta
+  observaciones        String?
+  // Vínculo con liquidación — null hasta que se genera la liquidación del mes
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  // audit
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
 }
 
 // ─── AFIP Y PRÉSTAMOS BANCARIOS ───────────────────────────────────────────────

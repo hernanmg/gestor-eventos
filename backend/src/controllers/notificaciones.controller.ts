@@ -261,25 +261,68 @@ async function resolveFacturasEmitidasVencidas(empresaId: number, hoy: Date): Pr
   });
 }
 
-async function resolveEventosSinFacturar(empresaId: number, hace1Dia: Date): Promise<NotificacionItem[]> {
+// Acceso multi-empresa para esta notificación puntual — mismo criterio que
+// getAccesoEmpresas() en afipPrestamos.controller.ts / resolveEmpresaFiltro()
+// en calendario.controller.ts: admin global (ADMIN sin empresa fija) ve todas
+// las empresas activas; puede_ver_macro (ej. Mayra) ve las de su
+// UsuarioEmpresaAcceso (DOS57 y Enjoy); cualquier otro ADMIN queda fijo a su
+// empresa de sesión (ej. Chino/Male sólo Enjoy, Pollo/Veck sólo DOS57).
+const MS_48H = 48 * 60 * 60 * 1000;
+
+async function resolveEventosSinDecisionFacturacion(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+
+  const usuario = await prisma.usuario.findFirst({
+    where:  { id: req.user!.id, deleted_at: null },
+    select: { empresa_id: true, puede_ver_macro: true },
+  });
+  if (!usuario) return [];
+
+  const esAdminGlobal = usuario.empresa_id === null;
+  let empresaIds: number[] | undefined;
+  if (esAdminGlobal) {
+    empresaIds = undefined; // sin restricción — todas las empresas activas
+  } else if (usuario.puede_ver_macro) {
+    const accesos = await prisma.usuarioEmpresaAcceso.findMany({
+      where:  { usuario_id: req.user!.id },
+      select: { empresa_id: true },
+    });
+    empresaIds = accesos.map(a => a.empresa_id);
+  } else {
+    empresaIds = [req.empresaId!];
+  }
+
   const eventos = await prisma.evento.findMany({
     where: {
-      empresa_id: empresaId, deleted_at: null,
-      es_informal: true, facturar: null,
-      created_at: { lt: hace1Dia },
+      deleted_at: null,
+      facturar:   null,
+      ...(empresaIds !== undefined && { empresa_id: { in: empresaIds } }),
     },
-    select: { id: true, nombre: true, created_at: true },
+    select: { id: true, nombre: true, created_at: true, created_by: true },
     orderBy: { created_at: 'asc' },
   });
-  return eventos.map(e => ({
-    id:          `evento-sin-facturar-${e.id}`,
-    tipo:        'EVENTO_SIN_FACTURAR',
-    titulo:      `Evento sin decisión de facturación: ${e.nombre}`,
-    descripcion: `Cargado el ${e.created_at.toLocaleDateString('es-AR')} — todavía sin marcar si se factura`,
-    urgencia:    'warning' as Urgencia,
-    link:        '/eventos?es_informal=true&facturar=null',
-    fecha:       e.created_at,
-  }));
+  if (eventos.length === 0) return [];
+
+  const creadorIds = [...new Set(eventos.map(e => e.created_by).filter((id): id is number => id != null))];
+  const creadores = creadorIds.length
+    ? await prisma.usuario.findMany({ where: { id: { in: creadorIds } }, select: { id: true, nombre: true } })
+    : [];
+  const nombrePorCreador = new Map(creadores.map(c => [c.id, c.nombre]));
+
+  const ahora = new Date();
+  return eventos.map(e => {
+    const vencido        = ahora.getTime() - e.created_at.getTime() > MS_48H;
+    const nombreCreador  = e.created_by != null ? nombrePorCreador.get(e.created_by) : undefined;
+    return {
+      id:          `evento-sin-decision-${e.id}`,
+      tipo:        'EVENTO_SIN_DECISION_FACTURACION',
+      titulo:      vencido ? 'Evento pendiente de decisión de facturación' : 'Nuevo evento sin decisión de facturación',
+      descripcion: nombreCreador ? `${e.nombre} — creado por ${nombreCreador}` : e.nombre,
+      urgencia:    (vencido ? 'critical' : 'warning') as Urgencia,
+      link:        `/eventos/${e.id}`,
+      fecha:       e.created_at,
+    };
+  });
 }
 
 // ── Endpoint principal ────────────────────────────────────────────────────────
@@ -287,7 +330,6 @@ async function resolveEventosSinFacturar(empresaId: number, hace1Dia: Date): Pro
 export async function getNotificaciones(req: Request, res: Response) {
   const empresaId = req.empresaId!;
   const hoy = new Date();
-  const hace1Dia  = new Date(hoy.getTime() - 1 * MS_DIA);
   const hace3Dias = new Date(hoy.getTime() - 3 * MS_DIA);
   const hace7Dias = new Date(hoy.getTime() - 7 * MS_DIA);
   const en7Dias   = new Date(hoy.getTime() + 7 * MS_DIA);
@@ -304,7 +346,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveCuotasAFIP(empresaId, hoy, en7Dias),
     resolveCuotasPrestamo(empresaId, hoy, en7Dias),
     resolveFacturasEmitidasVencidas(empresaId, hoy),
-    resolveEventosSinFacturar(empresaId, hace1Dia),
+    resolveEventosSinDecisionFacturacion(req),
   ]);
 
   const items = resultados

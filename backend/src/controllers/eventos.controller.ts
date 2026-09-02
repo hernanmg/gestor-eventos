@@ -37,8 +37,10 @@ const updateSchema = z.object({
   estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
 });
 
+// facturar nullable acá también — permite "Cambiar decisión" desde el banner
+// del evento, que vuelve a null en vez de forzar sí/no.
 const marcarFacturarSchema = z.object({
-  facturar: z.boolean(),
+  facturar: z.boolean().nullable(),
   notas:    z.string().nullable().optional(),
 });
 
@@ -199,7 +201,7 @@ export async function update(req: Request, res: Response) {
   res.json(mapEvento(evento));
 }
 
-// ── Marcar decisión de facturación (eventos informales) ──────────────────────
+// ── Marcar decisión de facturación ────────────────────────────────────────────
 
 export async function marcarFacturar(req: Request, res: Response) {
   const id = Number(req.params.id);
@@ -230,7 +232,7 @@ export async function marcarFacturar(req: Request, res: Response) {
       entidad:      'Evento',
       entidadId:    id,
       eventoId:     id,
-      descripcion:  `Marcó facturación del evento "${existing.nombre}": ${facturar ? 'sí' : 'no'}`,
+      descripcion:  `Marcó facturación del evento "${existing.nombre}": ${facturar === null ? 'sin decidir' : facturar ? 'sí' : 'no'}`,
       datosAntes:   { facturar: existing.facturar, facturar_notas: existing.facturar_notas },
       datosDespues: { facturar, facturar_notas: notas },
       ip:           req.ip,

@@ -5,7 +5,7 @@ import {
   useAcuerdos, useAcuerdoEmpleado, useCuentasPorEmpresa,
   useLiquidacionesAdmin, useLiquidacionAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
   useAprobarLiquidacionAdmin, useCancelarLiquidacionAdmin, descargarLiquidacionAdminPDF,
-  usePrestamosEmpleado, useHorasPeriodo, useResumenMensual,
+  usePrestamosEmpleado, useHorasPeriodo, useResumenMensual, useResumenBitacora, useIpcIndec,
   type LiquidacionAdminFiltros, type GenerarLiquidacionAdminPayload,
 } from '@/hooks/useSueldosAdmin';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -13,8 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
-import { getApiErrorMessage } from '@/lib/utils';
-import type { EstadoLiquidacionAdmin, LiquidacionAdmin } from '@/types';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento } from '@/types';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -30,32 +30,37 @@ const MESES = [
 
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
-function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0 }: {
+function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, aumentoPorcentaje }: {
   empleadoId: number; horasTrabajadas: string; valesDescuentos: string; vacacionesAguinaldo: string; prestamosDescuento?: number;
+  viaticoOverride?: number | null; aumentoPorcentaje?: number | null;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
   if (!acuerdo) return null;
 
+  const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
   const horas   = parseFloat(horasTrabajadas) || 0;
+  const basico  = aumentoPorcentaje ? acuerdo.sueldo_basico * (1 + aumentoPorcentaje / 100) : acuerdo.sueldo_basico;
   // Sueldo básico, viático, teléfono, antigüedad e incentivo son fijos — no
   // se tocan por horas. El Premio Presentismo se pierde entero si no llegó
   // al mínimo acordado, y las horas extras sólo existen si lo superó (mismo
-  // criterio que calcularSueldoAdmin.ts en el backend).
-  const cumpleHoras   = horas >= acuerdo.horas_acordadas_mes;
-  const extras        = cumpleHoras ? Math.max(0, horas - acuerdo.horas_acordadas_mes) : 0;
-  const importeExtras = extras * (acuerdo.valor_hora_extra ?? 0);
+  // criterio que calcularSueldoAdmin.ts en el backend). CHOFER no usa horas
+  // para nada de esto — el presentismo nunca se pierde y no hay extras.
+  const cumpleHoras   = esChofer ? true : horas >= acuerdo.horas_acordadas_mes;
+  const extras        = esChofer ? 0 : (cumpleHoras ? Math.max(0, horas - acuerdo.horas_acordadas_mes) : 0);
+  const importeExtras = esChofer ? 0 : extras * (acuerdo.valor_hora_extra ?? 0);
   const premioPresentismo = cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0;
   const vales   = parseFloat(valesDescuentos) || 0;
   const vacac   = parseFloat(vacacionesAguinaldo) || 0;
+  const viatico = viaticoOverride ?? acuerdo.viatico ?? 0;
 
   // La antigüedad real la trae el preview del acuerdo (ya calculada server-side).
   const antiguedad = acuerdo.preview?.importe_antiguedad ?? 0;
   const aniosAntiguedad = acuerdo.preview?.antiguedad_anios ?? 0;
 
   const subtotal =
-    acuerdo.sueldo_basico
+    basico
     + (acuerdo.premio_incentivo ?? 0)
-    + (acuerdo.viatico ?? 0)
+    + viatico
     + premioPresentismo
     + antiguedad
     + (acuerdo.telefono ?? 0)
@@ -65,15 +70,22 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
 
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">
-        Acordadas: {acuerdo.horas_acordadas_mes} hs — Extra: {extras} hs {horas > 0 && `si trabajó ${horas}`}
-      </p>
+      {!esChofer && (
+        <p className="text-xs font-medium text-muted-foreground">
+          Acordadas: {acuerdo.horas_acordadas_mes} hs — Extra: {extras} hs {horas > 0 && `si trabajó ${horas}`}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-        <span>Sueldo básico</span><span className="text-right">{formatCurrency(acuerdo.sueldo_basico)}</span>
-        <span>Horas extras</span><span className="text-right">{formatCurrency(importeExtras)}</span>
+        <span>Sueldo básico{aumentoPorcentaje ? ` (+${aumentoPorcentaje}%)` : ''}</span><span className="text-right">{formatCurrency(basico)}</span>
+        {!esChofer && (<><span>Horas extras</span><span className="text-right">{formatCurrency(importeExtras)}</span></>)}
         <span>Antigüedad ({aniosAntiguedad} año{aniosAntiguedad !== 1 ? 's' : ''})</span><span className="text-right">{formatCurrency(antiguedad)}</span>
         {acuerdo.premio_incentivo   ? (<><span>Premio incentivo</span><span className="text-right">{formatCurrency(acuerdo.premio_incentivo)}</span></>) : null}
-        {acuerdo.viatico            ? (<><span>Viático</span><span className="text-right">{formatCurrency(acuerdo.viatico)}</span></>) : null}
+        {viatico ? (
+          <>
+            <span>Viático{viaticoOverride != null ? ' (bitácora)' : ''}</span>
+            <span className="text-right">{formatCurrency(viatico)}</span>
+          </>
+        ) : null}
         {acuerdo.premio_presentismo ? (
           <>
             <span>Premio presentismo</span>
@@ -136,22 +148,99 @@ function HorasPeriodoPanel({ empleadoId, mes, anio, onUsar }: {
   );
 }
 
+// ── Panel: resumen de bitácora de viajes del período (choferes) ──────────────
+
+const TIPO_RECORRIDO_UNIT_LABEL: Record<'provincial' | 'nacional' | 'nacional_1000', string> = {
+  provincial: 'Provincial', nacional: 'Nacional', nacional_1000: 'Nacional +1000km',
+};
+
+function BitacoraResumenPanel({ empleadoId, mes, anio, onUsar, autoAplicado = false }: {
+  empleadoId: number; mes: number; anio: number; onUsar: (viatico: number) => void;
+  // true cuando el acuerdo es categoria_acuerdo=CHOFER — el backend ya aplica
+  // este viático automáticamente al generar, sin necesidad del botón.
+  autoAplicado?: boolean;
+}) {
+  const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
+  const { data: resumen, isLoading } = useResumenBitacora(empleadoId, mes, anio);
+  if (isLoading || !resumen || resumen.registros.length === 0) return null;
+
+  const valorPorTipo = {
+    provincial:    acuerdo?.viatico_provincial    ?? null,
+    nacional:      acuerdo?.viatico_nacional      ?? null,
+    nacional_1000: acuerdo?.viatico_nacional_1000 ?? null,
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">🚚 Premios de viaje — bitácora del período</p>
+      {(Object.entries(resumen.total_vueltas) as [keyof typeof resumen.total_vueltas, number][])
+        .filter(([, vueltas]) => vueltas > 0)
+        .map(([tipo, vueltas]) => {
+          const valor = valorPorTipo[tipo];
+          return (
+            <p key={tipo} className="text-xs text-muted-foreground">
+              {TIPO_RECORRIDO_UNIT_LABEL[tipo]}: {vueltas} vuelta{vueltas !== 1 ? 's' : ''}
+              {valor !== null ? ` × ${formatCurrency(valor)} = ${formatCurrency(vueltas * valor)}` : ' — sin valor cargado en el acuerdo'}
+            </p>
+          );
+        })}
+      <p className="text-sm font-semibold pt-1 border-t border-border">
+        Total premios de viaje: {formatCurrency(resumen.total_viatico)}
+      </p>
+      {autoAplicado ? (
+        <p className="text-[11px] text-muted-foreground">Se aplica automáticamente por ser categoría Chofer.</p>
+      ) : (
+        <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => onUsar(resumen.total_viatico)}>
+          Usar viático calculado
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ── Panel: banco de horas acumuladas (choferes) ───────────────────────────────
+
+function BancoHorasPanel({ acumuladoAnterior, horasEsteMes }: { acumuladoAnterior: number; horasEsteMes: number }) {
+  const nuevo = Math.round((acumuladoAnterior + horasEsteMes) * 100) / 100;
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">🕒 Banco de horas</p>
+      <div className="grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
+        <span>Acumulado anterior</span><span className="text-right">{acumuladoAnterior} hs</span>
+        <span>Horas este mes</span><span className="text-right">{horasEsteMes} hs</span>
+      </div>
+      <p className="text-sm font-semibold pt-1 border-t border-border">Nuevo acumulado: {nuevo} hs</p>
+      <p className="text-[11px] text-muted-foreground">No impacta en el monto — es sólo registro. Se guarda en el acuerdo recién al aprobar.</p>
+    </div>
+  );
+}
+
 // ── Dialog: Generar liquidación ───────────────────────────────────────────────
 
 function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: acuerdos = [] } = useAcuerdos();
   const generarMut = useGenerarLiquidacionAdmin();
+  const ipcMut = useIpcIndec();
   const [error, setError] = useState<string | null>(null);
   const hoy = new Date();
   const [form, setForm] = useState({
     empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
-    horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '',
+    horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '', viatico_override: '',
+    tipo_aumento: 'SIN_AUMENTO' as TipoAumento, porcentaje_aumento: '',
   });
+  const [ipcInfo, setIpcInfo] = useState<{ mes: string; valor: number } | null>(null);
+  const [ipcError, setIpcError] = useState<string | null>(null);
   const [prestamosSel, setPrestamosSel] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (open) {
-      setForm({ empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()), horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '' });
+      setForm({
+        empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
+        horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '', viatico_override: '',
+        tipo_aumento: 'SIN_AUMENTO', porcentaje_aumento: '',
+      });
+      setIpcInfo(null);
+      setIpcError(null);
       setPrestamosSel(new Set());
       setError(null);
     }
@@ -159,11 +248,14 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   }, [open]);
 
   const set = (k: keyof typeof form, v: string) => {
-    setForm(p => ({ ...p, [k]: v }));
+    setForm(p => ({ ...p, [k]: v, ...((k === 'empleado_id' || k === 'periodo_mes' || k === 'periodo_anio') && { viatico_override: '' }) }));
     if (k === 'empleado_id') setPrestamosSel(new Set());
+    if (k === 'tipo_aumento') { setIpcInfo(null); setIpcError(null); if (v !== 'MANUAL' && v !== 'IPC') set('porcentaje_aumento', ''); }
   };
 
   const empleadoIdNum = form.empleado_id ? Number(form.empleado_id) : null;
+  const { data: acuerdoSel } = useAcuerdoEmpleado(empleadoIdNum);
+  const esChofer = acuerdoSel?.categoria_acuerdo === 'CHOFER';
   const { data: prestamos = [] } = usePrestamosEmpleado(empleadoIdNum);
   const prestamosPendientes = prestamos.filter(p => !p.saldado);
   const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
@@ -173,17 +265,40 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
     return next;
   });
 
+  const handleTraerIpc = async () => {
+    setIpcError(null);
+    setIpcInfo(null);
+    try {
+      const r = await ipcMut.mutateAsync({ mes: Number(form.periodo_mes), anio: Number(form.periodo_anio) });
+      setIpcInfo({ mes: r.mes, valor: r.ipc_mensual });
+      set('porcentaje_aumento', String(r.ipc_mensual));
+    } catch (err) {
+      setIpcError(getApiErrorMessage(err) ?? 'No se pudo obtener el IPC del INDEC. Ingresá el porcentaje manualmente.');
+    }
+  };
+
+  const aumentoPorcentaje = form.tipo_aumento !== 'SIN_AUMENTO' && form.porcentaje_aumento ? Number(form.porcentaje_aumento) : null;
+  const basicoConAumento = acuerdoSel && aumentoPorcentaje ? acuerdoSel.sueldo_basico * (1 + aumentoPorcentaje / 100) : null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!form.empleado_id || !form.horas_trabajadas) { setError('Completá empleado y horas trabajadas'); return; }
+    if (!form.empleado_id) { setError('Completá el empleado'); return; }
+    if (!esChofer && !form.horas_trabajadas) { setError('Completá las horas trabajadas'); return; }
+    if (form.tipo_aumento !== 'SIN_AUMENTO' && !form.porcentaje_aumento) { setError('Falta el porcentaje de aumento'); return; }
     const payload: GenerarLiquidacionAdminPayload = {
       empleado_id:          Number(form.empleado_id),
       periodo_mes:          Number(form.periodo_mes),
       periodo_anio:         Number(form.periodo_anio),
-      horas_trabajadas:     Number(form.horas_trabajadas),
+      horas_trabajadas:     form.horas_trabajadas ? Number(form.horas_trabajadas) : 0,
       vales_descuentos:     form.vales_descuentos ? Number(form.vales_descuentos) : 0,
       vacaciones_aguinaldo: form.vacaciones_aguinaldo ? Number(form.vacaciones_aguinaldo) : 0,
+      viatico_override:     form.viatico_override ? Number(form.viatico_override) : undefined,
+      ...(form.tipo_aumento !== 'SIN_AUMENTO' && {
+        tipo_aumento:       form.tipo_aumento,
+        porcentaje_aumento: Number(form.porcentaje_aumento),
+        ...(form.tipo_aumento === 'IPC' && ipcInfo && { ipc_mes_referencia: ipcInfo.mes, ipc_valor_aplicado: ipcInfo.valor }),
+      }),
     };
     try {
       await generarMut.mutateAsync(payload);
@@ -220,7 +335,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               <input type="number" value={form.periodo_anio} onChange={e => set('periodo_anio', e.target.value)} className={inputCls} />
             </div>
           </div>
-          {empleadoIdNum && (
+          {!esChofer && empleadoIdNum && (
             <HorasPeriodoPanel
               empleadoId={empleadoIdNum}
               mes={Number(form.periodo_mes)}
@@ -228,11 +343,40 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               onUsar={horas => set('horas_trabajadas', String(horas))}
             />
           )}
+          {empleadoIdNum && (
+            <BitacoraResumenPanel
+              empleadoId={empleadoIdNum}
+              mes={Number(form.periodo_mes)}
+              anio={Number(form.periodo_anio)}
+              onUsar={viatico => set('viatico_override', String(viatico))}
+              autoAplicado={esChofer}
+            />
+          )}
+          {!esChofer && form.viatico_override && (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Usando viático calculado de la bitácora: {formatCurrency(Number(form.viatico_override))}
+              {' — '}
+              <button type="button" className="underline hover:text-foreground" onClick={() => set('viatico_override', '')}>
+                usar el fijo del acuerdo
+              </button>
+            </p>
+          )}
 
-          <div>
-            <label className={labelCls}>Horas trabajadas *</label>
-            <input type="number" min="0" step="0.5" value={form.horas_trabajadas} onChange={e => set('horas_trabajadas', e.target.value)} className={inputCls} required />
-          </div>
+          {esChofer ? (
+            <div>
+              <label className={labelCls}>Horas este mes (banco de horas — no impacta el monto)</label>
+              <input type="number" min="0" step="0.5" value={form.horas_trabajadas} onChange={e => set('horas_trabajadas', e.target.value)} className={inputCls} />
+            </div>
+          ) : (
+            <div>
+              <label className={labelCls}>Horas trabajadas *</label>
+              <input type="number" min="0" step="0.5" value={form.horas_trabajadas} onChange={e => set('horas_trabajadas', e.target.value)} className={inputCls} required />
+            </div>
+          )}
+          {esChofer && (
+            <BancoHorasPanel acumuladoAnterior={acuerdoSel?.horas_pendientes_acum ?? 0} horasEsteMes={Number(form.horas_trabajadas) || 0} />
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Vales/Descuentos/Multas ($)</label>
@@ -242,6 +386,51 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               <label className={labelCls}>Vacaciones/Aguinaldos/Extras ($)</label>
               <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
             </div>
+          </div>
+
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <p className="text-xs font-medium">📈 Aumento sobre el básico (opcional)</p>
+            <div className="flex gap-2">
+              {([['SIN_AUMENTO', 'Sin aumento'], ['MANUAL', '% Manual'], ['IPC', 'IPC del INDEC']] as const).map(([v, l]) => (
+                <button
+                  key={v} type="button" onClick={() => set('tipo_aumento', v)}
+                  className={cn(
+                    'flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                    form.tipo_aumento === v ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            {form.tipo_aumento === 'MANUAL' && (
+              <div>
+                <label className={labelCls}>Porcentaje</label>
+                <input type="number" min="0" step="0.01" value={form.porcentaje_aumento} onChange={e => set('porcentaje_aumento', e.target.value)} className={inputCls} placeholder="%" />
+              </div>
+            )}
+            {form.tipo_aumento === 'IPC' && (
+              <div className="space-y-1.5">
+                <Button type="button" variant="outline" size="sm" disabled={ipcMut.isPending} onClick={handleTraerIpc}>
+                  {ipcMut.isPending ? 'Consultando…' : `Traer IPC de ${MESES[Number(form.periodo_mes) - 1]} ${form.periodo_anio} →`}
+                </Button>
+                {ipcInfo && (
+                  <p className="text-xs text-muted-foreground">
+                    IPC {ipcInfo.mes}: {ipcInfo.valor.toLocaleString('es-AR')}% (variación mensual — Fuente: INDEC)
+                  </p>
+                )}
+                {ipcError && <p className="text-xs text-destructive">{ipcError}</p>}
+                {(ipcError || ipcInfo) && (
+                  <div>
+                    <label className={labelCls}>Porcentaje {ipcError && '(ingresalo manualmente)'}</label>
+                    <input type="number" min="0" step="0.01" value={form.porcentaje_aumento} onChange={e => set('porcentaje_aumento', e.target.value)} className={inputCls} placeholder="%" />
+                  </div>
+                )}
+              </div>
+            )}
+            {basicoConAumento !== null && (
+              <p className="text-xs text-muted-foreground">Básico con aumento: {formatCurrency(basicoConAumento)}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -273,6 +462,8 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               valesDescuentos={form.vales_descuentos}
               vacacionesAguinaldo={form.vacaciones_aguinaldo}
               prestamosDescuento={totalPrestamosSel}
+              viaticoOverride={form.viatico_override ? Number(form.viatico_override) : null}
+              aumentoPorcentaje={aumentoPorcentaje}
             />
           )}
 

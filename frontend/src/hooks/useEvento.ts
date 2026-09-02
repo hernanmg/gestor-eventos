@@ -6,7 +6,7 @@ import type { EventoPayload, EventoWithCount } from '@/types';
 // Payload de PATCH /eventos/:id/marcar-facturar — separado de EventoPayload
 // porque sólo toca facturar/facturar_notas, no el resto del evento.
 interface MarcarFacturarPayload {
-  facturar: boolean;
+  facturar: boolean | null;
   notas?:   string | null;
 }
 

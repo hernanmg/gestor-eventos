@@ -11,19 +11,24 @@ import {
   listLiquidaciones, getLiquidacion, previewLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
   exportarLiquidacionPDF,
 } from '../controllers/rrhh.controller';
-import { importarEmpleados, importarJornadas } from '../controllers/rrhhImporter.controller';
+import { importarEmpleados, importarJornadas, importarHistorialConvocatorias } from '../controllers/rrhhImporter.controller';
 import {
   listEmpresasSueldos, listCuentasPorEmpresa,
   listAcuerdos, getAcuerdoEmpleado, createAcuerdo, updateAcuerdo, deleteAcuerdo, restaurarAcuerdo,
   upsertSplits, deleteSplits,
   listLiquidacionesAdmin, getLiquidacionAdmin, generarLiquidacionAdmin, updateLiquidacionAdmin,
   aprobarLiquidacionAdmin, cancelarLiquidacionAdmin, exportarLiquidacionAdminPDF,
-  getResumenMensual, getHorasPeriodo,
+  getResumenMensual, getHorasPeriodo, getIpcIndec,
   listPrestamosEmpleado, createPrestamo, deletePrestamo,
 } from '../controllers/sueldosAdmin.controller';
 import {
   listEscalafones, getValoresEscalafon, createEscalafon, updateEscalafon, deleteEscalafon,
 } from '../controllers/escalafones.controller';
+import {
+  listBitacoraViajes, listBitacoraViajesEmpleado, createBitacoraViaje, updateBitacoraViaje, deleteBitacoraViaje,
+  getResumenBitacoraEmpleado,
+} from '../controllers/bitacoraViajes.controller';
+import { importarBitacoraViajes } from '../controllers/rrhhImporter.controller';
 
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -53,6 +58,7 @@ router.put('/jornadas/:id',              requireRole('ADMIN'), asyncHandler(upda
 router.patch('/jornadas/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarJornada));
 router.patch('/jornadas/:id/rechazar',   requireRole('ADMIN'), asyncHandler(rechazarJornada));
 router.delete('/jornadas/:id',           requireRole('ADMIN'), asyncHandler(deleteJornada));
+router.post('/jornadas/importar-historial', requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarHistorialConvocatorias));
 
 // ── Anticipos ─────────────────────────────────────────────────────────────────
 router.get('/empleados/:id/anticipos',   requireRole('ADMIN'), asyncHandler(listAnticiposEmpleado));
@@ -75,6 +81,8 @@ router.post('/importar/jornadas',        requireRole('ADMIN'), uploadExcel.singl
 // ── Sueldos administrativos (régimen mensual fijo, distinto de Jornada/Liquidacion) ──
 router.get('/empresas',                     requireRole('ADMIN'), asyncHandler(listEmpresasSueldos));
 router.get('/cuentas-empresa/:empresaId',   requireRole('ADMIN'), asyncHandler(listCuentasPorEmpresa));
+
+router.get('/ipc-indec',                    requireRole('ADMIN'), asyncHandler(getIpcIndec));
 
 router.get('/acuerdos',                     requireRole('ADMIN'), asyncHandler(listAcuerdos));
 router.get('/acuerdos/:empleadoId',         requireRole('ADMIN'), asyncHandler(getAcuerdoEmpleado));
@@ -109,5 +117,16 @@ router.delete('/escalafones/:id',           requireRole('ADMIN'), asyncHandler(d
 router.get('/empleados/:id/prestamos',      requireRole('ADMIN'), asyncHandler(listPrestamosEmpleado));
 router.post('/empleados/:id/prestamos',     requireRole('ADMIN'), asyncHandler(createPrestamo));
 router.delete('/prestamos/:id',             requireRole('ADMIN'), asyncHandler(deletePrestamo));
+
+// ── Bitácora de viajes (choferes) ─────────────────────────────────────────────
+// resumen va ANTES de la ruta genérica de empleados/:id/bitacora-viajes para
+// que Express no la trate como un id (mismo criterio que resumen-mensual).
+router.get('/empleados/:id/bitacora-viajes/resumen', requireRole('ADMIN'), asyncHandler(getResumenBitacoraEmpleado));
+router.get('/empleados/:id/bitacora-viajes',          requireRole('ADMIN'), asyncHandler(listBitacoraViajesEmpleado));
+router.get('/bitacora-viajes',                        requireRole('ADMIN'), asyncHandler(listBitacoraViajes));
+router.post('/bitacora-viajes',                       requireRole('ADMIN'), asyncHandler(createBitacoraViaje));
+router.put('/bitacora-viajes/:id',                    requireRole('ADMIN'), asyncHandler(updateBitacoraViaje));
+router.delete('/bitacora-viajes/:id',                 requireRole('ADMIN'), asyncHandler(deleteBitacoraViaje));
+router.post('/bitacora-viajes/importar',              requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarBitacoraViajes));
 
 export default router;

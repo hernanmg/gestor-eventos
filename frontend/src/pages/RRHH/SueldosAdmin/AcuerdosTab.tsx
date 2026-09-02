@@ -15,7 +15,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import PrestamosSection from '@/components/domain/PrestamosSection';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import type { AcuerdoSueldo } from '@/types';
+import type { AcuerdoSueldo, CategoriaAcuerdo } from '@/types';
 import api from '@/lib/api';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -25,6 +25,8 @@ const EMPTY_FORM = {
   empleado_id: '', escalafon: '', escalafonOtro: '', tipo_seguro: '', fecha_inicio: '', vigencia_meses: '',
   sueldo_basico: '', horas_acordadas_mes: '200', valor_hora_extra: '',
   premio_incentivo: '', viatico: '', premio_presentismo: '', telefono: '', notas: '',
+  viatico_provincial: '', viatico_nacional: '', viatico_nacional_1000: '',
+  categoria_acuerdo: 'GENERAL' as CategoriaAcuerdo, porcentaje_acuerdo: '', horas_pendientes_acum: '',
 };
 
 type Step = 1 | 2 | 3;
@@ -35,7 +37,7 @@ type Step = 1 | 2 | 3;
 // Paso 3: conceptos pre-cargados desde el escalafón, editables + preview total.
 
 function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
-  open: boolean; onClose: () => void; empleadosDisponibles: { id: number; nombre: string; apellido: string }[];
+  open: boolean; onClose: () => void; empleadosDisponibles: { id: number; nombre: string; apellido: string; categoria: string }[];
   acuerdo?: AcuerdoSueldo | null; // presente = modo edición
 }) {
   const isEdit = !!acuerdo;
@@ -73,6 +75,12 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         viatico:             acuerdo.viatico !== null ? String(acuerdo.viatico) : '',
         premio_presentismo:  acuerdo.premio_presentismo !== null ? String(acuerdo.premio_presentismo) : '',
         telefono:            acuerdo.telefono !== null ? String(acuerdo.telefono) : '',
+        viatico_provincial:    acuerdo.viatico_provincial    !== null ? String(acuerdo.viatico_provincial)    : '',
+        viatico_nacional:      acuerdo.viatico_nacional      !== null ? String(acuerdo.viatico_nacional)      : '',
+        viatico_nacional_1000: acuerdo.viatico_nacional_1000 !== null ? String(acuerdo.viatico_nacional_1000) : '',
+        categoria_acuerdo:     acuerdo.categoria_acuerdo ?? 'GENERAL',
+        porcentaje_acuerdo:    acuerdo.porcentaje_acuerdo    !== null ? String(acuerdo.porcentaje_acuerdo)    : '',
+        horas_pendientes_acum: acuerdo.horas_pendientes_acum !== null ? String(acuerdo.horas_pendientes_acum) : '',
         notas:               acuerdo.notas ?? '',
       });
       // Todo acuerdo tiene al menos 1 split (el 100% a la empresa activa por
@@ -110,6 +118,21 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
   };
 
   const escalafonFinal = form.escalafon === '__otro__' ? form.escalafonOtro : form.escalafon;
+  // La categoría que gobierna el cálculo (horas vs. viático por recorrido) es
+  // la del ACUERDO (categoria_acuerdo), no la del legajo del empleado — un
+  // acuerdo puede marcarse CHOFER aunque Empleado.categoria sea otra cosa.
+  const esChofer = form.categoria_acuerdo === 'CHOFER';
+
+  // Al elegir empleado en modo creación, pre-selecciona la categoría del
+  // acuerdo según el legajo — sólo si el usuario no la tocó todavía.
+  const handleEmpleadoChange = (empleadoId: string) => {
+    const empleado = empleadosDisponibles.find(e => String(e.id) === empleadoId);
+    setForm(p => ({
+      ...p,
+      empleado_id: empleadoId,
+      categoria_acuerdo: p.categoria_acuerdo === 'GENERAL' && empleado?.categoria === 'CHOFER' ? 'CHOFER' : p.categoria_acuerdo,
+    }));
+  };
 
   const sumaPorcentaje = splits.reduce((s, x) => s + (parseFloat(x.porcentaje) || 0), 0);
   const splitValido     = !splitActivo || (splits.length > 0 && Math.abs(sumaPorcentaje - 100) < 0.01);
@@ -142,6 +165,12 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         premio_presentismo:  form.premio_presentismo ? Number(form.premio_presentismo) : null,
         valor_hora_extra:    form.valor_hora_extra   ? Number(form.valor_hora_extra)   : null,
         telefono:            form.telefono           ? Number(form.telefono)           : null,
+        viatico_provincial:    form.viatico_provincial    ? Number(form.viatico_provincial)    : null,
+        viatico_nacional:      form.viatico_nacional      ? Number(form.viatico_nacional)      : null,
+        viatico_nacional_1000: form.viatico_nacional_1000 ? Number(form.viatico_nacional_1000) : null,
+        categoria_acuerdo:     form.categoria_acuerdo,
+        porcentaje_acuerdo:    form.porcentaje_acuerdo    ? Number(form.porcentaje_acuerdo)    : null,
+        horas_pendientes_acum: form.horas_pendientes_acum ? Number(form.horas_pendientes_acum) : null,
         notas:               form.notas || null,
       };
 
@@ -190,7 +219,7 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                 <p className="text-sm py-1.5">{acuerdo!.empleado?.apellido}, {acuerdo!.empleado?.nombre}</p>
               ) : (
                 <>
-                  <select value={form.empleado_id} onChange={e => set('empleado_id', e.target.value)} className={inputCls}>
+                  <select value={form.empleado_id} onChange={e => handleEmpleadoChange(e.target.value)} className={inputCls}>
                     <option value="">Seleccionar...</option>
                     {empleadosDisponibles.map(e => <option key={e.id} value={e.id}>{e.apellido}, {e.nombre}</option>)}
                   </select>
@@ -198,6 +227,28 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                     <p className="text-xs text-muted-foreground mt-1">Todos los empleados ya tienen un acuerdo activo.</p>
                   )}
                 </>
+              )}
+            </div>
+            <div>
+              <label className={labelCls}>Categoría del acuerdo</label>
+              <div className="flex gap-2">
+                {(['GENERAL', 'CHOFER'] as const).map(cat => (
+                  <button
+                    key={cat} type="button"
+                    onClick={() => set('categoria_acuerdo', cat)}
+                    className={cn(
+                      'flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
+                      form.categoria_acuerdo === cat ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent',
+                    )}
+                  >
+                    {cat === 'GENERAL' ? 'General' : 'Chofer'}
+                  </button>
+                ))}
+              </div>
+              {esChofer && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  El sueldo no depende de horas trabajadas — se registran sólo para control/banco de horas. Los premios de viaje salen de la Bitácora.
+                </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -230,6 +281,10 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                 <input type="number" min="1" value={form.vigencia_meses} onChange={e => set('vigencia_meses', e.target.value)} placeholder="Indefinido" className={inputCls} />
               </div>
             </div>
+            <div>
+              <label className={labelCls}>% de aumento sobre el acuerdo anterior</label>
+              <input type="number" min="0" step="0.01" value={form.porcentaje_acuerdo} onChange={e => set('porcentaje_acuerdo', e.target.value)} placeholder="Sólo informativo" className={inputCls} />
+            </div>
           </div>
         )}
 
@@ -241,16 +296,22 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
               <p className="text-xs text-muted-foreground mt-0.5">Este es el sueldo total del empleado.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Horas acordadas/mes *</label>
-                <input type="number" min="1" value={form.horas_acordadas_mes} onChange={e => set('horas_acordadas_mes', e.target.value)} className={inputCls} />
+            {esChofer ? (
+              <p className="text-xs text-muted-foreground">
+                Categoría Chofer — no usa horas acordadas ni valor de hora extra (ver Paso 3 para los premios de viaje).
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Horas acordadas/mes *</label>
+                  <input type="number" min="1" value={form.horas_acordadas_mes} onChange={e => set('horas_acordadas_mes', e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Valor hora extra ($)</label>
+                  <MoneyInput value={form.valor_hora_extra} onChange={v => set('valor_hora_extra', v)} />
+                </div>
               </div>
-              <div>
-                <label className={labelCls}>Valor hora extra ($)</label>
-                <MoneyInput value={form.valor_hora_extra} onChange={v => set('valor_hora_extra', v)} />
-              </div>
-            </div>
+            )}
 
             <label className="flex items-center gap-2 cursor-pointer text-sm pt-1">
               <input
@@ -340,6 +401,37 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                 Valores pre-cargados desde el escalafón "{escalafonFinal}" — podés editarlos libremente.
               </p>
             )}
+
+            {esChofer && (
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-xs font-medium">Valores de viático por tipo de recorrido</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Usados por la Bitácora de Viajes para calcular el viático de cada registro — reemplazan el "Viático" fijo de arriba para este empleado.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className={labelCls}>Provincial ($/vuelta)</label>
+                    <MoneyInput value={form.viatico_provincial} onChange={v => set('viatico_provincial', v)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nacional ($/vuelta)</label>
+                    <MoneyInput value={form.viatico_nacional} onChange={v => set('viatico_nacional', v)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nacional +1000km ($/vuelta)</label>
+                    <MoneyInput value={form.viatico_nacional_1000} onChange={v => set('viatico_nacional_1000', v)} />
+                  </div>
+                </div>
+                <div className="pt-1">
+                  <label className={labelCls}>Banco de horas inicial (hs)</label>
+                  <input type="number" step="0.5" value={form.horas_pendientes_acum} onChange={e => set('horas_pendientes_acum', e.target.value)} placeholder="0" className={inputCls} />
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Saldo arrastrado desde afuera del sistema — después se actualiza solo, al aprobar cada liquidación.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className={labelCls}>Notas</label>
               <textarea value={form.notas} onChange={e => set('notas', e.target.value)} rows={2} className={cn(inputCls, 'resize-none')} />
