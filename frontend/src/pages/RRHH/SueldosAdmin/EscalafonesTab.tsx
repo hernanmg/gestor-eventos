@@ -14,7 +14,10 @@ import type { EscalafonAdmin } from '@/types';
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
-const EMPTY_FORM = { nombre: '', viatico: '', premio_presentismo: '', telefono: '', premio_incentivo: '' };
+const EMPTY_FORM = {
+  nombre: '', viatico: '', premio_presentismo: '', telefono: '', premio_incentivo: '',
+  premio_viaje_provincial: '', premio_viaje_nacional: '', premio_viaje_nacional_1000: '',
+};
 
 function EscalafonDialog({ escalafon, onClose }: { escalafon: EscalafonAdmin | 'new' | null; onClose: () => void }) {
   const isEdit = escalafon !== null && escalafon !== 'new';
@@ -32,6 +35,9 @@ function EscalafonDialog({ escalafon, onClose }: { escalafon: EscalafonAdmin | '
         premio_presentismo: escalafon.premio_presentismo !== null ? String(escalafon.premio_presentismo) : '',
         telefono:           escalafon.telefono           !== null ? String(escalafon.telefono)           : '',
         premio_incentivo:   escalafon.premio_incentivo   !== null ? String(escalafon.premio_incentivo)   : '',
+        premio_viaje_provincial:    escalafon.premio_viaje_provincial    !== null ? String(escalafon.premio_viaje_provincial)    : '',
+        premio_viaje_nacional:      escalafon.premio_viaje_nacional      !== null ? String(escalafon.premio_viaje_nacional)      : '',
+        premio_viaje_nacional_1000: escalafon.premio_viaje_nacional_1000 !== null ? String(escalafon.premio_viaje_nacional_1000) : '',
       });
     } else {
       setForm(EMPTY_FORM);
@@ -53,6 +59,9 @@ function EscalafonDialog({ escalafon, onClose }: { escalafon: EscalafonAdmin | '
       premio_presentismo: form.premio_presentismo ? Number(form.premio_presentismo) : null,
       telefono:           form.telefono           ? Number(form.telefono)           : null,
       premio_incentivo:   form.premio_incentivo   ? Number(form.premio_incentivo)   : null,
+      premio_viaje_provincial:    form.premio_viaje_provincial    ? Number(form.premio_viaje_provincial)    : null,
+      premio_viaje_nacional:      form.premio_viaje_nacional      ? Number(form.premio_viaje_nacional)      : null,
+      premio_viaje_nacional_1000: form.premio_viaje_nacional_1000 ? Number(form.premio_viaje_nacional_1000) : null,
     };
     try {
       if (isEdit) await updateMut.mutateAsync({ id: escalafon.id, data: payload });
@@ -92,6 +101,26 @@ function EscalafonDialog({ escalafon, onClose }: { escalafon: EscalafonAdmin | '
             <div>
               <label className={labelCls}>Premio incentivo ($)</label>
               <MoneyInput value={form.premio_incentivo} onChange={v => set('premio_incentivo', v)} />
+            </div>
+          </div>
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-medium mb-1.5">Premios por Viajes (choferes)</p>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              $ por vuelta — se pre-cargan en el acuerdo cuando se elige este escalafón para un empleado categoría Chofer.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className={labelCls}>Provincial</label>
+                <MoneyInput value={form.premio_viaje_provincial} onChange={v => set('premio_viaje_provincial', v)} />
+              </div>
+              <div>
+                <label className={labelCls}>Nacional</label>
+                <MoneyInput value={form.premio_viaje_nacional} onChange={v => set('premio_viaje_nacional', v)} />
+              </div>
+              <div>
+                <label className={labelCls}>Nacional +1000km</label>
+                <MoneyInput value={form.premio_viaje_nacional_1000} onChange={v => set('premio_viaje_nacional_1000', v)} />
+              </div>
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}

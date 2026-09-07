@@ -54,8 +54,10 @@ const espacioCreateSchema = z.object({
   direccion:      z.string().nullable().optional(),
   dia_generacion: z.number().int().min(1).max(28).default(1),
   partes:         z.array(parteSchema).min(1),
-}).refine(d => Math.abs(d.partes.reduce((s, p) => s + p.porcentaje, 0) - 100) <= 0.01, {
-  message: 'La suma de porcentajes debe ser 100', path: ['partes'],
+}).refine(d => d.partes.reduce((s, p) => s + p.porcentaje, 0) <= 100.01, {
+  // La suma puede quedar por debajo de 100 (configuración incompleta, se
+  // completa después) pero nunca superarlo — ver validarSumaPartes.
+  message: 'La suma de porcentajes no puede superar el 100%', path: ['partes'],
 });
 
 const espacioUpdateSchema = z.object({
@@ -142,9 +144,12 @@ async function findEspacio(id: number, empresaId: number) {
   return prisma.espacioCompartido.findFirst({ where: { id, deleted_at: null, ...withTenant(empresaId) } });
 }
 
+// Una suma < 100 es una configuración incompleta (se completa después, no
+// bloquea guardar); una suma > 100 sí se bloquea porque no tiene sentido de
+// negocio (un reparto no puede superar el total del gasto).
 function validarSumaPartesFinal(partes: { porcentaje: number }[]): string | null {
   const suma = partes.reduce((s, p) => s + p.porcentaje, 0);
-  if (Math.abs(suma - 100) > 0.01) return `La suma de porcentajes debe ser 100 (actual: ${suma})`;
+  if (suma > 100.01) return `La suma de porcentajes no puede superar el 100% (actual: ${suma})`;
   return null;
 }
 
@@ -284,7 +289,7 @@ async function generarMesInterno(tx: Prisma.TransactionClient, espacioId: number
 export async function listEspacios(req: Request, res: Response) {
   const espacios = await prisma.espacioCompartido.findMany({
     where:   { deleted_at: null, ...withTenant(req.empresaId!) },
-    include: { partes: true },
+    include: { partes: { include: { cuenta_corriente: { select: { id: true, nombre: true } } } } },
     orderBy: { nombre: 'asc' },
   });
 
@@ -315,7 +320,10 @@ export async function detalleEspacio(req: Request, res: Response) {
   const id = Number(req.params.id);
   const e = await prisma.espacioCompartido.findFirst({
     where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
-    include: { partes: true, gastosTipo: { orderBy: { nombre: 'asc' } } },
+    include: {
+      partes:     { include: { cuenta_corriente: { select: { id: true, nombre: true } } } },
+      gastosTipo: { orderBy: { nombre: 'asc' } },
+    },
   });
   if (!e) { res.status(404).json({ error: 'Espacio no encontrado' }); return; }
   res.json(mapEspacio(e));

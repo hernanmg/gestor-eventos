@@ -212,7 +212,10 @@ export interface GenerarLiquidacionAdminPayload {
   periodo_mes:          number;
   periodo_anio:         number;
   horas_trabajadas:     number;
-  vales_descuentos?:    number;
+  // Ids de Anticipo (vales/descuentos/multas) seleccionados en "Vales y
+  // descuentos del período" — su suma reemplaza el monto manual de
+  // vales_descuentos (ver generarLiquidacionAdmin en el backend).
+  anticipo_ids?:        number[];
   vacaciones_aguinaldo?: number;
   // Se manda cuando el usuario clickeó "Usar viático calculado" sobre el
   // resumen de bitácora — reemplaza el viático fijo del acuerdo. Para
@@ -397,6 +400,7 @@ export interface ResultadoImportarViajes {
   actualizados: number;
   omitidos: number;
   sin_recorrido: number;
+  fuera_de_periodo: number;
   errores: { fila: number; motivo: string }[];
   resumen: { provincial: number; nacional: number; nacional_1000: number; total_vueltas: number; viatico_estimado: number };
 }
@@ -430,6 +434,7 @@ export interface ResultadoImportarHistorial {
   actualizados?: number;
   total_filas?: number;
   omitidos: number;
+  fuera_de_periodo: number;
   errores: { fila: number; motivo: string }[];
   filas?: { fila_excel: number; fecha: string; convocatoria: string | null; hora_convocatoria: string | null; hora_ingreso: string | null; hora_egreso: string | null; horas: number }[];
 }

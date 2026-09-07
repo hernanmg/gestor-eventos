@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2, Plus, ChevronDown, ChevronRight, Pencil, Trash2, Download, Lock } from 'lucide-react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { ArrowLeft, Building2, Plus, ChevronDown, ChevronRight, Pencil, Trash2, Download, Lock, ExternalLink } from 'lucide-react';
 import {
   useEspacioCompartido,
   useMesesEspacio, useMesDetalle, useGenerarMes, useCerrarMes,
   useCreateParte, useUpdateParte, useRemoveParte,
   useCreateGastoTipo, useUpdateGastoTipo, useRemoveGastoTipo,
   useAgregarLineaManual, useUpdateLinea, usePagarLinea, useRemoveLinea,
-  comprobanteLineaUrl,
+  comprobanteLineaUrl, sumaPartesLabel,
   type ParteInput, type GastoTipoInput, type LineaManualInput,
 } from '@/hooks/useEspaciosCompartidos';
+import { useCuentasCorrientes } from '@/hooks/useCuentasCorrientes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import MoneyInput from '@/components/ui/MoneyInput';
@@ -354,24 +355,45 @@ function TabHistorial({ espacioId, onVerMes }: { espacioId: number; onVerMes: (m
 
 const PARTE_VACIA: ParteInput = { nombre: '', porcentaje: 0 };
 
-function ParteDialog({ espacioId, parte, onClose }: { espacioId: number; parte: ParteEspacio | null; onClose: () => void }) {
+function ParteDialog({ espacioId, parte, partesActuales, onClose }: {
+  espacioId: number; parte: ParteEspacio | null; partesActuales: ParteEspacio[]; onClose: () => void;
+}) {
   const isEdit = !!parte;
   const [form, setForm] = useState<ParteInput>(PARTE_VACIA);
+  const [tieneCCC, setTieneCCC] = useState(false);
+  const [cuentaId, setCuentaId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const crear = useCreateParte(espacioId);
   const actualizar = useUpdateParte();
+  const { data: cuentas = [] } = useCuentasCorrientes();
 
   useEffect(() => {
-    setForm(parte ? { nombre: parte.nombre, porcentaje: Number(parte.porcentaje) } : PARTE_VACIA);
+    if (parte) {
+      setForm({ nombre: parte.nombre, porcentaje: Number(parte.porcentaje) });
+      setTieneCCC(parte.cuenta_corriente_id != null);
+      setCuentaId(parte.cuenta_corriente_id != null ? String(parte.cuenta_corriente_id) : '');
+    } else {
+      setForm(PARTE_VACIA);
+      setTieneCCC(false);
+      setCuentaId('');
+    }
     setError(null);
   }, [parte]);
+
+  const otrasSuma = partesActuales.filter(p => !isEdit || p.id !== parte!.id).reduce((s, p) => s + Number(p.porcentaje), 0);
+  const sumaConEsta = Math.round((otrasSuma + (form.porcentaje || 0)) * 100) / 100;
+  const sumaInfo = sumaPartesLabel(sumaConEsta);
 
   const handleSubmit = async () => {
     setError(null);
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    if (sumaInfo.bloquea) { setError(sumaInfo.texto); return; }
+    if (tieneCCC && !cuentaId) { setError('Elegí una cuenta corriente o desactivá el toggle'); return; }
+
+    const data: ParteInput = { ...form, cuenta_corriente_id: tieneCCC ? Number(cuentaId) : null };
     try {
-      if (isEdit) await actualizar.mutateAsync({ id: parte.id, data: form });
-      else        await crear.mutateAsync(form);
+      if (isEdit) await actualizar.mutateAsync({ id: parte.id, data });
+      else        await crear.mutateAsync(data);
       onClose();
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -392,6 +414,19 @@ function ParteDialog({ espacioId, parte, onClose }: { espacioId: number; parte: 
           <div>
             <label className={labelCls}>Porcentaje *</label>
             <input type="number" value={form.porcentaje || ''} onChange={e => setForm(f => ({ ...f, porcentaje: Number(e.target.value) }))} className={inputCls} />
+            <p className={cn('text-xs mt-1', sumaInfo.clase)}>{sumaInfo.texto}</p>
+          </div>
+          <div className="border-t pt-2">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={tieneCCC} onChange={e => { setTieneCCC(e.target.checked); if (!e.target.checked) setCuentaId(''); }} />
+              ¿Esta parte tiene cuenta corriente en el sistema?
+            </label>
+            {tieneCCC && (
+              <select value={cuentaId} onChange={e => setCuentaId(e.target.value)} className={cn(inputCls, 'mt-1.5')}>
+                <option value="">Seleccionar cuenta corriente…</option>
+                {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            )}
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
@@ -472,13 +507,29 @@ function GastoTipoDialog({ espacioId, tipo, onClose }: { espacioId: number; tipo
 function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number; partes: ParteEspacio[]; gastosTipo: GastoTipoEspacio[] }) {
   const [parteDialog, setParteDialog] = useState<{ open: boolean; parte: ParteEspacio | null }>({ open: false, parte: null });
   const [tipoDialog, setTipoDialog]   = useState<{ open: boolean; tipo: GastoTipoEspacio | null }>({ open: false, tipo: null });
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const eliminarParte = useRemoveParte();
   const eliminarTipo   = useRemoveGastoTipo();
 
-  const suma = partes.reduce((s, p) => s + Number(p.porcentaje), 0);
+  const suma = Math.round(partes.reduce((s, p) => s + Number(p.porcentaje), 0) * 100) / 100;
+  const sumaInfo = sumaPartesLabel(suma);
+
+  const handleEliminarParte = (p: ParteEspacio) => {
+    if (!window.confirm(`¿Eliminar la parte "${p.nombre}"?`)) return;
+    setErrorAccion(null);
+    eliminarParte.mutate(p.id, { onError: err => setErrorAccion(getApiErrorMessage(err)) });
+  };
+
+  const handleEliminarTipo = (t: GastoTipoEspacio) => {
+    if (!window.confirm(`¿Desactivar "${t.nombre}"? No se volverá a generar en los próximos meses.`)) return;
+    setErrorAccion(null);
+    eliminarTipo.mutate(t.id, { onError: err => setErrorAccion(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-6">
+      {errorAccion && <p className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">{errorAccion}</p>}
+
       <section>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold">Partes y % de reparto</h3>
@@ -489,13 +540,25 @@ function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number
         <div className="rounded-lg border bg-white divide-y">
           {partes.map(p => (
             <div key={p.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span>{p.nombre}</span>
+              <div>
+                <span>{p.nombre}</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {p.cuenta_corriente ? (
+                    <>
+                      Cuenta corriente: {p.cuenta_corriente.nombre}{' '}
+                      <Link to={`/cuentas-corrientes/${p.cuenta_corriente.id}`} className="text-primary hover:underline inline-flex items-center gap-0.5">
+                        Ver <ExternalLink size={10} />
+                      </Link>
+                    </>
+                  ) : 'Sin cuenta corriente'}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="font-medium">{Number(p.porcentaje)}%</span>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setParteDialog({ open: true, parte: p })}><Pencil size={13} /></Button>
                 <Button
                   variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-                  onClick={() => { if (window.confirm(`¿Eliminar la parte "${p.nombre}"?`)) eliminarParte.mutate(p.id); }}
+                  onClick={() => handleEliminarParte(p)}
                 >
                   <Trash2 size={13} />
                 </Button>
@@ -503,9 +566,7 @@ function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number
             </div>
           ))}
         </div>
-        <p className={cn('text-xs mt-1', Math.abs(suma - 100) < 0.01 ? 'text-green-700' : 'text-destructive')}>
-          Suma: {suma}% {Math.abs(suma - 100) < 0.01 ? '✓' : '(debería ser 100%)'}
-        </p>
+        <p className={cn('text-xs mt-1', sumaInfo.clase)}>{sumaInfo.texto}</p>
       </section>
 
       <section>
@@ -530,7 +591,7 @@ function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number
                 {t.activo && (
                   <Button
                     variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => { if (window.confirm(`¿Desactivar "${t.nombre}"? No se volverá a generar en los próximos meses.`)) eliminarTipo.mutate(t.id); }}
+                    onClick={() => handleEliminarTipo(t)}
                   >
                     <Trash2 size={13} />
                   </Button>
@@ -541,7 +602,9 @@ function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number
         </div>
       </section>
 
-      {parteDialog.open && <ParteDialog espacioId={espacioId} parte={parteDialog.parte} onClose={() => setParteDialog({ open: false, parte: null })} />}
+      {parteDialog.open && (
+        <ParteDialog espacioId={espacioId} parte={parteDialog.parte} partesActuales={partes} onClose={() => setParteDialog({ open: false, parte: null })} />
+      )}
       {tipoDialog.open && <GastoTipoDialog espacioId={espacioId} tipo={tipoDialog.tipo} onClose={() => setTipoDialog({ open: false, tipo: null })} />}
     </div>
   );

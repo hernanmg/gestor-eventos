@@ -641,7 +641,7 @@ export async function deleteJornada(req: Request, res: Response) {
 
 const anticipoSchema = z.object({
   empleado_id: z.number().int().positive(),
-  tipo:        z.enum(['ADELANTO', 'VALE', 'DESCUENTO']).default('ADELANTO'),
+  tipo:        z.enum(['ADELANTO', 'VALE', 'DESCUENTO', 'MULTA']).default('ADELANTO'),
   monto:       z.number().positive(),
   fecha:       z.string().min(1),
   motivo:      z.string().nullable().optional(),

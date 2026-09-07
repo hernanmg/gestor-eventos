@@ -10,7 +10,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { TipoAnticipo } from '@/types';
 
-const TIPO_LABEL: Record<TipoAnticipo, string> = { ADELANTO: 'Adelanto', VALE: 'Vale', DESCUENTO: 'Descuento' };
+const TIPO_LABEL: Record<TipoAnticipo, string> = { ADELANTO: 'Adelanto', VALE: 'Vale', DESCUENTO: 'Descuento', MULTA: 'Multa' };
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';

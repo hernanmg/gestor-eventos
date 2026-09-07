@@ -379,6 +379,9 @@ function ImportarHistorialDialog({ open, onClose, empleadoId, mes, anio }: {
             <div className="rounded-lg border border-border p-6 text-center space-y-2">
               <CheckCircle2 size={32} className="text-green-600 mx-auto" />
               <p className="text-sm font-medium">{resultado.creados ?? 0} creada(s), {resultado.actualizados ?? 0} actualizada(s)</p>
+              {resultado.fuera_de_periodo > 0 && (
+                <p className="text-xs text-muted-foreground">{resultado.fuera_de_periodo} fila(s) omitida(s) por estar fuera del período — no son errores</p>
+              )}
               {resultado.omitidos > 0 && <p className="text-xs text-destructive">{resultado.omitidos} fila(s) con error</p>}
               <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
             </div>
@@ -406,6 +409,9 @@ function ImportarHistorialDialog({ open, onClose, empleadoId, mes, anio }: {
                   <div className="rounded-lg border border-border p-3 text-sm space-y-1">
                     <p className="font-medium flex items-center gap-1.5"><CheckCircle2 size={14} className="text-green-600" /> Hoja: {analisis.hoja}</p>
                     <p className="text-muted-foreground">{analisis.total_filas ?? 0} fila(s) encontradas</p>
+                    {analisis.fuera_de_periodo > 0 && (
+                      <p className="text-xs text-muted-foreground">{analisis.fuera_de_periodo} fila(s) fuera del período — se omiten, no son errores</p>
+                    )}
                     {analisis.errores.length > 0 && (
                       <div className="pt-1.5 border-t border-border">
                         <p className="text-xs font-medium text-destructive mb-1">{analisis.errores.length} error(es)</p>

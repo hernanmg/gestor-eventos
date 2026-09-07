@@ -41,6 +41,37 @@ function parseHoraAmPm(raw: any): string | null {
   return `${String(h).padStart(2, '0')}:${m[2]}`;
 }
 
+// Busca la hoja del Excel que corresponde a un empleado, probando variantes
+// en orden hasta encontrar una — las planillas reales no siguen un único
+// formato de nombre de hoja (a veces sólo el nombre en mayúsculas, "LUIS";
+// a veces "Apellido, Nombre"; etc.). Excluye siempre las hojas de viajes
+// ("VIAJES LUIS") para no confundirlas con la de historial/convocatorias.
+function matchHojaEmpleado(sheetNames: string[], nombre: string, apellido: string): string | null {
+  const candidatas = sheetNames.filter(n => !normalizeLoose(n).includes('viajes'));
+
+  const variantes = [
+    nombre,
+    nombre.toUpperCase(),
+    apellido.toUpperCase(),
+    `${nombre} ${apellido}`.toUpperCase(),
+    `${apellido} ${nombre}`.toUpperCase(),
+  ].map(normalizeLoose);
+
+  for (const variante of variantes) {
+    const match = candidatas.find(n => normalizeLoose(n) === variante);
+    if (match) return match;
+  }
+
+  // Último recurso: substring — matchea "Ledesma, Luis" contra una hoja
+  // "LUIS LEDESMA (VENTAS)" o similar.
+  const apellidoNorm = normalizeLoose(apellido);
+  const nombreNorm    = normalizeLoose(nombre);
+  return candidatas.find(n => {
+    const norm = normalizeLoose(n);
+    return norm.includes(apellidoNorm) || norm.includes(nombreNorm);
+  }) ?? null;
+}
+
 function getCell(row: Record<string, any>, aliases: string[]): any {
   const keys = Object.keys(row);
   for (const alias of aliases) {
@@ -370,6 +401,7 @@ export async function importarBitacoraViajes(req: Request, res: Response) {
     tipo_recorrido: TipoRecorrido; cantidad_vueltas: number; observaciones: string | null;
   }[] = [];
   let sinRecorrido = 0;
+  let fueraDePeriodo = 0;
 
   for (let r = cols.headerRow + 2; r < rows.length; r++) {
     const row = rows[r] ?? [];
@@ -378,8 +410,11 @@ export async function importarBitacoraViajes(req: Request, res: Response) {
     if (!fechaLocal) break; // fin de la tabla (fila en blanco o TOTAL)
     const fecha = new Date(Date.UTC(fechaLocal.getFullYear(), fechaLocal.getMonth(), fechaLocal.getDate()));
 
+    // No es un error del archivo — la hoja trae el año completo y sólo se
+    // importa el mes/año elegido (ver mesParam/anioParam). Se cuenta aparte,
+    // nunca como error.
     if (mesParam && anioParam && (fecha.getUTCMonth() + 1 !== mesParam || fecha.getUTCFullYear() !== anioParam)) {
-      errores.push({ fila: filaExcel, motivo: 'Fecha fuera del período seleccionado' });
+      fueraDePeriodo++;
       continue;
     }
 
@@ -435,8 +470,9 @@ export async function importarBitacoraViajes(req: Request, res: Response) {
       empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
       creados:         aProcesar.length, // estimado — al confirmar se separa en creados/actualizados reales
       actualizados:    0,
-      omitidos:        sinRecorrido + errores.length,
+      omitidos:        errores.length,
       sin_recorrido:   sinRecorrido,
+      fuera_de_periodo: fueraDePeriodo,
       errores,
       resumen:         resumenPreview(),
     });
@@ -498,8 +534,9 @@ export async function importarBitacoraViajes(req: Request, res: Response) {
     empleado_id:     empleado.id,
     empleado_nombre: `${empleado.apellido}, ${empleado.nombre}`,
     creados, actualizados,
-    omitidos:      sinRecorrido + errores.length,
+    omitidos:      errores.length,
     sin_recorrido: sinRecorrido,
+    fuera_de_periodo: fueraDePeriodo,
     errores,
     resumen: resumenPreview(),
   });
@@ -564,26 +601,20 @@ export async function importarHistorialConvocatorias(req: Request, res: Response
     res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
   }
 
-  // Match exacto primero (nombre/apellido normalizado === nombre de hoja) — un
-  // match por "includes" suelto puede confundir, ej. "LUIS" matchea tanto la
-  // hoja "LUIS" como "VIAJES LUIS" (que es la hoja de viajes, no la de
-  // historial). Sólo se recurre a "includes" si no hay match exacto, y ahí sí
-  // se excluye cualquier hoja que contenga "viajes".
-  const apellidoNorm = normalizeLoose(empleado.apellido);
-  const nombreNorm    = normalizeLoose(empleado.nombre);
-  const nombreHoja =
-    wb.SheetNames.find(n => { const norm = normalizeLoose(n); return norm === apellidoNorm || norm === nombreNorm; }) ??
-    wb.SheetNames.find(n => {
-      const norm = normalizeLoose(n);
-      return !norm.includes('viajes') && (norm.includes(apellidoNorm) || norm.includes(nombreNorm));
+  const nombreHoja = matchHojaEmpleado(wb.SheetNames, empleado.nombre, empleado.apellido);
+  if (!nombreHoja) {
+    res.status(404).json({
+      error: `No se encontró hoja para ${empleado.nombre} ${empleado.apellido}. Hojas disponibles: ${wb.SheetNames.join(', ')}`,
     });
-  if (!nombreHoja) { res.status(400).json({ error: `No se encontró una hoja que coincida con ${empleado.apellido}, ${empleado.nombre}` }); return; }
+    return;
+  }
 
   const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[nombreHoja], { header: 1, defval: null, raw: true });
   const cols = detectarColumnasHistorial(rows);
   if (!cols) { res.status(400).json({ error: `La hoja "${nombreHoja}" no tiene el formato esperado (headers Convocatoria/Fecha/Inicio de Actividades/Fin de Actividades/Hrs trabajadas)` }); return; }
 
   const errores: { fila: number; motivo: string }[] = [];
+  let fueraDePeriodo = 0;
   const aProcesar: {
     fila: number; fecha: Date; fechaLocal: Date; convocatoria: string | null;
     horaConvocatoria: string | null; horaIngreso: string | null; horaEgreso: string | null; horas: number;
@@ -595,8 +626,10 @@ export async function importarHistorialConvocatorias(req: Request, res: Response
     const fechaLocal = excelDateToJs(row[cols.fecha]);
     if (!fechaLocal) break; // fin de la tabla
 
+    // No es un error del archivo — son días de otros meses en la misma hoja
+    // anual, se omiten en silencio (ver fueraDePeriodo en la respuesta).
     if (mesParam && anioParam && (fechaLocal.getMonth() + 1 !== mesParam || fechaLocal.getFullYear() !== anioParam)) {
-      errores.push({ fila: filaExcel, motivo: 'Fecha fuera del período seleccionado' });
+      fueraDePeriodo++;
       continue;
     }
 
@@ -628,6 +661,7 @@ export async function importarHistorialConvocatorias(req: Request, res: Response
       hoja:            nombreHoja,
       total_filas:     aProcesar.length,
       omitidos:        errores.length,
+      fuera_de_periodo: fueraDePeriodo,
       errores,
       filas: aProcesar.map(f => ({
         fila_excel: f.fila, fecha: f.fecha.toISOString().slice(0, 10),
@@ -689,6 +723,7 @@ export async function importarHistorialConvocatorias(req: Request, res: Response
     hoja: nombreHoja,
     creados, actualizados,
     omitidos: errores.length,
+    fuera_de_periodo: fueraDePeriodo,
     errores,
   });
 }

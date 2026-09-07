@@ -27,6 +27,9 @@ export interface EscalafonPayload {
   premio_presentismo?: number | null;
   telefono?:           number | null;
   premio_incentivo?:   number | null;
+  premio_viaje_provincial?:    number | null;
+  premio_viaje_nacional?:      number | null;
+  premio_viaje_nacional_1000?: number | null;
 }
 
 export function useCreateEscalafon() {

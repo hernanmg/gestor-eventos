@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Download } from 'lucide-react';
-import { useEmpleados } from '@/hooks/useRRHH';
+import { useEmpleados, useAnticiposEmpleado, useCreateAnticipo, type AnticipoPayload } from '@/hooks/useRRHH';
 import {
   useAcuerdos, useAcuerdoEmpleado, useCuentasPorEmpresa,
   useLiquidacionesAdmin, useLiquidacionAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento } from '@/types';
+import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento, TipoAnticipo } from '@/types';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -23,6 +23,7 @@ const ESTADO_LABEL: Record<EstadoLiquidacionAdmin, string> = { BORRADOR: 'Borrad
 const ESTADO_VARIANT: Record<EstadoLiquidacionAdmin, 'muted' | 'success' | 'info' | 'destructive'> = {
   BORRADOR: 'muted', APROBADA: 'success', PAGADA: 'info', CANCELADA: 'destructive',
 };
+const TIPO_ANTICIPO_LABEL: Record<TipoAnticipo, string> = { ADELANTO: 'Adelanto', VALE: 'Vale', DESCUENTO: 'Descuento', MULTA: 'Multa' };
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -31,7 +32,7 @@ const MESES = [
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
 function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, aumentoPorcentaje }: {
-  empleadoId: number; horasTrabajadas: string; valesDescuentos: string; vacacionesAguinaldo: string; prestamosDescuento?: number;
+  empleadoId: number; horasTrabajadas: string; valesDescuentos: number; vacacionesAguinaldo: string; prestamosDescuento?: number;
   viaticoOverride?: number | null; aumentoPorcentaje?: number | null;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
@@ -49,7 +50,7 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
   const extras        = esChofer ? 0 : (cumpleHoras ? Math.max(0, horas - acuerdo.horas_acordadas_mes) : 0);
   const importeExtras = esChofer ? 0 : extras * (acuerdo.valor_hora_extra ?? 0);
   const premioPresentismo = cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0;
-  const vales   = parseFloat(valesDescuentos) || 0;
+  const vales   = valesDescuentos;
   const vacac   = parseFloat(vacacionesAguinaldo) || 0;
   const viatico = viaticoOverride ?? acuerdo.viatico ?? 0;
 
@@ -215,6 +216,109 @@ function BancoHorasPanel({ acumuladoAnterior, horasEsteMes }: { acumuladoAnterio
   );
 }
 
+// ── Dialog: agregar vale/descuento (crea un Anticipo) ─────────────────────────
+
+function AgregarValeDialog({ empleadoId, open, onClose, onCreated }: {
+  empleadoId: number; open: boolean; onClose: () => void; onCreated: (id: number) => void;
+}) {
+  const createMut = useCreateAnticipo();
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ tipo: 'VALE' as TipoAnticipo, monto: '', fecha: today, motivo: '' });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) { setForm({ tipo: 'VALE', monto: '', fecha: today, motivo: '' }); setError(null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!form.monto || Number(form.monto) <= 0) { setError('El monto debe ser mayor a 0'); return; }
+    const payload: AnticipoPayload = {
+      empleado_id: empleadoId, tipo: form.tipo, monto: Number(form.monto), fecha: form.fecha, motivo: form.motivo || null,
+    };
+    try {
+      const creado = await createMut.mutateAsync(payload);
+      onCreated(creado.id);
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Error al guardar el vale');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Agregar vale</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Fecha *</label>
+              <input type="date" value={form.fecha} onChange={e => setForm(p => ({ ...p, fecha: e.target.value }))} className={inputCls} required />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <select value={form.tipo} onChange={e => setForm(p => ({ ...p, tipo: e.target.value as TipoAnticipo }))} className={inputCls}>
+                {Object.entries(TIPO_ANTICIPO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+          <div><label className={labelCls}>Detalle / Motivo</label><input value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))} className={inputCls} /></div>
+          <div><label className={labelCls}>Monto *</label><MoneyInput value={form.monto} onChange={v => setForm(p => ({ ...p, monto: v }))} /></div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={createMut.isPending}>{createMut.isPending ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Sección: vales y descuentos del período (Anticipos pendientes) ───────────
+
+function AnticiposSection({ empleadoId, selected, onToggle }: {
+  empleadoId: number; selected: Set<number>; onToggle: (id: number) => void;
+}) {
+  const { data: anticipos = [], isLoading } = useAnticiposEmpleado(empleadoId);
+  const [agregarOpen, setAgregarOpen] = useState(false);
+  const pendientes = anticipos.filter(a => !a.descontado);
+  const total = pendientes.filter(a => selected.has(a.id)).reduce((s, a) => s + a.monto, 0);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className={labelCls}>📋 Vales y descuentos del período</label>
+        <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAgregarOpen(true)}>
+          <Plus size={12} className="mr-1" /> Agregar vale
+        </Button>
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Cargando…</p>
+      ) : pendientes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin vales pendientes para este empleado.</p>
+      ) : (
+        <div className="rounded-md border border-border divide-y divide-border/60 max-h-40 overflow-y-auto">
+          {pendientes.map(a => (
+            <label key={a.id} className="flex items-center gap-2 px-2 py-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={selected.has(a.id)} onChange={() => onToggle(a.id)} />
+              <span className="w-20 shrink-0 text-muted-foreground">{a.fecha.slice(0, 10)}</span>
+              <span className="flex-1 truncate">{a.motivo ?? '—'}</span>
+              <Badge variant="muted">{TIPO_ANTICIPO_LABEL[a.tipo]}</Badge>
+              <span className="w-24 shrink-0 text-right font-medium">{formatCurrency(a.monto)}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      {total > 0 && <p className="text-xs text-muted-foreground">Total seleccionado: <span className="font-medium text-foreground">{formatCurrency(total)}</span></p>}
+
+      <AgregarValeDialog empleadoId={empleadoId} open={agregarOpen} onClose={() => setAgregarOpen(false)} onCreated={onToggle} />
+    </div>
+  );
+}
+
 // ── Dialog: Generar liquidación ───────────────────────────────────────────────
 
 function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -225,23 +329,25 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const hoy = new Date();
   const [form, setForm] = useState({
     empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
-    horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '', viatico_override: '',
+    horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '',
     tipo_aumento: 'SIN_AUMENTO' as TipoAumento, porcentaje_aumento: '',
   });
   const [ipcInfo, setIpcInfo] = useState<{ mes: string; valor: number } | null>(null);
   const [ipcError, setIpcError] = useState<string | null>(null);
   const [prestamosSel, setPrestamosSel] = useState<Set<number>>(new Set());
+  const [anticiposSel, setAnticiposSel] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (open) {
       setForm({
         empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
-        horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '', viatico_override: '',
+        horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '',
         tipo_aumento: 'SIN_AUMENTO', porcentaje_aumento: '',
       });
       setIpcInfo(null);
       setIpcError(null);
       setPrestamosSel(new Set());
+      setAnticiposSel(new Set());
       setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,7 +355,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   const set = (k: keyof typeof form, v: string) => {
     setForm(p => ({ ...p, [k]: v, ...((k === 'empleado_id' || k === 'periodo_mes' || k === 'periodo_anio') && { viatico_override: '' }) }));
-    if (k === 'empleado_id') setPrestamosSel(new Set());
+    if (k === 'empleado_id') { setPrestamosSel(new Set()); setAnticiposSel(new Set()); }
     if (k === 'tipo_aumento') { setIpcInfo(null); setIpcError(null); if (v !== 'MANUAL' && v !== 'IPC') set('porcentaje_aumento', ''); }
   };
 
@@ -260,6 +366,14 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const prestamosPendientes = prestamos.filter(p => !p.saldado);
   const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
   const togglePrestamo = (id: number) => setPrestamosSel(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const { data: anticipos = [] } = useAnticiposEmpleado(empleadoIdNum);
+  const totalAnticiposSel = anticipos.filter(a => !a.descontado && anticiposSel.has(a.id)).reduce((s, a) => s + a.monto, 0);
+  const toggleAnticipo = (id: number) => setAnticiposSel(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
@@ -291,7 +405,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
       periodo_mes:          Number(form.periodo_mes),
       periodo_anio:         Number(form.periodo_anio),
       horas_trabajadas:     form.horas_trabajadas ? Number(form.horas_trabajadas) : 0,
-      vales_descuentos:     form.vales_descuentos ? Number(form.vales_descuentos) : 0,
+      anticipo_ids:         Array.from(anticiposSel),
       vacaciones_aguinaldo: form.vacaciones_aguinaldo ? Number(form.vacaciones_aguinaldo) : 0,
       viatico_override:     form.viatico_override ? Number(form.viatico_override) : undefined,
       ...(form.tipo_aumento !== 'SIN_AUMENTO' && {
@@ -377,16 +491,14 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <BancoHorasPanel acumuladoAnterior={acuerdoSel?.horas_pendientes_acum ?? 0} horasEsteMes={Number(form.horas_trabajadas) || 0} />
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Vales/Descuentos/Multas ($)</label>
-              <MoneyInput value={form.vales_descuentos} onChange={v => set('vales_descuentos', v)} />
-            </div>
-            <div>
-              <label className={labelCls}>Vacaciones/Aguinaldos/Extras ($)</label>
-              <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
-            </div>
+          <div>
+            <label className={labelCls}>Vacaciones/Aguinaldos/Extras ($)</label>
+            <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
           </div>
+
+          {empleadoIdNum && (
+            <AnticiposSection empleadoId={empleadoIdNum} selected={anticiposSel} onToggle={toggleAnticipo} />
+          )}
 
           <div className="rounded-md border border-border p-3 space-y-2">
             <p className="text-xs font-medium">📈 Aumento sobre el básico (opcional)</p>
@@ -459,7 +571,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <GenerarPreview
               empleadoId={Number(form.empleado_id)}
               horasTrabajadas={form.horas_trabajadas}
-              valesDescuentos={form.vales_descuentos}
+              valesDescuentos={totalAnticiposSel}
               vacacionesAguinaldo={form.vacaciones_aguinaldo}
               prestamosDescuento={totalPrestamosSel}
               viaticoOverride={form.viatico_override ? Number(form.viatico_override) : null}

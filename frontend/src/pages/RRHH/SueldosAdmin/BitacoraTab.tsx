@@ -250,6 +250,9 @@ function ResumenAnalisis({ resultado, acuerdo }: {
     <div className="rounded-lg border border-border p-3 space-y-1.5 text-sm">
       <p className="font-medium flex items-center gap-1.5"><CheckCircle2 size={14} className="text-green-600" /> Resultado del análisis</p>
       <p className="text-muted-foreground">{resumen.total_vueltas} registro{resumen.total_vueltas !== 1 ? 's' : ''} con recorrido{resultado.sin_recorrido > 0 ? ` (${resultado.sin_recorrido} día(s) sin viaje, no es un error)` : ''}</p>
+      {resultado.fuera_de_periodo > 0 && (
+        <p className="text-muted-foreground">{resultado.fuera_de_periodo} fila(s) omitida(s) por estar fuera del período seleccionado</p>
+      )}
       <ul className="pl-4 space-y-0.5 text-xs text-muted-foreground">
         {tipos.map(t => {
           const vueltas = resumen[t.key];
@@ -273,9 +276,13 @@ function ResumenAnalisis({ resultado, acuerdo }: {
   );
 }
 
-function ImportarDialog({ open, onClose, empleados, empleadoIdFiltrado }: {
+function ImportarDialog({ open, onClose, empleados, empleadoIdFiltrado, onImportado }: {
   open: boolean; onClose: () => void; empleados: { id: number; nombre: string; apellido: string }[];
   empleadoIdFiltrado: number | null;
+  // Sincroniza los filtros de la tabla (empleado/mes/año) con el período
+  // recién importado — si no, los registros nuevos pueden quedar fuera del
+  // filtro actual y parecer que "no aparecieron" (ver FIX 5, problema 3).
+  onImportado: (empleadoId: number, mes: number, anio: number) => void;
 }) {
   const importarMut = useImportarBitacoraViajes();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -319,6 +326,7 @@ function ImportarDialog({ open, onClose, empleados, empleadoIdFiltrado }: {
       const data = await importarMut.mutateAsync({ file, empleadoId: Number(empleadoId), mes, anio, dryRun: false });
       setResultado(data);
       setAnalisis(null);
+      onImportado(Number(empleadoId), mes, anio);
     } catch (err) {
       setError(getApiErrorMessage(err) ?? 'Error al importar');
     }
@@ -333,6 +341,14 @@ function ImportarDialog({ open, onClose, empleados, empleadoIdFiltrado }: {
             <div className="rounded-lg border border-border p-6 text-center space-y-2">
               <CheckCircle2 size={32} className="text-green-600 mx-auto" />
               <p className="text-sm font-medium">{resultado.creados} creado(s), {resultado.actualizados} actualizado(s)</p>
+              {(resultado.sin_recorrido > 0 || resultado.fuera_de_periodo > 0) && (
+                <p className="text-xs text-muted-foreground">
+                  {[
+                    resultado.sin_recorrido > 0 && `${resultado.sin_recorrido} día(s) sin viaje`,
+                    resultado.fuera_de_periodo > 0 && `${resultado.fuera_de_periodo} fuera del período`,
+                  ].filter(Boolean).join(' · ')} — omitidos, no son errores
+                </p>
+              )}
               {resultado.omitidos > 0 && <p className="text-xs text-destructive">{resultado.omitidos} fila(s) con error</p>}
               <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
             </div>
@@ -525,7 +541,13 @@ export default function BitacoraTab({ empleadoIdInicial }: { empleadoIdInicial?:
         empleados={empleados}
       />
       <ConfirmarEliminarDialog registro={eliminando} onClose={() => setEliminando(null)} />
-      <ImportarDialog open={importarOpen} onClose={() => setImportarOpen(false)} empleados={empleados} empleadoIdFiltrado={filtros.empleado_id ?? null} />
+      <ImportarDialog
+        open={importarOpen}
+        onClose={() => setImportarOpen(false)}
+        empleados={empleados}
+        empleadoIdFiltrado={filtros.empleado_id ?? null}
+        onImportado={(empleadoId, mes, anio) => setFiltros(p => ({ ...p, empleado_id: empleadoId, mes, anio }))}
+      />
     </div>
   );
 }

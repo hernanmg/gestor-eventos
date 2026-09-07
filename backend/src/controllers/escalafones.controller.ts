@@ -11,6 +11,9 @@ function mapDecimals(e: any) {
     premio_presentismo: e.premio_presentismo !== null ? Number(e.premio_presentismo) : null,
     telefono:           e.telefono           !== null ? Number(e.telefono)           : null,
     premio_incentivo:   e.premio_incentivo   !== null ? Number(e.premio_incentivo)   : null,
+    premio_viaje_provincial:    e.premio_viaje_provincial    !== null ? Number(e.premio_viaje_provincial)    : null,
+    premio_viaje_nacional:      e.premio_viaje_nacional      !== null ? Number(e.premio_viaje_nacional)      : null,
+    premio_viaje_nacional_1000: e.premio_viaje_nacional_1000 !== null ? Number(e.premio_viaje_nacional_1000) : null,
   };
 }
 
@@ -41,6 +44,9 @@ const escalafonSchema = z.object({
   premio_presentismo: z.number().min(0).nullable().optional(),
   telefono:           z.number().min(0).nullable().optional(),
   premio_incentivo:   z.number().min(0).nullable().optional(),
+  premio_viaje_provincial:    z.number().min(0).nullable().optional(),
+  premio_viaje_nacional:      z.number().min(0).nullable().optional(),
+  premio_viaje_nacional_1000: z.number().min(0).nullable().optional(),
 });
 
 export async function createEscalafon(req: Request, res: Response) {
@@ -68,6 +74,9 @@ export async function createEscalafon(req: Request, res: Response) {
         premio_presentismo: d.premio_presentismo ?? null,
         telefono:           d.telefono           ?? null,
         premio_incentivo:   d.premio_incentivo   ?? null,
+        premio_viaje_provincial:    d.premio_viaje_provincial    ?? null,
+        premio_viaje_nacional:      d.premio_viaje_nacional      ?? null,
+        premio_viaje_nacional_1000: d.premio_viaje_nacional_1000 ?? null,
         created_by:         req.user!.id,
       },
     });
@@ -115,6 +124,9 @@ export async function updateEscalafon(req: Request, res: Response) {
       ...(d.premio_presentismo !== undefined && { premio_presentismo: d.premio_presentismo }),
       ...(d.telefono           !== undefined && { telefono: d.telefono }),
       ...(d.premio_incentivo   !== undefined && { premio_incentivo: d.premio_incentivo }),
+      ...(d.premio_viaje_provincial    !== undefined && { premio_viaje_provincial: d.premio_viaje_provincial }),
+      ...(d.premio_viaje_nacional      !== undefined && { premio_viaje_nacional: d.premio_viaje_nacional }),
+      ...(d.premio_viaje_nacional_1000 !== undefined && { premio_viaje_nacional_1000: d.premio_viaje_nacional_1000 }),
     },
   });
 

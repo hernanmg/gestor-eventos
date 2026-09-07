@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, X, Pencil, Trash2 } from 'lucide-react';
-import { useEmpleados } from '@/hooks/useRRHH';
+import { useEmpleados, useAnticiposEmpleado } from '@/hooks/useRRHH';
 import { useAuth } from '@/hooks/useAuth';
 import { useEscalafones } from '@/hooks/useEscalafones';
 import {
@@ -15,14 +15,16 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import PrestamosSection from '@/components/domain/PrestamosSection';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import type { AcuerdoSueldo, CategoriaAcuerdo } from '@/types';
+import type { AcuerdoSueldo, CategoriaAcuerdo, TipoAnticipo } from '@/types';
 import api from '@/lib/api';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
+const TIPOS_SEGURO = ['ART', 'SANCOR', 'FEDERAL PATRONAL', 'SWISS MEDICAL', 'GALENO'];
+
 const EMPTY_FORM = {
-  empleado_id: '', escalafon: '', escalafonOtro: '', tipo_seguro: '', fecha_inicio: '', vigencia_meses: '',
+  empleado_id: '', escalafon: '', escalafonOtro: '', tipo_seguro: '', tipoSeguroOtro: '', fecha_inicio: '', vigencia_meses: '',
   sueldo_basico: '', horas_acordadas_mes: '200', valor_hora_extra: '',
   premio_incentivo: '', viatico: '', premio_presentismo: '', telefono: '', notas: '',
   viatico_provincial: '', viatico_nacional: '', viatico_nacional_1000: '',
@@ -65,7 +67,8 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         empleado_id:         String(acuerdo.empleado_id),
         escalafon:           acuerdo.escalafon ?? '',
         escalafonOtro:       '',
-        tipo_seguro:         acuerdo.tipo_seguro ?? '',
+        tipo_seguro:         acuerdo.tipo_seguro && !TIPOS_SEGURO.includes(acuerdo.tipo_seguro) ? '__otro__' : (acuerdo.tipo_seguro ?? ''),
+        tipoSeguroOtro:      acuerdo.tipo_seguro && !TIPOS_SEGURO.includes(acuerdo.tipo_seguro) ? acuerdo.tipo_seguro : '',
         fecha_inicio:        acuerdo.fecha_inicio.slice(0, 10),
         vigencia_meses:      acuerdo.vigencia_meses !== null ? String(acuerdo.vigencia_meses) : '',
         sueldo_basico:       String(acuerdo.sueldo_basico),
@@ -104,7 +107,9 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  // Al elegir un escalafón conocido → pre-carga los conceptos del paso 3.
+  // Al elegir un escalafón conocido → pre-carga los conceptos del paso 3,
+  // incluidos los premios por viaje (choferes) si el escalafón los tiene
+  // cargados — si no, quedan vacíos para carga manual (ver FIX 2).
   const handleEscalafonChange = (nombre: string) => {
     const match = escalafones.find(e => e.nombre === nombre);
     setForm(p => ({
@@ -114,10 +119,14 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
       viatico:            match?.viatico            !== null && match?.viatico            !== undefined ? String(match.viatico)            : '',
       premio_presentismo: match?.premio_presentismo !== null && match?.premio_presentismo !== undefined ? String(match.premio_presentismo) : '',
       telefono:           match?.telefono           !== null && match?.telefono           !== undefined ? String(match.telefono)           : '',
+      viatico_provincial:    match?.premio_viaje_provincial    !== null && match?.premio_viaje_provincial    !== undefined ? String(match.premio_viaje_provincial)    : '',
+      viatico_nacional:      match?.premio_viaje_nacional      !== null && match?.premio_viaje_nacional      !== undefined ? String(match.premio_viaje_nacional)      : '',
+      viatico_nacional_1000: match?.premio_viaje_nacional_1000 !== null && match?.premio_viaje_nacional_1000 !== undefined ? String(match.premio_viaje_nacional_1000) : '',
     }));
   };
 
   const escalafonFinal = form.escalafon === '__otro__' ? form.escalafonOtro : form.escalafon;
+  const tipoSeguroFinal = form.tipo_seguro === '__otro__' ? form.tipoSeguroOtro : form.tipo_seguro;
   // La categoría que gobierna el cálculo (horas vs. viático por recorrido) es
   // la del ACUERDO (categoria_acuerdo), no la del legajo del empleado — un
   // acuerdo puede marcarse CHOFER aunque Empleado.categoria sea otra cosa.
@@ -157,7 +166,7 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         fecha_inicio:        form.fecha_inicio,
         vigencia_meses:      form.vigencia_meses ? Number(form.vigencia_meses) : null,
         escalafon:           escalafonFinal || null,
-        tipo_seguro:         form.tipo_seguro || null,
+        tipo_seguro:         tipoSeguroFinal || null,
         sueldo_basico:       Number(form.sueldo_basico),
         horas_acordadas_mes: Number(form.horas_acordadas_mes),
         premio_incentivo:    form.premio_incentivo   ? Number(form.premio_incentivo)   : null,
@@ -268,7 +277,17 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
               </div>
               <div>
                 <label className={labelCls}>Tipo de seguro</label>
-                <input value={form.tipo_seguro} onChange={e => set('tipo_seguro', e.target.value)} placeholder="ART, SANCOR..." className={inputCls} />
+                <select value={form.tipo_seguro} onChange={e => set('tipo_seguro', e.target.value)} className={inputCls}>
+                  <option value="">—</option>
+                  {TIPOS_SEGURO.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="__otro__">Otro...</option>
+                </select>
+                {form.tipo_seguro === '__otro__' && (
+                  <input
+                    value={form.tipoSeguroOtro} onChange={e => set('tipoSeguroOtro', e.target.value)}
+                    placeholder="Nombre del seguro" className={cn(inputCls, 'mt-1.5')}
+                  />
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -404,21 +423,21 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
 
             {esChofer && (
               <div className="rounded-md border border-border p-3 space-y-2">
-                <p className="text-xs font-medium">Valores de viático por tipo de recorrido</p>
+                <p className="text-xs font-medium">Premios por Viajes</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Usados por la Bitácora de Viajes para calcular el viático de cada registro — reemplazan el "Viático" fijo de arriba para este empleado.
+                  $ por vuelta según tipo de recorrido — usados por la Bitácora de Viajes para calcular el viático de cada registro, reemplazan el "Viático" fijo de arriba para este empleado. Se pre-cargan desde el escalafón "CHOFER" y son editables.
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className={labelCls}>Provincial ($/vuelta)</label>
+                    <label className={labelCls}>Provincial</label>
                     <MoneyInput value={form.viatico_provincial} onChange={v => set('viatico_provincial', v)} />
                   </div>
                   <div>
-                    <label className={labelCls}>Nacional ($/vuelta)</label>
+                    <label className={labelCls}>Nacional</label>
                     <MoneyInput value={form.viatico_nacional} onChange={v => set('viatico_nacional', v)} />
                   </div>
                   <div>
-                    <label className={labelCls}>Nacional +1000km ($/vuelta)</label>
+                    <label className={labelCls}>Nacional +1000km</label>
                     <MoneyInput value={form.viatico_nacional_1000} onChange={v => set('viatico_nacional_1000', v)} />
                   </div>
                 </div>
@@ -522,6 +541,51 @@ function ConfirmarEliminarDialog({ acuerdo, onClose, onDeleted }: {
   );
 }
 
+const TIPO_ANTICIPO_LABEL: Record<TipoAnticipo, string> = { ADELANTO: 'Adelanto', VALE: 'Vale', DESCUENTO: 'Descuento', MULTA: 'Multa' };
+
+// ── Historial de vales y descuentos (Anticipo) — reusa la misma fuente que
+// "Vales y descuentos del período" en el dialog de Generar liquidación. ──────
+
+function ValesSection({ empleadoId }: { empleadoId: number }) {
+  const { data: anticipos = [], isLoading } = useAnticiposEmpleado(empleadoId);
+
+  return (
+    <div className="pt-2 border-t border-border space-y-2">
+      <p className="text-sm font-medium">Historial de vales y descuentos</p>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Cargando...</p>
+      ) : anticipos.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin vales o descuentos registrados.</p>
+      ) : (
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-xs">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="text-left px-1.5 py-1 font-medium">Fecha</th>
+                <th className="text-left px-1.5 py-1 font-medium">Tipo</th>
+                <th className="text-left px-1.5 py-1 font-medium">Detalle</th>
+                <th className="text-right px-1.5 py-1 font-medium">Monto</th>
+                <th className="text-center px-1.5 py-1 font-medium">Descontado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {anticipos.map(a => (
+                <tr key={a.id}>
+                  <td className="px-1.5 py-1">{a.fecha.slice(0, 10)}</td>
+                  <td className="px-1.5 py-1">{TIPO_ANTICIPO_LABEL[a.tipo]}</td>
+                  <td className="px-1.5 py-1">{a.motivo ?? '-'}</td>
+                  <td className="px-1.5 py-1 text-right">{formatCurrency(a.monto)}</td>
+                  <td className="px-1.5 py-1 text-center">{a.descontado ? '✓' : '✗'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Drawer: detalle del acuerdo + préstamos activos ───────────────────────────
 
 function AcuerdoDrawer({ acuerdo, onClose }: { acuerdo: AcuerdoSueldo | null; onClose: () => void }) {
@@ -553,6 +617,7 @@ function AcuerdoDrawer({ acuerdo, onClose }: { acuerdo: AcuerdoSueldo | null; on
           </div>
 
           <PrestamosSection empleadoId={acuerdo.empleado_id} />
+          <ValesSection empleadoId={acuerdo.empleado_id} />
         </div>
       </div>
     </>

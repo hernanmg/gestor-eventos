@@ -19,7 +19,7 @@ export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
 export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
 export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
 export type TipoLiquidacion   = 'LINEAL' | 'JORNADA';
-export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO';
+export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO' | 'MULTA';
 export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
 export type TipoRecorrido     = 'PROVINCIAL' | 'NACIONAL' | 'NACIONAL_1000';
 export type CategoriaAcuerdo  = 'GENERAL' | 'CHOFER';
@@ -1447,6 +1447,7 @@ export interface Anticipo {
   motivo:         string | null;
   descontado:     boolean;
   liquidacion_id: number | null;
+  liquidacion_admin_id: number | null;
   created_at:     string;
 }
 
@@ -1624,6 +1625,9 @@ export interface LiquidacionAdmin {
   // Presente sólo en la respuesta de generar/get (BORRADOR) — informativo,
   // la selección real se envía en prestamos_a_descontar al aprobar.
   prestamos_pendientes?: PrestamoPendiente[];
+  // Anticipos (vales/descuentos/multas) vinculados a esta liquidación al
+  // generarla — ver GET /rrhh/sueldos-admin/liquidaciones/:id.
+  anticipos?: Anticipo[];
   // Presente sólo en la respuesta de generar, si el empleado tiene registros
   // de BitacoraViaje en el período (choferes).
   bitacora_resumen?:     ResumenBitacora;
@@ -1683,6 +1687,10 @@ export interface EscalafonAdmin {
   premio_presentismo: number | null;
   telefono:           number | null;
   premio_incentivo:   number | null;
+  // Premios por viaje (choferes) — pre-cargan Paso 3 del wizard de AcuerdoSueldo.
+  premio_viaje_provincial:    number | null;
+  premio_viaje_nacional:      number | null;
+  premio_viaje_nacional_1000: number | null;
   created_at:         string;
   updated_at:         string;
 }
@@ -1924,6 +1932,7 @@ export interface ParteEspacio {
   porcentaje:          number;
   empresa_id:          number | null;
   cuenta_corriente_id: number | null;
+  cuenta_corriente?:   { id: number; nombre: string } | null;
 }
 
 export interface GastoTipoEspacio {

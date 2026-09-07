@@ -403,10 +403,20 @@ async function main() {
   console.log(`✓ Cuentas de empresa DOS57: ${CUENTAS_DOS57.length} cargadas`);
 
   // ── Escalafones administrativos DOS57 (valores julio 2026, Excel real) ─────
-  const ESCALAFONES_DOS57: { nombre: string; orden: number; viatico: number | null; premio_presentismo: number | null; telefono: number | null; premio_incentivo: number | null }[] = [
+  const ESCALAFONES_DOS57: {
+    nombre: string; orden: number; viatico: number | null; premio_presentismo: number | null; telefono: number | null; premio_incentivo: number | null;
+    premio_viaje_provincial?: number | null; premio_viaje_nacional?: number | null; premio_viaje_nacional_1000?: number | null;
+  }[] = [
     { nombre: 'ADM 1', orden: 1, viatico: 87734.72,  premio_presentismo: 154806.63, telefono: 43867.37, premio_incentivo: null },
     { nombre: 'ADM 2', orden: 2, viatico: 236219.85, premio_presentismo: 127587.89, telefono: null,      premio_incentivo: 67983.24 },
     { nombre: 'ADM 3', orden: 3, viatico: 106774.16, premio_presentismo: 122484.36, telefono: null,      premio_incentivo: 47455.17 },
+    // Escalafón de choferes con bitácora de viajes — pre-carga el Paso 3 del
+    // wizard de AcuerdoSueldo (sección "Premios por Viajes") cuando el acuerdo
+    // es categoria_acuerdo=CHOFER.
+    {
+      nombre: 'CHOFER', orden: 4, viatico: null, premio_presentismo: null, telefono: null, premio_incentivo: null,
+      premio_viaje_provincial: 51750, premio_viaje_nacional: 86250, premio_viaje_nacional_1000: 115000,
+    },
   ];
 
   for (const esc of ESCALAFONES_DOS57) {
@@ -415,8 +425,18 @@ async function main() {
       update: {
         orden: esc.orden, viatico: esc.viatico, premio_presentismo: esc.premio_presentismo,
         telefono: esc.telefono, premio_incentivo: esc.premio_incentivo,
+        premio_viaje_provincial: esc.premio_viaje_provincial ?? null,
+        premio_viaje_nacional: esc.premio_viaje_nacional ?? null,
+        premio_viaje_nacional_1000: esc.premio_viaje_nacional_1000 ?? null,
       },
-      create: { ...esc, empresa_id: dos57.id },
+      create: {
+        nombre: esc.nombre, orden: esc.orden, viatico: esc.viatico, premio_presentismo: esc.premio_presentismo,
+        telefono: esc.telefono, premio_incentivo: esc.premio_incentivo,
+        premio_viaje_provincial: esc.premio_viaje_provincial ?? null,
+        premio_viaje_nacional: esc.premio_viaje_nacional ?? null,
+        premio_viaje_nacional_1000: esc.premio_viaje_nacional_1000 ?? null,
+        empresa_id: dos57.id,
+      },
     });
   }
   console.log(`✓ Escalafones administrativos DOS57: ${ESCALAFONES_DOS57.length} cargados`);

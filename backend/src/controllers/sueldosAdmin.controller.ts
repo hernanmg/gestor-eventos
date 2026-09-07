@@ -490,6 +490,7 @@ export async function getLiquidacionAdmin(req: Request, res: Response) {
         where:  { deleted_at: null },
         select: { id: true, cuenta_id: true, debe: true, haber: true, descripcion: true, cuenta: { select: { id: true, nombre: true, empresa_id: true } } },
       },
+      anticipos: { orderBy: { fecha: 'asc' } },
     },
   });
   if (!liquidacion) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
@@ -508,6 +509,7 @@ export async function getLiquidacionAdmin(req: Request, res: Response) {
       id: m.id, cuenta_id: m.cuenta_id, cuenta_nombre: m.cuenta.nombre, empresa_id: m.cuenta.empresa_id,
       monto: Number(m.haber) - Number(m.debe), descripcion: m.descripcion,
     })),
+    anticipos: liquidacion.anticipos.map(a => ({ ...a, monto: Number(a.monto) })),
     prestamos_pendientes: prestamosPendientes.map(p => ({ ...p, monto_cuota: Number(p.monto_cuota) })),
   });
 }
@@ -526,6 +528,11 @@ const generarSchema = z.object({
   // acuerdos categoria_acuerdo=CHOFER esto se aplica automáticamente aunque
   // no se mande (ver generarLiquidacionAdmin).
   viatico_override:     z.number().min(0).nullable().optional(),
+  // Vales/descuentos/multas seleccionados desde la tabla de Anticipos
+  // pendientes del empleado (ver "Vales y descuentos del período" en el
+  // dialog de generar) — reemplaza el monto manual: vales_descuentos se
+  // computa como la suma de estos Anticipos, no se recibe suelto.
+  anticipo_ids:         z.array(z.number().int().positive()).optional().default([]),
   // Aumento sobre el básico — manual o traído del INDEC (ver GET /ipc-indec).
   tipo_aumento:          z.nativeEnum(TipoAumento).nullable().optional(),
   porcentaje_aumento:    z.number().nullable().optional(),
@@ -573,8 +580,26 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
 
   const viaticoEfectivo = esChofer && tieneBitacora ? bitacoraResumen.total_viatico : (d.viatico_override ?? undefined);
 
+  // Vales/descuentos — si se seleccionaron Anticipos pendientes, su suma
+  // reemplaza el monto manual (ver anticipo_ids arriba). Se valida que
+  // existan, sean del empleado y no estén ya descontados antes de calcular nada.
+  let anticipos: Awaited<ReturnType<typeof prisma.anticipo.findMany>> = [];
+  if (d.anticipo_ids.length > 0) {
+    anticipos = await prisma.anticipo.findMany({ where: { id: { in: d.anticipo_ids } } });
+    for (const anticipoId of d.anticipo_ids) {
+      const anticipo = anticipos.find(a => a.id === anticipoId);
+      if (!anticipo || anticipo.empleado_id !== d.empleado_id) {
+        res.status(400).json({ error: `El anticipo #${anticipoId} no corresponde a este empleado` }); return;
+      }
+      if (anticipo.descontado) {
+        res.status(400).json({ error: `El anticipo del ${anticipo.fecha.toISOString().slice(0, 10)} ya fue descontado` }); return;
+      }
+    }
+  }
+  const valesDescuentos = anticipos.length > 0 ? round2(anticipos.reduce((s, a) => s + Number(a.monto), 0)) : d.vales_descuentos;
+
   const calculo = calcularSueldoAdmin(
-    acuerdo, d.horas_trabajadas, d.vales_descuentos, d.vacaciones_aguinaldo, undefined,
+    acuerdo, d.horas_trabajadas, valesDescuentos, d.vacaciones_aguinaldo, undefined,
     viaticoEfectivo, d.porcentaje_aumento ?? undefined,
   );
   const splits  = await obtenerSplitsCalculados(d.empleado_id, calculo.total_a_cobrar);
@@ -606,7 +631,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
         importe_antiguedad:   calculo.importe_antiguedad,
         telefono:             calculo.telefono,
         vacaciones_aguinaldo: d.vacaciones_aguinaldo,
-        vales_descuentos:     d.vales_descuentos,
+        vales_descuentos:     valesDescuentos,
         subtotal_bruto:       calculo.subtotal_bruto,
         total_a_cobrar:       calculo.total_a_cobrar,
         splits:               splits.length > 0 ? (splits as any) : undefined,
@@ -640,6 +665,16 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
       await prisma.bitacoraViaje.updateMany({
         where: { id: { in: bitacoraResumen.registros.map(r => r.id) } },
         data:  { liquidacion_admin_id: liquidacion.id },
+      });
+    }
+
+    // Vincula y marca como descontados los Anticipos elegidos — mismo momento
+    // que el vínculo de bitácora de arriba (al generar el borrador, no recién
+    // al aprobar). cancelarLiquidacionAdmin revierte esto si se cancela.
+    if (anticipos.length > 0) {
+      await prisma.anticipo.updateMany({
+        where: { id: { in: anticipos.map(a => a.id) } },
+        data:  { descontado: true, liquidacion_admin_id: liquidacion.id },
       });
     }
 
@@ -918,9 +953,19 @@ export async function cancelarLiquidacionAdmin(req: Request, res: Response) {
     res.status(400).json({ error: 'La liquidación ya está cancelada' }); return;
   }
 
-  const updated = await prisma.liquidacionAdmin.update({
-    where: { id },
-    data:  { estado: EstadoLiquidacionAdmin.CANCELADA },
+  const updated = await prisma.$transaction(async tx => {
+    // Libera los Anticipos vinculados al generar (ver generarLiquidacionAdmin)
+    // para que vuelvan a estar disponibles en una próxima liquidación —
+    // quedaron marcados descontado=true desde el borrador, no recién al aprobar.
+    await tx.anticipo.updateMany({
+      where: { liquidacion_admin_id: id },
+      data:  { descontado: false, liquidacion_admin_id: null },
+    });
+
+    return tx.liquidacionAdmin.update({
+      where: { id },
+      data:  { estado: EstadoLiquidacionAdmin.CANCELADA },
+    });
   });
 
   await registrarAuditoria({

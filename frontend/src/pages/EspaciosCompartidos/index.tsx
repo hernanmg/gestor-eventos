@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, X, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Building2, Plus, X, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
-  useEspaciosCompartidos, useCreateEspacio, useGenerarMesActual,
+  useEspaciosCompartidos, useCreateEspacio, useGenerarMesActual, sumaPartesLabel,
   type EspacioPayload, type ParteInput,
 } from '@/hooks/useEspaciosCompartidos';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -37,14 +37,15 @@ function NuevoEspacioDialog({ open, onClose }: { open: boolean; onClose: () => v
     }
   }, [open]);
 
-  const suma = partes.reduce((s, p) => s + (Number(p.porcentaje) || 0), 0);
+  const suma = Math.round(partes.reduce((s, p) => s + (Number(p.porcentaje) || 0), 0) * 100) / 100;
+  const sumaInfo = sumaPartesLabel(suma);
 
   const handleSubmit = async () => {
     setError(null);
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
     const partesValidas = partes.filter(p => p.nombre.trim());
     if (partesValidas.length === 0) { setError('Cargá al menos una parte'); return; }
-    if (Math.abs(suma - 100) > 0.01) { setError(`La suma de porcentajes debe ser 100 (actual: ${suma})`); return; }
+    if (sumaInfo.bloquea) { setError(sumaInfo.texto); return; }
 
     const payload: EspacioPayload = {
       nombre:         nombre.trim(),
@@ -116,9 +117,7 @@ function NuevoEspacioDialog({ open, onClose }: { open: boolean; onClose: () => v
             <button type="button" onClick={() => setPartes([...partes, PARTE_VACIA])} className="text-xs text-primary hover:underline mt-2">
               + Agregar parte
             </button>
-            <p className={cn('text-xs mt-1', Math.abs(suma - 100) < 0.01 ? 'text-green-700' : 'text-muted-foreground')}>
-              Suma actual: {suma}% {Math.abs(suma - 100) < 0.01 ? '✓' : '(debe ser 100%)'}
-            </p>
+            <p className={cn('text-xs mt-1', sumaInfo.clase)}>{sumaInfo.texto}</p>
           </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -188,7 +187,10 @@ export default function EspaciosCompartidosPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {espacios.map(e => (
+          {espacios.map(e => {
+            const suma = Math.round(e.partes.reduce((s, p) => s + Number(p.porcentaje), 0) * 100) / 100;
+            const incompleto = Math.abs(suma - 100) > 0.01;
+            return (
             <button
               key={e.id}
               onClick={() => navigate(`/espacios-compartidos/${e.id}`)}
@@ -198,6 +200,11 @@ export default function EspaciosCompartidosPage() {
                 <Building2 size={16} className="text-muted-foreground" />
                 <h2 className="font-semibold">{e.nombre}</h2>
               </div>
+              {incompleto && (
+                <p className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 mb-2">
+                  <AlertTriangle size={11} /> Configuración incompleta
+                </p>
+              )}
               <p className="text-xs text-muted-foreground mb-3">
                 {e.partes.map(p => `${p.nombre} ${Number(p.porcentaje)}%`).join(' · ')}
               </p>
@@ -215,7 +222,8 @@ export default function EspaciosCompartidosPage() {
                 Ver detalle <ArrowRight size={12} />
               </p>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
 

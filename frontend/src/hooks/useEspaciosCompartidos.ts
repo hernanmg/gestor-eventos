@@ -7,6 +7,17 @@ import type {
 
 const KEY = ['espacios-compartidos'] as const;
 
+// Suma de porcentajes de las partes de un espacio — < 100 es una
+// configuración incompleta (se permite guardar, se completa después); > 100
+// se bloquea porque no tiene sentido de negocio. Compartido entre la lista
+// (badge "Configuración incompleta"), el alta de espacio y el alta/edición de
+// parte (ver FIX 7).
+export function sumaPartesLabel(suma: number): { texto: string; clase: string; bloquea: boolean } {
+  if (suma > 100.01) return { texto: `Suma actual: ${suma}% — excede el 100%`, clase: 'text-destructive', bloquea: true };
+  if (suma < 99.99)  return { texto: `Suma actual: ${suma}% — faltan ${Math.round((100 - suma) * 100) / 100}% para completar`, clase: 'text-amber-600', bloquea: false };
+  return { texto: '✓ Suma correcta: 100%', clase: 'text-green-700', bloquea: false };
+}
+
 // El Calendario y la campanita de notificaciones agregan los vencimientos de
 // líneas de gasto (ver calendario.controller.ts GASTO_ESPACIO_VENCE y
 // notificaciones.controller.ts) — cualquier mutación que cambie una línea debe

@@ -140,6 +140,7 @@ enum TipoAnticipo {
   ADELANTO
   VALE
   DESCUENTO
+  MULTA
 }
 
 enum TipoPanolItem {
@@ -1410,21 +1411,26 @@ model Jornada {
 }
 
 model Anticipo {
-  id             Int          @id @default(autoincrement())
-  empleado_id    Int
-  empleado       Empleado     @relation(fields: [empleado_id], references: [id])
-  empresa_id     Int
-  empresa        Empresa      @relation(fields: [empresa_id], references: [id])
-  tipo           TipoAnticipo @default(ADELANTO)
-  monto          Decimal      @db.Decimal(10, 2)
-  fecha          DateTime
-  motivo         String?
-  descontado     Boolean      @default(false) // true cuando se aplicó en una liquidación
-  liquidacion_id Int?
-  liquidacion    Liquidacion? @relation(fields: [liquidacion_id], references: [id])
+  id                   Int               @id @default(autoincrement())
+  empleado_id          Int
+  empleado             Empleado          @relation(fields: [empleado_id], references: [id])
+  empresa_id           Int
+  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
+  tipo                 TipoAnticipo      @default(ADELANTO)
+  monto                Decimal           @db.Decimal(10, 2)
+  fecha                DateTime
+  motivo               String?
+  descontado           Boolean           @default(false) // true cuando se aplicó en una liquidación
+  liquidacion_id       Int?
+  liquidacion          Liquidacion?      @relation(fields: [liquidacion_id], references: [id])
+  // Régimen de Sueldos Administrativos (LiquidacionAdmin) — paralelo a
+  // liquidacion_id de arriba, que es del régimen de jornaleros (Liquidacion).
+  // Un Anticipo se vincula a lo sumo a una de las dos, nunca ambas.
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
   // audit
-  created_at     DateTime     @default(now())
-  created_by     Int?
+  created_at           DateTime          @default(now())
+  created_by           Int?
 }
 
 model Liquidacion {
@@ -1628,6 +1634,11 @@ model LiquidacionAdmin {
   // aprobarLiquidacionAdmin), no al generar el borrador.
   horas_pendientes_anterior   Decimal?               @db.Decimal(8, 2)
   horas_pendientes_nuevo      Decimal?               @db.Decimal(8, 2)
+  // Vales/descuentos (Anticipo) aplicados a esta liquidación — ver
+  // vales_descuentos arriba, que es el total snapshot; acá quedan los
+  // registros individuales para trazabilidad (mismo criterio que
+  // pagos_prestamos/bitacora_viajes).
+  anticipos                   Anticipo[]
   // audit
   created_at                  DateTime               @default(now())
   updated_at                  DateTime               @updatedAt
@@ -1644,21 +1655,26 @@ model LiquidacionAdmin {
 // FK real entre AcuerdoSueldo.escalafon (texto libre, admite "otro" fuera de
 // tabla) y este modelo: el match es por nombre, sólo para pre-carga.
 model EscalafonAdmin {
-  id                 Int       @id @default(autoincrement())
-  empresa_id         Int
-  empresa            Empresa   @relation(fields: [empresa_id], references: [id])
-  nombre             String // "ADM 1", "ADM 2", "ADM 3"
-  orden              Int // para ordenar en la UI
+  id                         Int       @id @default(autoincrement())
+  empresa_id                 Int
+  empresa                    Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre                     String // "ADM 1", "ADM 2", "ADM 3"
+  orden                      Int // para ordenar en la UI
   // Valores configurables
-  viatico            Decimal?  @db.Decimal(12, 2)
-  premio_presentismo Decimal?  @db.Decimal(12, 2)
-  telefono           Decimal?  @db.Decimal(12, 2)
-  premio_incentivo   Decimal?  @db.Decimal(12, 2)
+  viatico                    Decimal?  @db.Decimal(12, 2)
+  premio_presentismo         Decimal?  @db.Decimal(12, 2)
+  telefono                   Decimal?  @db.Decimal(12, 2)
+  premio_incentivo           Decimal?  @db.Decimal(12, 2)
+  // Premios por viaje (choferes con bitácora) — pre-cargan Paso 3 del wizard
+  // de AcuerdoSueldo cuando categoria_acuerdo=CHOFER (ver AcuerdoSueldo.viatico_*).
+  premio_viaje_provincial    Decimal?  @db.Decimal(10, 2)
+  premio_viaje_nacional      Decimal?  @db.Decimal(10, 2)
+  premio_viaje_nacional_1000 Decimal?  @db.Decimal(10, 2)
   // audit
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
-  deleted_at         DateTime?
-  created_by         Int?
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
+  deleted_at                 DateTime?
+  created_by                 Int?
 
   @@unique([empresa_id, nombre])
 }
