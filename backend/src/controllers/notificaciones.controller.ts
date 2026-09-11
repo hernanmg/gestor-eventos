@@ -14,6 +14,9 @@ interface NotificacionItem {
   urgencia:    Urgencia;
   link:        string;
   fecha:       Date;
+  // Acciones resolubles sin navegar (ver flujo de aprobación de tardanzas de
+  // Presentismo) — el frontend las renderiza como botones inline en la campanita.
+  acciones?: { label: string; endpoint: string; variant: 'default' | 'destructive' }[];
 }
 
 const MS_DIA = 86_400_000;
@@ -325,6 +328,79 @@ async function resolveEventosSinDecisionFacturacion(req: Request): Promise<Notif
   });
 }
 
+// Tardanzas cargadas por Lorena (Control de Presentismo) esperando que
+// Matías las apruebe o rechace — sólo se muestran al admin global (mismo
+// criterio que resolveEventosSinDecisionFacturacion): Andrea y Mayra también
+// son ADMIN pero fijas a su empresa, y sólo tienen lectura de este flujo. Sin
+// filtro de empresa activa a propósito — Matías tiene que verlas y poder
+// aprobarlas desde la campanita esté en la empresa que esté (ver Sidebar.tsx,
+// que muestra "Presentismo" para el admin global sin importar la empresa activa).
+async function resolveTardanzasPendientes(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null }, select: { empresa_id: true } });
+  if (!usuario || usuario.empresa_id !== null) return [];
+
+  const registros = await prisma.registroAsistencia.findMany({
+    where: {
+      deleted_at: null, estado: 'TARDE',
+      tardanza_requiere_aprobacion: true, tardanza_aprobada: null,
+    },
+    include: { empleado: { select: { nombre: true, apellido: true } } },
+    orderBy: { fecha: 'asc' },
+  });
+
+  return registros.map(r => ({
+    id:          `tardanza-${r.id}`,
+    tipo:        'TARDANZA_PENDIENTE',
+    titulo:      `${r.empleado.apellido}, ${r.empleado.nombre} llegó tarde el ${r.fecha.toLocaleDateString('es-AR')}`,
+    descripcion: `¿Aprobás la tardanza?${r.minutos_tardanza != null ? ` (${r.minutos_tardanza} min)` : ''}`,
+    urgencia:    'warning' as Urgencia,
+    link:        '/presentismo',
+    fecha:       r.fecha,
+    acciones: [
+      { label: 'Aprobar',  endpoint: `/presentismo/${r.id}/aprobar-tardanza`,  variant: 'default' as const },
+      { label: 'Rechazar', endpoint: `/presentismo/${r.id}/rechazar-tardanza`, variant: 'destructive' as const },
+    ],
+  }));
+}
+
+// Presentismo cerrado (Lorena) con liquidaciones administrativas todavía sin
+// generar para ese período — avisa que falta el paso siguiente en Sueldos Admin.
+async function resolvePresentismoCerradoPendiente(empresaId: number): Promise<NotificacionItem[]> {
+  const hace14Dias = new Date(Date.now() - 14 * MS_DIA);
+  const resumenes = await prisma.resumenPresentismo.findMany({
+    where: { empresa_id: empresaId, created_at: { gte: hace14Dias } },
+    select: { empleado_id: true, periodo_mes: true, periodo_anio: true, created_at: true },
+  });
+  if (resumenes.length === 0) return [];
+
+  const porPeriodo = new Map<string, { mes: number; anio: number; empleadoIds: number[]; fecha: Date }>();
+  for (const r of resumenes) {
+    const key = `${r.periodo_anio}-${r.periodo_mes}`;
+    if (!porPeriodo.has(key)) porPeriodo.set(key, { mes: r.periodo_mes, anio: r.periodo_anio, empleadoIds: [], fecha: r.created_at });
+    porPeriodo.get(key)!.empleadoIds.push(r.empleado_id);
+  }
+
+  const items: NotificacionItem[] = [];
+  for (const [key, p] of porPeriodo) {
+    const liquidadas = await prisma.liquidacionAdmin.count({
+      where: { empresa_id: empresaId, periodo_mes: p.mes, periodo_anio: p.anio, empleado_id: { in: p.empleadoIds } },
+    });
+    const pendientes = p.empleadoIds.length - liquidadas;
+    if (pendientes <= 0) continue;
+    items.push({
+      id:          `presentismo-cerrado-${key}`,
+      tipo:        'PRESENTISMO_CERRADO',
+      titulo:      `Presentismo de ${p.mes}/${p.anio} cerrado por Lorena`,
+      descripcion: `${pendientes} liquidación${pendientes !== 1 ? 'es' : ''} pendiente${pendientes !== 1 ? 's' : ''} de generar`,
+      urgencia:    'info',
+      link:        '/rrhh?tab=sueldos-admin',
+      fecha:       p.fecha,
+    });
+  }
+  return items;
+}
+
 async function resolveGastosEspacioVencidos(empresaId: number, hoy: Date): Promise<NotificacionItem[]> {
   const lineas = await prisma.lineaGastoEspacio.findMany({
     where: {
@@ -370,6 +446,8 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveFacturasEmitidasVencidas(empresaId, hoy),
     resolveEventosSinDecisionFacturacion(req),
     resolveGastosEspacioVencidos(empresaId, hoy),
+    resolveTardanzasPendientes(req),
+    resolvePresentismoCerradoPendiente(empresaId),
   ]);
 
   const items = resultados

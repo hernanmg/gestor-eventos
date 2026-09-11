@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -225,6 +225,18 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <CalendarDays size={18} className="shrink-0" />
             {isOpen && <span>Calendario</span>}
           </NavLink>
+
+          {/* Presentismo (Lorena/Matías, DOS57) — home de Lorena, va arriba de
+              todo para que sea lo primero que vea al entrar. Visible para
+              ADMIN/OPERADOR fijos a DOS57, y también para el admin global
+              (Matías) sea cual sea la empresa activa de su sesión — él aprueba
+              tardanzas sin necesidad de tener DOS57 seleccionado. */}
+          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
+            <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
+              <UserCheck size={18} className="shrink-0" />
+              {isOpen && <span>Presentismo</span>}
+            </NavLink>
+          )}
 
           <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
             <Calendar size={18} className="shrink-0" />

@@ -69,6 +69,12 @@ export function calcularSueldoAdmin(
   // % de aumento sobre el básico (manual o IPC) aplicado en esta liquidación
   // — ver LiquidacionAdmin.porcentaje_aumento_aplicado.
   aumentoPorcentaje?:   number,
+  // Reemplaza el criterio de horas por el cierre de Presentismo (Lorena) —
+  // se manda cuando existe un ResumenPresentismo para el período: monto del
+  // acuerdo si cobra_presentismo=true, 0 si no. Sin esto, se sigue usando el
+  // criterio de horas legado (cumpleHoras) — ver ResumenPresentismo en
+  // presentismo.controller.ts.
+  premioPresentismoOverride?: number,
 ): ResultadoSueldoAdmin {
   const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
 
@@ -87,7 +93,7 @@ export function calcularSueldoAdmin(
   const cumpleHoras         = esChofer ? true : horasTrabajadas >= acuerdo.horas_acordadas_mes;
   const horasExtras         = esChofer ? 0 : (cumpleHoras ? round2(horasTrabajadas - acuerdo.horas_acordadas_mes) : 0);
   const importeHorasExtras  = esChofer ? 0 : round2(horasExtras * Number(acuerdo.valor_hora_extra ?? 0));
-  const premioPresentismo   = cumpleHoras ? Number(acuerdo.premio_presentismo ?? 0) : 0;
+  const premioPresentismo   = premioPresentismoOverride ?? (cumpleHoras ? Number(acuerdo.premio_presentismo ?? 0) : 0);
   const antiguedad          = calcularAntiguedad(acuerdo.fecha_inicio, fechaReferencia);
   const viatico             = viaticoOverride ?? Number(acuerdo.viatico ?? 0);
 
@@ -110,7 +116,9 @@ export function calcularSueldoAdmin(
     premio_incentivo:     Number(acuerdo.premio_incentivo ?? 0),
     viatico,
     premio_presentismo:   premioPresentismo,
-    presentismo_perdido:  !cumpleHoras,
+    presentismo_perdido:  premioPresentismoOverride !== undefined
+      ? premioPresentismoOverride === 0 && Number(acuerdo.premio_presentismo ?? 0) > 0
+      : !cumpleHoras,
     antiguedad_anios:     antiguedad.anios,
     importe_antiguedad:   antiguedad.monto,
     telefono:             Number(acuerdo.telefono ?? 0),

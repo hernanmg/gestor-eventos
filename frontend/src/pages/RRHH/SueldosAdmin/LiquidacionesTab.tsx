@@ -8,13 +8,14 @@ import {
   usePrestamosEmpleado, useHorasPeriodo, useResumenMensual, useResumenBitacora, useIpcIndec,
   type LiquidacionAdminFiltros, type GenerarLiquidacionAdminPayload,
 } from '@/hooks/useSueldosAdmin';
+import { useResumenMesEmpleado } from '@/hooks/usePresentismo';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento, TipoAnticipo } from '@/types';
+import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento, TipoAnticipo, ResumenMesEmpleadoResponse } from '@/types';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -31,9 +32,10 @@ const MESES = [
 
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
-function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, aumentoPorcentaje }: {
+function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, aumentoPorcentaje, presentismo, premioPresentismoOverride }: {
   empleadoId: number; horasTrabajadas: string; valesDescuentos: number; vacacionesAguinaldo: string; prestamosDescuento?: number;
   viaticoOverride?: number | null; aumentoPorcentaje?: number | null;
+  presentismo?: ResumenMesEmpleadoResponse; premioPresentismoOverride?: number | null;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
   if (!acuerdo) return null;
@@ -42,14 +44,19 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
   const horas   = parseFloat(horasTrabajadas) || 0;
   const basico  = aumentoPorcentaje ? acuerdo.sueldo_basico * (1 + aumentoPorcentaje / 100) : acuerdo.sueldo_basico;
   // Sueldo básico, viático, teléfono, antigüedad e incentivo son fijos — no
-  // se tocan por horas. El Premio Presentismo se pierde entero si no llegó
-  // al mínimo acordado, y las horas extras sólo existen si lo superó (mismo
-  // criterio que calcularSueldoAdmin.ts en el backend). CHOFER no usa horas
-  // para nada de esto — el presentismo nunca se pierde y no hay extras.
+  // se tocan por horas. Las horas extras sólo existen si superó el mínimo
+  // acordado (mismo criterio que calcularSueldoAdmin.ts). CHOFER no usa horas
+  // para nada de esto. El Premio Presentismo, en cambio, ya NO depende de las
+  // horas: si Lorena cerró el Control de Presentismo del período, manda eso
+  // (cobra_presentismo); si no lo cerró, se puede pisar manualmente.
   const cumpleHoras   = esChofer ? true : horas >= acuerdo.horas_acordadas_mes;
   const extras        = esChofer ? 0 : (cumpleHoras ? Math.max(0, horas - acuerdo.horas_acordadas_mes) : 0);
   const importeExtras = esChofer ? 0 : extras * (acuerdo.valor_hora_extra ?? 0);
-  const premioPresentismo = cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0;
+  const presentismoCerrado = presentismo?.cerrado ?? false;
+  const cobraPresentismo   = presentismoCerrado ? (presentismo!.resumen_persistido?.cobra_presentismo ?? true) : cumpleHoras;
+  const premioPresentismo  = presentismoCerrado
+    ? (cobraPresentismo ? (acuerdo.premio_presentismo ?? 0) : 0)
+    : (premioPresentismoOverride ?? (cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0));
   const vales   = valesDescuentos;
   const vacac   = parseFloat(vacacionesAguinaldo) || 0;
   const viatico = viaticoOverride ?? acuerdo.viatico ?? 0;
@@ -90,7 +97,7 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
         {acuerdo.premio_presentismo ? (
           <>
             <span>Premio presentismo</span>
-            {!cumpleHoras ? (
+            {!cobraPresentismo ? (
               <span className="text-right text-destructive line-through">{formatCurrency(acuerdo.premio_presentismo)}</span>
             ) : (
               <span className="text-right">{formatCurrency(premioPresentismo)}</span>
@@ -102,8 +109,10 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
         {vales > 0 ? (<><span>Vales/Descuentos</span><span className="text-right text-destructive">-{formatCurrency(vales)}</span></>) : null}
         {prestamosDescuento > 0 ? (<><span>Préstamos</span><span className="text-right text-destructive">-{formatCurrency(prestamosDescuento)}</span></>) : null}
       </div>
-      {!cumpleHoras && horas > 0 && acuerdo.premio_presentismo ? (
-        <p className="text-xs text-destructive">No alcanzó las horas acordadas — pierde el premio presentismo.</p>
+      {!cobraPresentismo && acuerdo.premio_presentismo ? (
+        <p className="text-xs text-destructive">
+          {presentismoCerrado ? `No cobra presentismo — ${presentismo?.resumen_persistido?.motivo_sin_presentismo ?? 'ver Control de Presentismo'}.` : 'No alcanzó las horas acordadas — pierde el premio presentismo.'}
+        </p>
       ) : null}
       <div className="flex justify-between font-semibold pt-1 border-t border-border">
         <span>Total a cobrar</span><span>{formatCurrency(total)}</span>
@@ -195,6 +204,41 @@ function BitacoraResumenPanel({ empleadoId, mes, anio, onUsar, autoAplicado = fa
           Usar viático calculado
         </Button>
       )}
+    </div>
+  );
+}
+
+// ── Panel: Control de Presentismo del período (Lorena) ────────────────────────
+
+function PresentismoPanel({ data, isLoading, override, onOverrideChange }: {
+  data?: ResumenMesEmpleadoResponse; isLoading: boolean; override: string; onOverrideChange: (v: string) => void;
+}) {
+  if (isLoading || !data) return null;
+
+  if (data.cerrado && data.resumen_persistido) {
+    const r = data.resumen_persistido;
+    return (
+      <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1">
+        <p className="text-xs font-medium text-muted-foreground">✓ Presentismo cerrado por Lorena</p>
+        <p className="text-xs text-muted-foreground">
+          Días presente: {r.dias_presente} | Ausentes: {r.dias_ausente} | Tardanzas: {r.dias_tarde}
+        </p>
+        <p className="text-xs">
+          Premio presentismo: {r.cobra_presentismo
+            ? <span className="text-green-700 font-medium">Cobra ✓</span>
+            : <span className="text-destructive font-medium">No cobra — {r.motivo_sin_presentismo}</span>}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm space-y-1.5">
+      <p className="text-xs font-medium text-amber-800">⚠️ Lorena no cerró el presentismo de este mes todavía</p>
+      <div>
+        <label className={labelCls}>Premio presentismo manual ($)</label>
+        <MoneyInput value={override} onChange={onOverrideChange} />
+      </div>
     </div>
   );
 }
@@ -329,7 +373,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const hoy = new Date();
   const [form, setForm] = useState({
     empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
-    horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '',
+    horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '', premio_presentismo_override: '',
     tipo_aumento: 'SIN_AUMENTO' as TipoAumento, porcentaje_aumento: '',
   });
   const [ipcInfo, setIpcInfo] = useState<{ mes: string; valor: number } | null>(null);
@@ -341,7 +385,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
     if (open) {
       setForm({
         empleado_id: '', periodo_mes: String(hoy.getMonth() + 1), periodo_anio: String(hoy.getFullYear()),
-        horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '',
+        horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '', premio_presentismo_override: '',
         tipo_aumento: 'SIN_AUMENTO', porcentaje_aumento: '',
       });
       setIpcInfo(null);
@@ -354,7 +398,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   }, [open]);
 
   const set = (k: keyof typeof form, v: string) => {
-    setForm(p => ({ ...p, [k]: v, ...((k === 'empleado_id' || k === 'periodo_mes' || k === 'periodo_anio') && { viatico_override: '' }) }));
+    setForm(p => ({ ...p, [k]: v, ...((k === 'empleado_id' || k === 'periodo_mes' || k === 'periodo_anio') && { viatico_override: '', premio_presentismo_override: '' }) }));
     if (k === 'empleado_id') { setPrestamosSel(new Set()); setAnticiposSel(new Set()); }
     if (k === 'tipo_aumento') { setIpcInfo(null); setIpcError(null); if (v !== 'MANUAL' && v !== 'IPC') set('porcentaje_aumento', ''); }
   };
@@ -362,6 +406,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const empleadoIdNum = form.empleado_id ? Number(form.empleado_id) : null;
   const { data: acuerdoSel } = useAcuerdoEmpleado(empleadoIdNum);
   const esChofer = acuerdoSel?.categoria_acuerdo === 'CHOFER';
+  const { data: presentismo, isLoading: presentismoLoading } = useResumenMesEmpleado(empleadoIdNum, Number(form.periodo_mes), Number(form.periodo_anio));
   const { data: prestamos = [] } = usePrestamosEmpleado(empleadoIdNum);
   const prestamosPendientes = prestamos.filter(p => !p.saldado);
   const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
@@ -408,6 +453,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
       anticipo_ids:         Array.from(anticiposSel),
       vacaciones_aguinaldo: form.vacaciones_aguinaldo ? Number(form.vacaciones_aguinaldo) : 0,
       viatico_override:     form.viatico_override ? Number(form.viatico_override) : undefined,
+      premio_presentismo_override: form.premio_presentismo_override ? Number(form.premio_presentismo_override) : undefined,
       ...(form.tipo_aumento !== 'SIN_AUMENTO' && {
         tipo_aumento:       form.tipo_aumento,
         porcentaje_aumento: Number(form.porcentaje_aumento),
@@ -496,6 +542,14 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
           </div>
 
+          {empleadoIdNum && acuerdoSel?.premio_presentismo ? (
+            <PresentismoPanel
+              data={presentismo} isLoading={presentismoLoading}
+              override={form.premio_presentismo_override}
+              onOverrideChange={v => set('premio_presentismo_override', v)}
+            />
+          ) : null}
+
           {empleadoIdNum && (
             <AnticiposSection empleadoId={empleadoIdNum} selected={anticiposSel} onToggle={toggleAnticipo} />
           )}
@@ -576,6 +630,8 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               prestamosDescuento={totalPrestamosSel}
               viaticoOverride={form.viatico_override ? Number(form.viatico_override) : null}
               aumentoPorcentaje={aumentoPorcentaje}
+              presentismo={presentismo}
+              premioPresentismoOverride={form.premio_presentismo_override ? Number(form.premio_presentismo_override) : null}
             />
           )}
 

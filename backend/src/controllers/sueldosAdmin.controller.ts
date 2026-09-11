@@ -528,6 +528,9 @@ const generarSchema = z.object({
   // acuerdos categoria_acuerdo=CHOFER esto se aplica automáticamente aunque
   // no se mande (ver generarLiquidacionAdmin).
   viatico_override:     z.number().min(0).nullable().optional(),
+  // Manual — sólo se usa cuando NO existe ResumenPresentismo cerrado para el
+  // período (ver generarLiquidacionAdmin); si existe, éste manda siempre.
+  premio_presentismo_override: z.number().min(0).nullable().optional(),
   // Vales/descuentos/multas seleccionados desde la tabla de Anticipos
   // pendientes del empleado (ver "Vales y descuentos del período" en el
   // dialog de generar) — reemplaza el monto manual: vales_descuentos se
@@ -580,6 +583,16 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
 
   const viaticoEfectivo = esChofer && tieneBitacora ? bitacoraResumen.total_viatico : (d.viatico_override ?? undefined);
 
+  // Presentismo (Lorena) — si el período está cerrado, manda siempre por
+  // sobre cualquier valor mandado desde el frontend (ver Control de
+  // Presentismo). Si no está cerrado, se puede pisar manualmente.
+  const resumenPresentismo = await prisma.resumenPresentismo.findFirst({
+    where: { empresa_id: acuerdo.empresa_id, empleado_id: d.empleado_id, periodo_mes: d.periodo_mes, periodo_anio: d.periodo_anio },
+  });
+  const premioPresentismoEfectivo = resumenPresentismo
+    ? (resumenPresentismo.cobra_presentismo ? Number(acuerdo.premio_presentismo ?? 0) : 0)
+    : (d.premio_presentismo_override ?? undefined);
+
   // Vales/descuentos — si se seleccionaron Anticipos pendientes, su suma
   // reemplaza el monto manual (ver anticipo_ids arriba). Se valida que
   // existan, sean del empleado y no estén ya descontados antes de calcular nada.
@@ -600,7 +613,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
 
   const calculo = calcularSueldoAdmin(
     acuerdo, d.horas_trabajadas, valesDescuentos, d.vacaciones_aguinaldo, undefined,
-    viaticoEfectivo, d.porcentaje_aumento ?? undefined,
+    viaticoEfectivo, d.porcentaje_aumento ?? undefined, premioPresentismoEfectivo,
   );
   const splits  = await obtenerSplitsCalculados(d.empleado_id, calculo.total_a_cobrar);
 

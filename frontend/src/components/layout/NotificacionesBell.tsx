@@ -2,9 +2,13 @@ import { useState } from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useNotificaciones, type NotificacionItem, type UrgenciaNotificacion } from '@/hooks/useNotificaciones';
+import {
+  useNotificaciones, useResolverAccionNotificacion,
+  type NotificacionItem, type UrgenciaNotificacion,
+} from '@/hooks/useNotificaciones';
+import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/formatters';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 
 const URGENCIA_DOT: Record<UrgenciaNotificacion, string> = {
   critical: 'bg-red-500',
@@ -19,6 +23,42 @@ const URGENCIA_TEXT: Record<UrgenciaNotificacion, string> = {
 };
 
 function NotificacionRow({ item, onNavigate }: { item: NotificacionItem; onNavigate: () => void }) {
+  const resolverMut = useResolverAccionNotificacion();
+  const [error, setError] = useState<string | null>(null);
+
+  // Con acciones (ej. aprobar/rechazar tardanza) — se resuelve inline, sin
+  // navegar. El link queda igual como fallback si el usuario clickea el texto.
+  if (item.acciones && item.acciones.length > 0) {
+    return (
+      <div className="flex items-start gap-2.5 px-3 py-2">
+        <span className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', URGENCIA_DOT[item.urgencia])} />
+        <div className="min-w-0 flex-1">
+          <p className={cn('text-sm font-medium', URGENCIA_TEXT[item.urgencia])}>{item.titulo}</p>
+          <p className="text-xs text-muted-foreground">{item.descripcion}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(item.fecha)}</p>
+          <div className="flex gap-1.5 mt-1.5">
+            {item.acciones.map(accion => (
+              <Button
+                key={accion.endpoint}
+                size="sm"
+                variant={accion.variant}
+                className="h-6 text-xs px-2"
+                disabled={resolverMut.isPending}
+                onClick={() => {
+                  setError(null);
+                  resolverMut.mutate(accion.endpoint, { onError: err => setError(getApiErrorMessage(err) ?? 'Error al procesar la acción') });
+                }}
+              >
+                {accion.label}
+              </Button>
+            ))}
+          </div>
+          {error && <p className="text-[10px] text-destructive mt-1">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Link
       to={item.link}

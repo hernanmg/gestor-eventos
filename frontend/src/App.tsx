@@ -33,7 +33,9 @@ import AFIPPrestamosPage    from '@/pages/AFIPPrestamos';
 import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
 import EspaciosCompartidosPage from '@/pages/EspaciosCompartidos';
 import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
+import PresentismoPage      from '@/pages/Presentismo';
 import { useAuth }          from '@/hooks/useAuth';
+import { EMPRESAS }         from '@/lib/empresasConstants';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,12 +46,16 @@ const queryClient = new QueryClient({
   },
 });
 
-// Admin global (rol ADMIN sin empresa fija) va a /macro; el resto de roles a /eventos.
+// Admin global (rol ADMIN sin empresa fija) va a /macro; el resto de roles a
+// /eventos. Excepción: OPERADOR de DOS57 cuyo usuario es Lorena va directo a
+// /presentismo, su pantalla principal (ver pedido de Control de Presentismo).
+// Placeholder por nombre hasta que exista un rol/flag "PRESENTISMO" dedicado.
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return null;
   const esAdminGlobal = user.rol === 'ADMIN' && user.puedeCambiarEmpresa;
-  return <Navigate to={esAdminGlobal ? '/macro' : '/eventos'} replace />;
+  const esLorena = user.rol === 'OPERADOR' && user.empresaId === EMPRESAS.DOS57 && /loren/i.test(user.nombre);
+  return <Navigate to={esAdminGlobal ? '/macro' : esLorena ? '/presentismo' : '/eventos'} replace />;
 }
 
 export default function App() {
@@ -76,6 +82,7 @@ export default function App() {
             <Route path="/rrhh/importar"    element={<RRHHImportarPage />} />
             <Route path="/parte-diario"            element={<ParteDiarioPage />} />
             <Route path="/parte-diario/historial"  element={<ParteDiarioHistorialPage />} />
+            <Route path="/presentismo"             element={<PresentismoPage />} />
             <Route path="/importer"         element={<ImporterPage />} />
             <Route path="/proveedores"      element={<ProveedoresPage />} />
             <Route path="/proveedores/:id"  element={<ProveedorDetallePage />} />

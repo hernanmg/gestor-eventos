@@ -34,6 +34,7 @@ import notificacionesRouter from './routes/notificaciones';
 import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
 import { facturasEmitidasRouter } from './routes/facturasEmitidas';
 import { espaciosCompartidosRouter } from './routes/espaciosCompartidos';
+import presentismoRouter from './routes/presentismo';
 
 const app = express();
 
@@ -113,6 +114,7 @@ app.use('/api/afip',                afipRouter);
 app.use('/api/prestamos',           prestamosRouter);
 app.use('/api/facturas-emitidas',   facturasEmitidasRouter);
 app.use('/api/espacios-compartidos', espaciosCompartidosRouter);
+app.use('/api/presentismo',         presentismoRouter);
 
 app.use(errorHandler);
 

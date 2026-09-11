@@ -1,7 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 export type UrgenciaNotificacion = 'critical' | 'warning' | 'info';
+
+export interface NotificacionAccion {
+  label:   string;
+  endpoint: string;
+  variant: 'default' | 'destructive';
+}
 
 export interface NotificacionItem {
   id:          string;
@@ -11,6 +17,8 @@ export interface NotificacionItem {
   urgencia:    UrgenciaNotificacion;
   link:        string;
   fecha:       string;
+  // Resoluble inline sin navegar (ej. aprobar/rechazar tardanza de Presentismo).
+  acciones?:   NotificacionAccion[];
 }
 
 export interface NotificacionesResponse {
@@ -27,5 +35,13 @@ export function useNotificaciones() {
     queryFn:         () => api.get('/notificaciones').then(r => r.data),
     staleTime:       60 * 1000,
     refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+export function useResolverAccionNotificacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (endpoint: string) => api.post(endpoint).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notificaciones'] }),
   });
 }

@@ -124,6 +124,20 @@ enum EstadoJornada {
   RECHAZADA
 }
 
+// Control de Presentismo (Lorena, DOS57) — distinto de EstadoJornada: Jornada
+// es el registro de horas para liquidación (Enjoy + DOS57), esto es la lectura
+// diaria de tarjetas de marcación física que alimenta el premio presentismo.
+enum EstadoAsistencia {
+  PRESENTE
+  TARDE // llegó pero después de la hora acordada
+  MEDIA_JORNADA // solo estuvo medio día
+  AUSENTE // no vino sin justificación
+  JUSTIFICADO // falta justificada (médico, trámite, etc.)
+  LIBRE // día libre acordado
+  VACACIONES
+  LICENCIA
+}
+
 enum EstadoLiquidacion {
   BORRADOR
   APROBADA
@@ -255,6 +269,8 @@ model Empresa {
   bitacoraViajes         BitacoraViaje[]
   espaciosCompartidos    EspacioCompartido[]
   partesEspacioEmpresa   ParteEspacio[]
+  registrosAsistencia    RegistroAsistencia[]
+  resumenesPresentismo   ResumenPresentismo[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -1349,26 +1365,33 @@ model Empleado {
   talle_remera               String?
   talle_buzo                 String?
   talle_calzado              String?
+  // Hora acordada de convocatoria para Control de Presentismo (distinta de
+  // Jornada.hora_convocatoria, que es puntual por día/evento) — texto libre
+  // tipo "08:00" contra la que se mide minutos_tardanza. Opcional: sin esto,
+  // TARDE se puede marcar igual pero sin calcular minutos automáticamente.
+  hora_convocatoria_default  String?
 
   // Usuario del sistema (opcional — si el empleado carga sus propias jornadas)
-  usuario_id           Int?                   @unique
-  usuario              Usuario?               @relation(fields: [usuario_id], references: [id])
+  usuario_id            Int?                   @unique
+  usuario               Usuario?               @relation(fields: [usuario_id], references: [id])
   // audit
-  created_at           DateTime               @default(now())
-  updated_at           DateTime               @updatedAt
-  deleted_at           DateTime?
-  created_by           Int?
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
+  deleted_at            DateTime?
+  created_by            Int?
   // relations
-  jornadas             Jornada[]
-  anticipos            Anticipo[]
-  liquidaciones        Liquidacion[]
-  asignaciones_diarias AsignacionDiaria[]
+  jornadas              Jornada[]
+  anticipos             Anticipo[]
+  liquidaciones         Liquidacion[]
+  asignaciones_diarias  AsignacionDiaria[]
   // Sueldos administrativos (régimen mensual fijo, distinto de Jornada/Liquidacion)
-  acuerdo_sueldo       AcuerdoSueldo?
-  splits_empresa       EmpleadoEmpresaSplit[]
-  liquidaciones_admin  LiquidacionAdmin[]
-  prestamos            PrestamoEmpleado[]
-  bitacora_viajes      BitacoraViaje[]
+  acuerdo_sueldo        AcuerdoSueldo?
+  splits_empresa        EmpleadoEmpresaSplit[]
+  liquidaciones_admin   LiquidacionAdmin[]
+  prestamos             PrestamoEmpleado[]
+  bitacora_viajes       BitacoraViaje[]
+  registros_asistencia  RegistroAsistencia[]
+  resumenes_presentismo ResumenPresentismo[]
 }
 
 model Jornada {
@@ -1405,9 +1428,90 @@ model Jornada {
   aprobado_por Int?
   aprobado_at  DateTime?
 
-  asignacion_diaria AsignacionDiaria?
+  asignacion_diaria   AsignacionDiaria?
+  registro_asistencia RegistroAsistencia?
 
   @@unique([empleado_id, fecha])
+}
+
+// ─── CONTROL DE PRESENTISMO (Lorena, DOS57) ───────────────────────────────────
+// Lectura diaria de las tarjetas de marcación física de DOS57 — reemplaza
+// "SEPTIEMBRE_Registro de Faltas.xlsx". Nutre ResumenPresentismo (cierre
+// mensual) y, a través de éste, el premio_presentismo de SueldosAdmin.
+// Complementario al Parte Diario de Jazmín (que distribuye tareas): esto sólo
+// registra quién vino, a qué hora y con qué estado.
+
+model RegistroAsistencia {
+  id                    Int              @id @default(autoincrement())
+  empresa_id            Int
+  empresa               Empresa          @relation(fields: [empresa_id], references: [id])
+  empleado_id           Int
+  empleado              Empleado         @relation(fields: [empleado_id], references: [id])
+  fecha                 DateTime // fecha del día
+  estado                EstadoAsistencia @default(PRESENTE)
+  hora_ingreso          String? // "08:45" — texto para flexibilidad
+  hora_egreso           String? // "18:00"
+  horas_trabajadas      Decimal?         @db.Decimal(5, 2)
+  // Si llegó tarde: cuántos minutos
+  minutos_tardanza      Int?
+  // Justificación para JUSTIFICADO/LICENCIA
+  motivo                String?
+  // Si impacta en el presentismo del mes
+  descuenta_presentismo Boolean          @default(false)
+  // Vínculo con Jornada (si ya existe una para este día)
+  jornada_id            Int?             @unique
+  jornada               Jornada?         @relation(fields: [jornada_id], references: [id])
+  // Importado del reloj biométrico (cuando se instale)
+  origen                String? // "MANUAL" | "RELOJ_ET7" | "IMPORTACION"
+
+  // ── Flujo de aprobación de tardanzas (Matías) ────────────────────────────────
+  tardanza_requiere_aprobacion Boolean   @default(false)
+  tardanza_aprobada            Boolean? // null=pendiente, true=aprobada, false=rechazada
+  tardanza_aprobada_por        Int? // usuario_id de Matías
+  tardanza_aprobada_at         DateTime?
+  tardanza_nota                String? // comentario de Matías al aprobar/rechazar
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  @@unique([empresa_id, empleado_id, fecha])
+}
+
+// Resumen mensual de presentismo por empleado — se calcula al cerrar el mes
+// (POST /presentismo/cerrar-mes) y es lo que consume SueldosAdmin para
+// pre-cargar el premio_presentismo del período.
+model ResumenPresentismo {
+  id                     Int      @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id            Int
+  empleado               Empleado @relation(fields: [empleado_id], references: [id])
+  periodo_mes            Int
+  periodo_anio           Int
+  // Conteos del mes
+  dias_habiles           Int      @default(0)
+  dias_presente          Int      @default(0)
+  dias_tarde             Int      @default(0)
+  dias_media_jornada     Int      @default(0)
+  dias_ausente           Int      @default(0)
+  dias_justificado       Int      @default(0)
+  dias_libre             Int      @default(0)
+  dias_vacaciones        Int      @default(0)
+  total_horas            Decimal  @default(0) @db.Decimal(8, 2)
+  total_tardanzas_min    Int      @default(0)
+  // Premio presentismo: true si corresponde cobrarlo
+  cobra_presentismo      Boolean  @default(true)
+  // Criterio: cobra si ausentes < X días (configurable) — ver
+  // calcularResumenPresentismo() en presentismo.controller.ts.
+  motivo_sin_presentismo String?
+  // audit
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
 }
 
 model Anticipo {

@@ -8,6 +8,7 @@ import {
   useAcuerdoEmpleado, useBitacoraViajesEmpleado, useImportarHistorialConvocatorias,
   type ResultadoImportarHistorial,
 } from '@/hooks/useSueldosAdmin';
+import { useResumenMesEmpleado } from '@/hooks/usePresentismo';
 import PrestamosSection from '@/components/domain/PrestamosSection';
 import CuitInput from '@/components/ui/CuitInput';
 import MoneyInput from '@/components/ui/MoneyInput';
@@ -572,6 +573,78 @@ function HistorialTab({ empleado }: { empleado: Empleado }) {
   );
 }
 
+// ── Tab: Asistencia (Control de Presentismo, Lorena — DOS57) — solo lectura ───
+
+const ASISTENCIA_LABEL: Record<string, string> = {
+  PRESENTE: 'Presente', TARDE: 'Tarde', MEDIA_JORNADA: 'Media jornada', AUSENTE: 'Ausente',
+  JUSTIFICADO: 'Justificado', LIBRE: 'Libre', VACACIONES: 'Vacaciones', LICENCIA: 'Licencia',
+};
+const ASISTENCIA_ROW_CLASS: Record<string, string> = {
+  AUSENTE: 'bg-red-50', TARDE: 'bg-yellow-50', JUSTIFICADO: 'bg-blue-50', LIBRE: 'bg-gray-100', VACACIONES: 'bg-sky-50', LICENCIA: 'bg-purple-50',
+};
+
+function AsistenciaTab({ empleado }: { empleado: Empleado }) {
+  const hoy = new Date();
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const { data, isLoading } = useResumenMesEmpleado(empleado.id, mes, anio);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <select value={mes} onChange={e => setMes(Number(e.target.value))} className="border border-input rounded px-2 py-1 text-xs">
+          {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={anio} onChange={e => setAnio(Number(e.target.value))} className="border border-input rounded px-2 py-1 text-xs">
+          {Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - i).map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+
+      {isLoading || !data ? (
+        <p className="text-xs text-muted-foreground">Cargando...</p>
+      ) : (
+        <>
+          <div className="rounded-md border border-border max-h-72 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-border sticky top-0">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Fecha</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Estado</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Ingreso</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Egreso</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Hs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.dias.map(d => (
+                  <tr key={d.fecha} className={d.registro ? ASISTENCIA_ROW_CLASS[d.registro.estado] ?? '' : d.es_no_laborable ? 'bg-gray-100' : ''}>
+                    <td className="px-2 py-1">{d.fecha}</td>
+                    <td className="px-2 py-1">{d.registro ? ASISTENCIA_LABEL[d.registro.estado] : <span className="text-muted-foreground italic">Sin registro</span>}</td>
+                    <td className="px-2 py-1">{d.registro?.hora_ingreso ?? '-'}</td>
+                    <td className="px-2 py-1">{d.registro?.hora_egreso ?? '-'}</td>
+                    <td className="px-2 py-1 text-right">{d.registro?.horas_trabajadas ?? '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground pt-1 border-t border-border">
+            <span>Presente: {data.conteo.dias_presente} · Ausente: {data.conteo.dias_ausente} · Tarde: {data.conteo.dias_tarde}</span>
+            <span>Total hs: {data.conteo.total_horas}</span>
+          </div>
+          {data.cerrado && data.resumen_persistido && (
+            <p className="text-xs">
+              Presentismo: {data.resumen_persistido.cobra_presentismo
+                ? <span className="text-green-700 font-medium">Cobra ✓</span>
+                : <span className="text-destructive font-medium">No cobra — {data.resumen_persistido.motivo_sin_presentismo}</span>}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Drawer de detalle ──────────────────────────────────────────────────────────
 
 function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones }: {
@@ -581,7 +654,7 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
   onVerLiquidaciones: (id: number) => void;
 }) {
   const { data: empleado, isLoading } = useEmpleado(empleadoId);
-  const [tab, setTab] = useState<'personal' | 'bancarios' | 'historial'>('personal');
+  const [tab, setTab] = useState<'personal' | 'bancarios' | 'historial' | 'asistencia'>('personal');
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
 
   return (
@@ -617,12 +690,12 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
             </div>
 
             <div className="flex border-b border-border">
-              {(['personal', 'bancarios', 'historial'] as const).map(t => (
+              {(['personal', 'bancarios', 'historial', 'asistencia'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)} className={cn(
                   'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px',
                   tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
                 )}>
-                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : 'Historial de convocatorias'}
+                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : t === 'historial' ? 'Historial de convocatorias' : 'Asistencia'}
                 </button>
               ))}
             </div>
@@ -643,8 +716,10 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
                 <div className="flex justify-between"><dt className="text-muted-foreground">Alias</dt><dd>{empleado.alias ?? '-'}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Banco</dt><dd>{empleado.banco ?? '-'}</dd></div>
               </dl>
-            ) : (
+            ) : tab === 'historial' ? (
               <HistorialTab empleado={empleado} />
+            ) : (
+              <AsistenciaTab empleado={empleado} />
             )}
 
             {empleado.stats.ultima_jornada && (

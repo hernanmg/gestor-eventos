@@ -312,6 +312,19 @@ async function main() {
 
     // ── DOS57 — operadores ──────────────────────────────────────────────────────
     { nombre: 'Jazmín Valdivia (Jaz)', email: 'jazminvaldivia.dos57@gmail.com', telefono: '351 594-6637', rol: 'OPERADOR', empresa_id: dos57.id },
+    // Apellido "Herrera" y CUIL 27-30474212-2 confirmados en
+    // docs/dos57/lorena/Datos DOS57_Datos Personales.xlsx (fila 13, apodo
+    // "Lore"). Email PLACEHOLDER — no hay uno real en ninguna planilla ni
+    // transcripción relevada; confirmar antes de dar de alta en producción.
+    { nombre: 'Lorena Herrera (Lore)', email: 'lorena.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
+    // Florencia, Santiago y Nicolás: relevados en docs/dos57/florencia y
+    // docs/dos57/santi-nico, pero NINGUNA planilla ni transcripción trae su
+    // apellido, CUIL o email real (no están en el legajo "DOS57 FIJOS" —
+    // altas más recientes que esa planilla). nombre y email acá son
+    // PLACEHOLDERS — confirmar los datos reales antes de producción.
+    { nombre: 'Florencia',           email: 'florencia.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
+    { nombre: 'Santiago (Santi)',    email: 'santiago.dos57@gmail.com',  rol: 'OPERADOR', empresa_id: dos57.id },
+    { nombre: 'Nicolás (Nico)',      email: 'nicolas.dos57@gmail.com',   rol: 'OPERADOR', empresa_id: dos57.id },
 
     // ── Enjoy — admins ──────────────────────────────────────────────────────────
     { nombre: 'Christian Xinos (Chino)',        email: 'christianxinos@gmail.com',            telefono: '351 800-5952', rol: 'ADMIN', empresa_id: enjoy.id },

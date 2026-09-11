@@ -1753,6 +1753,87 @@ export interface PedidoComidaSugerido {
   por_seccion: { seccion: string; cantidad: number }[];
 }
 
+// ─── PRESENTISMO (Control de Presentismo — Lorena, DOS57) ─────────────────────
+
+export type EstadoAsistencia =
+  | 'PRESENTE' | 'TARDE' | 'MEDIA_JORNADA' | 'AUSENTE' | 'JUSTIFICADO' | 'LIBRE' | 'VACACIONES' | 'LICENCIA';
+
+export interface EmpleadoMiniPresentismo {
+  id: number; nombre: string; apellido: string; apodo: string | null; categoria: CategoriaEmpleado;
+}
+
+export interface RegistroAsistencia {
+  id:                    number;
+  empleado_id:           number;
+  fecha:                 string;
+  estado:                EstadoAsistencia;
+  hora_ingreso:          string | null;
+  hora_egreso:           string | null;
+  horas_trabajadas:      number | null;
+  minutos_tardanza:      number | null;
+  motivo:                string | null;
+  descuenta_presentismo: boolean;
+  jornada_id:            number | null;
+  origen:                string | null;
+  tardanza_requiere_aprobacion: boolean;
+  tardanza_aprobada:            boolean | null;
+  tardanza_aprobada_por:        number | null;
+  tardanza_aprobada_at:         string | null;
+  tardanza_nota:                string | null;
+  created_at: string;
+  updated_at: string;
+  empleado?: EmpleadoMiniPresentismo;
+  jornada?:  { id: number; estado: EstadoJornada; horas_normales: number; horas_extras: number } | null;
+}
+
+export interface PresentismoHoyItem {
+  empleado: EmpleadoMiniPresentismo;
+  registro: RegistroAsistencia | null;
+}
+
+export interface PresentismoHoyResponse {
+  fecha: string;
+  items: PresentismoHoyItem[];
+}
+
+export interface ResumenPresentismoItem {
+  empleado:               EmpleadoMiniPresentismo;
+  dias_habiles:           number;
+  dias_presente:          number;
+  dias_tarde:             number;
+  dias_media_jornada:     number;
+  dias_ausente:           number;
+  dias_justificado:       number;
+  dias_libre:             number;
+  dias_vacaciones:        number;
+  total_horas:            number;
+  total_tardanzas_min:    number;
+  cobra_presentismo:      boolean;
+  motivo_sin_presentismo: string | null;
+  cerrado:                boolean;
+}
+
+export interface ResumenMesResponse {
+  periodo: { mes: number; anio: number; dias_habiles: number };
+  periodo_cerrado: boolean;
+  items: ResumenPresentismoItem[];
+}
+
+export interface ResumenMesEmpleadoResponse {
+  empleado: EmpleadoMiniPresentismo;
+  dias: { fecha: string; es_no_laborable: boolean; registro: RegistroAsistencia | null }[];
+  conteo: Omit<ResumenPresentismoItem, 'empleado' | 'dias_habiles' | 'cerrado'>;
+  cerrado: boolean;
+  resumen_persistido: (Omit<ResumenPresentismoItem, 'empleado' | 'cerrado'> & { periodo_mes: number; periodo_anio: number }) | null;
+}
+
+export interface CerrarMesPresentismoResultado {
+  periodo: { mes: number; anio: number };
+  empleados_procesados: number;
+  cobran_presentismo: number;
+  no_cobran_presentismo: number;
+}
+
 export interface ParteDiario {
   id:         number;
   empresa_id: number;

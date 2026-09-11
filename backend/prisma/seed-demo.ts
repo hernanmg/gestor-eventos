@@ -4,6 +4,7 @@ import {
   CategoriaEmpleado,
   EstadoActivo,
   EstadoAsignacion,
+  EstadoAsistencia,
   EstadoEcheq,
   EstadoEvento,
   EstadoJornada,
@@ -222,11 +223,11 @@ async function main() {
       // ── EG-TC (tab 1) ───────────────────────────────────────────────────────
       let s = 0;
       const egTCDef = [
-        { fecha: e1Inicio, concepto: 'Sonido Total S.A.',      descripcion: 'Sistema de sonido line array',   debe: 850_000, proveedor_id: pSonido.id   },
-        { fecha: e1D1,     concepto: 'Iluminación Escénica SRL', descripcion: 'Iluminación escenario principal', debe: 620_000, proveedor_id: pIlum.id     },
-        { fecha: e1D1,     concepto: 'Escenario',               descripcion: 'Armado y desarmado de escenario', debe: 480_000, proveedor_id: null         },
-        { fecha: e1D2,     concepto: 'Transporte',              descripcion: 'Flete equipo sonido',             debe:  95_000, proveedor_id: pTransp.id   },
-        { fecha: e1D2,     concepto: 'Catering',                descripcion: 'Catering staff artístico',        debe: 180_000, proveedor_id: pCatering.id },
+        { fecha: e1Inicio, concepto: 'Sonido Total S.A.',      descripcion: 'Sistema de sonido line array',   debe: 850_000, proveedor_id: pSonido.id,   rubro: 'Sonido' },
+        { fecha: e1D1,     concepto: 'Iluminación Escénica SRL', descripcion: 'Iluminación escenario principal', debe: 620_000, proveedor_id: pIlum.id,     rubro: 'Luces' },
+        { fecha: e1D1,     concepto: 'Escenario',               descripcion: 'Armado y desarmado de escenario', debe: 480_000, proveedor_id: null,         rubro: 'Estructuras' },
+        { fecha: e1D2,     concepto: 'Transporte',              descripcion: 'Flete equipo sonido',             debe:  95_000, proveedor_id: pTransp.id,   rubro: 'Camiones/Logística' },
+        { fecha: e1D2,     concepto: 'Catering',                descripcion: 'Catering staff artístico',        debe: 180_000, proveedor_id: pCatering.id, rubro: 'Catering' },
       ];
       const movEGTC: { id: number }[] = [];
       for (let i = 0; i < egTCDef.length; i++) {
@@ -236,7 +237,7 @@ async function main() {
           data: {
             evento_id:    e1.id,
             tipo:         Tipo.EGRESO,
-            rubro_id:     rubroEnjoy('EGRESO', 'Producción General'),
+            rubro_id:     rubroEnjoy('EGRESO', r.rubro),
             estado_movimiento: EstadoMovimiento.PAGADO,
             fecha:        r.fecha,
             concepto:     r.concepto,
@@ -287,7 +288,11 @@ async function main() {
         data: {
           evento_id:   e1.id,
           tipo:        Tipo.EGRESO,
-          rubro_id:    rubroEnjoy('EGRESO', 'Préstamos'),
+          // No hay rubro "Préstamos" en la lista real de Enjoy (RUBROS_ENJOY) —
+          // el más cercano para un adelanto bancario puntual es el técnico
+          // "Gastos Extraordinarios" (mismo criterio que un gasto fuera de lo
+          // operativo habitual).
+          rubro_id:    rubroEnjoy('EGRESO', 'Gastos Extraordinarios'),
           estado_movimiento: EstadoMovimiento.PAGADO,
           fecha:       e1Inicio,
           concepto:    'Préstamo bancario',
@@ -539,9 +544,9 @@ async function main() {
       // ── EG-TC — Producción General ──────────────────────────────────────────
       let s = 0;
       const rows = [
-        { concepto: 'Sonido Total S.A.', descripcion: 'Sistema de sonido',     debe: 920_000, pid: pSonido.id, estado: EstadoMovimiento.CONFIRMADO },
-        { concepto: 'Iluminación',       descripcion: 'Iluminación escenario', debe: 540_000, pid: null,       estado: EstadoMovimiento.PENDIENTE  },
-        { concepto: 'Seguridad',         descripcion: 'Personal de seguridad', debe: 320_000, pid: pSegur.id,  estado: EstadoMovimiento.CONFIRMADO },
+        { concepto: 'Sonido Total S.A.', descripcion: 'Sistema de sonido',     debe: 920_000, pid: pSonido.id, estado: EstadoMovimiento.CONFIRMADO, rubro: 'Sonido' },
+        { concepto: 'Iluminación',       descripcion: 'Iluminación escenario', debe: 540_000, pid: null,       estado: EstadoMovimiento.PENDIENTE,  rubro: 'Luces' },
+        { concepto: 'Seguridad',         descripcion: 'Personal de seguridad', debe: 320_000, pid: pSegur.id,  estado: EstadoMovimiento.CONFIRMADO, rubro: 'Seguridad privada' },
       ];
       let movSonidoE2Id = 0;
       for (let i = 0; i < rows.length; i++) {
@@ -551,7 +556,7 @@ async function main() {
           data: {
             evento_id:    e2.id,
             tipo:         Tipo.EGRESO,
-            rubro_id:     rubroEnjoy('EGRESO', 'Producción General'),
+            rubro_id:     rubroEnjoy('EGRESO', r.rubro),
             estado_movimiento: r.estado,
             presupuesto:  r.debe,
             fecha:        new Date(),
@@ -807,7 +812,10 @@ async function main() {
         data: {
           evento_id:   e3.id,
           tipo:        Tipo.EGRESO,
-          rubro_id:    rubroEnjoy('EGRESO', 'Producción General'),
+          // "Directorio" — costo de gestión/overhead general del evento, el
+          // equivalente más cercano a un "Producción general" genérico dentro
+          // de la lista real de rubros de Enjoy.
+          rubro_id:    rubroEnjoy('EGRESO', 'Directorio'),
           estado_movimiento: EstadoMovimiento.PENDIENTE,
           presupuesto: 280_000,
           fecha:       new Date(),
@@ -823,7 +831,7 @@ async function main() {
         data: {
           evento_id:   e3.id,
           tipo:        Tipo.EGRESO,
-          rubro_id:    rubroEnjoy('EGRESO', 'Transporte y Logística'),
+          rubro_id:    rubroEnjoy('EGRESO', 'Camiones/Logística'),
           estado_movimiento: EstadoMovimiento.PENDIENTE,
           presupuesto: 95_000,
           fecha:       new Date(),
@@ -1165,7 +1173,7 @@ async function main() {
       data: {
         evento_id:   eventoDos57.id,
         tipo:        Tipo.EGRESO,
-        rubro_id:    rubroDos57('EGRESO', 'Materiales Layher'),
+        rubro_id:    rubroDos57('EGRESO', 'Layher'),
         estado_movimiento: EstadoMovimiento.CONFIRMADO,
         presupuesto: 350_000,
         fecha:       new Date(),
@@ -1298,6 +1306,83 @@ async function main() {
     }
     console.log(`✓ Activos empresa #${empresaId}: 3 creados`);
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PRESENTISMO — DOS57 (Lorena) — 5 empleados demo + 5 días de registros
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\nCreando datos de Presentismo para DOS57...');
+
+  async function upsertEmpleadoDos57(data: { nombre: string; apellido: string; dni: string; categoria: CategoriaEmpleado }) {
+    const existente = await prisma.empleado.findFirst({ where: { dni: data.dni, empresa_id: EMPRESA_ID_DOS57 } });
+    if (existente) return existente;
+    return prisma.empleado.create({
+      data: {
+        empresa_id: EMPRESA_ID_DOS57, nombre: data.nombre, apellido: data.apellido, dni: data.dni,
+        categoria: data.categoria, hora_convocatoria_default: '08:00',
+      },
+    });
+  }
+
+  const empPresBenjamin = await upsertEmpleadoDos57({ nombre: 'Benjamín', apellido: 'Acosta',   dni: '31111001', categoria: CategoriaEmpleado.JORNALERO });
+  const empPresLisandro = await upsertEmpleadoDos57({ nombre: 'Lisandro', apellido: 'Peralta',  dni: '31111002', categoria: CategoriaEmpleado.JORNALERO });
+  const empPresDavid    = await upsertEmpleadoDos57({ nombre: 'David',    apellido: 'Suárez',   dni: '31111003', categoria: CategoriaEmpleado.CHOFER });
+  const empPresMayra    = await upsertEmpleadoDos57({ nombre: 'Mayra',    apellido: 'Ontivero', dni: '31111004', categoria: CategoriaEmpleado.ADMINISTRATIVO });
+  const empPresPollo    = await upsertEmpleadoDos57({ nombre: 'Pollo',    apellido: 'Medina',   dni: '31111005', categoria: CategoriaEmpleado.ADMINISTRATIVO });
+  console.log('✓ Empleados demo Presentismo DOS57: 5 creados/existentes');
+
+  async function upsertRegistroAsistencia(data: {
+    empleado_id: number; fecha: Date; estado: EstadoAsistencia; hora_ingreso?: string; hora_egreso?: string;
+    horas_trabajadas?: number; minutos_tardanza?: number; motivo?: string; descuenta_presentismo?: boolean;
+    tardanza_requiere_aprobacion?: boolean; tardanza_aprobada?: boolean | null;
+  }) {
+    const fecha = new Date(Date.UTC(data.fecha.getFullYear(), data.fecha.getMonth(), data.fecha.getDate()));
+    const existente = await prisma.registroAsistencia.findFirst({ where: { empleado_id: data.empleado_id, fecha, empresa_id: EMPRESA_ID_DOS57 } });
+    if (existente) return existente;
+    return prisma.registroAsistencia.create({
+      data: {
+        empresa_id: EMPRESA_ID_DOS57, empleado_id: data.empleado_id, fecha, estado: data.estado,
+        hora_ingreso: data.hora_ingreso ?? null, hora_egreso: data.hora_egreso ?? null,
+        horas_trabajadas: data.horas_trabajadas ?? null, minutos_tardanza: data.minutos_tardanza ?? null,
+        motivo: data.motivo ?? null, descuenta_presentismo: data.descuenta_presentismo ?? false,
+        tardanza_requiere_aprobacion: data.tardanza_requiere_aprobacion ?? false,
+        tardanza_aprobada: data.tardanza_aprobada ?? null,
+        origen: 'MANUAL',
+      },
+    });
+  }
+
+  // 4 días normales para todos + hoy con la tardanza de Pollo pendiente de
+  // aprobación (alimenta la notificación de Matías en la campanita).
+  for (const n of [4, 3, 2, 1]) {
+    await upsertRegistroAsistencia({ empleado_id: empPresBenjamin.id, fecha: daysAgo(n), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '17:00', horas_trabajadas: 9 });
+    await upsertRegistroAsistencia({ empleado_id: empPresDavid.id,    fecha: daysAgo(n), estado: 'PRESENTE', hora_ingreso: '07:30', hora_egreso: '16:30', horas_trabajadas: 9 });
+    await upsertRegistroAsistencia({ empleado_id: empPresMayra.id,    fecha: daysAgo(n), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '17:00', horas_trabajadas: 9 });
+    await upsertRegistroAsistencia({ empleado_id: empPresPollo.id,    fecha: daysAgo(n), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '18:00', horas_trabajadas: 10 });
+  }
+  // Lisandro llegó tarde hace 3 días — Matías ya la resolvió (aprobada, conserva el premio).
+  await upsertRegistroAsistencia({
+    empleado_id: empPresLisandro.id, fecha: daysAgo(3), estado: 'TARDE', hora_ingreso: '08:20', hora_egreso: '17:00',
+    horas_trabajadas: 8.67, minutos_tardanza: 20, descuenta_presentismo: false,
+    tardanza_requiere_aprobacion: true, tardanza_aprobada: true,
+  });
+  for (const n of [2, 1]) {
+    await upsertRegistroAsistencia({ empleado_id: empPresLisandro.id, fecha: daysAgo(n), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '17:00', horas_trabajadas: 9 });
+  }
+  // David faltó sin aviso hace 2 días — pierde el presentismo del mes.
+  await upsertRegistroAsistencia({ empleado_id: empPresDavid.id, fecha: daysAgo(2), estado: 'AUSENTE', descuenta_presentismo: true });
+  // Mayra tuvo una falta justificada (médico) ayer — no descuenta.
+  await upsertRegistroAsistencia({ empleado_id: empPresMayra.id, fecha: daysAgo(1), estado: 'JUSTIFICADO', motivo: 'Turno médico', descuenta_presentismo: false });
+  // Hoy — Pollo llegó tarde y su tardanza queda pendiente de que Matías la resuelva.
+  await upsertRegistroAsistencia({
+    empleado_id: empPresPollo.id, fecha: daysAgo(0), estado: 'TARDE', hora_ingreso: '08:35',
+    minutos_tardanza: 35, descuenta_presentismo: true, tardanza_requiere_aprobacion: true, tardanza_aprobada: null,
+  });
+  await upsertRegistroAsistencia({ empleado_id: empPresBenjamin.id, fecha: daysAgo(0), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '17:00', horas_trabajadas: 9 });
+  await upsertRegistroAsistencia({ empleado_id: empPresDavid.id,    fecha: daysAgo(0), estado: 'PRESENTE', hora_ingreso: '07:30', hora_egreso: '16:30', horas_trabajadas: 9 });
+  await upsertRegistroAsistencia({ empleado_id: empPresMayra.id,    fecha: daysAgo(0), estado: 'PRESENTE', hora_ingreso: '08:00', hora_egreso: '17:00', horas_trabajadas: 9 });
+  // Lisandro sin cargar hoy — deliberado, para mostrar "Sin cargar" en la vista diaria.
+
+  console.log('✓ Registros de Presentismo DOS57: 5 días creados/existentes (incluye 1 tardanza pendiente de aprobación)');
 
   // ── ESPACIOS COMPARTIDOS ─────────────────────────────────────────────────────
   const espacioExistente = await prisma.espacioCompartido.findFirst({ where: { nombre: 'Coworking', empresa_id: EMPRESA_ID, deleted_at: null } });

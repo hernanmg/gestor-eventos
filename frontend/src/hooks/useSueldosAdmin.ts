@@ -222,6 +222,9 @@ export interface GenerarLiquidacionAdminPayload {
   // acuerdos categoria_acuerdo=CHOFER el backend lo aplica automático aunque
   // esto no se mande.
   viatico_override?:    number | null;
+  // Manual — sólo se usa si NO existe ResumenPresentismo cerrado para el
+  // período (ver Control de Presentismo, Lorena); si existe, éste manda.
+  premio_presentismo_override?: number | null;
   // Aumento sobre el básico — manual o traído del INDEC.
   tipo_aumento?:         TipoAumento;
   porcentaje_aumento?:   number;
