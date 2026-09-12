@@ -118,16 +118,21 @@ export default function HelpPanel() {
       {/* Overlay (mobile) */}
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="no-print fixed inset-0 z-30 bg-black/30 md:hidden"
           onClick={() => setOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* Slide-in panel */}
+      {/* Slide-in panel — no-print: es "fixed" y se oculta con translate-x-full,
+          nunca se desmonta. En impresión real el ancho de página (~739px en
+          carta) cae por debajo del breakpoint md (768px) de Tailwind, así que
+          w-full (mobile) gana sobre md:w-[380px] y el panel — aunque esté
+          "cerrado" en pantalla — puede terminar ocupando toda la página
+          impresa como un rectángulo blanco encima de todo. */}
       <div
         className={cn(
-          'fixed top-0 right-0 z-40 h-full bg-white border-l border-border shadow-xl',
+          'no-print fixed top-0 right-0 z-40 h-full bg-white border-l border-border shadow-xl',
           'transition-transform duration-200 ease-in-out',
           'w-full md:w-[380px]',
           open ? 'translate-x-0' : 'translate-x-full',
@@ -264,7 +269,7 @@ export default function HelpPanel() {
       <button
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'fixed bottom-5 right-5 z-50 flex items-center justify-center',
+          'no-print fixed bottom-5 right-5 z-50 flex items-center justify-center',
           'h-10 w-10 rounded-full shadow-lg transition-colors',
           open
             ? 'bg-primary text-primary-foreground'

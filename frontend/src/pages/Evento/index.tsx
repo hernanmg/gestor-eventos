@@ -23,6 +23,7 @@ import EventoStockPage from './Stock';
 import EventoFacturas from './Facturas';
 import FacturasACobrarTab from './FacturasACobrar';
 import ComidasPage from './Comidas';
+import EventoCombustibleTab from './EventoCombustibleTab';
 import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
 import { cn } from '@/lib/utils';
@@ -218,7 +219,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'COMBUSTIBLE' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -235,6 +236,7 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'ECHEQS',        label: 'Echeqs',        adminOnly: true },
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
   { key: 'COMIDAS',       label: 'Comidas'       },
+  { key: 'COMBUSTIBLE',   label: 'Combustible'   },
   { key: 'FACTURAS',      label: 'Facturas',      adminOnly: true },
   { key: 'A_COBRAR',      label: 'A Cobrar',      adminOnly: true },
   { key: 'AUDITORIA',     label: 'Auditoría',     adminOnly: true },
@@ -543,6 +545,10 @@ export default function EventoPage() {
 
         {mainTab === 'COMIDAS' && (
           <ComidasPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'COMBUSTIBLE' && (
+          <EventoCombustibleTab eventoId={eventoId} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

@@ -34,6 +34,7 @@ import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
 import EspaciosCompartidosPage from '@/pages/EspaciosCompartidos';
 import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
 import PresentismoPage      from '@/pages/Presentismo';
+import CombustiblePage      from '@/pages/Combustible';
 import { useAuth }          from '@/hooks/useAuth';
 import { EMPRESAS }         from '@/lib/empresasConstants';
 
@@ -47,15 +48,18 @@ const queryClient = new QueryClient({
 });
 
 // Admin global (rol ADMIN sin empresa fija) va a /macro; el resto de roles a
-// /eventos. Excepción: OPERADOR de DOS57 cuyo usuario es Lorena va directo a
-// /presentismo, su pantalla principal (ver pedido de Control de Presentismo).
-// Placeholder por nombre hasta que exista un rol/flag "PRESENTISMO" dedicado.
+// /eventos. Excepciones: OPERADOR de DOS57 cuyo usuario es Lorena va directo a
+// /presentismo (ver pedido de Control de Presentismo); Santi o Nico (OPERADOR
+// de DOS57, flota) van directo a /combustible, su pantalla principal (ver
+// [[combustible_flota_dos57]]). Placeholder por nombre hasta que exista un
+// rol/flag dedicado.
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return null;
   const esAdminGlobal = user.rol === 'ADMIN' && user.puedeCambiarEmpresa;
   const esLorena = user.rol === 'OPERADOR' && user.empresaId === EMPRESAS.DOS57 && /loren/i.test(user.nombre);
-  return <Navigate to={esAdminGlobal ? '/macro' : esLorena ? '/presentismo' : '/eventos'} replace />;
+  const esSantiONico = user.rol === 'OPERADOR' && user.empresaId === EMPRESAS.DOS57 && /santi|nico/i.test(user.nombre);
+  return <Navigate to={esAdminGlobal ? '/macro' : esLorena ? '/presentismo' : esSantiONico ? '/combustible' : '/eventos'} replace />;
 }
 
 export default function App() {
@@ -95,6 +99,7 @@ export default function App() {
             <Route path="/cuentas-corrientes"      element={<CuentasCorrientesPage />} />
             <Route path="/cuentas-corrientes/:id"  element={<CuentaCorrienteDetalle />} />
             <Route path="/flota"                   element={<FlotaPage />} />
+            <Route path="/combustible"             element={<CombustiblePage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />

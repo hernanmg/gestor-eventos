@@ -27,7 +27,7 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="app-shell flex h-screen overflow-hidden bg-gray-50">
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(v => !v)}
@@ -36,7 +36,7 @@ export default function ProtectedLayout() {
       />
 
       {/* Contenido principal */}
-      <main className="flex-1 overflow-auto min-w-0">
+      <main className="app-main flex-1 overflow-auto min-w-0">
         <Outlet />
       </main>
 

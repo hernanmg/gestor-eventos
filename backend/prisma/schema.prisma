@@ -262,6 +262,7 @@ model Empresa {
   patentesVehiculo       PatenteVehiculo[]
   gastosPeaje            GastoPeaje[]
   serviciosTaller        ServicioTaller[]
+  cargasCombustible      CargaCombustible[]
   planesAFIP             PlanAFIP[]
   prestamosBancarios     PrestamoBancario[]
   facturasEmitidas       FacturaEmitida[]
@@ -391,6 +392,7 @@ model Evento {
   movimientosCCC         MovimientoCCC[]
   gastos_peaje           GastoPeaje[]
   facturas_emitidas      FacturaEmitida[]
+  cargas_combustible     CargaCombustible[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -885,6 +887,11 @@ model Camion {
   fecha_baja      DateTime?
   motivo_baja     String?
 
+  // ── Módulo Combustible — odómetro actualizado en cada carga; tope mensual de
+  // la hoja "CARGAS AUTORIZADAS" de la planilla real (null = sin límite) ──────
+  km_actual                  Int?
+  limite_mensual_combustible Decimal? @db.Decimal(12, 2)
+
   asignaciones         AsignacionStock[]
   jornadas             Jornada[]
   asignaciones_diarias AsignacionDiaria[]
@@ -892,6 +899,7 @@ model Camion {
   patentes             PatenteVehiculo[]
   gastos_peaje         GastoPeaje[]
   servicios_taller     ServicioTaller[]
+  cargas_combustible   CargaCombustible[]
 
   @@unique([codigo, empresa_id])
 }
@@ -1022,6 +1030,115 @@ model ServicioTaller {
   updated_at          DateTime             @updatedAt
   deleted_at          DateTime?
   created_by          Int?
+}
+
+// ─── COMBUSTIBLE (flota — pantalla de Santi/Nico) ────────────────────────────
+// Relevamiento: la carga real en la estación (YPF, cuenta corriente) NO
+// registra km/tipo de combustible — eso se pide acá como mejora nueva, no
+// como migración de un dato que ya existía. Ver [[combustible_flota_dos57]].
+
+enum TipoCombustible {
+  NAFTA_SUPER
+  NAFTA_PREMIUM
+  DIESEL
+  GNC
+}
+
+// AUTORIZADA: cargas de la cuenta corriente del proveedor de combustible
+// (YPF u otro) — el vehículo ya está habilitado en la estación, nace
+// autorizada. PENDIENTE_AUTORIZACION: "cargas extra" pagadas de la caja
+// chica de una persona cuando el vehículo no está habilitado en la
+// estación — control que agregó Pollo, requiere que ADMIN la autorice.
+enum EstadoCargaCombustible {
+  AUTORIZADA
+  PENDIENTE_AUTORIZACION
+  RECHAZADA
+}
+
+model CargaCombustible {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  // Nullable — las filas de PAGOS (TIPO=RE, transferencias) y NC (notas de
+  // crédito) del ledger real no tienen un vehículo real asociado ("TRANSF",
+  // "NOTA DE CREDITO" en la columna VEHICULO de la planilla). Sin esto, esas
+  // filas quedaban afuera del import y los totales de Pagos nunca se veían.
+  camion_id  Int?
+  camion     Camion? @relation(fields: [camion_id], references: [id])
+
+  // Datos de la carga
+  fecha            DateTime
+  tipo_combustible TipoCombustible @default(DIESEL)
+  litros           Decimal         @db.Decimal(10, 3) // 3 decimales, igual que la planilla real (ej. 781,103 L)
+  precio_por_litro Decimal?        @db.Decimal(10, 2)
+  monto_total      Decimal         @db.Decimal(12, 2)
+
+  // Ledger de la planilla real (columnas TIPO / N° FA/COMP / PAGOS / SALDO) —
+  // numero_comprobante es la clave real de deduplicación al importar: dos
+  // filas con el mismo número EN EL MISMO MES son la misma operación
+  // reimportada (skip), dos comprobantes distintos son siempre dos cargas
+  // reales aunque el resto de los valores coincida. El número NO es único en
+  // todo el año — la planilla real reutiliza números de comprobante entre
+  // meses distintos (verificado: "92-3509" aparece en ENERO y en AGOSTO como
+  // dos cargas reales distintas) — por eso el dedup compara además la fecha.
+  // pagos/saldo se guardan tal cual vienen del Excel, sólo informativos — no
+  // los recalculamos nosotros.
+  numero_comprobante String?
+  tipo_movimiento    String? // "FA" / "NC" tal cual la columna TIPO del Excel
+  pagos              Decimal? @db.Decimal(12, 2)
+  saldo              Decimal? @db.Decimal(15, 2)
+  // Posición de la fila dentro de la planilla importada — el Excel no tiene
+  // hora, sólo fecha, así que varias filas comparten el mismo DateTime; esto
+  // preserva su orden real dentro del día (necesario para "saldo más
+  // reciente"). Null en cargas manuales, donde no hay ambigüedad de fuente.
+  orden              Int?
+
+  // Estación de servicio
+  estacion_nombre String?
+  estacion_ciudad String?
+
+  // Kilómetros — no se registra hoy en la planilla real, campo nuevo
+  km_actual             Int?
+  km_anterior           Int?
+  km_recorridos         Int?
+  rendimiento_lts_100km Decimal? @db.Decimal(6, 2)
+
+  // Autorización
+  estado         EstadoCargaCombustible @default(AUTORIZADA)
+  autorizado_por Int? // usuario_id
+  autorizado_at  DateTime?
+
+  // Vínculo con evento (opcional — costo real por evento para Flor). Sólo
+  // texto libre "LUGAR + EVENTO" en la planilla real, hoy sin referencia
+  // estructurada — este campo prepara el terreno aunque el módulo de costo
+  // por evento de Flor todavía no esté implementado.
+  evento_id Int?
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+
+  // Cuenta corriente del proveedor de combustible (YPF u otro) — reutiliza
+  // CuentaCorriente/MovimientoCCC en vez de llevar un saldo propio (decisión
+  // confirmada: no duplicar saldo). Null = "carga extra" pagada de caja
+  // chica, no de la cuenta corriente del proveedor.
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente? @relation(fields: [cuenta_corriente_id], references: [id])
+
+  // Responsable de una "carga extra" (pagada de su caja chica) — columna
+  // RESPONSABLE de la planilla real. Null en cargas de cuenta corriente.
+  responsable_nombre String?
+
+  // Comprobante
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  @@index([empresa_id, numero_comprobante])
 }
 
 // Cuna/rack — unidad logística estandarizada de DOS57
@@ -2157,10 +2274,11 @@ model CuentaCorriente {
   created_by Int?
   updated_by Int?
 
-  partes          ParteCCC[]
-  movimientos     MovimientoCCC[]
-  serviciosTaller ServicioTaller[]
-  partesEspacio   ParteEspacio[]
+  partes            ParteCCC[]
+  movimientos       MovimientoCCC[]
+  serviciosTaller   ServicioTaller[]
+  partesEspacio     ParteEspacio[]
+  cargasCombustible CargaCombustible[]
 }
 
 // Reparto porcentual entre partes de una cuenta corriente (ej: Nave 15 — 50/50).

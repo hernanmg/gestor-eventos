@@ -694,6 +694,9 @@ export interface Camion {
   en_servicio?:      boolean;
   fecha_baja?:       string | null;
   motivo_baja?:      string | null;
+  // ── Módulo Combustible ────────────────────────────────────────────────────
+  km_actual?:                  number | null;
+  limite_mensual_combustible?: number | null;
 }
 
 // ── Flota — seguros, patentes, peajes, taller ─────────────────────────────────
@@ -789,6 +792,77 @@ export interface AlertaFlotaItem {
   color:    string;
   urgencia: UrgenciaCalendario;
   metadata: Record<string, unknown>;
+}
+
+// ── Combustible (flota — pantalla de Santi/Nico) ──────────────────────────────
+
+export type TipoCombustible = 'NAFTA_SUPER' | 'NAFTA_PREMIUM' | 'DIESEL' | 'GNC';
+export type EstadoCargaCombustible = 'AUTORIZADA' | 'PENDIENTE_AUTORIZACION' | 'RECHAZADA';
+
+export interface CargaCombustible {
+  id:                   number;
+  // Nullable — los movimientos de cuenta corriente sin vehículo (TIPO=RE/NC:
+  // pago o nota de crédito, importados desde el ledger real) no tienen camión.
+  camion_id:            number | null;
+  camion:               { id: number; codigo: string; descripcion: string | null; patente: string | null } | null;
+  fecha:                string;
+  tipo_combustible:     TipoCombustible;
+  litros:               number;
+  precio_por_litro:     number | null;
+  monto_total:          number;
+  estacion_nombre:      string | null;
+  estacion_ciudad:      string | null;
+  km_actual:            number | null;
+  km_anterior:          number | null;
+  km_recorridos:        number | null;
+  rendimiento_lts_100km: number | null;
+  estado:               EstadoCargaCombustible;
+  autorizado_por:       number | null;
+  autorizado_at:        string | null;
+  evento_id:            number | null;
+  evento:               { id: number; nombre: string } | null;
+  cuenta_corriente_id:  number | null;
+  responsable_nombre:   string | null;
+  numero_comprobante:   string | null;
+  tipo_movimiento:      string | null;
+  pagos:                number | null;
+  saldo:                number | null;
+  comprobante_nombre:   string | null;
+  notas:                string | null;
+}
+
+export interface ResumenMensualCombustibleItem {
+  camion_id:             number;
+  camion_codigo:         string;
+  camion_patente:        string | null;
+  total_litros:          number;
+  total_monto:           number;
+  promedio_precio_litro: number | null;
+  rendimiento_promedio:  number | null;
+  cantidad_cargas:       number;
+  por_evento:            { evento_id: number; evento_nombre: string; litros: number; monto: number }[];
+}
+
+export interface ResumenSemanalCombustible {
+  semana_key:           string;
+  numero:               number;
+  semana_inicio:        string;
+  semana_fin:           string;
+  label:                string;
+  total_litros:         number;
+  total_monto:          number;
+  total_pagos:          number;
+  variacion_litros_pct: number | null;
+  por_vehiculo:         { camion_id: number; codigo: string; patente: string | null; litros: number; monto: number }[];
+}
+
+export interface AnalisisAnualCombustible {
+  anio:               number;
+  total_litros_anual: number;
+  total_monto_anual:  number;
+  por_mes:            { mes: number; label: string; litros: number; monto: number; variacion_pct: number | null }[];
+  por_vehiculo:       { camion_id: number; codigo: string; total_anual: number; por_mes: number[]; total_anual_monto: number; por_mes_monto: number[] }[];
+  forecast:           { mes: number; label: string; litros_proyectados: number; monto_proyectado: number }[];
 }
 
 // ── AFIP y Préstamos Bancarios ───────────────────────────────────────────────

@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { updateEstadoSeguros } from './flota.controller';
+import { ubicarPeriodo, periodoAnterior, rangoSemanaFija } from './combustible.controller';
+import { EMPRESAS } from '../lib/empresasConstants';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -423,6 +425,59 @@ async function resolveGastosEspacioVencidos(empresaId: number, hoy: Date): Promi
   }));
 }
 
+// Cierre de semana de combustible (Santi/Nico, DOS57) — Flor (costo por
+// evento), Mayra (finanzas) y Andrea (gastos del mes) piden verlo apenas se
+// cierra cada semana (pedido explícito, ver [[combustible_flota_dos57]]).
+// Placeholder por nombre — mismo criterio que esLorena/esSanti en App.tsx —
+// hasta que exista un rol/flag dedicado. No se filtra por empresa activa a
+// propósito: combustible es de DOS57 pero estas 3 personas deben verlo sea
+// cual sea la empresa en la que estén paradas.
+async function resolveCombustibleSemanaCerrada(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null }, select: { nombre: true } });
+  if (!usuario || !/flor|mayra|andrea/i.test(usuario.nombre)) return [];
+
+  const hoy = new Date();
+  const periodoActual   = ubicarPeriodo(hoy);
+  const periodoCerrado  = periodoAnterior(periodoActual);
+  const periodoPrevio   = periodoAnterior(periodoCerrado);
+  const { desde: desdeCerrado, hasta: hastaCerrado } = rangoSemanaFija(periodoCerrado);
+  const { desde: desdePrevio, hasta: hastaPrevio }   = rangoSemanaFija(periodoPrevio);
+  const finCerrado = new Date(hastaCerrado.getTime() + 86_400_000); // exclusivo
+  const finPrevio  = new Date(hastaPrevio.getTime() + 86_400_000);
+
+  const [cargasCerrada, cargasAnterior] = await Promise.all([
+    prisma.cargaCombustible.findMany({
+      where: { deleted_at: null, empresa_id: EMPRESAS.DOS57, fecha: { gte: desdeCerrado, lt: finCerrado } },
+      include: { camion: { select: { codigo: true } }, evento: { select: { nombre: true } } },
+    }),
+    prisma.cargaCombustible.findMany({
+      where: { deleted_at: null, empresa_id: EMPRESAS.DOS57, fecha: { gte: desdePrevio, lt: finPrevio } },
+      select: { litros: true },
+    }),
+  ]);
+  if (cargasCerrada.length === 0) return [];
+
+  const totalLitros = cargasCerrada.reduce((s, c) => s + Number(c.litros), 0);
+  const totalAnterior = cargasAnterior.reduce((s, c) => s + Number(c.litros), 0);
+  const variacion = totalAnterior > 0 ? Math.round(((totalLitros - totalAnterior) / totalAnterior) * 100) : null;
+
+  const eventos = [...new Set(cargasCerrada.filter(c => c.evento).map(c => c.evento!.nombre))];
+  const fmt = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  return [{
+    id:          `combustible-semana-${periodoCerrado.anio}-${periodoCerrado.mes}-${periodoCerrado.numero}`,
+    tipo:        'COMBUSTIBLE_SEMANA_CERRADA',
+    titulo:      `Combustible — semana ${periodoCerrado.numero} (${fmt(desdeCerrado)} al ${fmt(hastaCerrado)}) cerrada`,
+    descripcion: `${totalLitros.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} L en total`
+      + (variacion !== null ? ` (${variacion >= 0 ? '+' : ''}${variacion}% vs. semana anterior)` : '')
+      + (eventos.length ? ` — eventos: ${eventos.join(', ')}` : ''),
+    urgencia:    'info',
+    link:        '/combustible?tab=resumen',
+    fecha:       finCerrado,
+  }];
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -448,6 +503,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveGastosEspacioVencidos(empresaId, hoy),
     resolveTardanzasPendientes(req),
     resolvePresentismoCerradoPendiente(empresaId),
+    resolveCombustibleSemanaCerrada(req),
   ]);
 
   const items = resultados

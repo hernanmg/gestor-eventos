@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto, EstadoCargaCombustible } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -147,6 +147,24 @@ export function ServicioTallerEstadoBadge({ estado }: { estado: EstadoServicioTa
       {SERVICIO_TALLER_LABEL[estado]}
     </Badge>
   );
+}
+
+// ── Combustible ────────────────────────────────────────────────────────────────
+
+const COMBUSTIBLE_ESTADO_VARIANT: Record<EstadoCargaCombustible, VariantProps<typeof badgeVariants>['variant']> = {
+  AUTORIZADA:             'success',
+  PENDIENTE_AUTORIZACION: 'warning',
+  RECHAZADA:              'destructive',
+};
+
+export const COMBUSTIBLE_ESTADO_LABEL: Record<EstadoCargaCombustible, string> = {
+  AUTORIZADA:             'Autorizada',
+  PENDIENTE_AUTORIZACION: 'Pendiente',
+  RECHAZADA:              'Rechazada',
+};
+
+export function CombustibleEstadoBadge({ estado }: { estado: EstadoCargaCombustible }) {
+  return <Badge variant={COMBUSTIBLE_ESTADO_VARIANT[estado]}>{COMBUSTIBLE_ESTADO_LABEL[estado]}</Badge>;
 }
 
 // ── AFIP y Préstamos Bancarios ───────────────────────────────────────────────

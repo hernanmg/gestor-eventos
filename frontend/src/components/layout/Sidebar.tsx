@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -79,7 +79,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="no-print fixed inset-0 z-20 bg-black/50 md:hidden"
           onClick={onToggle}
           aria-hidden="true"
         />
@@ -87,7 +87,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
       <aside
         className={cn(
-          'flex flex-col h-full bg-white border-r border-border',
+          'no-print flex flex-col h-full bg-white border-r border-border',
           'transition-all duration-200 ease-in-out overflow-hidden',
           'fixed inset-y-0 left-0 z-30',
           isOpen ? 'translate-x-0' : '-translate-x-full',
@@ -294,6 +294,17 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   </span>
                 </>
               )}
+            </NavLink>
+          )}
+
+          {/* Combustible (Santi/Nico, DOS57) — dentro de la sección de Flota,
+              mismo criterio de visibilidad que Presentismo: DOS57 fija +
+              ADMIN/OPERADOR, más el admin global sea cual sea su empresa
+              activa (ver [[combustible_flota_dos57]]). */}
+          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
+            <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
+              <Fuel size={18} className="shrink-0" />
+              {isOpen && <span>Combustible</span>}
             </NavLink>
           )}
 

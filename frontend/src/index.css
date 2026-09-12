@@ -57,3 +57,73 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Exportar PDF (Combustible) ────────────────────────────────────────────
+   El botón "Exportar PDF" de cada sección usa window.print() sobre lo que ya
+   está en pantalla — no arma una copia oculta aparte (eso rompe el
+   redimensionado de los gráficos de Recharts, que miden su contenedor por
+   ResizeObserver y ven 0×0 si estuvo con display:none). En cambio, todo lo
+   que NO debe salir en el PDF (sidebar, tabs, filtros, botones de acción)
+   lleva clase .no-print, y cada sección imprimible tiene su propio header
+   con clase .print-only (oculto en pantalla, visible sólo al imprimir). */
+.print-only {
+  display: none;
+}
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+
+  /* El shell de la app (ProtectedLayout) fija h-screen/overflow-hidden en el
+     contenedor raíz y overflow-auto en <main> para que el scroll interno
+     funcione en pantalla. Al imprimir eso puede colapsar la altura real
+     (100vh se calcula distinto contra el tamaño de página) y dejar todo
+     recortado o directamente en blanco según el navegador. En impresión no
+     hace falta scroll — se vuelve a flujo normal de documento. */
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .app-shell {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .app-main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Defensa contra extensiones de modo oscuro (Dark Reader y similares) que
+     invierten/filtran colores en pantalla pero fallan al imprimir, dejando
+     texto claro sobre fondo claro (o directamente en blanco). Forzamos
+     colores explícitos sólo para la impresión, sin tocar el tema en pantalla. */
+  html, body, .app-shell, .app-main, .app-main * {
+    background-color: #fff !important;
+    color: #0f172a !important;
+    color-scheme: light !important;
+  }
+
+  /* Tablas anchas (p.ej. Cargas del mes, con min-width fijo para poder
+     scrollear horizontalmente en pantalla) exceden el ancho imprimible de
+     una hoja y las columnas de la derecha quedan cortadas. En impresión no
+     hace falta el scroll: se imprime en horizontal (más ancho disponible) y
+     se libera el min-width para que la tabla se achique a la página, con
+     tipografía más chica para que entren todas las columnas. */
+  @page {
+    size: landscape;
+    margin: 12mm;
+  }
+  table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto;
+  }
+  table th, table td {
+    padding: 2px 4px !important;
+    font-size: 9px !important;
+  }
+}

@@ -45,6 +45,15 @@ export function formatCurrency(amount: number, moneda: MonedaFormateable = 'ARS'
   return fmtMoney(amount, moneda);
 }
 
+// Litros del módulo Combustible — siempre 3 decimales, igual que la planilla
+// real de Santi (ej. "781,103 L"), nunca redondeado a menos decimales.
+export function formatLitros(litros: number | string | null | undefined): string {
+  if (litros === null || litros === undefined) return '—';
+  const num = typeof litros === 'string' ? parseFloat(litros) : litros;
+  if (isNaN(num)) return '—';
+  return num.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 export function currencySymbol(moneda: MonedaFormateable): string {
   if (moneda === 'USD') return 'US$';
   if (moneda === 'EUR') return '€';
