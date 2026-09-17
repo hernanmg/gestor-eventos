@@ -508,6 +508,8 @@ export interface MovimientoOrigen {
   estado_movimiento: EstadoMovimiento | null;
 }
 
+export type CategoriaAndrea = 'COMBUSTIBLE' | 'COMIDA' | 'GASTOS_VARIOS' | 'SERVICIOS' | 'DEV_GASTOS' | 'VALES';
+
 export interface MovimientoCaja {
   id:                   number;
   cuenta_id:            number;
@@ -520,6 +522,15 @@ export interface MovimientoCaja {
   debe:                 number;
   haber:                number;
   saldo_corriente:      number; // calculado por el backend
+  // Columna del libro diario de Andrea (Caja del mes, DOS57) — null en un
+  // ingreso o en un movimiento de otro módulo que no pasa por esa vista.
+  categoria_andrea:     CategoriaAndrea | null;
+  responsable_nombre:   string | null;
+  // N° de comprobante importado del Excel (ej. "FA 105053") o cargado a mano.
+  referencia:           string | null;
+  comprobante_nombre:   string | null;
+  tiene_comprobante:    boolean;
+  liquidacion_admin_id?: number | null;
   orden:                number;
   transferencia_par_id: number | null;
   movimiento_origen:    MovimientoOrigen | null;
@@ -528,6 +539,111 @@ export interface MovimientoCaja {
   deleted_at:           string | null;
   created_by:           number | null;
   updated_by:           number | null;
+}
+
+// ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
+
+export interface ResumenAndrea {
+  cuenta: { id: number; nombre: string; moneda: Moneda; saldo_actual: number };
+  saldo_anterior: number;
+  movimientos: (MovimientoCaja & { saldo_acumulado: number })[];
+  totales: {
+    ingreso:       number;
+    combustible:   number;
+    comida:        number;
+    gastos_varios: number;
+    servicios:     number;
+    dev_gastos:    number;
+    vales:         number;
+    saldo_final:   number;
+  };
+}
+
+export interface ImportAndreaResultado {
+  hojas_procesadas: number;
+  hojas_omitidas:   string[];
+  cuentas_creadas:  string[];
+  creados:          number;
+  omitidos:         number;
+  errores:          string[];
+}
+
+// ── Siniestros de empleados (ART, DOS57) ──────────────────────────────────────
+
+export type TipoSiniestro    = 'ACCIDENTE_TRABAJO' | 'ENFERMEDAD_LABORAL' | 'ACCIDENTE_IN_ITINERE' | 'OTRO';
+export type EstadoSiniestro  = 'ABIERTO' | 'EN_TRAMITE' | 'CERRADO' | 'RECHAZADO';
+
+export interface GastoSiniestro {
+  id:                 number;
+  siniestro_id:       number;
+  fecha:              string;
+  descripcion:        string;
+  monto:              number;
+  cubierto_art:       boolean;
+  monto_cubierto:     number | null;
+  monto_empresa:      number | null;
+  comprobante_nombre: string | null;
+  tiene_comprobante:  boolean;
+  created_at:         string;
+  created_by:         number | null;
+}
+
+export interface DocumentoSiniestro {
+  id:           number;
+  siniestro_id: number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  created_at:   string;
+  created_by:   number | null;
+}
+
+export interface SiniestroEmpleado {
+  id:                   number;
+  empresa_id:           number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  tipo:                 TipoSiniestro;
+  fecha_ocurrencia:     string;
+  descripcion:          string;
+  lugar:                string | null;
+  evento_id:            number | null;
+  evento?:              { id: number; nombre: string } | null;
+  art_nombre:           string | null;
+  art_numero_siniestro: string | null;
+  fecha_denuncia_art:   string | null;
+  estado:               EstadoSiniestro;
+  dias_baja:            number | null;
+  fecha_alta_medica:    string | null;
+  gastos?:              GastoSiniestro[];
+  documentos?:          DocumentoSiniestro[];
+  total_gastos:          number;
+  total_cubierto_art:    number;
+  total_a_cargo_empresa: number;
+  created_at:           string;
+  updated_at:           string;
+  deleted_at:           string | null;
+  created_by:           number | null;
+}
+
+// ── Excedente de horas (Fofi/Nestoras) ────────────────────────────────────────
+
+export interface ExcedenteHoras {
+  id:                   number;
+  empresa_id:           number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  periodo_mes:          number;
+  periodo_anio:         number;
+  horas_excedente:      number;
+  valor_hora:           number;
+  monto_total:          number;
+  pagado:               boolean;
+  fecha_pago:           string | null;
+  liquidacion_admin_id: number | null;
+  created_at:           string;
+  updated_at:           string;
+  created_by:           number | null;
 }
 
 export interface PosicionCuenta {

@@ -400,6 +400,11 @@ async function main() {
     { nombre: 'Caja Reserva',       tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
     { nombre: 'Caja Pollo',         tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
     { nombre: 'Caja Jazmín',        tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    // Vista de Andrea (Caja del mes) — resto de las hojas de CAJAS_JULIO-2026.xlsx.
+    { nombre: 'Caja Guardada',   tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Adelantos DOS57', tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Caja Miguel',     tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    { nombre: 'Caja David',      tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
   ];
 
   for (const cuenta of CUENTAS_DOS57) {

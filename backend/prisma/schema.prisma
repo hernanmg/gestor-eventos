@@ -272,6 +272,8 @@ model Empresa {
   partesEspacioEmpresa   ParteEspacio[]
   registrosAsistencia    RegistroAsistencia[]
   resumenesPresentismo   ResumenPresentismo[]
+  siniestrosEmpleado     SiniestroEmpleado[]
+  excedentesHoras        ExcedenteHoras[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -380,7 +382,7 @@ model Evento {
   echeqs                 Echeq[]
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
-  asignaciones_prestadas AsignacionStock[]  @relation("StockPrestado")
+  asignaciones_prestadas AsignacionStock[]   @relation("StockPrestado")
   facturas               Factura[]
   jornadas               Jornada[]
   liquidaciones          Liquidacion[]
@@ -393,6 +395,7 @@ model Evento {
   gastos_peaje           GastoPeaje[]
   facturas_emitidas      FacturaEmitida[]
   cargas_combustible     CargaCombustible[]
+  siniestros_empleado    SiniestroEmpleado[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -649,6 +652,21 @@ model MovimientoCaja {
   // de una única LiquidacionAdmin. Null en cualquier otro movimiento de caja.
   liquidacion_admin_id Int?
   liquidacion_admin    LiquidacionAdmin? @relation("LiquidacionAdminMovimientos", fields: [liquidacion_admin_id], references: [id])
+
+  // ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
+  // Columna del Excel real (CAJAS_JULIO-2026.xlsx) donde cae este movimiento de
+  // egreso: "COMBUSTIBLE" | "COMIDA" | "GASTOS_VARIOS" | "SERVICIOS" |
+  // "DEV_GASTOS" | "VALES". Null en un movimiento de ingreso (columna INGRESO
+  // del Excel) o en movimientos de otros módulos que no pasan por esta vista.
+  categoria_andrea   String?
+  responsable_nombre String?
+  // N° de comprobante — "N° COMP."/"N° COMPROBANTE"/"COMP.N°" del Excel real
+  // (ej. "FA 105053", "TICK 994934"). Distinto de comprobante_nombre (el
+  // archivo adjunto): esto es sólo el número/referencia de texto.
+  referencia         String?
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
 }
 
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
@@ -1509,6 +1527,8 @@ model Empleado {
   bitacora_viajes       BitacoraViaje[]
   registros_asistencia  RegistroAsistencia[]
   resumenes_presentismo ResumenPresentismo[]
+  siniestros            SiniestroEmpleado[]
+  excedentes_horas      ExcedenteHoras[]
 }
 
 model Jornada {
@@ -1860,6 +1880,9 @@ model LiquidacionAdmin {
   // registros individuales para trazabilidad (mismo criterio que
   // pagos_prestamos/bitacora_viajes).
   anticipos                   Anticipo[]
+  // Excedentes de horas (Fofi/Nestoras) pagados vinculando esta liquidación —
+  // ver ExcedenteHoras.liquidacion_admin_id.
+  excedentes_horas            ExcedenteHoras[]
   // audit
   created_at                  DateTime               @default(now())
   updated_at                  DateTime               @updatedAt
@@ -2587,4 +2610,121 @@ model RepartoLineaGasto {
   // Si la parte tiene CuentaCorriente → movimiento DEBE creado automáticamente
   movimiento_ccc_id Int?
   movimiento_ccc    MovimientoCCC?    @relation(fields: [movimiento_ccc_id], references: [id])
+}
+
+// ─── SINIESTROS DE EMPLEADOS (ART, DOS57 — pantalla de Andrea) ───────────────
+// Distinto de SeguroVehiculo/GastoPeaje (siniestros de la FLOTA, que lleva
+// otra persona) — ver relevamiento de Andrea: "tenemos dos siniestros,
+// siniestros de la flota y siniestros de los empleados". Este módulo es sólo
+// el segundo: accidentes de trabajo / ART.
+
+enum TipoSiniestro {
+  ACCIDENTE_TRABAJO
+  ENFERMEDAD_LABORAL
+  ACCIDENTE_IN_ITINERE // en el trayecto al trabajo
+  OTRO
+}
+
+enum EstadoSiniestro {
+  ABIERTO
+  EN_TRAMITE
+  CERRADO
+  RECHAZADO
+}
+
+model SiniestroEmpleado {
+  id          Int      @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id Int
+  empleado    Empleado @relation(fields: [empleado_id], references: [id])
+
+  // ── Datos del siniestro ──────────────────────────────────────────────────────
+  tipo             TipoSiniestro
+  fecha_ocurrencia DateTime
+  descripcion      String
+  lugar            String? // dónde ocurrió
+  evento_id        Int? // si ocurrió en un evento
+  evento           Evento?       @relation(fields: [evento_id], references: [id])
+
+  // ── ART ───────────────────────────────────────────────────────────────────────
+  art_nombre           String? // "SANCOR", "FEDERACION PATRONAL", etc.
+  art_numero_siniestro String? // número asignado por la ART
+  fecha_denuncia_art   DateTime?
+
+  // ── Estado y seguimiento ─────────────────────────────────────────────────────
+  estado            EstadoSiniestro @default(ABIERTO)
+  dias_baja         Int? // días que el empleado estuvo de baja
+  fecha_alta_medica DateTime?
+
+  gastos     GastoSiniestro[]
+  documentos DocumentoSiniestro[]
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+}
+
+model GastoSiniestro {
+  id           Int               @id @default(autoincrement())
+  siniestro_id Int
+  siniestro    SiniestroEmpleado @relation(fields: [siniestro_id], references: [id])
+  fecha        DateTime
+  descripcion  String // "Medicamentos", "Traslado", "Consulta médica"
+  monto        Decimal           @db.Decimal(12, 2)
+
+  cubierto_art   Boolean  @default(false)
+  monto_cubierto Decimal? @db.Decimal(12, 2)
+  monto_empresa  Decimal? @db.Decimal(12, 2)
+
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+
+  created_at DateTime @default(now())
+  created_by Int?
+}
+
+model DocumentoSiniestro {
+  id           Int               @id @default(autoincrement())
+  siniestro_id Int
+  siniestro    SiniestroEmpleado @relation(fields: [siniestro_id], references: [id])
+  nombre       String
+  descripcion  String?
+  archivo_data Bytes
+  archivo_mime String
+
+  created_at DateTime @default(now())
+  created_by Int?
+}
+
+// ─── EXCEDENTE DE HORAS (Fofi/Nestoras — pantalla de Andrea) ─────────────────
+// Horas trabajadas de más que quedan pendientes de pago, fuera de la
+// liquidación semanal normal (ver relevamiento de Andrea).
+model ExcedenteHoras {
+  id          Int      @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id Int
+  empleado    Empleado @relation(fields: [empleado_id], references: [id])
+
+  periodo_mes     Int
+  periodo_anio    Int
+  horas_excedente Decimal @db.Decimal(8, 2)
+  valor_hora      Decimal @db.Decimal(10, 2)
+  monto_total     Decimal @db.Decimal(12, 2)
+
+  // ── Estado de pago ───────────────────────────────────────────────────────────
+  pagado               Boolean           @default(false)
+  fecha_pago           DateTime?
+  liquidacion_admin_id Int? // si se pagó vinculado a una liquidación existente
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+
+  // audit
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
 }

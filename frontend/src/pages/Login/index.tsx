@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/hooks/useAuth';
+import { resolveHomeRoute } from '@/lib/homeRoute';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 
 const schema = z.object({
@@ -17,10 +18,12 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { user, isLoading, login, loginError, isLoginLoading } = useAuth();
 
-  // Si ya hay sesión activa, redirige sin mostrar el formulario
+  // Si ya hay sesión activa, redirige sin mostrar el formulario — misma
+  // lógica que HomeRedirect (antes iba siempre a /eventos "a mano", sin
+  // respetar la pantalla principal de Lorena/Santi-Nico/Andrea).
   useEffect(() => {
     if (!isLoading && user) {
-      navigate(user.empresaId === null ? '/seleccionar-empresa' : '/eventos', { replace: true });
+      navigate(resolveHomeRoute(user), { replace: true });
     }
   }, [user, isLoading, navigate]);
 

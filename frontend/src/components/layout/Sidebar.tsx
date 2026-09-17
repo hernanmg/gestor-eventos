@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -66,6 +66,11 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const facturasEmitidasVencidas = facturasEmitidasResumen?.vencidas_sin_cobrar ?? 0;
   const flotaAlertCount = (flotaAlertas?.items ?? []).filter(a => a.urgencia === 'critical').length;
   const pendientesFirma = (pendSalida?.asignaciones.length ?? 0) + (pendLlegada?.asignaciones.length ?? 0) + (pendRetorno?.asignaciones.length ?? 0);
+
+  // Andrea (DOS57) ve un menú acotado a lo suyo — Gastos del mes primero,
+  // después RRHH/Caja Global/Calendario. La campanita de notificaciones ya
+  // está siempre visible en el header, sin cambios acá.
+  const esAndrea = user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && /andrea/i.test(user.nombre);
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -194,6 +199,25 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               <Package size={18} className="shrink-0" />
               {isOpen && <span>Stock</span>}
             </NavLink>
+          ) : esAndrea ? (
+            <>
+              <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
+                <Banknote size={18} className="shrink-0" />
+                {isOpen && <span>Gastos del mes</span>}
+              </NavLink>
+              <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
+                <Users size={18} className="shrink-0" />
+                {isOpen && <span>RRHH</span>}
+              </NavLink>
+              <NavLink to="/caja" title={!isOpen ? 'Caja Global' : undefined} className={navItem}>
+                <Wallet size={18} className="shrink-0" />
+                {isOpen && <span>Caja Global</span>}
+              </NavLink>
+              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+                <CalendarDays size={18} className="shrink-0" />
+                {isOpen && <span>Calendario</span>}
+              </NavLink>
+            </>
           ) : (
           <>
           {/* Macro — vista cross-evento + KPIs globales (admin global) o vista
@@ -305,6 +329,15 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
               <Fuel size={18} className="shrink-0" />
               {isOpen && <span>Combustible</span>}
+            </NavLink>
+          )}
+
+          {/* Gastos del mes (Andrea, DOS57) — Caja del mes, siniestros de
+              empleados y excedente de horas de Fofi/Nestoras. */}
+          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
+              <Banknote size={18} className="shrink-0" />
+              {isOpen && <span>Gastos del mes</span>}
             </NavLink>
           )}
 

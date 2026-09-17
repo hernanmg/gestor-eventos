@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto, EstadoCargaCombustible } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto, EstadoCargaCombustible, EstadoSiniestro } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -279,4 +279,24 @@ export function FacturarBadge({ facturar }: { facturar: boolean | null }) {
   if (facturar === null) return <Badge variant="warning">Sin facturar</Badge>;
   if (facturar)          return <Badge variant="info">A facturar</Badge>;
   return <Badge variant="muted">No factura</Badge>;
+}
+
+// ── Siniestros de empleados (ART, DOS57 — pantalla de Andrea) ─────────────────
+
+const SINIESTRO_VARIANT: Record<EstadoSiniestro, VariantProps<typeof badgeVariants>['variant']> = {
+  ABIERTO:    'destructive',
+  EN_TRAMITE: 'warning',
+  CERRADO:    'success',
+  RECHAZADO:  'muted',
+};
+
+export const SINIESTRO_LABEL: Record<EstadoSiniestro, string> = {
+  ABIERTO:    'Abierto',
+  EN_TRAMITE: 'En trámite',
+  CERRADO:    'Cerrado',
+  RECHAZADO:  'Rechazado',
+};
+
+export function SiniestroEstadoBadge({ estado }: { estado: EstadoSiniestro }) {
+  return <Badge variant={SINIESTRO_VARIANT[estado]}>{SINIESTRO_LABEL[estado]}</Badge>;
 }

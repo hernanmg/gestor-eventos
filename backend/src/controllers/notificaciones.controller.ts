@@ -478,14 +478,54 @@ async function resolveCombustibleSemanaCerrada(req: Request): Promise<Notificaci
   }];
 }
 
+// Siniestros de empleados (ART) abiertos/en trámite sin avanzar hace más de 30
+// días — pantalla de Andrea (ver [[calendario_controller]] SINIESTRO_PENDIENTE
+// para el mismo dato en el calendario).
+async function resolveSiniestrosSinNovedad(empresaId: number, hace30Dias: Date): Promise<NotificacionItem[]> {
+  const siniestros = await prisma.siniestroEmpleado.findMany({
+    where: { deleted_at: null, empresa_id: empresaId, estado: { in: ['ABIERTO', 'EN_TRAMITE'] }, updated_at: { lt: hace30Dias } },
+    include: { empleado: { select: { nombre: true, apellido: true } } },
+    orderBy: { updated_at: 'asc' },
+  });
+  return siniestros.map(s => ({
+    id:          `siniestro-${s.id}`,
+    tipo:        'SINIESTRO_SIN_NOVEDAD',
+    titulo:      `${s.empleado.apellido}, ${s.empleado.nombre} — siniestro sin novedad`,
+    descripcion: `${s.estado === 'ABIERTO' ? 'Abierto' : 'En trámite'} desde el ${s.updated_at.toLocaleDateString('es-AR')}`,
+    urgencia:    'warning' as Urgencia,
+    link:        '/gastos-operativos?tab=siniestros',
+    fecha:       s.updated_at,
+  }));
+}
+
+// Excedentes de horas (Fofi/Nestoras) pendientes de pago hace más de 60 días.
+async function resolveExcedentesAtrasados(empresaId: number, hace60Dias: Date): Promise<NotificacionItem[]> {
+  const excedentes = await prisma.excedenteHoras.findMany({
+    where: { empresa_id: empresaId, pagado: false, created_at: { lt: hace60Dias } },
+    include: { empleado: { select: { nombre: true, apellido: true } } },
+    orderBy: { created_at: 'asc' },
+  });
+  return excedentes.map(e => ({
+    id:          `excedente-${e.id}`,
+    tipo:        'EXCEDENTE_ATRASADO',
+    titulo:      `${e.empleado.apellido}, ${e.empleado.nombre} — excedente sin pagar`,
+    descripcion: `${e.periodo_mes}/${e.periodo_anio} — $${Number(e.monto_total).toLocaleString('es-AR')}`,
+    urgencia:    'warning' as Urgencia,
+    link:        '/gastos-operativos?tab=excedente-horas',
+    fecha:       e.created_at,
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
   const empresaId = req.empresaId!;
   const hoy = new Date();
-  const hace3Dias = new Date(hoy.getTime() - 3 * MS_DIA);
-  const hace7Dias = new Date(hoy.getTime() - 7 * MS_DIA);
-  const en7Dias   = new Date(hoy.getTime() + 7 * MS_DIA);
+  const hace3Dias  = new Date(hoy.getTime() - 3 * MS_DIA);
+  const hace7Dias  = new Date(hoy.getTime() - 7 * MS_DIA);
+  const hace30Dias = new Date(hoy.getTime() - 30 * MS_DIA);
+  const hace60Dias = new Date(hoy.getTime() - 60 * MS_DIA);
+  const en7Dias    = new Date(hoy.getTime() + 7 * MS_DIA);
 
   const resultados = await Promise.all([
     resolveSeguros(empresaId),
@@ -504,6 +544,8 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveTardanzasPendientes(req),
     resolvePresentismoCerradoPendiente(empresaId),
     resolveCombustibleSemanaCerrada(req),
+    resolveSiniestrosSinNovedad(empresaId, hace30Dias),
+    resolveExcedentesAtrasados(empresaId, hace60Dias),
   ]);
 
   const items = resultados

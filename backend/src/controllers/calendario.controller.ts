@@ -12,7 +12,8 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE';
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
+  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -47,6 +48,8 @@ const COLORES: Record<TipoCalendario, string> = {
   CUOTA_PRESTAMO:       '#92400E',
   FACTURA_EMITIDA_VENCE: '#065F46',
   GASTO_ESPACIO_VENCE:  '#3730A3',
+  SINIESTRO_PENDIENTE:  '#DC2626',
+  EXCEDENTE_PENDIENTE:  '#F59E0B',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -68,6 +71,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   cuotas_prestamo: 'CUOTA_PRESTAMO',
   facturas_emitidas: 'FACTURA_EMITIDA_VENCE',
   gastos_espacios: 'GASTO_ESPACIO_VENCE',
+  siniestros:      'SINIESTRO_PENDIENTE',
+  excedentes_horas: 'EXCEDENTE_PENDIENTE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -642,6 +647,67 @@ async function resolveGastosEspacio(empresaFiltro: number | undefined, desde: Da
   }));
 }
 
+// Siniestros de empleados (ART) abiertos/en trámite sin avanzar hace más de 30
+// días — pantalla de Andrea. Mismo criterio de anclaje a "hoy" que
+// resolveRendicionesPendientes/resolveSaldosMinimos: es una condición vigente,
+// no un vencimiento de negocio puntual.
+async function resolveSiniestrosPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const siniestros = await prisma.siniestroEmpleado.findMany({
+    where: {
+      deleted_at: null,
+      estado: { in: ['ABIERTO', 'EN_TRAMITE'] },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empleado: { select: { nombre: true, apellido: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const s of siniestros) {
+    const diasSinActividad = Math.floor((hoy.getTime() - s.updated_at.getTime()) / 86_400_000);
+    if (diasSinActividad <= 30) continue;
+
+    items.push({
+      id:             `siniestro-${s.id}`,
+      tipo:           'SINIESTRO_PENDIENTE' as const,
+      titulo:         `${s.empleado.apellido}, ${s.empleado.nombre} — siniestro sin novedad`,
+      fecha:          hoy,
+      empresa_id:     s.empresa_id,
+      empresa_nombre: s.empresa.nombre,
+      color:          COLORES.SINIESTRO_PENDIENTE,
+      urgencia:       'warning' as const,
+      metadata:       { siniestro_id: s.id, estado: s.estado, dias_sin_actividad: diasSinActividad },
+    });
+  }
+  return items;
+}
+
+// Excedentes de horas (Fofi/Nestoras) pendientes de pago — mismo criterio.
+async function resolveExcedentesPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const excedentes = await prisma.excedenteHoras.findMany({
+    where: {
+      pagado: false,
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empleado: { select: { nombre: true, apellido: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  return excedentes.map(e => ({
+    id:             `excedente-${e.id}`,
+    tipo:           'EXCEDENTE_PENDIENTE' as const,
+    titulo:         `${e.empleado.apellido}, ${e.empleado.nombre} — excedente pendiente`,
+    fecha:          hoy,
+    empresa_id:     e.empresa_id,
+    empresa_nombre: e.empresa.nombre,
+    color:          COLORES.EXCEDENTE_PENDIENTE,
+    urgencia:       'normal' as const,
+    metadata:       { excedente_id: e.id, periodo_mes: e.periodo_mes, periodo_anio: e.periodo_anio, monto_total: Number(e.monto_total) },
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -719,6 +785,10 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('FACTURA_EMITIDA_VENCE') && isAdmin) tareas.push(resolveFacturasEmitidas(empresaFiltro, desde, hasta, hoyUTC));
   // GASTO_ESPACIO_VENCE enlaza a /espacios-compartidos, exclusivo de ADMIN.
   if (tiposActivos.has('GASTO_ESPACIO_VENCE') && isAdmin) tareas.push(resolveGastosEspacio(empresaFiltro, desde, hasta, hoyUTC));
+  // SINIESTRO_PENDIENTE/EXCEDENTE_PENDIENTE enlazan a /gastos-operativos —
+  // visibles para ADMIN y OPERADOR de DOS57 (misma matriz de esa pantalla).
+  if (tiposActivos.has('SINIESTRO_PENDIENTE')) tareas.push(resolveSiniestrosPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('EXCEDENTE_PENDIENTE')) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

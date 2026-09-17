@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { CuentaBancaria, MovimientoCaja, PosicionConsolidada } from '@/types';
+import type { CuentaBancaria, MovimientoCaja, PosicionConsolidada, ResumenAndrea, ImportAndreaResultado } from '@/types';
 
 // ── Query keys ─────────────────────────────────��──────────────────────────────
 
@@ -173,16 +173,44 @@ export function useMovimientosCuenta(cuentaId: number) {
   });
 }
 
+export interface CreateMovimientoCuentaPayload {
+  fecha?:              string | null;
+  descripcion?:        string | null;
+  debe:                number;
+  haber:               number;
+  categoria_andrea?:   string | null;
+  responsable_nombre?: string | null;
+  referencia?:         string | null;
+  comprobante?:        File | null;
+}
+
 // Sin evento_id — para movimientos de empresa no vinculados a ningún evento.
+// Si viene `comprobante`, se manda como multipart/form-data; si no, JSON plano
+// (el backend acepta ambos — ver comprobanteMiddleware en routes/caja.ts).
 export function useCreateMovimientoCuenta(cuentaId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { fecha?: string | null; descripcion?: string | null; debe: number; haber: number }) =>
-      api.post(`/cuentas/${cuentaId}/movimientos`, data).then(r => r.data),
+    mutationFn: (data: CreateMovimientoCuentaPayload) => {
+      if (data.comprobante) {
+        const fd = new FormData();
+        fd.append('debe', String(data.debe));
+        fd.append('haber', String(data.haber));
+        if (data.fecha)              fd.append('fecha', data.fecha);
+        if (data.descripcion)        fd.append('descripcion', data.descripcion);
+        if (data.categoria_andrea)   fd.append('categoria_andrea', data.categoria_andrea);
+        if (data.responsable_nombre) fd.append('responsable_nombre', data.responsable_nombre);
+        if (data.referencia)         fd.append('referencia', data.referencia);
+        fd.append('comprobante', data.comprobante);
+        return api.post(`/cuentas/${cuentaId}/movimientos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+      }
+      const { comprobante: _comprobante, ...rest } = data;
+      return api.post(`/cuentas/${cuentaId}/movimientos`, rest).then(r => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: movCuentaKey(cuentaId) });
       qc.invalidateQueries({ queryKey: cuentaDetalleKey(cuentaId) });
       qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
+      qc.invalidateQueries({ queryKey: ['caja', 'resumen-andrea'] });
     },
   });
 }
@@ -196,6 +224,7 @@ export function useUpdateMovimientoCuenta(cuentaId: number) {
       qc.invalidateQueries({ queryKey: movCuentaKey(cuentaId) });
       qc.invalidateQueries({ queryKey: cuentaDetalleKey(cuentaId) });
       qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
+      qc.invalidateQueries({ queryKey: ['caja', 'resumen-andrea'] });
     },
   });
 }
@@ -207,6 +236,41 @@ export function useDeleteMovimientoCuenta(cuentaId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: movCuentaKey(cuentaId) });
       qc.invalidateQueries({ queryKey: cuentaDetalleKey(cuentaId) });
+      qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
+      qc.invalidateQueries({ queryKey: ['caja', 'resumen-andrea'] });
+    },
+  });
+}
+
+// ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
+
+export const resumenAndreaKey = (cuentaId: number, mes: number, anio: number) => ['caja', 'resumen-andrea', cuentaId, mes, anio];
+
+export function useResumenAndrea(cuentaId: number, mes: number, anio: number) {
+  return useQuery<ResumenAndrea>({
+    queryKey: resumenAndreaKey(cuentaId, mes, anio),
+    queryFn:  () => api.get('/caja/resumen-andrea', { params: { cuenta_id: cuentaId, mes, anio } }).then(r => r.data),
+    enabled:  cuentaId > 0,
+  });
+}
+
+export function comprobanteMovCajaUrl(movId: number): string {
+  const base = (api.defaults.baseURL ?? '').replace(/\/$/, '');
+  return `${base}/movimientos-caja/${movId}/comprobante`;
+}
+
+export function useImportarCajaAndrea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      return api.post<ImportAndreaResultado>('/caja/importar-andrea', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['caja', 'resumen-andrea'] });
       qc.invalidateQueries({ queryKey: ['cuentas-empresa'] });
     },
   });

@@ -8,7 +8,7 @@ import JornadasTab from './Jornadas';
 import JornadasPropias from './Jornadas/Propias';
 import AnticiposTab from './Anticipos';
 import LiquidacionesTab from './Liquidaciones';
-import SueldosAdminTab from './SueldosAdmin';
+import SueldosAdminTab, { type SubTabKey as SueldosAdminSubTabKey } from './SueldosAdmin';
 
 type TabKey = 'empleados' | 'jornadas' | 'anticipos' | 'liquidaciones' | 'sueldos-admin';
 
@@ -28,6 +28,13 @@ export default function RRHHPage() {
   const tabParam = searchParams.get('tab') as TabKey | null;
   const [activeTab, setActiveTab] = useState<TabKey>(tabParam && TAB_KEYS.includes(tabParam) ? tabParam : 'empleados');
   const [filtroEmpleadoId, setFiltroEmpleadoId] = useState<number | null>(null);
+  // Deep-link desde "Ver liquidaciones del período" (Gastos del mes, Andrea):
+  // /rrhh?tab=sueldos-admin&subtab=liquidaciones&mes=X&anio=Y
+  const subtabParamRaw = searchParams.get('subtab');
+  const SUELDOS_ADMIN_SUBTABS: SueldosAdminSubTabKey[] = ['acuerdos', 'liquidaciones', 'escalafones', 'bitacora'];
+  const subtabParam = subtabParamRaw && SUELDOS_ADMIN_SUBTABS.includes(subtabParamRaw as SueldosAdminSubTabKey) ? (subtabParamRaw as SueldosAdminSubTabKey) : undefined;
+  const mesParam  = searchParams.get('mes')  ? Number(searchParams.get('mes'))  : null;
+  const anioParam = searchParams.get('anio') ? Number(searchParams.get('anio')) : null;
 
   if (!user) return null;
 
@@ -78,7 +85,7 @@ export default function RRHHPage() {
       {activeTab === 'jornadas'      && <JornadasTab empleadoIdInicial={filtroEmpleadoId} />}
       {activeTab === 'anticipos'     && <AnticiposTab empleadoIdInicial={filtroEmpleadoId} />}
       {activeTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={filtroEmpleadoId} />}
-      {activeTab === 'sueldos-admin' && <SueldosAdminTab empleadoIdInicial={filtroEmpleadoId} />}
+      {activeTab === 'sueldos-admin' && <SueldosAdminTab empleadoIdInicial={filtroEmpleadoId} subTabInicial={subtabParam} mesInicial={mesParam} anioInicial={anioParam} />}
     </div>
   );
 }

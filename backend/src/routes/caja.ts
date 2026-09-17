@@ -8,8 +8,17 @@ import {
   updateCuenta, deleteCuenta, updateEstadoCuenta,
   listMovimientosCaja, createMovimientoCaja,
   updateMovimientoCaja, deleteMovimientoCaja,
-  conciliar,
+  conciliar, uploadComprobanteMovCaja, descargarComprobanteMovCaja,
 } from '../controllers/caja.controller';
+
+// Comprobante opcional en "Agregar movimiento" (vista de Andrea) — si el
+// request no es multipart, multer no interfiere y el body JSON sigue igual.
+function comprobanteMiddleware(req: any, res: any, next: any) {
+  uploadComprobanteMovCaja.single('comprobante')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el comprobante' }); return; }
+    next();
+  });
+}
 
 export const cuentasRouter = Router();
 cuentasRouter.use(auth);
@@ -26,11 +35,12 @@ cuentasRouter.delete('/:id',           requireAnyRole(ROLES.ADMIN_OPERADOR), asy
 // sólo ADMIN — validado dentro del controller (una sola ruta, dos niveles de permiso).
 cuentasRouter.patch('/:id/estado',     requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(updateEstadoCuenta));
 cuentasRouter.get('/:id/movimientos',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listMovimientosCaja));
-cuentasRouter.post('/:id/movimientos', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createMovimientoCaja));
+cuentasRouter.post('/:id/movimientos', requireAnyRole(ROLES.ADMIN_OPERADOR), comprobanteMiddleware, asyncHandler(createMovimientoCaja));
 
 export const movCajaRouter = Router();
 movCajaRouter.use(auth);
 movCajaRouter.use(tenantMiddleware);
-movCajaRouter.put('/:id',            requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(updateMovimientoCaja));
-movCajaRouter.delete('/:id',         requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(deleteMovimientoCaja));
-movCajaRouter.post('/:id/conciliar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(conciliar));
+movCajaRouter.put('/:id',              requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(updateMovimientoCaja));
+movCajaRouter.delete('/:id',           requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(deleteMovimientoCaja));
+movCajaRouter.post('/:id/conciliar',   requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(conciliar));
+movCajaRouter.get('/:id/comprobante',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(descargarComprobanteMovCaja));

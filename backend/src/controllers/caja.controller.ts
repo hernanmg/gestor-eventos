@@ -1,10 +1,24 @@
 ﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { TipoCuenta, Moneda, EstadoCuenta, type Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+
+// Comprobante de un movimiento de caja cargado desde la vista de Andrea (Caja
+// del mes) — mismo patrón que uploadDocumento en afipPrestamos.controller.ts.
+// Multipart es opcional: si el request llega como JSON (resto de las pantallas
+// que usan estos mismos endpoints), multer no interfiere y sigue igual.
+export const uploadComprobanteMovCaja = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos PDF o imágenes'));
+  },
+});
 
 // Cache por empresa — TabConfig ahora es per-tenant, así que una única Map
 // global mezclaría tabs de distintas empresas entre requests.
@@ -51,11 +65,15 @@ function mapMovCaja(m: any, tabMap?: Map<string, string>) {
 
   return {
     ...m,
-    debe:              Number(m.debe),
-    haber:             Number(m.haber),
-    saldo_corriente:   Number(m.saldo_corriente),
-    movimiento_origen: movOrigen,
+    debe:               Number(m.debe),
+    haber:              Number(m.haber),
+    saldo_corriente:    Number(m.saldo_corriente),
+    movimiento_origen:  movOrigen,
     movimientos_origen: undefined,
+    // Nunca mandar el binario del comprobante en el listado — sólo su nombre,
+    // el front pide el archivo aparte vía GET /movimientos-caja/:id/comprobante.
+    comprobante_data:   undefined,
+    tiene_comprobante:  m.comprobante_data != null,
   };
 }
 
@@ -80,18 +98,31 @@ const estadoCuentaSchema = z.object({
   notas_rendicion: z.string().nullable().optional(),
 });
 
+// Categorías de la vista de Andrea (Caja del mes, DOS57) — columnas del libro
+// diario real (CAJAS_JULIO-2026.xlsx). Null = movimiento de ingreso, o
+// movimiento cargado desde otro módulo que no pasa por esa vista.
+const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES'] as const;
+
+// z.coerce.number() acepta tanto number (JSON) como string (multipart, cuando
+// el request trae un comprobante adjunto) — ver uploadComprobanteMovCaja.
 const createMovCajaSchema = z.object({
-  fecha:       z.string().nullable().optional(),
-  descripcion: z.string().nullable().optional(),
-  debe:        z.number().min(0).default(0),
-  haber:       z.number().min(0).default(0),
+  fecha:              z.string().nullable().optional(),
+  descripcion:        z.string().nullable().optional(),
+  debe:               z.coerce.number().min(0).default(0),
+  haber:              z.coerce.number().min(0).default(0),
+  categoria_andrea:   z.preprocess(v => (v === '' ? null : v), z.enum(CATEGORIAS_ANDREA).nullable().optional()),
+  responsable_nombre: z.string().nullable().optional(),
+  referencia:         z.string().nullable().optional(),
 });
 
 const updateMovCajaSchema = z.object({
-  fecha:       z.string().nullable().optional(),
-  descripcion: z.string().nullable().optional(),
-  debe:        z.number().min(0).optional(),
-  haber:       z.number().min(0).optional(),
+  fecha:              z.string().nullable().optional(),
+  descripcion:        z.string().nullable().optional(),
+  debe:               z.coerce.number().min(0).optional(),
+  haber:              z.coerce.number().min(0).optional(),
+  categoria_andrea:   z.preprocess(v => (v === '' ? null : v), z.enum(CATEGORIAS_ANDREA).nullable().optional()),
+  responsable_nombre: z.string().nullable().optional(),
+  referencia:         z.string().nullable().optional(),
 });
 
 // ── Cuentas ───────────────────────────────────────────────────────────────────
@@ -543,14 +574,18 @@ export async function createMovimientoCaja(req: Request, res: Response) {
     });
     const mov = await tx.movimientoCaja.create({
       data: {
-        cuenta_id:   cuentaId,
-        fecha:       parsed.data.fecha ? new Date(parsed.data.fecha) : null,
-        descripcion: parsed.data.descripcion ?? null,
-        debe:        parsed.data.debe,
-        haber:       parsed.data.haber,
-        orden:       (last?.orden ?? 0) + 1,
-        created_by:  req.user!.id,
-        updated_by:  req.user!.id,
+        cuenta_id:          cuentaId,
+        fecha:              parsed.data.fecha ? new Date(parsed.data.fecha) : null,
+        descripcion:        parsed.data.descripcion ?? null,
+        debe:               parsed.data.debe,
+        haber:              parsed.data.haber,
+        categoria_andrea:   parsed.data.categoria_andrea ?? null,
+        responsable_nombre: parsed.data.responsable_nombre ?? null,
+        referencia:         parsed.data.referencia ?? null,
+        ...(req.file && { comprobante_data: req.file.buffer, comprobante_nombre: req.file.originalname, comprobante_mime: req.file.mimetype }),
+        orden:            (last?.orden ?? 0) + 1,
+        created_by:       req.user!.id,
+        updated_by:       req.user!.id,
       },
     });
     await recalcularSaldosCaja(cuentaId, tx);
@@ -647,15 +682,17 @@ export async function createMovimientoCajaEvento(req: Request, res: Response) {
     });
     const mov = await tx.movimientoCaja.create({
       data: {
-        cuenta_id:   cuentaId,
-        evento_id:   eventoId,
-        fecha:       parsed.data.fecha ? new Date(parsed.data.fecha) : null,
-        descripcion: parsed.data.descripcion ?? null,
-        debe:        parsed.data.debe,
-        haber:       parsed.data.haber,
-        orden:       (last?.orden ?? 0) + 1,
-        created_by:  req.user!.id,
-        updated_by:  req.user!.id,
+        cuenta_id:        cuentaId,
+        evento_id:        eventoId,
+        fecha:            parsed.data.fecha ? new Date(parsed.data.fecha) : null,
+        descripcion:      parsed.data.descripcion ?? null,
+        debe:             parsed.data.debe,
+        haber:            parsed.data.haber,
+        categoria_andrea: parsed.data.categoria_andrea ?? null,
+        referencia:       parsed.data.referencia ?? null,
+        orden:            (last?.orden ?? 0) + 1,
+        created_by:       req.user!.id,
+        updated_by:       req.user!.id,
       },
     });
     await recalcularSaldosCaja(cuentaId, tx);
@@ -696,10 +733,13 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
     await tx.movimientoCaja.update({
       where: { id },
       data: {
-        ...(parsed.data.fecha       !== undefined && { fecha: parsed.data.fecha ? new Date(parsed.data.fecha) : null }),
-        ...(parsed.data.descripcion !== undefined && { descripcion: parsed.data.descripcion }),
-        ...(parsed.data.debe        !== undefined && { debe: parsed.data.debe }),
-        ...(parsed.data.haber       !== undefined && { haber: parsed.data.haber }),
+        ...(parsed.data.fecha              !== undefined && { fecha: parsed.data.fecha ? new Date(parsed.data.fecha) : null }),
+        ...(parsed.data.descripcion        !== undefined && { descripcion: parsed.data.descripcion }),
+        ...(parsed.data.debe               !== undefined && { debe: parsed.data.debe }),
+        ...(parsed.data.haber              !== undefined && { haber: parsed.data.haber }),
+        ...(parsed.data.categoria_andrea   !== undefined && { categoria_andrea: parsed.data.categoria_andrea }),
+        ...(parsed.data.responsable_nombre !== undefined && { responsable_nombre: parsed.data.responsable_nombre }),
+        ...(parsed.data.referencia         !== undefined && { referencia: parsed.data.referencia }),
         updated_by: req.user!.id,
       },
     });
@@ -989,4 +1029,19 @@ export async function posicionConsolidada(req: Request, res: Response) {
   });
 
   res.json({ evento_id: eventoId, por_moneda });
+}
+
+// ── Comprobante de movimiento de caja ─────────────────────────────────────────
+
+export async function descargarComprobanteMovCaja(req: Request, res: Response) {
+  const id  = Number(req.params.id);
+  const mov = await prisma.movimientoCaja.findFirst({ where: { id, deleted_at: null, cuenta: withTenant(req.empresaId!) } });
+  if (!mov || !mov.comprobante_data) { res.status(404).json({ error: 'Comprobante no encontrado' }); return; }
+
+  const buffer   = Buffer.from(mov.comprobante_data);
+  const filename = encodeURIComponent(mov.comprobante_nombre ?? 'comprobante');
+  res.setHeader('Content-Type',        mov.comprobante_mime ?? 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length',      buffer.length);
+  res.end(buffer);
 }

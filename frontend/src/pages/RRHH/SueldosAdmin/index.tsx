@@ -5,7 +5,7 @@ import LiquidacionesTab from './LiquidacionesTab';
 import EscalafonesTab from './EscalafonesTab';
 import BitacoraTab from './BitacoraTab';
 
-type SubTabKey = 'acuerdos' | 'liquidaciones' | 'escalafones' | 'bitacora';
+export type SubTabKey = 'acuerdos' | 'liquidaciones' | 'escalafones' | 'bitacora';
 
 const SUB_TABS: { key: SubTabKey; label: string }[] = [
   { key: 'acuerdos',      label: 'Acuerdos' },
@@ -14,8 +14,13 @@ const SUB_TABS: { key: SubTabKey; label: string }[] = [
   { key: 'escalafones',   label: 'Escalafones' },
 ];
 
-export default function SueldosAdminTab({ empleadoIdInicial }: { empleadoIdInicial?: number | null }) {
-  const [subTab, setSubTab] = useState<SubTabKey>('acuerdos');
+export default function SueldosAdminTab({ empleadoIdInicial, subTabInicial, mesInicial, anioInicial }: {
+  empleadoIdInicial?: number | null;
+  subTabInicial?:     SubTabKey;
+  mesInicial?:        number | null;
+  anioInicial?:       number | null;
+}) {
+  const [subTab, setSubTab] = useState<SubTabKey>(subTabInicial ?? 'acuerdos');
 
   return (
     <div>
@@ -35,7 +40,7 @@ export default function SueldosAdminTab({ empleadoIdInicial }: { empleadoIdInici
       </div>
 
       {subTab === 'acuerdos'      && <AcuerdosTab />}
-      {subTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={empleadoIdInicial} />}
+      {subTab === 'liquidaciones' && <LiquidacionesTab empleadoIdInicial={empleadoIdInicial} mesInicial={mesInicial} anioInicial={anioInicial} />}
       {subTab === 'bitacora'      && <BitacoraTab empleadoIdInicial={empleadoIdInicial} />}
       {subTab === 'escalafones'   && <EscalafonesTab />}
     </div>

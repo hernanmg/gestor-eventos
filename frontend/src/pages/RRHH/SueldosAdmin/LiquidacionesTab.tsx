@@ -851,9 +851,19 @@ function AprobarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin
 
 // ── Tab ────────────────────────────────────────────────────────────────────────
 
-export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInicial?: number | null }) {
+export default function LiquidacionesTab({ empleadoIdInicial, mesInicial, anioInicial }: {
+  empleadoIdInicial?: number | null;
+  mesInicial?:        number | null;
+  anioInicial?:       number | null;
+}) {
   const [filtros, setFiltros] = useState<LiquidacionAdminFiltros>({});
   useEffect(() => { if (empleadoIdInicial != null) setFiltros(p => ({ ...p, empleado_id: empleadoIdInicial })); }, [empleadoIdInicial]);
+  // Deep-link desde "Ver liquidaciones del período" (Gastos del mes, Andrea).
+  useEffect(() => {
+    if (mesInicial != null || anioInicial != null) {
+      setFiltros(p => ({ ...p, ...(mesInicial != null && { mes: mesInicial }), ...(anioInicial != null && { anio: anioInicial }) }));
+    }
+  }, [mesInicial, anioInicial]);
 
   const { data: liquidaciones = [], isLoading } = useLiquidacionesAdmin(filtros);
   const { data: empleados = [] } = useEmpleados();

@@ -36,6 +36,9 @@ import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
 import { facturasEmitidasRouter } from './routes/facturasEmitidas';
 import { espaciosCompartidosRouter } from './routes/espaciosCompartidos';
 import presentismoRouter from './routes/presentismo';
+import { cajaAndreaRouter } from './routes/cajaAndrea';
+import siniestrosRouter from './routes/siniestros';
+import excedenteHorasRouter from './routes/excedenteHoras';
 
 const app = express();
 
@@ -117,6 +120,9 @@ app.use('/api/prestamos',           prestamosRouter);
 app.use('/api/facturas-emitidas',   facturasEmitidasRouter);
 app.use('/api/espacios-compartidos', espaciosCompartidosRouter);
 app.use('/api/presentismo',         presentismoRouter);
+app.use('/api/caja',                cajaAndreaRouter);
+app.use('/api/siniestros',          siniestrosRouter);
+app.use('/api/excedente-horas',     excedenteHorasRouter);
 
 app.use(errorHandler);
 

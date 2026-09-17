@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { resolveHomeRoute } from '@/lib/homeRoute';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 
 export default function SeleccionarEmpresaPage() {
@@ -10,7 +11,7 @@ export default function SeleccionarEmpresaPage() {
   useEffect(() => {
     if (isLoading) return;
     if (!user) { navigate('/login', { replace: true }); return; }
-    if (user.empresaId !== null) { navigate('/eventos', { replace: true }); }
+    if (user.empresaId !== null) { navigate(resolveHomeRoute(user), { replace: true }); }
   }, [user, isLoading, navigate]);
 
   if (isLoading || !user || user.empresaId !== null) return null;
