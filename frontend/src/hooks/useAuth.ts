@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { applyEmpresaTheme } from '@/lib/empresaTheme';
+import { resolveHomeRoute } from '@/lib/homeRoute';
 import { useEmpresaActual } from '@/hooks/useEmpresas';
 import type { MeResponse, Rol } from '@/types';
 
@@ -41,7 +42,7 @@ export function useAuth() {
       api.post<MeResponse>('/auth/login', { email, password }).then(r => r.data),
     onSuccess: (data) => {
       queryClient.setQueryData(ME_QUERY_KEY, data);
-      navigate(data.empresaId === null ? '/seleccionar-empresa' : '/eventos', { replace: true });
+      navigate(resolveHomeRoute(data), { replace: true });
     },
   });
 
@@ -64,7 +65,7 @@ export function useAuth() {
       // Todos los datos cacheados pertenecen a la empresa anterior — se
       // invalidan para que se vuelvan a pedir con la empresa nueva.
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'auth' });
-      navigate('/eventos', { replace: true });
+      navigate(resolveHomeRoute(data), { replace: true });
     },
   });
 

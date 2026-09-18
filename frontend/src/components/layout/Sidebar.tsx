@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -32,6 +32,14 @@ function EmpresaBrand({ empresaId, hasLogo, nombre, colorPrimario, size = 'heade
       style={{ backgroundColor: colorPrimario ?? '#94a3b8' }}
     />
   );
+}
+
+// Ícono de "casa" junto al ítem que coincide con el home_route del usuario
+// (PARTE 5 del pedido de dashboards personalizados) — sólo con el sidebar
+// expandido, no hay lugar cuando está colapsado.
+function HomeMark({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <Home size={11} className="shrink-0 text-muted-foreground/40" aria-label="Tu pantalla de inicio" />;
 }
 
 interface SidebarProps {
@@ -67,16 +75,16 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const flotaAlertCount = (flotaAlertas?.items ?? []).filter(a => a.urgencia === 'critical').length;
   const pendientesFirma = (pendSalida?.asignaciones.length ?? 0) + (pendLlegada?.asignaciones.length ?? 0) + (pendRetorno?.asignaciones.length ?? 0);
 
-  // Andrea (DOS57) ve un menú acotado a lo suyo — Gastos del mes primero,
-  // después RRHH/Caja Global/Calendario. La campanita de notificaciones ya
-  // está siempre visible en el header, sin cambios acá.
-  const esAndrea = user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && /andrea/i.test(user.nombre);
-
-  // Lorena (DOS57) ve un menú acotado a sus tres responsabilidades —
-  // presentismo (su home), siniestros de personal y flota/seguros (sólo
-  // lectura, el alta la sigue haciendo Flota) — más el calendario con los
-  // vencimientos. Mismo criterio que esAndrea.
-  const esLorena = user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && /loren/i.test(user.nombre);
+  // Menús acotados por home_route (Módulo de dashboards personalizados) —
+  // reemplaza el criterio viejo de matchear por nombre de usuario (regex
+  // "andrea"/"loren"/"santi|nico"), frágil ante altas/bajas o cambios de
+  // nombre. Ahora es el campo Usuario.home_route, configurable desde
+  // Configuración → Usuarios (ver resolveHomeRoute en lib/homeRoute.ts,
+  // fuente única para esto y para el redirect post-login).
+  const esAndrea       = user.homeRoute === '/gastos-operativos';
+  const esLorena       = user.homeRoute === '/presentismo';
+  const esCombustible  = user.homeRoute === '/combustible';
+  const esParteDiario  = user.homeRoute === '/parte-diario';
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -209,7 +217,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <>
               <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
                 <Banknote size={18} className="shrink-0" />
-                {isOpen && <span>Gastos del mes</span>}
+                {isOpen && <span className="flex-1">Gastos del mes</span>}
+                {isOpen && <HomeMark show />}
               </NavLink>
               <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
                 <Users size={18} className="shrink-0" />
@@ -228,7 +237,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <>
               <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
                 <UserCheck size={18} className="shrink-0" />
-                {isOpen && <span>Presentismo</span>}
+                {isOpen && <span className="flex-1">Presentismo</span>}
+                {isOpen && <HomeMark show />}
               </NavLink>
               <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
                 <Ambulance size={18} className="shrink-0" />
@@ -257,6 +267,68 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                 {isOpen && <span>Calendario</span>}
               </NavLink>
             </>
+          ) : esCombustible ? (
+            <>
+              <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
+                <Fuel size={18} className="shrink-0" />
+                {isOpen && <span className="flex-1">Combustible</span>}
+                {isOpen && <HomeMark show />}
+              </NavLink>
+              <NavLink to="/flota" title={!isOpen ? 'Flota' : undefined} className={navItem}>
+                <div className="relative shrink-0">
+                  <Truck size={18} />
+                  {!isOpen && flotaAlertCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                  )}
+                </div>
+                {isOpen && (
+                  <>
+                    <span className="flex-1">Flota</span>
+                    {flotaAlertCount > 0 && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+                <CalendarDays size={18} className="shrink-0" />
+                {isOpen && <span>Calendario</span>}
+              </NavLink>
+            </>
+          ) : esParteDiario ? (
+            <>
+              <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
+                <ClipboardCheck size={18} className="shrink-0" />
+                {isOpen && <span className="flex-1">Parte Diario</span>}
+                {isOpen && <HomeMark show />}
+              </NavLink>
+              {FEATURES.STOCK && (
+                <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
+                  <div className="relative shrink-0">
+                    <Package size={18} />
+                    {!isOpen && stockQuiebres > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                    )}
+                  </div>
+                  {isOpen && (
+                    <>
+                      <span className="flex-1">Stock</span>
+                      {stockQuiebres > 0 && (
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                          {stockQuiebres > 99 ? '99+' : stockQuiebres}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              )}
+              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+                <CalendarDays size={18} className="shrink-0" />
+                {isOpen && <span>Calendario</span>}
+              </NavLink>
+            </>
           ) : (
           <>
           {/* Macro — vista cross-evento + KPIs globales (admin global) o vista
@@ -278,6 +350,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                       {errorCount > 99 ? '99+' : errorCount}
                     </span>
                   )}
+                  <HomeMark show={user.homeRoute === '/macro'} />
                 </>
               )}
             </NavLink>
@@ -297,13 +370,15 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
             <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
               <UserCheck size={18} className="shrink-0" />
-              {isOpen && <span>Presentismo</span>}
+              {isOpen && <span className="flex-1">Presentismo</span>}
+              {isOpen && <HomeMark show={user.homeRoute === '/presentismo'} />}
             </NavLink>
           )}
 
           <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
             <Calendar size={18} className="shrink-0" />
-            {isOpen && <span>Eventos</span>}
+            {isOpen && <span className="flex-1">Eventos</span>}
+            {isOpen && <HomeMark show={user.homeRoute === '/eventos'} />}
           </NavLink>
 
           {(user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
@@ -336,6 +411,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                       {stockQuiebres > 99 ? '99+' : stockQuiebres}
                     </span>
                   )}
+                  <HomeMark show={user.homeRoute === '/stock'} />
                 </>
               )}
             </NavLink>
@@ -367,7 +443,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
             <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
               <Fuel size={18} className="shrink-0" />
-              {isOpen && <span>Combustible</span>}
+              {isOpen && <span className="flex-1">Combustible</span>}
+              {isOpen && <HomeMark show={user.homeRoute === '/combustible'} />}
             </NavLink>
           )}
 
@@ -376,7 +453,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
             <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
               <Banknote size={18} className="shrink-0" />
-              {isOpen && <span>Gastos del mes</span>}
+              {isOpen && <span className="flex-1">Gastos del mes</span>}
+              {isOpen && <HomeMark show={user.homeRoute === '/gastos-operativos'} />}
             </NavLink>
           )}
 
@@ -495,14 +573,16 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           {user.rol === 'ADMIN' && (
             <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
               <Users size={18} className="shrink-0" />
-              {isOpen && <span>RRHH</span>}
+              {isOpen && <span className="flex-1">RRHH</span>}
+              {isOpen && <HomeMark show={user.homeRoute === '/rrhh'} />}
             </NavLink>
           )}
 
           {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
             <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
               <ClipboardCheck size={18} className="shrink-0" />
-              {isOpen && <span>Parte Diario</span>}
+              {isOpen && <span className="flex-1">Parte Diario</span>}
+              {isOpen && <HomeMark show={user.homeRoute === '/parte-diario'} />}
             </NavLink>
           )}
 

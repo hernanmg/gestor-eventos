@@ -44,6 +44,7 @@ export interface Usuario {
   deleted_at: string | null;
   puede_ver_macro: boolean;
   areas_macro:     AreaMacro[];
+  home_route:      string | null;
 }
 
 export interface UsuarioEmpresaAcceso {
@@ -1483,6 +1484,9 @@ export type MeResponse = {
   // (admin global): ve varias empresas pero solo sus areasMacro.
   puedeVerMacro:        boolean;
   areasMacro:           AreaMacro[];
+  // Pantalla a la que redirige al hacer login (ver resolveHomeRoute en
+  // lib/homeRoute.ts) — null usa el default por rol/empresa.
+  homeRoute:            string | null;
   // Empleado de RRHH vinculado a este usuario (rol VIEWER + empleado ⇒
   // autoservicio: sólo ve/carga sus propias jornadas).
   empleadoId:           number | null;

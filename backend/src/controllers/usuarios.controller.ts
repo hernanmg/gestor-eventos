@@ -26,8 +26,15 @@ async function esAdminGlobal(usuarioId: number): Promise<boolean> {
 const SAFE_SELECT = {
   id: true, email: true, nombre: true, apodo: true, telefono: true, rol: true,
   activo: true, created_at: true, updated_at: true, deleted_at: true,
-  puede_ver_macro: true, areas_macro: true,
+  puede_ver_macro: true, areas_macro: true, home_route: true,
 };
+
+// Pantallas ofrecidas en el selector de Configuración (ver PARTE 4 del pedido)
+// — null (sin fila acá) usa el default por rol en resolveHomeRoute (frontend).
+const HOME_ROUTES = [
+  '/presentismo', '/combustible', '/parte-diario', '/gastos-operativos',
+  '/eventos', '/macro', '/rrhh', '/stock',
+] as const;
 
 // Áreas asignables de la Macro restringida — Logística queda deliberadamente
 // afuera (ver Usuario.areas_macro en schema.prisma).
@@ -58,6 +65,7 @@ const updateSchema = z.object({
   activo:   z.boolean().optional(),
   puede_ver_macro: z.boolean().optional(),
   areas_macro:     z.array(z.enum(AREAS_MACRO)).optional(),
+  home_route:      z.enum(HOME_ROUTES).nullable().optional(),
 });
 
 const accesoSchema = z.object({
@@ -152,7 +160,7 @@ export async function update(req: Request, res: Response) {
     if (dupe) { res.status(400).json({ error: 'Ya existe un usuario con ese email' }); return; }
   }
 
-  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro } = parsed.data;
+  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro, home_route } = parsed.data;
 
   const data: Record<string, unknown> = {
     ...(nombre   !== undefined && { nombre }),
@@ -163,6 +171,7 @@ export async function update(req: Request, res: Response) {
     ...(activo   !== undefined && { activo }),
     ...(puede_ver_macro !== undefined && { puede_ver_macro }),
     ...(areas_macro     !== undefined && { areas_macro }),
+    ...(home_route      !== undefined && { home_route }),
   };
   if (password) data.password_hash = await bcrypt.hash(password, 10);
 

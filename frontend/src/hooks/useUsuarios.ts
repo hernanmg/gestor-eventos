@@ -28,7 +28,7 @@ export function useUpdateUsuario() {
       id:   number;
       data: {
         nombre?: string; apodo?: string | null; telefono?: string | null; email?: string; password?: string; rol?: Rol; activo?: boolean;
-        puede_ver_macro?: boolean; areas_macro?: AreaMacro[];
+        puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null;
       };
     }) => api.put(`/usuarios/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),

@@ -170,6 +170,7 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     puedeCambiarEmpresa:  global,
     puedeVerMacro:        usuario.puede_ver_macro,
     areasMacro:           usuario.areas_macro,
+    homeRoute:            usuario.home_route,
     empleadoId,
   });
 }
@@ -194,7 +195,7 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     where:  { id: req.user!.id, deleted_at: null },
     select: {
       id: true, nombre: true, email: true, rol: true, activo: true, empresa_id: true,
-      puede_ver_macro: true, areas_macro: true,
+      puede_ver_macro: true, areas_macro: true, home_route: true,
     },
   });
 
@@ -231,6 +232,7 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     puedeCambiarEmpresa: global,
     puedeVerMacro:       raw.puede_ver_macro,
     areasMacro:          raw.areas_macro,
+    homeRoute:           raw.home_route,
     empleadoId,
   });
 }
@@ -300,6 +302,7 @@ export async function switchEmpresa(req: Request, res: Response): Promise<void> 
     puedeCambiarEmpresa: global,
     puedeVerMacro:       usuario.puede_ver_macro,
     areasMacro:          usuario.areas_macro,
+    homeRoute:           usuario.home_route,
     empleadoId,
   });
 }

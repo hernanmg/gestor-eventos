@@ -566,6 +566,19 @@ interface UsuarioFormData {
 
 const EMPTY_FORM: UsuarioFormData = { nombre: '', apodo: '', telefono: '', email: '', password: '', rol: 'OPERADOR' };
 
+// Pantalla de inicio (Módulo de dashboards personalizados) — mismo listado
+// que HOME_ROUTES en usuarios.controller.ts.
+const HOME_ROUTE_OPTIONS: { value: string; label: string }[] = [
+  { value: '/presentismo',       label: 'Presentismo — Control de presentismo' },
+  { value: '/combustible',       label: 'Combustible — Combustible y flota' },
+  { value: '/parte-diario',      label: 'Parte diario — Parte diario' },
+  { value: '/gastos-operativos', label: 'Gastos del mes' },
+  { value: '/eventos',           label: 'Eventos — Lista de eventos' },
+  { value: '/macro',             label: 'Macro' },
+  { value: '/rrhh',              label: 'RRHH' },
+  { value: '/stock',             label: 'Stock' },
+];
+
 const ROL_DESCRIPCION: Record<Rol, string> = {
   ADMIN:     'Acceso total a su empresa',
   OPERADOR:  'Carga y edita datos operativos',
@@ -654,7 +667,7 @@ function UsuarioDialog({
   esAdminGlobal: boolean;
   onClose:       () => void;
   onCreate:      (d: UsuarioFormData) => Promise<void>;
-  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[] }) => Promise<void>;
+  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null }) => Promise<void>;
   isLoading:     boolean;
 }) {
   const isEdit = usuario !== null;
@@ -665,6 +678,7 @@ function UsuarioDialog({
   const [multiEmpresa, setMultiEmpresa] = useState(false);
   const [puedeVerMacro, setPuedeVerMacro] = useState(usuario?.puede_ver_macro ?? false);
   const [areasMacro, setAreasMacro]       = useState<AreaMacro[]>(usuario?.areas_macro ?? []);
+  const [homeRoute, setHomeRoute]         = useState<string>(usuario?.home_route ?? '');
 
   // Accesos adicionales (más allá de la empresa "hogar") — determina si el
   // usuario editado es candidato a la Macro restringida (ver MacroMayra.tsx).
@@ -674,6 +688,7 @@ function UsuarioDialog({
   useEffect(() => {
     setPuedeVerMacro(usuario?.puede_ver_macro ?? false);
     setAreasMacro(usuario?.areas_macro ?? []);
+    setHomeRoute(usuario?.home_route ?? '');
   }, [usuario?.id]);
 
   const toggleArea = (area: AreaMacro) =>
@@ -690,13 +705,14 @@ function UsuarioDialog({
     setError(null);
     try {
       if (isEdit) {
-        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[] } = {};
+        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null } = {};
         if (form.nombre   !== usuario!.nombre)          patch.nombre   = form.nombre;
         if (form.apodo    !== (usuario!.apodo ?? ''))   patch.apodo    = form.apodo;
         if (form.telefono !== (usuario!.telefono ?? '')) patch.telefono = form.telefono;
         if (form.email    !== usuario!.email)           patch.email    = form.email;
         if (form.password)                              patch.password = form.password;
         if (!isSelf && form.rol !== usuario!.rol)        patch.rol      = form.rol;
+        if (homeRoute !== (usuario!.home_route ?? ''))  patch.home_route = homeRoute || null;
         if (esAdminGlobal && tieneAccesoMultiEmpresa) {
           if (puedeVerMacro !== usuario!.puede_ver_macro) patch.puede_ver_macro = puedeVerMacro;
           const mismasAreas = areasMacro.length === usuario!.areas_macro.length
@@ -764,6 +780,20 @@ function UsuarioDialog({
                 <option value="PANOLERO">Pañolero</option>
               </select>
               <p className="text-xs text-muted-foreground mt-1">{ROL_DESCRIPCION[form.rol]}</p>
+            </div>
+          )}
+          {isEdit && (
+            <div>
+              <label className={labelCls}>Pantalla de inicio</label>
+              <select value={homeRoute} onChange={e => setHomeRoute(e.target.value)} className={inputCls}>
+                <option value="">(Default según rol)</option>
+                {HOME_ROUTE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pantalla a la que entra este usuario al hacer login. Solo un admin puede cambiarla.
+              </p>
             </div>
           )}
           {isEdit && esAdminGlobal && (

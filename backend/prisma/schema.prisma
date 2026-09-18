@@ -302,6 +302,11 @@ model Usuario {
   puede_ver_macro Boolean  @default(false)
   areas_macro     String[] // subconjunto de ["FINANZAS","ADMIN","RRHH","STOCK"]
 
+  // Pantalla a la que redirige al hacer login (ver resolveHomeRoute en el
+  // frontend). null ⇒ usa el default según rol/empresa (admin global y
+  // puede_ver_macro van a /macro, el resto a /eventos).
+  home_route String?
+
   eventoAccesos          EventoAcceso[]
   auditoriaLogs          AuditoriaLog[]
   empresaAccesos         UsuarioEmpresaAcceso[]

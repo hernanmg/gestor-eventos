@@ -67,6 +67,7 @@ export default function App() {
           <Route path="/seleccionar-empresa" element={<SeleccionarEmpresaPage />} />
 
           <Route element={<ProtectedLayout />}>
+            <Route path="/"               element={<HomeRedirect />} />
             <Route path="/macro"         element={<MacroPage />} />
             <Route path="/caja"          element={<CajaGlobalPage />} />
             <Route path="/caja/:cuentaId" element={<CuentaDetallePage />} />

@@ -291,6 +291,9 @@ async function main() {
     // Vista Macro restringida por área (ver Usuario.puede_ver_macro/areas_macro).
     puedeVerMacro?: boolean;
     areasMacro?:    string[];
+    // Pantalla principal al loguearse (ver Usuario.home_route / resolveHomeRoute
+    // en el frontend). Sin este campo, usa el default por rol.
+    homeRoute?: string;
   };
 
   const USUARIOS_REALES: UsuarioSeed[] = [
@@ -300,7 +303,7 @@ async function main() {
     // ── DOS57 — admins ──────────────────────────────────────────────────────────
     { nombre: 'Sergio Bibiloni (Pollo)',    email: 'pollobibiloni@gmail.com',           telefono: '351 295-6442', rol: 'ADMIN', empresa_id: dos57.id },
     { nombre: 'Verónica Salerno (Veck)',    email: 'veckisalerno.dos57@gmail.com',      telefono: '351 259-6633', rol: 'ADMIN', empresa_id: dos57.id },
-    { nombre: 'Andrea Olivetto (Andre)',    email: 'administracion@grupodos57.com.ar',  telefono: '351 221-3138', rol: 'ADMIN', empresa_id: dos57.id },
+    { nombre: 'Andrea Olivetto (Andre)',    email: 'administracion@grupodos57.com.ar',  telefono: '351 221-3138', rol: 'ADMIN', empresa_id: dos57.id, homeRoute: '/gastos-operativos' },
     {
       nombre: 'Mayra Ontivero', email: 'mayra.dos57@gmail.com', telefono: '351 706-2733', rol: 'ADMIN', empresa_id: dos57.id,
       accesoExtra: [{ empresa_id: enjoy.id, rol: 'ADMIN' }],
@@ -311,20 +314,21 @@ async function main() {
     },
 
     // ── DOS57 — operadores ──────────────────────────────────────────────────────
-    { nombre: 'Jazmín Valdivia (Jaz)', email: 'jazminvaldivia.dos57@gmail.com', telefono: '351 594-6637', rol: 'OPERADOR', empresa_id: dos57.id },
+    { nombre: 'Jazmín Valdivia (Jaz)', email: 'jazminvaldivia.dos57@gmail.com', telefono: '351 594-6637', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/parte-diario' },
     // Apellido "Herrera" y CUIL 27-30474212-2 confirmados en
     // docs/dos57/lorena/Datos DOS57_Datos Personales.xlsx (fila 13, apodo
     // "Lore"). Email PLACEHOLDER — no hay uno real en ninguna planilla ni
     // transcripción relevada; confirmar antes de dar de alta en producción.
-    { nombre: 'Lorena Herrera (Lore)', email: 'lorena.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
+    { nombre: 'Lorena Herrera (Lore)', email: 'lorena.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/presentismo' },
     // Florencia, Santiago y Nicolás: relevados en docs/dos57/florencia y
     // docs/dos57/santi-nico, pero NINGUNA planilla ni transcripción trae su
     // apellido, CUIL o email real (no están en el legajo "DOS57 FIJOS" —
     // altas más recientes que esa planilla). nombre y email acá son
     // PLACEHOLDERS — confirmar los datos reales antes de producción.
+    // Florencia: home_route pendiente de definir (queda null → default por rol).
     { nombre: 'Florencia',           email: 'florencia.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
-    { nombre: 'Santiago (Santi)',    email: 'santiago.dos57@gmail.com',  rol: 'OPERADOR', empresa_id: dos57.id },
-    { nombre: 'Nicolás (Nico)',      email: 'nicolas.dos57@gmail.com',   rol: 'OPERADOR', empresa_id: dos57.id },
+    { nombre: 'Santiago (Santi)',    email: 'santiago.dos57@gmail.com',  rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible' },
+    { nombre: 'Nicolás (Nico)',      email: 'nicolas.dos57@gmail.com',   rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible' },
 
     // ── Enjoy — admins ──────────────────────────────────────────────────────────
     { nombre: 'Christian Xinos (Chino)',        email: 'christianxinos@gmail.com',            telefono: '351 800-5952', rol: 'ADMIN', empresa_id: enjoy.id },
@@ -343,6 +347,7 @@ async function main() {
       update: {
         nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true,
         puede_ver_macro: u.puedeVerMacro ?? false, areas_macro: u.areasMacro ?? [],
+        home_route: u.homeRoute ?? null,
       },
       create: {
         email:         u.email,
@@ -353,6 +358,7 @@ async function main() {
         empresa_id:    u.empresa_id,
         puede_ver_macro: u.puedeVerMacro ?? false,
         areas_macro:     u.areasMacro ?? [],
+        home_route:      u.homeRoute ?? null,
       },
     });
 
