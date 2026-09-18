@@ -10,7 +10,7 @@ import {
   listPatentesVehiculo, listPatentesEmpresa, createPatenteVehiculo, updatePatenteVehiculo,
   listPeajes, listPeajesVehiculo, createPeaje, deletePeaje,
   listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
-  alertasFlota,
+  alertasFlota, importarPizarra,
 } from '../controllers/flota.controller';
 
 function docMiddleware(field: string) {
@@ -63,5 +63,8 @@ router.delete('/taller/:id',           requireRole('ADMIN'), asyncHandler(delete
 
 // ── Alertas ───────────────────────────────────────────────────────────────────
 router.get('/alertas', asyncHandler(alertasFlota));
+
+// ── Importador de pizarra (Lorena) ───────────────────────────────────────────
+router.post('/importar-pizarra', asyncHandler(importarPizarra));
 
 export default router;

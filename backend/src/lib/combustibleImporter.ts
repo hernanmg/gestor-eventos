@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { TipoCombustible } from '@prisma/client';
 import { prisma } from './prisma';
+import { normalizarPatente } from './normalizarPatente';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ function toNumber(value: any): number | null {
 }
 
 function normalizeDominio(s: string): string {
-  return s.toString().trim().toUpperCase().replace(/\s+/g, '');
+  return normalizarPatente(s) ?? '';
 }
 
 // monto_total/pagos/saldo son Decimal(x,2) en la DB — se redondea acá para
@@ -121,7 +122,7 @@ class RegistroVehiculos {
       return existente;
     }
 
-    const patente = valorRaw.trim();
+    const patente = normalizarPatente(valorRaw) ?? valorRaw.trim();
     const nuevo = await prisma.camion.create({
       data: {
         empresa_id:  this.empresaId,

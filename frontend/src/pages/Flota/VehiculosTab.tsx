@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Truck, Pencil, Wrench, ShieldOff } from 'lucide-react';
+import { Plus, Truck, Pencil, Wrench, ShieldOff, Upload } from 'lucide-react';
+import { useImportarPizarraFlota, type ImportarPizarraResultado } from '@/hooks/useFlota';
 import {
   useVehiculosFlota, useVehiculoFlota, useCreateVehiculoFlota, useUpdateVehiculoFlota, useDarDeBajaVehiculo,
   useSegurosVehiculo, type VehiculoFiltros, type VehiculoPayload,
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SeguroEstadoBadge, PatenteEstadoBadge, ServicioTallerEstadoBadge } from '@/components/ui/badge';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import { formatDate, formatCurrency } from '@/lib/formatters';
+import { formatDate, formatCurrency, normalizarPatente, formatearPatente } from '@/lib/formatters';
 import type { VehiculoFlota } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -44,7 +45,7 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
 
   useEffect(() => {
     setForm(vehiculo ? {
-      codigo: vehiculo.codigo, descripcion: vehiculo.descripcion ?? '', patente: vehiculo.patente ?? '', tipo: vehiculo.tipo ?? '',
+      codigo: vehiculo.codigo, descripcion: vehiculo.descripcion ?? '', patente: formatearPatente(vehiculo.patente), tipo: vehiculo.tipo ?? '',
       marca: vehiculo.marca ?? '', modelo: vehiculo.modelo ?? '', anio: vehiculo.anio ? String(vehiculo.anio) : '',
       color: vehiculo.color ?? '', titular: vehiculo.titular ?? '', numero_telepase: vehiculo.numero_telepase ?? '',
     } : EMPTY);
@@ -57,7 +58,7 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
     const payload: VehiculoPayload = {
       codigo:          form.codigo,
       descripcion:     form.descripcion || null,
-      patente:         form.patente || null,
+      patente:         form.patente ? normalizarPatente(form.patente) : null,
       tipo:            form.tipo || null,
       marca:           form.marca || null,
       modelo:          form.modelo || null,
@@ -111,7 +112,13 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
             </div>
             <div>
               <label className={labelCls}>Patente</label>
-              <input value={form.patente} onChange={e => setForm(p => ({ ...p, patente: e.target.value }))} className={inputCls} />
+              <input
+                value={form.patente}
+                onChange={e => setForm(p => ({ ...p, patente: e.target.value }))}
+                onBlur={e => setForm(p => ({ ...p, patente: formatearPatente(e.target.value) }))}
+                className={inputCls}
+                placeholder="HLW 156"
+              />
             </div>
             <div>
               <label className={labelCls}>N° Telepase</label>
@@ -208,7 +215,7 @@ function DetalleVehiculo({ id, onClose }: { id: number | null; onClose: () => vo
               <p><span className="text-muted-foreground">Marca/Modelo:</span> {v.marca ?? '—'} {v.modelo ?? ''}</p>
               <p><span className="text-muted-foreground">Año:</span> {v.anio ?? '—'}</p>
               <p><span className="text-muted-foreground">Color:</span> {v.color ?? '—'}</p>
-              <p><span className="text-muted-foreground">Patente:</span> {v.patente ?? '—'}</p>
+              <p><span className="text-muted-foreground">Patente:</span> {v.patente ? formatearPatente(v.patente) : '—'}</p>
               <p><span className="text-muted-foreground">Titular:</span> {v.titular ?? '—'}</p>
               <p><span className="text-muted-foreground">Telepase:</span> {v.numero_telepase ?? '—'}</p>
             </section>
@@ -290,9 +297,72 @@ function SeguroCell({ v }: { v: VehiculoFlota }) {
 
 // ── Tab principal ─────────────────────────────────────────────────────────────
 
+// La pizarra física de DOS57 no se sube como archivo — los datos están
+// transcriptos en flotaPizarraImporter.ts (ver relevamiento de Lorena), así
+// que el diálogo sólo confirma y muestra el resultado.
+function ImportarPizarraDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const importar = useImportarPizarraFlota();
+  const [resultado, setResultado] = useState<ImportarPizarraResultado | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { if (open) { setResultado(null); setError(null); } }, [open]);
+
+  const handleImportar = async () => {
+    setError(null);
+    try {
+      setResultado(await importar.mutateAsync());
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Importar pizarra de flota</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1 text-sm">
+          {!resultado && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Crea/actualiza los vehículos y seguros con los datos transcriptos de la pizarra física de Lorena
+                (camionetas, camiones, trailers y autoelevadores).
+              </p>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+                <Button size="sm" onClick={handleImportar} disabled={importar.isPending}>
+                  {importar.isPending ? 'Importando…' : 'Importar'}
+                </Button>
+              </div>
+            </>
+          )}
+          {resultado && (
+            <div className="space-y-2">
+              <p>Vehículos creados: <span className="font-medium text-green-700">{resultado.vehiculos_creados.length}</span></p>
+              <p>Vehículos actualizados: <span className="font-medium">{resultado.vehiculos_actualizados.length}</span></p>
+              <p>Seguros cargados: <span className="font-medium text-green-700">{resultado.seguros_creados.length}</span></p>
+              {resultado.seguros_omitidos > 0 && <p>Seguros ya existentes (omitidos): <span className="font-medium">{resultado.seguros_omitidos}</span></p>}
+              {resultado.errores.length > 0 && (
+                <div className="text-amber-700 bg-amber-50 rounded p-2">
+                  <p className="font-medium text-xs mb-1">Avisos:</p>
+                  <ul className="list-disc pl-4 text-xs space-y-0.5">
+                    {resultado.errores.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="flex justify-end pt-1"><Button size="sm" onClick={onClose}>Cerrar</Button></div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: number | null }) {
   const { user } = useAuth();
   const isAdmin = user?.rol === 'ADMIN';
+  const canImportar = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const [filtros, setFiltros] = useState<VehiculoFiltros>({ en_servicio: 'true' });
   const { data: vehiculos = [], isLoading } = useVehiculosFlota(filtros);
 
@@ -300,6 +370,7 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
   const [editing, setEditing] = useState<VehiculoFlota | null>(null);
   const [baja, setBaja] = useState<VehiculoFlota | null>(null);
   const [detalleId, setDetalleId] = useState<number | null>(focusVehiculoId);
+  const [pizarraOpen, setPizarraOpen] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -313,12 +384,20 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
           <option value="false">Dados de baja</option>
           <option value="">Todos</option>
         </select>
-        {isAdmin && (
-          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus size={14} className="mr-1.5" /> Nuevo vehículo
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canImportar && (
+            <Button size="sm" variant="outline" onClick={() => setPizarraOpen(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar pizarra
+            </Button>
+          )}
+          {isAdmin && (
+            <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Plus size={14} className="mr-1.5" /> Nuevo vehículo
+            </Button>
+          )}
+        </div>
       </div>
+      <ImportarPizarraDialog open={pizarraOpen} onClose={() => setPizarraOpen(false)} />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
@@ -347,7 +426,7 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
                 <tr key={v.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setDetalleId(v.id)}>
                   <td className="px-3 py-2.5 font-mono font-medium">{v.codigo}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{[v.marca, v.modelo].filter(Boolean).join(' ') || '-'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{v.patente ?? '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{v.patente ? formatearPatente(v.patente) : '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{v.tipo ?? '-'}</td>
                   <td className="px-3 py-2.5"><SeguroCell v={v} /></td>
                   <td className="px-3 py-2.5">

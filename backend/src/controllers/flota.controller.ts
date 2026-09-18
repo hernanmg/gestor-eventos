@@ -6,6 +6,8 @@ import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { recalcularSaldoCCC } from '../lib/recalcularSaldoCCC';
+import { importarPizarraFlota } from '../lib/flotaPizarraImporter';
+import { normalizarPatente } from '../lib/normalizarPatente';
 
 // ── Multer (póliza / comprobante) ────────────────────────────────────────────
 
@@ -108,16 +110,22 @@ export async function createVehiculo(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
   const d = parsed.data;
+  const patenteNorm = normalizarPatente(d.patente);
 
   const dupe = await prisma.camion.findFirst({ where: { codigo: d.codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (dupe) { res.status(400).json({ error: 'Ya existe un vehículo con ese código' }); return; }
+
+  if (patenteNorm) {
+    const dupePatente = await prisma.camion.findFirst({ where: { patente: patenteNorm, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupePatente) { res.status(400).json({ error: `Ya existe un vehículo con esa patente: "${dupePatente.codigo}"` }); return; }
+  }
 
   const vehiculo = await prisma.camion.create({
     data: {
       ...withTenant(req.empresaId!),
       codigo:          d.codigo,
       descripcion:     d.descripcion     ?? null,
-      patente:         d.patente         ?? null,
+      patente:         patenteNorm,
       tipo:            d.tipo            ?? null,
       marca:           d.marca           ?? null,
       modelo:          d.modelo          ?? null,
@@ -151,7 +159,16 @@ export async function updateVehiculo(req: Request, res: Response) {
     if (dupe) { res.status(400).json({ error: 'Ya existe un vehículo con ese código' }); return; }
   }
 
-  const vehiculo = await prisma.camion.update({ where: { id }, data: { ...d } });
+  const patenteNorm = d.patente !== undefined ? normalizarPatente(d.patente) : undefined;
+  if (patenteNorm && patenteNorm !== existing.patente) {
+    const dupePatente = await prisma.camion.findFirst({ where: { patente: patenteNorm, deleted_at: null, id: { not: id }, ...withTenant(req.empresaId!) } });
+    if (dupePatente) { res.status(400).json({ error: `Ya existe un vehículo con esa patente: "${dupePatente.codigo}"` }); return; }
+  }
+
+  const vehiculo = await prisma.camion.update({
+    where: { id },
+    data: { ...d, ...(patenteNorm !== undefined && { patente: patenteNorm }) },
+  });
 
   await registrarAuditoria({
     usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Camion', entidadId: id,
@@ -865,4 +882,18 @@ export async function alertasFlota(req: Request, res: Response) {
   ];
 
   res.json({ items });
+}
+
+// ── Importador de la pizarra física (Lorena) ─────────────────────────────────
+
+export async function importarPizarra(req: Request, res: Response) {
+  const resultado = await importarPizarraFlota(req.empresaId!, req.user!.id);
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Camion',
+    descripcion: `Importó pizarra de flota — ${resultado.vehiculos_creados.length} vehículo(s) creados, ${resultado.vehiculos_actualizados.length} actualizados, ${resultado.seguros_creados.length} seguro(s) cargados`,
+    datosDespues: resultado, ip: req.ip, tx: prisma,
+  });
+
+  res.json(resultado);
 }

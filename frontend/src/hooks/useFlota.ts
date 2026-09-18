@@ -358,6 +358,28 @@ export function useDeleteServicioTaller() {
   });
 }
 
+// ── Importador de pizarra (Lorena) ───────────────────────────────────────────
+
+export interface ImportarPizarraResultado {
+  vehiculos_creados:      string[];
+  vehiculos_actualizados: string[];
+  seguros_creados:        string[];
+  seguros_omitidos:       number;
+  errores:                string[];
+}
+
+export function useImportarPizarraFlota() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<ImportarPizarraResultado>('/flota/importar-pizarra').then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...KEY, 'vehiculos'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'seguros'] });
+      invalidateCalendario(qc);
+    },
+  });
+}
+
 // ── Alertas ───────────────────────────────────────────────────────────────────
 
 export function useAlertasFlota() {

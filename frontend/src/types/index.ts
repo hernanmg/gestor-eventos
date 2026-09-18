@@ -601,8 +601,9 @@ export interface DocumentoSiniestro {
 export interface SiniestroEmpleado {
   id:                   number;
   empresa_id:           number;
-  empleado_id:          number;
-  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  empleado_id:          number | null;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado } | null;
+  empleado_nombre_manual: string | null;
   tipo:                 TipoSiniestro;
   fecha_ocurrencia:     string;
   descripcion:          string;
@@ -612,6 +613,11 @@ export interface SiniestroEmpleado {
   art_nombre:           string | null;
   art_numero_siniestro: string | null;
   fecha_denuncia_art:   string | null;
+  diagnostico:          string | null;
+  zona_afectada:        string | null;
+  condicion_laboral:    string | null;
+  zona_riesgo:          string | null;
+  plan_accion:          string | null;
   estado:               EstadoSiniestro;
   dias_baja:            number | null;
   fecha_alta_medica:    string | null;
@@ -813,6 +819,10 @@ export interface Camion {
   // ── Módulo Combustible ────────────────────────────────────────────────────
   km_actual?:                  number | null;
   limite_mensual_combustible?: number | null;
+  // ── Importador de pizarra (Lorena) ────────────────────────────────────────
+  capacidad_combustible?: string | null;
+  tipo_vehiculo?:         string | null;
+  notas?:                 string | null;
 }
 
 // ── Flota — seguros, patentes, peajes, taller ─────────────────────────────────

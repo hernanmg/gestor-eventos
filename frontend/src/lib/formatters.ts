@@ -1,5 +1,28 @@
 import type { Moneda, MonedaCCC } from '@/types';
 
+// Clave canónica de patente (sin espacios, mayúsculas) — es lo que se manda
+// al backend y lo que persiste Camion.patente. Mismo criterio que
+// backend/src/lib/normalizarPatente.ts (duplicado a propósito: frontend y
+// backend no comparten código, y esta normalización es la que evita volver a
+// crear vehículos duplicados por formato — ver fix de duplicados Camion).
+export function normalizarPatente(patente: string): string {
+  return patente.toUpperCase().replace(/\s+/g, '').trim();
+}
+
+// Sólo estética para mostrar en tablas/inputs — nunca es lo que se persiste.
+// Mercosur (2 letras + 3 dígitos + 2 letras, ej. "AB123CD") o formato viejo
+// (3 letras + 3 dígitos, ej. "HLW156"); cualquier otro formato se muestra tal
+// cual viene (ya normalizado) sin inventarle espacios.
+export function formatearPatente(patente: string | null | undefined): string {
+  if (!patente) return '';
+  const norm = normalizarPatente(patente);
+  const mercosur = norm.match(/^([A-Z]{2})(\d{3})([A-Z]{2})$/);
+  if (mercosur) return `${mercosur[1]} ${mercosur[2]} ${mercosur[3]}`;
+  const vieja = norm.match(/^([A-Z]{3})(\d{3})$/);
+  if (vieja) return `${vieja[1]} ${vieja[2]}`;
+  return norm;
+}
+
 // Acepta Moneda (ARS/USD/EUR, usado por Evento/Factura/Movimiento) y MonedaCCC
 // (ARS/USD/EUR, usado por Cuenta Corriente Genérica) — union de literales,
 // hoy equivalentes, para no acoplar formatters.ts a cuál de los dos tipos use

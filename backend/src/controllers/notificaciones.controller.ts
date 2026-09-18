@@ -490,7 +490,7 @@ async function resolveSiniestrosSinNovedad(empresaId: number, hace30Dias: Date):
   return siniestros.map(s => ({
     id:          `siniestro-${s.id}`,
     tipo:        'SINIESTRO_SIN_NOVEDAD',
-    titulo:      `${s.empleado.apellido}, ${s.empleado.nombre} — siniestro sin novedad`,
+    titulo:      `${s.empleado ? `${s.empleado.apellido}, ${s.empleado.nombre}` : (s.empleado_nombre_manual ?? 'Sin empleado')} — siniestro sin novedad`,
     descripcion: `${s.estado === 'ABIERTO' ? 'Abierto' : 'En trámite'} desde el ${s.updated_at.toLocaleDateString('es-AR')}`,
     urgencia:    'warning' as Urgencia,
     link:        '/gastos-operativos?tab=siniestros',

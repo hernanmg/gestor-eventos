@@ -668,10 +668,11 @@ async function resolveSiniestrosPendientes(empresaFiltro: number | undefined, de
     const diasSinActividad = Math.floor((hoy.getTime() - s.updated_at.getTime()) / 86_400_000);
     if (diasSinActividad <= 30) continue;
 
+    const nombreEmpleado = s.empleado ? `${s.empleado.apellido}, ${s.empleado.nombre}` : (s.empleado_nombre_manual ?? 'Sin empleado');
     items.push({
       id:             `siniestro-${s.id}`,
       tipo:           'SINIESTRO_PENDIENTE' as const,
-      titulo:         `${s.empleado.apellido}, ${s.empleado.nombre} — siniestro sin novedad`,
+      titulo:         `${nombreEmpleado} — siniestro sin novedad`,
       fecha:          hoy,
       empresa_id:     s.empresa_id,
       empresa_nombre: s.empresa.nombre,

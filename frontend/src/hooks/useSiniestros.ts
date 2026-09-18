@@ -120,3 +120,26 @@ export function documentoSiniestroUrl(siniestroId: number, docId: number): strin
   const base = (api.defaults.baseURL ?? '').replace(/\/$/, '');
   return `${base}/siniestros/${siniestroId}/documentos/${docId}`;
 }
+
+// ── Importador de la planilla de Lorena ──────────────────────────────────────
+
+export interface ImportarSiniestrosResultado {
+  filas_procesadas: number;
+  creados:          number;
+  actualizados:     number;
+  omitidos:         number;
+  sin_empleado:     string[];
+  errores:          string[];
+}
+
+export function useImportarSiniestros() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (archivo: File) => {
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      return api.post<ImportarSiniestrosResultado>('/siniestros/importar', fd).then(r => r.data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: SINIESTROS_KEY }),
+  });
+}

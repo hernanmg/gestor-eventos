@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { normalizarPatente } from '../lib/normalizarPatente';
 
 const camionSchema = z.object({
   codigo:      z.string().min(1),
@@ -26,12 +27,18 @@ export async function createCamion(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
   const { codigo, descripcion, patente, tipo } = parsed.data;
+  const patenteNorm = normalizarPatente(patente);
 
   const dupe = await prisma.camion.findFirst({ where: { codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (dupe) { res.status(400).json({ error: 'Ya existe un camión con ese código' }); return; }
 
+  if (patenteNorm) {
+    const dupePatente = await prisma.camion.findFirst({ where: { patente: patenteNorm, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupePatente) { res.status(400).json({ error: `Ya existe un camión con esa patente: "${dupePatente.codigo}"` }); return; }
+  }
+
   const camion = await prisma.camion.create({
-    data: { ...withTenant(req.empresaId!), codigo, descripcion: descripcion ?? null, patente: patente ?? null, tipo: tipo ?? null },
+    data: { ...withTenant(req.empresaId!), codigo, descripcion: descripcion ?? null, patente: patenteNorm, tipo: tipo ?? null },
   });
 
   await registrarAuditoria({
@@ -59,12 +66,18 @@ export async function updateCamion(req: Request, res: Response) {
     if (dupe) { res.status(400).json({ error: 'Ya existe un camión con ese código' }); return; }
   }
 
+  const patenteNorm = patente !== undefined ? normalizarPatente(patente) : undefined;
+  if (patenteNorm && patenteNorm !== existing.patente) {
+    const dupePatente = await prisma.camion.findFirst({ where: { patente: patenteNorm, deleted_at: null, id: { not: id }, ...withTenant(req.empresaId!) } });
+    if (dupePatente) { res.status(400).json({ error: `Ya existe un camión con esa patente: "${dupePatente.codigo}"` }); return; }
+  }
+
   const camion = await prisma.camion.update({
     where: { id },
     data: {
       ...(codigo      !== undefined && { codigo }),
       ...(descripcion !== undefined && { descripcion }),
-      ...(patente     !== undefined && { patente }),
+      ...(patenteNorm !== undefined && { patente: patenteNorm }),
       ...(tipo        !== undefined && { tipo }),
       ...(activo      !== undefined && { activo }),
     },

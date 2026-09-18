@@ -4,14 +4,22 @@ import { tenantMiddleware } from '../middleware/tenant';
 import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
-  uploadDocumentoSiniestro,
+  uploadDocumentoSiniestro, uploadPlanillaSiniestros,
   listSiniestros, getSiniestro, createSiniestro, updateSiniestro, cerrarSiniestro,
   addGastoSiniestro, deleteGastoSiniestro,
   subirDocumentoSiniestro, descargarDocumentoSiniestro,
+  importarSiniestros,
 } from '../controllers/siniestros.controller';
 
 function docMiddleware(req: any, res: any, next: any) {
   uploadDocumentoSiniestro.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
+
+function excelMiddleware(req: any, res: any, next: any) {
+  uploadPlanillaSiniestros.single('archivo')(req, res, (err: any) => {
     if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
     next();
   });
@@ -23,6 +31,7 @@ const router = Router();
 router.use(auth);
 router.use(tenantMiddleware);
 
+router.post('/importar',              requireAnyRole(ROLES.ADMIN_OPERADOR), excelMiddleware, asyncHandler(importarSiniestros));
 router.get('/',                       requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listSiniestros));
 router.get('/:id',                    requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getSiniestro));
 router.post('/',                      requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createSiniestro));

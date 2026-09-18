@@ -1,9 +1,12 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
+import * as XLSX from 'xlsx';
 import { Prisma, EstadoSiniestro, TipoSiniestro } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
+import { registrarAuditoria } from '../lib/auditoria';
+import { importarPlanillaSiniestros } from '../lib/siniestrosImporter';
 
 export const uploadDocumentoSiniestro = multer({
   storage: multer.memoryStorage(),
@@ -11,6 +14,18 @@ export const uploadDocumentoSiniestro = multer({
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('Solo se aceptan archivos PDF o imágenes'));
+  },
+});
+
+export const uploadPlanillaSiniestros = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const isXlsx =
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.originalname.toLowerCase().endsWith('.xlsx');
+    if (isXlsx) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos .xlsx'));
   },
 });
 
@@ -262,4 +277,27 @@ export async function descargarDocumentoSiniestro(req: Request, res: Response) {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Length',      buffer.length);
   res.end(buffer);
+}
+
+// ── Importador de la planilla "Informe Siniestros Personal" (Lorena) ─────────
+
+export async function importarSiniestros(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
+  }
+
+  const resultado = await importarPlanillaSiniestros(workbook, req.empresaId!, req.user!.id);
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'SiniestroEmpleado',
+    descripcion: `Importó planilla de siniestros — ${resultado.creados} creados, ${resultado.actualizados} actualizados`,
+    datosDespues: resultado, ip: req.ip, tx: prisma,
+  });
+
+  res.json(resultado);
 }

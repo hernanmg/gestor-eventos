@@ -905,6 +905,11 @@ model Camion {
   fecha_baja      DateTime?
   motivo_baja     String?
 
+  // ── Importador de pizarra (Lorena, DOS57) ────────────────────────────────────
+  capacidad_combustible String? // texto libre de la pizarra: "75 lts", "315 lts + 35 UREA", "60/65 lts"
+  tipo_vehiculo         String? // "CAMIONETA" | "CAMION" | "TRAILER" | "AUTOELEVADOR"
+  notas                 String? // ITU/RTO de la pizarra ("RTO 27/9/2026") y otras observaciones libres
+
   // ── Módulo Combustible — odómetro actualizado en cada carga; tope mensual de
   // la hoja "CARGAS AUTORIZADAS" de la planilla real (null = sin límite) ──────
   km_actual                  Int?
@@ -2633,11 +2638,15 @@ enum EstadoSiniestro {
 }
 
 model SiniestroEmpleado {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   empresa_id  Int
-  empresa     Empresa  @relation(fields: [empresa_id], references: [id])
-  empleado_id Int
-  empleado    Empleado @relation(fields: [empleado_id], references: [id])
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  // Nullable — el importador de la planilla de Lorena crea el registro con
+  // empleado_nombre_manual cuando no encuentra un match en Empleado (personal
+  // eventual/extranjero que todavía no está cargado en RRHH).
+  empleado_id Int?
+  empleado    Empleado? @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String? // nombre tal cual viene de la planilla, si empleado_id es null
 
   // ── Datos del siniestro ──────────────────────────────────────────────────────
   tipo             TipoSiniestro
@@ -2649,8 +2658,15 @@ model SiniestroEmpleado {
 
   // ── ART ───────────────────────────────────────────────────────────────────────
   art_nombre           String? // "SANCOR", "FEDERACION PATRONAL", etc.
-  art_numero_siniestro String? // número asignado por la ART
+  art_numero_siniestro String? // número asignado por la ART — único por ART, clave del importador de Lorena
   fecha_denuncia_art   DateTime?
+
+  // ── Datos de la planilla de Lorena (informe de siniestros de personal) ───────
+  diagnostico       String?
+  zona_afectada     String?
+  condicion_laboral String? // Fijo/Jornalero/Fofi/Extranjero/etc — texto libre de la planilla
+  zona_riesgo       String? // Polo-Montaje/Desmontaje/etc
+  plan_accion       String? // centro médico donde se atendió
 
   // ── Estado y seguimiento ─────────────────────────────────────────────────────
   estado            EstadoSiniestro @default(ABIERTO)

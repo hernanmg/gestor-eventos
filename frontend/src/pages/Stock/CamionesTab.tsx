@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { normalizarPatente, formatearPatente } from '@/lib/formatters';
 import type { Camion } from '@/types';
 
 interface CamionFormData {
@@ -25,7 +26,7 @@ function CamionDialog({ open, camion, onClose }: { open: boolean; camion: Camion
 
   useEffect(() => {
     setForm(camion
-      ? { codigo: camion.codigo, descripcion: camion.descripcion ?? '', patente: camion.patente ?? '', tipo: camion.tipo ?? '' }
+      ? { codigo: camion.codigo, descripcion: camion.descripcion ?? '', patente: formatearPatente(camion.patente), tipo: camion.tipo ?? '' }
       : EMPTY);
     setError(null);
   }, [camion, open]);
@@ -39,7 +40,7 @@ function CamionDialog({ open, camion, onClose }: { open: boolean; camion: Camion
     const payload = {
       codigo:      form.codigo,
       descripcion: form.descripcion || null,
-      patente:     form.patente     || null,
+      patente:     form.patente ? normalizarPatente(form.patente) : null,
       tipo:        form.tipo        || null,
     };
     try {
@@ -73,7 +74,13 @@ function CamionDialog({ open, camion, onClose }: { open: boolean; camion: Camion
             </div>
             <div className="col-span-2">
               <label className={labelCls}>Patente</label>
-              <input value={form.patente} onChange={e => setForm(p => ({ ...p, patente: e.target.value }))} className={inputCls} />
+              <input
+                value={form.patente}
+                onChange={e => setForm(p => ({ ...p, patente: e.target.value }))}
+                onBlur={e => setForm(p => ({ ...p, patente: formatearPatente(e.target.value) }))}
+                className={inputCls}
+                placeholder="HLW 156"
+              />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -138,7 +145,7 @@ export default function CamionesTab() {
                 <tr key={c.id} className="hover:bg-muted/20">
                   <td className="px-3 py-2.5 font-mono font-medium">{c.codigo}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{c.descripcion ?? '-'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{c.patente ?? '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{c.patente ? formatearPatente(c.patente) : '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{c.tipo ?? '-'}</td>
                   <td className="px-3 py-2.5">
                     {isAdmin ? (

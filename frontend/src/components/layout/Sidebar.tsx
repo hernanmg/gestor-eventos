@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -71,6 +71,12 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   // después RRHH/Caja Global/Calendario. La campanita de notificaciones ya
   // está siempre visible en el header, sin cambios acá.
   const esAndrea = user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && /andrea/i.test(user.nombre);
+
+  // Lorena (DOS57) ve un menú acotado a sus tres responsabilidades —
+  // presentismo (su home), siniestros de personal y flota/seguros (sólo
+  // lectura, el alta la sigue haciendo Flota) — más el calendario con los
+  // vencimientos. Mismo criterio que esAndrea.
+  const esLorena = user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && /loren/i.test(user.nombre);
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -218,6 +224,39 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                 {isOpen && <span>Calendario</span>}
               </NavLink>
             </>
+          ) : esLorena ? (
+            <>
+              <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
+                <UserCheck size={18} className="shrink-0" />
+                {isOpen && <span>Presentismo</span>}
+              </NavLink>
+              <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
+                <Ambulance size={18} className="shrink-0" />
+                {isOpen && <span>Siniestros</span>}
+              </NavLink>
+              <NavLink to="/flota" title={!isOpen ? 'Flota y Seguros' : undefined} className={navItem}>
+                <div className="relative shrink-0">
+                  <Truck size={18} />
+                  {!isOpen && flotaAlertCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                  )}
+                </div>
+                {isOpen && (
+                  <>
+                    <span className="flex-1">Flota y Seguros</span>
+                    {flotaAlertCount > 0 && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+                <CalendarDays size={18} className="shrink-0" />
+                {isOpen && <span>Calendario</span>}
+              </NavLink>
+            </>
           ) : (
           <>
           {/* Macro — vista cross-evento + KPIs globales (admin global) o vista
@@ -338,6 +377,16 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
               <Banknote size={18} className="shrink-0" />
               {isOpen && <span>Gastos del mes</span>}
+            </NavLink>
+          )}
+
+          {/* Siniestros de personal (Lorena, DOS57) — acá para el admin fijo
+              de DOS57; Lorena tiene su propio menú acotado (esLorena) más
+              arriba, y Andrea lo ve embebido en Gastos del mes. */}
+          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
+              <Ambulance size={18} className="shrink-0" />
+              {isOpen && <span>Siniestros</span>}
             </NavLink>
           )}
 

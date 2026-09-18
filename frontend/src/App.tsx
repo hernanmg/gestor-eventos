@@ -36,6 +36,7 @@ import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
 import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
 import GastosOperativosPage from '@/pages/GastosOperativos';
+import SiniestrosPage       from '@/pages/Siniestros';
 import { useAuth }          from '@/hooks/useAuth';
 import { resolveHomeRoute } from '@/lib/homeRoute';
 
@@ -96,6 +97,8 @@ export default function App() {
             <Route path="/flota"                   element={<FlotaPage />} />
             <Route path="/combustible"             element={<CombustiblePage />} />
             <Route path="/gastos-operativos"       element={<GastosOperativosPage />} />
+            <Route path="/siniestros"              element={<SiniestrosPage />} />
+            <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />
