@@ -21,6 +21,7 @@ export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           'cuotas_afip',
   CUOTA_PRESTAMO:       'cuotas_prestamo',
   FACTURA_EMITIDA_VENCE: 'facturas_emitidas',
+  ACTIVO_STOCK_BAJO:    'stock_bajo',
 };
 
 export const TODOS_LOS_TIPOS: TipoCalendario[] = Object.keys(TIPO_QUERY_MAP) as TipoCalendario[];

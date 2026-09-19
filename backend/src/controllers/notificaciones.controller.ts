@@ -102,6 +102,32 @@ async function resolveSaldosMinimos(empresaId: number): Promise<NotificacionItem
   return items;
 }
 
+// Uniformes con stock en o por debajo del mínimo (ver Activo.cantidad_minima
+// — importador de stock de uniformes, Lorena). Mismo criterio de alerta
+// vigente (no vencimiento futuro) que resolveSaldosMinimos.
+async function resolveStockUniformeBajo(empresaId: number): Promise<NotificacionItem[]> {
+  const activos = await prisma.activo.findMany({
+    where: { deleted_at: null, empresa_id: empresaId, categoria: 'UNIFORME' },
+  });
+
+  const items: NotificacionItem[] = [];
+  for (const a of activos) {
+    const cantidad = a.cantidad ?? 0;
+    const minima   = a.cantidad_minima ?? 0;
+    if (cantidad > minima) continue;
+    items.push({
+      id:          `stock-uniforme-${a.id}`,
+      tipo:        'STOCK_UNIFORME_BAJO',
+      titulo:      `Stock bajo: ${a.nombre} (${a.ubicacion ?? 'sin depósito'})`,
+      descripcion: `Quedan ${cantidad} unidad${cantidad !== 1 ? 'es' : ''}`,
+      urgencia:    cantidad === 0 ? 'critical' : 'warning',
+      link:        '/stock?tab=activos',
+      fecha:       new Date(),
+    });
+  }
+  return items;
+}
+
 async function resolveRendicionesPendientes(empresaId: number, hoy: Date): Promise<NotificacionItem[]> {
   const cuentas = await prisma.cuentaBancaria.findMany({
     where: { deleted_at: null, empresa_id: empresaId, estado: 'PENDIENTE_RENDICION' },
@@ -532,6 +558,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolvePatentesVencidas(empresaId, hoy),
     resolveTallerAtrasado(empresaId, hoy),
     resolveSaldosMinimos(empresaId),
+    resolveStockUniformeBajo(empresaId),
     resolveRendicionesPendientes(empresaId, hoy),
     resolveLiquidacionesBorrador(empresaId, hace7Dias),
     resolveJornadasPendientes(empresaId, hace3Dias),

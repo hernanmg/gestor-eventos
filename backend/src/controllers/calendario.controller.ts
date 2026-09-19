@@ -13,7 +13,7 @@ export type TipoCalendario =
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
-  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE';
+  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -50,6 +50,9 @@ const COLORES: Record<TipoCalendario, string> = {
   GASTO_ESPACIO_VENCE:  '#3730A3',
   SINIESTRO_PENDIENTE:  '#DC2626',
   EXCEDENTE_PENDIENTE:  '#F59E0B',
+  // Color real por item: rojo si cantidad=0, amarillo si sólo por debajo del
+  // mínimo — este valor del mapa es sólo el default/fallback.
+  ACTIVO_STOCK_BAJO:    '#DC2626',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -73,6 +76,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   gastos_espacios: 'GASTO_ESPACIO_VENCE',
   siniestros:      'SINIESTRO_PENDIENTE',
   excedentes_horas: 'EXCEDENTE_PENDIENTE',
+  stock_bajo:      'ACTIVO_STOCK_BAJO',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -709,6 +713,43 @@ async function resolveExcedentesPendientes(empresaFiltro: number | undefined, de
   }));
 }
 
+// Activos con stock bajo o quiebre (cantidad <= cantidad_minima) — mismo
+// criterio de alerta vigente (ancla a "hoy", no vencimiento futuro) que
+// resolveSaldosMinimos/resolveCuentasCorrientesInactivas. Hoy sólo lo pueblan
+// los uniformes de Lorena (categoria=UNIFORME) pero no está acotado a esa
+// categoría — cualquier Activo con cantidad_minima configurado entra.
+async function resolveActivosStockBajo(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const activos = await prisma.activo.findMany({
+    where: {
+      deleted_at: null,
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const a of activos) {
+    const cantidad = a.cantidad ?? 0;
+    const minima   = a.cantidad_minima ?? 0;
+    if (cantidad > minima) continue;
+
+    items.push({
+      id:             `activo-stock-bajo-${a.id}`,
+      tipo:           'ACTIVO_STOCK_BAJO' as const,
+      titulo:         `Stock bajo: ${a.nombre} (${a.ubicacion ?? 'sin depósito'})`,
+      fecha:          hoy,
+      empresa_id:     a.empresa_id,
+      empresa_nombre: a.empresa.nombre,
+      color:          cantidad === 0 ? '#DC2626' : '#F59E0B',
+      urgencia:       cantidad === 0 ? 'critical' as const : 'warning' as const,
+      metadata:       { activo_id: a.id, categoria: a.categoria, cantidad, cantidad_minima: minima, ubicacion: a.ubicacion },
+    });
+  }
+  return items;
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -790,6 +831,7 @@ export async function getCalendario(req: Request, res: Response) {
   // visibles para ADMIN y OPERADOR de DOS57 (misma matriz de esa pantalla).
   if (tiposActivos.has('SINIESTRO_PENDIENTE')) tareas.push(resolveSiniestrosPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('EXCEDENTE_PENDIENTE')) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('ACTIVO_STOCK_BAJO'))   tareas.push(resolveActivosStockBajo(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

@@ -29,6 +29,7 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           'Cuotas AFIP',
   CUOTA_PRESTAMO:       'Cuotas créditos',
   FACTURA_EMITIDA_VENCE: 'Facturas a Cobrar',
+  ACTIVO_STOCK_BAJO:    'Quiebre de stock uniformes',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -48,6 +49,7 @@ const COLORES: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           '#DC2626',
   CUOTA_PRESTAMO:       '#92400E',
   FACTURA_EMITIDA_VENCE: '#065F46',
+  ACTIVO_STOCK_BAJO:    '#DC2626',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];

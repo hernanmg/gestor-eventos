@@ -1271,12 +1271,26 @@ model Activo {
   fecha_compra  DateTime?
   valor_compra  Decimal?     @db.Decimal(12, 2)
   estado        EstadoActivo @default(BUENO)
-  ubicacion     String? // "Depósito central", "Oficina", "Camión C1"
+  // "DOS57 — Depósito Principal", "Enjoy — Depósito 1", etc. — string
+  // descriptivo por empresa, no nombre de persona (ver responsable_deposito).
+  ubicacion     String?
+  // Cantidad de unidades — sólo tiene sentido para activos fungibles (ej.
+  // stock de uniformes por talle); un activo individual (vehículo, notebook)
+  // lo deja en el default. Ver importador de stock de uniformes (Lorena).
+  cantidad      Int?         @default(0)
+  // Si cantidad <= cantidad_minima → alerta de quiebre (notificaciones +
+  // calendario, ver ACTIVO_STOCK_BAJO / STOCK_UNIFORME_BAJO).
+  cantidad_minima Int?       @default(0)
+  // Responsable del depósito — texto libre (ej. "Sergio Bibiloni (Pollo)"),
+  // no reemplaza a `ubicacion`, que es el nombre del depósito en sí.
+  responsable_deposito String?
   observaciones String?
   created_at    DateTime     @default(now())
   updated_at    DateTime     @updatedAt
   deleted_at    DateTime?
   created_by    Int?
+
+  @@unique([empresa_id, nombre, categoria, ubicacion])
 }
 
 // ─── FACTURAS (cuentas a pagar) ───────────────────────────────────────────────

@@ -14,6 +14,9 @@ const activoSchema = z.object({
   valor_compra:  z.number().nonnegative().nullable().optional(),
   estado:        z.enum(['BUENO', 'REGULAR', 'DETERIORADO', 'BAJA']).optional(),
   ubicacion:     z.string().nullable().optional(),
+  cantidad:      z.number().int().nullable().optional(),
+  cantidad_minima: z.number().int().nullable().optional(),
+  responsable_deposito: z.string().nullable().optional(),
   observaciones: z.string().nullable().optional(),
 });
 
@@ -36,7 +39,7 @@ export async function createActivo(req: Request, res: Response) {
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
-  const { nombre, descripcion, categoria, numero_serie, fecha_compra, valor_compra, estado, ubicacion, observaciones } = parsed.data;
+  const { nombre, descripcion, categoria, numero_serie, fecha_compra, valor_compra, estado, ubicacion, cantidad, cantidad_minima, responsable_deposito, observaciones } = parsed.data;
 
   const activo = await prisma.activo.create({
     data: {
@@ -44,7 +47,9 @@ export async function createActivo(req: Request, res: Response) {
       nombre, descripcion: descripcion ?? null, categoria: categoria ?? null,
       numero_serie: numero_serie ?? null, fecha_compra: toDate(fecha_compra),
       valor_compra: valor_compra ?? null, estado: estado ?? 'BUENO',
-      ubicacion: ubicacion ?? null, observaciones: observaciones ?? null,
+      ubicacion: ubicacion ?? null, cantidad: cantidad ?? null, cantidad_minima: cantidad_minima ?? null,
+      responsable_deposito: responsable_deposito ?? null,
+      observaciones: observaciones ?? null,
       created_by: req.user!.id,
     },
   });
@@ -67,7 +72,7 @@ export async function updateActivo(req: Request, res: Response) {
   const existing = await prisma.activo.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Activo no encontrado' }); return; }
 
-  const { nombre, descripcion, categoria, numero_serie, fecha_compra, valor_compra, estado, ubicacion, observaciones } = parsed.data;
+  const { nombre, descripcion, categoria, numero_serie, fecha_compra, valor_compra, estado, ubicacion, cantidad, cantidad_minima, responsable_deposito, observaciones } = parsed.data;
 
   const activo = await prisma.activo.update({
     where: { id },
@@ -80,6 +85,9 @@ export async function updateActivo(req: Request, res: Response) {
       ...(valor_compra  !== undefined && { valor_compra }),
       ...(estado        !== undefined && { estado }),
       ...(ubicacion     !== undefined && { ubicacion }),
+      ...(cantidad      !== undefined && { cantidad }),
+      ...(cantidad_minima !== undefined && { cantidad_minima }),
+      ...(responsable_deposito !== undefined && { responsable_deposito }),
       ...(observaciones !== undefined && { observaciones }),
     },
   });
