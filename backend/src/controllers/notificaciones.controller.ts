@@ -102,6 +102,43 @@ async function resolveSaldosMinimos(empresaId: number): Promise<NotificacionItem
   return items;
 }
 
+// SGR — seguimiento informativo de cupo/vinculación (Mayra: no afecta ningún
+// cálculo, sólo alerta). Dos motivos independientes, pueden darse los dos a
+// la vez para la misma SGR.
+async function resolveSGRAlertas(empresaId: number, en30dias: Date): Promise<NotificacionItem[]> {
+  const sgrs = await prisma.sGR.findMany({ where: { deleted_at: null, empresa_id: empresaId } });
+
+  const items: NotificacionItem[] = [];
+  for (const s of sgrs) {
+    if (s.fecha_vencimiento && s.fecha_vencimiento <= en30dias) {
+      items.push({
+        id:          `sgr-vence-${s.id}`,
+        tipo:        'SGR_VENCE',
+        titulo:      `Vinculación SGR por vencer — ${s.nombre}`,
+        descripcion: `Vence el ${s.fecha_vencimiento.toLocaleDateString('es-AR')}`,
+        urgencia:    s.fecha_vencimiento < new Date() ? 'critical' : 'warning',
+        link:        '/afip-prestamos?tab=sgr',
+        fecha:       s.fecha_vencimiento,
+      });
+    }
+
+    const cupoTotal      = s.cupo_total      !== null ? Number(s.cupo_total)      : null;
+    const cupoDisponible = s.cupo_disponible !== null ? Number(s.cupo_disponible) : null;
+    if (cupoTotal !== null && cupoTotal > 0 && cupoDisponible !== null && cupoDisponible < cupoTotal * 0.2) {
+      items.push({
+        id:          `sgr-cupo-bajo-${s.id}`,
+        tipo:        'SGR_CUPO_BAJO',
+        titulo:      `Cupo bajo en SGR — ${s.nombre}`,
+        descripcion: `Disponible $${cupoDisponible.toLocaleString('es-AR')} de $${cupoTotal.toLocaleString('es-AR')}`,
+        urgencia:    'warning',
+        link:        '/afip-prestamos?tab=sgr',
+        fecha:       new Date(),
+      });
+    }
+  }
+  return items;
+}
+
 // Uniformes con stock en o por debajo del mínimo (ver Activo.cantidad_minima
 // — importador de stock de uniformes, Lorena). Mismo criterio de alerta
 // vigente (no vencimiento futuro) que resolveSaldosMinimos.
@@ -552,6 +589,7 @@ export async function getNotificaciones(req: Request, res: Response) {
   const hace30Dias = new Date(hoy.getTime() - 30 * MS_DIA);
   const hace60Dias = new Date(hoy.getTime() - 60 * MS_DIA);
   const en7Dias    = new Date(hoy.getTime() + 7 * MS_DIA);
+  const en30Dias   = new Date(hoy.getTime() + 30 * MS_DIA);
 
   const resultados = await Promise.all([
     resolveSeguros(empresaId),
@@ -559,6 +597,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveTallerAtrasado(empresaId, hoy),
     resolveSaldosMinimos(empresaId),
     resolveStockUniformeBajo(empresaId),
+    resolveSGRAlertas(empresaId, en30Dias),
     resolveRendicionesPendientes(empresaId, hoy),
     resolveLiquidacionesBorrador(empresaId, hace7Dias),
     resolveJornadasPendientes(empresaId, hace3Dias),

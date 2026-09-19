@@ -14,12 +14,16 @@ const proveedorSchema = z.object({
   categoria: z.string().optional(),
   telefono:  z.string().nullable().optional(),
   notas:     z.string().optional(),
+  // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
+  // participa del reparto. Ver POST /api/facturas-emitidas.
+  es_comisionista:     z.boolean().optional(),
+  porcentaje_comision: z.number().min(0).max(100).nullable().optional(),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function mapProv(p: any) {
-  return p;
+  return { ...p, porcentaje_comision: p.porcentaje_comision !== null && p.porcentaje_comision !== undefined ? Number(p.porcentaje_comision) : null };
 }
 
 // ── Controllers ───────────────────────────────────────────────────────────────
@@ -46,6 +50,7 @@ export async function list(req: Request, res: Response) {
   }
 
   if (categoria) where.categoria = String(categoria);
+  if (req.query.es_comisionista === 'true') where.es_comisionista = true;
 
   const proveedores = await prisma.proveedor.findMany({
     where,
@@ -129,7 +134,7 @@ export async function getById(req: Request, res: Response) {
   };
 
   res.json({
-    proveedor,
+    proveedor: mapProv(proveedor),
     historial: {
       movimientos: movimientosFormatted,
       echeqs:      echeqsFormatted,
@@ -145,7 +150,7 @@ export async function create(req: Request, res: Response) {
     return;
   }
 
-  const { nombre, alias, cuit, categoria, telefono, notas } = parsed.data;
+  const { nombre, alias, cuit, categoria, telefono, notas, es_comisionista, porcentaje_comision } = parsed.data;
 
   if (cuit) {
     const existing = await prisma.proveedor.findFirst({ where: { cuit, deleted_at: null } });
@@ -163,6 +168,8 @@ export async function create(req: Request, res: Response) {
       categoria: categoria ?? null,
       telefono:  telefono  ?? null,
       notas:     notas     ?? null,
+      es_comisionista:     es_comisionista     ?? false,
+      porcentaje_comision: porcentaje_comision ?? null,
       created_by: req.user!.id,
       updated_by: req.user!.id,
     },
@@ -182,7 +189,7 @@ export async function update(req: Request, res: Response) {
   const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
 
-  const { nombre, alias, cuit, categoria, telefono, notas } = parsed.data;
+  const { nombre, alias, cuit, categoria, telefono, notas, es_comisionista, porcentaje_comision } = parsed.data;
 
   if (cuit && cuit !== proveedor.cuit) {
     const dup = await prisma.proveedor.findFirst({ where: { cuit, deleted_at: null, id: { not: id } } });
@@ -200,6 +207,8 @@ export async function update(req: Request, res: Response) {
       ...(categoria !== undefined && { categoria }),
       ...(telefono  !== undefined && { telefono }),
       ...(notas     !== undefined && { notas }),
+      ...(es_comisionista     !== undefined && { es_comisionista }),
+      ...(porcentaje_comision !== undefined && { porcentaje_comision }),
       updated_by: req.user!.id,
     },
   });

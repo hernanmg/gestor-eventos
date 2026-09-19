@@ -33,6 +33,8 @@ import AFIPPrestamosPage    from '@/pages/AFIPPrestamos';
 import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
 import EspaciosCompartidosPage from '@/pages/EspaciosCompartidos';
 import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
+import CierreContablePage from '@/pages/CierreContable';
+import CierreContableDetallePage from '@/pages/CierreContable/Detalle';
 import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
 import GastosOperativosPage from '@/pages/GastosOperativos';
@@ -104,6 +106,8 @@ export default function App() {
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />
             <Route path="/espacios-compartidos/:id" element={<EspacioCompartidoDetallePage />} />
+            <Route path="/cierre-contable"     element={<CierreContablePage />} />
+            <Route path="/cierre-contable/:id" element={<CierreContableDetallePage />} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>

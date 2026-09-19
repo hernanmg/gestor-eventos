@@ -13,7 +13,7 @@ export type TipoCalendario =
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
-  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO';
+  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -53,6 +53,7 @@ const COLORES: Record<TipoCalendario, string> = {
   // Color real por item: rojo si cantidad=0, amarillo si sólo por debajo del
   // mínimo — este valor del mapa es sólo el default/fallback.
   ACTIVO_STOCK_BAJO:    '#DC2626',
+  SGR_VENCE:            '#F59E0B',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -77,6 +78,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   siniestros:      'SINIESTRO_PENDIENTE',
   excedentes_horas: 'EXCEDENTE_PENDIENTE',
   stock_bajo:      'ACTIVO_STOCK_BAJO',
+  sgr:             'SGR_VENCE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -750,6 +752,34 @@ async function resolveActivosStockBajo(empresaFiltro: number | undefined, desde:
   return items;
 }
 
+// SGR — vencimientos de vinculación dentro del rango pedido (Mayra: sólo
+// informativo). Mismo criterio de color que resolveSegurosVence.
+async function resolveSGRVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const sgrs = await prisma.sGR.findMany({
+    where: {
+      deleted_at: null,
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+
+  return sgrs.map(s => {
+    const vencido = s.fecha_vencimiento! < hoy;
+    return {
+      id:             `sgr-vence-${s.id}`,
+      tipo:           'SGR_VENCE' as const,
+      titulo:         `Vinculación SGR — ${s.nombre}`,
+      fecha:          s.fecha_vencimiento!,
+      empresa_id:     s.empresa_id,
+      empresa_nombre: s.empresa.nombre,
+      color:          vencido ? '#DC2626' : '#F59E0B',
+      urgencia:       vencido ? 'critical' as const : computeUrgencia(s.fecha_vencimiento!, hoy),
+      metadata:       { sgr_id: s.id, estado_vinculacion: s.estado_vinculacion },
+    };
+  });
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 const calendarioQuerySchema = z.object({
@@ -832,6 +862,7 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('SINIESTRO_PENDIENTE')) tareas.push(resolveSiniestrosPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('EXCEDENTE_PENDIENTE')) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('ACTIVO_STOCK_BAJO'))   tareas.push(resolveActivosStockBajo(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('SGR_VENCE'))           tareas.push(resolveSGRVence(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

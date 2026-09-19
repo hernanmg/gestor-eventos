@@ -4,8 +4,9 @@ import { Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import PlanesAfipTab from './PlanesAfipTab';
 import PrestamosTab from './PrestamosTab';
+import SGRTab from './SGRTab';
 
-type AfipPrestamosTab = 'afip' | 'prestamos';
+type AfipPrestamosTab = 'afip' | 'prestamos' | 'sgr';
 
 export default function AFIPPrestamosPage() {
   const [searchParams] = useSearchParams();
@@ -23,6 +24,7 @@ export default function AFIPPrestamosPage() {
         {([
           { key: 'afip',      label: 'Planes AFIP' },
           { key: 'prestamos', label: 'Créditos Bancarios' },
+          { key: 'sgr',       label: 'SGR' },
         ] as { key: AfipPrestamosTab; label: string }[]).map(({ key, label }) => (
           <button
             key={key}
@@ -41,6 +43,7 @@ export default function AFIPPrestamosPage() {
 
       {tab === 'afip'      && <PlanesAfipTab />}
       {tab === 'prestamos' && <PrestamosTab />}
+      {tab === 'sgr'       && <SGRTab />}
     </div>
   );
 }

@@ -528,9 +528,17 @@ async function main() {
   // sólo dónde queda archivada la fila, no quién puede verla. Confirmar con
   // el usuario si prefiere Enjoy (id 1) en cambio — quedó marcado como
   // "a decidir" en el pedido original.
-  const CUENTAS_PERSONALES: { nombre: string; tercero_nombre: string }[] = [
+  const CUENTAS_PERSONALES: { nombre: string; tercero_nombre: string; moneda?: 'ARS' | 'USD'; descripcion?: string }[] = [
     { nombre: 'Matías Personal', tercero_nombre: 'Matías Lorenzati' },
     { nombre: 'Pollo Personal',  tercero_nombre: 'Sergio Bibiloni' },
+    // Blueteam — razón social del personal de Matías, no un nombre interno.
+    // Influye a las empresas pero la conciliación mensual (líneas, cargas
+    // sociales, sueldos, transferencias) es entre Matías y Gabriel Bursztyn —
+    // se valoriza en USD y termina en un saldo a favor de Matías.
+    {
+      nombre: 'Blueteam', tercero_nombre: 'Blueteam — Gabriel Bursztyn', moneda: 'USD',
+      descripcion: 'Conciliación mensual Matías-Gabriel. Personal de Matías pero afecta a las empresas.',
+    },
   ];
 
   for (const c of CUENTAS_PERSONALES) {
@@ -542,13 +550,32 @@ async function main() {
           nombre:         c.nombre,
           tipo_tercero:   'SOCIO',
           tercero_nombre: c.tercero_nombre,
-          moneda:         'ARS',
-          descripcion:    'Gastos personales del socio',
+          moneda:         c.moneda ?? 'ARS',
+          descripcion:    c.descripcion ?? 'Gastos personales del socio',
         },
       });
     }
   }
   console.log(`✓ Cuentas corrientes personales de socios: ${CUENTAS_PERSONALES.length} cargadas`);
+
+  // ── Proveedor comisionista "Polaco" (DOS57) ─────────────────────────────────
+  // Intermediario en la facturación de Talleres/ENP — porcentaje_comision
+  // queda sin definir (a confirmar con Mayra); es_comisionista=true ya
+  // habilita el badge y el filtro, el cálculo automático del reparto en
+  // facturas emitidas no hace nada hasta que se cargue el %.
+  const polaco = await prisma.proveedor.findFirst({ where: { nombre: 'Polaco', empresa_id: dos57.id, deleted_at: null } });
+  if (!polaco) {
+    await prisma.proveedor.create({
+      data: {
+        empresa_id: dos57.id,
+        nombre: 'Polaco',
+        es_comisionista: true,
+        porcentaje_comision: null,
+        notas: 'Comisionista en la facturación de Talleres/ENP — % pendiente de confirmar con Mayra.',
+      },
+    });
+    console.log('✓ Proveedor "Polaco" (comisionista) cargado — falta confirmar porcentaje_comision');
+  }
 }
 
 main()

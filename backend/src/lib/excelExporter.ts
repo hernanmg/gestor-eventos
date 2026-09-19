@@ -557,3 +557,107 @@ export async function generateMacroExcel(rows: MacroExcelRow[]): Promise<{ buffe
     filename: `macro-${dateStr}.xlsx`,
   };
 }
+
+// ── Cierre contable — formulario del estudio contable, una hoja por sección ──
+
+interface CierreContableExport {
+  id:           number;
+  periodo_anio: number;
+  fecha_corte:  Date;
+  estado:       string;
+  empresa:      { nombre: string };
+  snapshot:     any;
+}
+
+function addSeccionCuentasSheet(wb: ExcelJS.Workbook, nombre: string, filas: { cuenta: string; saldo: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 34 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['CUENTA', 'SALDO']), 2);
+  let total = 0;
+  for (const f of filas) {
+    total += f.saldo;
+    const row = ws.addRow([f.cuenta, f.saldo]);
+    row.getCell(2).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(2).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+function addTercerosSheet(wb: ExcelJS.Workbook, nombre: string, filas: { cuit: string | null; nombre: string; importe: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 18 }, { width: 34 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['CUIT', 'NOMBRE', 'IMPORTE']), 3);
+  let total = 0;
+  for (const f of filas) {
+    total += f.importe;
+    const row = ws.addRow([f.cuit ?? '', f.nombre, f.importe]);
+    row.getCell(3).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['', 'TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(3).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+function addCreditoDeudaSheet(wb: ExcelJS.Workbook, nombre: string, filas: { tipo: string; descripcion: string; importe: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 20 }, { width: 40 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['TIPO', 'DESCRIPCIÓN', 'IMPORTE']), 3);
+  let total = 0;
+  for (const f of filas) {
+    total += f.importe;
+    const row = ws.addRow([f.tipo, f.descripcion, f.importe]);
+    row.getCell(3).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['', 'TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(3).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+export async function generateCierreContableExcel(cierre: CierreContableExport): Promise<{ buffer: Buffer; filename: string }> {
+  const s = cierre.snapshot ?? {};
+  const notas = s.notas_por_seccion ?? {};
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const wsDatos = wb.addWorksheet('DATOS');
+  wsDatos.columns = [{ width: 22 }, { width: 30 }];
+  wsDatos.addRow(['CIERRE CONTABLE', cierre.empresa.nombre]).font = BOLD;
+  wsDatos.addRow(['Fecha de corte', fmtDate(cierre.fecha_corte)]);
+  wsDatos.addRow(['Período', cierre.periodo_anio]);
+  wsDatos.addRow(['Estado', cierre.estado]);
+
+  addSeccionCuentasSheet(wb, 'Cajas',       s.cajas       ?? [], notas.cajas       ?? null);
+  addSeccionCuentasSheet(wb, 'Bancos',      s.bancos      ?? [], notas.bancos      ?? null);
+  addSeccionCuentasSheet(wb, 'Inversiones', s.inversiones ?? [], notas.inversiones ?? null);
+  addTercerosSheet(wb, 'Deudores',   s.deudores   ?? [], notas.deudores   ?? null);
+  addTercerosSheet(wb, 'Acreedores', s.acreedores ?? [], notas.acreedores ?? null);
+  addCreditoDeudaSheet(wb, 'Creditos', s.creditos ?? [], notas.creditos ?? null);
+  addCreditoDeudaSheet(wb, 'Deudas',   s.deudas   ?? [], notas.deudas   ?? null);
+
+  const wsMercaderias = wb.addWorksheet('Mercaderias');
+  wsMercaderias.columns = [{ width: 34 }, { width: 16 }, { width: 12 }];
+  applyHeaderStyle(wsMercaderias.addRow(['PRODUCTO', 'STOCK', 'UNIDAD']), 3);
+  for (const p of s.mercaderias?.productos ?? []) {
+    wsMercaderias.addRow([p.nombre, p.stock_total, p.unidad]);
+  }
+  const totalRow = wsMercaderias.addRow(['TOTAL ÍTEMS', s.mercaderias?.cantidad_items ?? 0, '']);
+  totalRow.font = BOLD;
+  wsMercaderias.addRow(['Total unidades', s.mercaderias?.total_unidades ?? 0, '']).font = BOLD;
+  wsMercaderias.addRow(['Valor estimado', 'Sin valorizar — a cargo del estudio contable', '']);
+  if (notas.mercaderias) { wsMercaderias.addRow([]); wsMercaderias.addRow(['Notas', notas.mercaderias]).font = BOLD; }
+
+  const dateStr = `${cierre.fecha_corte.getUTCFullYear()}${String(cierre.fecha_corte.getUTCMonth() + 1).padStart(2, '0')}${String(cierre.fecha_corte.getUTCDate()).padStart(2, '0')}`;
+  const empresaSlug = cierre.empresa.nombre.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 30);
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `cierre-contable-${empresaSlug}-${dateStr}.xlsx`,
+  };
+}

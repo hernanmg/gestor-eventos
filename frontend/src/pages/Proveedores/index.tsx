@@ -251,7 +251,14 @@ export default function ProveedoresPage() {
                   className={cn('group cursor-pointer hover:bg-accent/30 transition-colors', !p.activo && 'opacity-60')}
                   onClick={() => navigate(`/proveedores/${p.id}`)}
                 >
-                  <td className={cn(td, 'font-medium')}>{p.nombre}</td>
+                  <td className={cn(td, 'font-medium')}>
+                    {p.nombre}
+                    {p.es_comisionista && (
+                      <span className="ml-2 text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
+                        Comisionista{p.porcentaje_comision !== null ? ` ${p.porcentaje_comision}%` : ''}
+                      </span>
+                    )}
+                  </td>
                   <td className={cn(td, 'text-muted-foreground')}>{p.alias ?? '—'}</td>
                   <td className={cn(td, 'font-mono text-xs text-muted-foreground')}>{formatCuit(p.cuit)}</td>
                   <td className={td}>

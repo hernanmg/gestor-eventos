@@ -3,6 +3,7 @@ import { AlertTriangle, X, Plus, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCreateFacturaEmitida, useUploadPdfFacturaEmitida, type RepartoPayload } from '@/hooks/useFacturasEmitidas';
 import { useEventos } from '@/hooks/useEvento';
+import { useProveedores } from '@/hooks/useProveedores';
 import { Button } from '@/components/ui/button';
 import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import MoneyInput from '@/components/ui/MoneyInput';
@@ -120,6 +121,9 @@ function Paso2({
 }) {
   const [error, setError]     = useState<string | null>(null);
   const { data: eventos = [] } = useEventos();
+  // Comisionistas (ej. "Polaco") — si el CUIT de una parte del reparto
+  // coincide, se pre-carga su % y se muestra el badge (ver updateReparto).
+  const { data: comisionistas = [] } = useProveedores({ es_comisionista: true, activo: 'true' });
 
   const netoNum  = Number(value.neto_gravado) || 0;
   const ivaNum   = Number(value.iva) || 0;
@@ -147,11 +151,20 @@ function Paso2({
     const repartos = value.repartos.map((r, i) => {
       if (i !== idx) return r;
       const merged = { ...r, ...patch };
+      // Si se acaba de completar/cambiar el CUIT y coincide con un
+      // comisionista, pre-carga su % — sólo si el usuario todavía no puso
+      // uno manualmente (no le pisa un valor ya editado a mano).
+      if ('cuit' in patch && !merged.porcentaje) {
+        const comisionista = comisionistas.find(c => c.cuit === patch.cuit);
+        if (comisionista?.porcentaje_comision != null) merged.porcentaje = comisionista.porcentaje_comision;
+      }
       merged.monto = parseFloat(((totalNum * (Number(merged.porcentaje) || 0)) / 100).toFixed(2));
       return merged;
     });
     onChange({ ...value, repartos });
   };
+
+  const comisionistaDeFila = (cuit: string | null | undefined) => comisionistas.find(c => c.cuit === cuit);
 
   const handleSubmit = () => {
     setError(null);
@@ -261,15 +274,25 @@ function Paso2({
           </label>
           {value.tieneReparto && (
             <div className="space-y-2">
-              {value.repartos.map((r, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_1fr_70px_100px_auto] gap-1.5 items-center">
-                  <input placeholder="Razón social" value={r.razon_social} onChange={e => updateReparto(idx, { razon_social: e.target.value })} className={cn(inputCls, 'text-xs')} />
-                  <CuitInput placeholder="CUIT" value={r.cuit ?? ''} onChange={v => updateReparto(idx, { cuit: v })} className={cn(inputCls, 'text-xs')} />
-                  <input type="number" min={0} max={100} placeholder="%" value={r.porcentaje || ''} onChange={e => updateReparto(idx, { porcentaje: Number(e.target.value) })} className={cn(inputCls, 'text-xs')} />
-                  <span className="text-xs text-muted-foreground text-right pr-1">${r.monto.toLocaleString('es-AR')}</span>
-                  <button type="button" onClick={() => removeReparto(idx)} className="text-destructive hover:bg-destructive/10 rounded p-1"><Trash2 size={12} /></button>
+              {value.repartos.map((r, idx) => {
+                const comisionista = comisionistaDeFila(r.cuit);
+                return (
+                <div key={idx} className="space-y-1">
+                  <div className="grid grid-cols-[1fr_1fr_70px_100px_auto] gap-1.5 items-center">
+                    <input placeholder="Razón social" value={r.razon_social} onChange={e => updateReparto(idx, { razon_social: e.target.value })} className={cn(inputCls, 'text-xs')} />
+                    <CuitInput placeholder="CUIT" value={r.cuit ?? ''} onChange={v => updateReparto(idx, { cuit: v })} className={cn(inputCls, 'text-xs')} />
+                    <input type="number" min={0} max={100} placeholder="%" value={r.porcentaje || ''} onChange={e => updateReparto(idx, { porcentaje: Number(e.target.value) })} className={cn(inputCls, 'text-xs')} />
+                    <span className="text-xs text-muted-foreground text-right pr-1">${r.monto.toLocaleString('es-AR')}</span>
+                    <button type="button" onClick={() => removeReparto(idx)} className="text-destructive hover:bg-destructive/10 rounded p-1"><Trash2 size={12} /></button>
+                  </div>
+                  {comisionista && (
+                    <span className="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
+                      Comisionista{comisionista.porcentaje_comision !== null ? ` ${comisionista.porcentaje_comision}%` : ' (sin % cargado)'}
+                    </span>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               <div className="flex items-center justify-between">
                 <button type="button" onClick={addReparto} className="flex items-center gap-1 text-xs text-primary hover:underline">
                   <Plus size={12} /> Agregar razón social

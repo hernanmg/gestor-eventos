@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -549,6 +549,13 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/espacios-compartidos" title={!isOpen ? 'Espacios Compartidos' : undefined} className={navItem}>
               <Building size={18} className="shrink-0" />
               {isOpen && <span>Espacios Compartidos</span>}
+            </NavLink>
+          )}
+
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/cierre-contable" title={!isOpen ? 'Cierre Contable' : undefined} className={navItem}>
+              <FileSpreadsheet size={18} className="shrink-0" />
+              {isOpen && <span>Cierre Contable</span>}
             </NavLink>
           )}
 

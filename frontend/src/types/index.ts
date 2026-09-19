@@ -66,11 +66,74 @@ export interface Proveedor {
   telefono:   string | null;
   notas:      string | null;
   activo:     boolean;
+  // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
+  // participa del reparto. Ver POST /api/facturas-emitidas.
+  es_comisionista:     boolean;
+  porcentaje_comision: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
   created_by: number | null;
   updated_by: number | null;
+}
+
+// ── SGR — seguimiento informativo de cupo y vinculación ──────────────────────
+
+export type EstadoVinculacionSGR = 'ACTIVO' | 'SUSPENDIDO' | 'VENCIDO';
+
+export interface SGR {
+  id:                 number;
+  empresa_id:         number;
+  empresa?:           EmpresaMini;
+  nombre:             string;
+  estado_vinculacion: EstadoVinculacionSGR;
+  fecha_vinculacion:  string | null;
+  fecha_vencimiento:  string | null;
+  cupo_total:         number | null;
+  cupo_utilizado:     number | null;
+  cupo_disponible:    number | null;
+  moneda:             Moneda;
+  contacto_nombre:    string | null;
+  contacto_tel:       string | null;
+  notas:              string | null;
+  created_at:         string;
+  updated_at:         string;
+  deleted_at:         string | null;
+}
+
+// ── Cierre Contable — foto financiera a fecha de corte ───────────────────────
+
+export type EstadoCierreContable = 'BORRADOR' | 'ENVIADO' | 'APROBADO';
+
+export interface CierreContableSeccionCuenta { cuenta: string; saldo: number; }
+export interface CierreContableTercero { cuit: string | null; nombre: string; importe: number; }
+export interface CierreContableCreditoDeuda { tipo: string; descripcion: string; importe: number; }
+export interface CierreContableProducto { producto_id: number; nombre: string; stock_total: number; unidad: string; }
+
+export interface CierreContableSnapshot {
+  cajas:       CierreContableSeccionCuenta[];
+  bancos:      CierreContableSeccionCuenta[];
+  inversiones: CierreContableSeccionCuenta[];
+  deudores:    CierreContableTercero[];
+  acreedores:  CierreContableTercero[];
+  mercaderias: { cantidad_items: number; total_unidades: number; valor_estimado: number | null; productos: CierreContableProducto[] };
+  creditos:    CierreContableCreditoDeuda[];
+  deudas:      CierreContableCreditoDeuda[];
+  notas_por_seccion: Record<string, string | null>;
+}
+
+export interface CierreContable {
+  id:           number;
+  empresa_id:   number;
+  empresa?:     EmpresaMini;
+  fecha_corte:  string;
+  periodo_anio: number;
+  estado:       EstadoCierreContable;
+  snapshot:     CierreContableSnapshot;
+  notas:        string | null;
+  created_at:   string;
+  updated_at:   string;
+  created_by:   number | null;
 }
 
 export interface ProveedorBusqueda {

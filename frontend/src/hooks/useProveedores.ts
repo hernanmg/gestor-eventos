@@ -9,6 +9,7 @@ export interface ProveedorFilters {
   q?:        string;
   categoria?: string;
   activo?:   'true' | 'false' | 'all';
+  es_comisionista?: boolean;
 }
 
 export function useProveedores(filters: ProveedorFilters = {}) {
@@ -16,6 +17,7 @@ export function useProveedores(filters: ProveedorFilters = {}) {
   if (filters.q)         params.set('q',         filters.q);
   if (filters.categoria) params.set('categoria',  filters.categoria);
   if (filters.activo)    params.set('activo',     filters.activo);
+  if (filters.es_comisionista) params.set('es_comisionista', 'true');
 
   return useQuery<Proveedor[]>({
     queryKey:  [...KEY, filters],

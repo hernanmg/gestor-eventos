@@ -277,6 +277,8 @@ model Empresa {
   siniestrosEmpleado     SiniestroEmpleado[]
   excedentesHoras        ExcedenteHoras[]
   eventosEmpleadoMes     EventoEmpleadoMes[]
+  sgrs                   SGR[]
+  cierresContables       CierreContable[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -691,6 +693,10 @@ model Proveedor {
   telefono   String?
   notas      String?
   activo     Boolean   @default(true)
+  // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
+  // participa del reparto. Ver POST /api/facturas-emitidas.
+  es_comisionista     Boolean  @default(false)
+  porcentaje_comision Decimal? @db.Decimal(5, 2)
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
@@ -2216,6 +2222,60 @@ model DocumentoPrestamo {
   archivo_size Int
   created_at   DateTime         @default(now())
   created_by   Int?
+}
+
+// ─── SGR — seguimiento informativo de cupo y vinculación ────────────────────
+// Puramente informativo (confirmado por Mayra) — no dispara movimientos ni
+// afecta ningún cálculo, sólo alertas de vencimiento/cupo bajo.
+
+model SGR {
+  id                 Int       @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre             String // "Garantizar", "Acindar", etc.
+  estado_vinculacion String    @default("ACTIVO") // "ACTIVO" | "SUSPENDIDO" | "VENCIDO"
+  fecha_vinculacion  DateTime?
+  fecha_vencimiento  DateTime?
+  // Cupos
+  cupo_total         Decimal?  @db.Decimal(15, 2)
+  cupo_utilizado     Decimal?  @db.Decimal(15, 2)
+  // Persistido (no derivado en la query) — se recalcula en cada alta/baja,
+  // mismo criterio que CuentaCorriente.saldo_actual.
+  cupo_disponible    Decimal?  @db.Decimal(15, 2)
+  moneda             Moneda    @default(ARS)
+  // Contacto en la SGR
+  contacto_nombre    String?
+  contacto_tel       String?
+  notas              String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+}
+
+// ─── CIERRE CONTABLE — foto financiera para el estudio contable ─────────────
+// El estudio pide el mismo formulario todos los años a una fecha de corte
+// fija por empresa (DOS57: 31/05). No es un cálculo en vivo — se "genera" (se
+// congela) a pedido y se puede regenerar mientras esté en BORRADOR.
+
+model CierreContable {
+  id           Int       @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha_corte  DateTime // 31/05/2026 para DOS57
+  periodo_anio Int // 2026
+  estado       String    @default("BORRADOR") // BORRADOR / ENVIADO / APROBADO
+  // Snapshot calculado a la fecha de corte — ver generarCierreContable() en
+  // cierreContable.controller.ts para la forma exacta (cajas/bancos/
+  // inversiones/deudores/acreedores/mercaderias/creditos/deudas), y
+  // snapshot.notas_por_seccion para las aclaraciones libres de Mayra (no hay
+  // columna dedicada por sección, van dentro del mismo JSON).
+  snapshot     Json
+  notas        String?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  created_by   Int?
+
+  @@unique([empresa_id, fecha_corte])
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────

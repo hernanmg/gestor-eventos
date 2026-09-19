@@ -20,11 +20,16 @@ export const uploadPDF = multer({
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+// porcentaje/monto son opcionales cuando la parte es un Proveedor
+// comisionista (ej. "Polaco") — se completan solos en create() a partir de
+// Proveedor.porcentaje_comision si el frontend no los mandó. Para cualquier
+// otra parte siguen siendo obligatorios (validado en create(), no acá,
+// porque requiere resolver el cuit contra Proveedor primero).
 const repartoSchema = z.object({
   razon_social: z.string().min(1),
   cuit:         z.string().nullable().optional(),
-  porcentaje:   z.number().positive(),
-  monto:        z.number().positive(),
+  porcentaje:   z.number().positive().optional(),
+  monto:        z.number().positive().optional(),
   empresa_id:   z.number().int().positive().nullable().optional(),
 });
 
@@ -53,10 +58,10 @@ const facturaEmitidaBaseSchema = z.object({
   repartos:           z.array(repartoSchema).optional(),
 });
 
-const facturaEmitidaSchema = facturaEmitidaBaseSchema.refine(
-  d => !d.repartos || d.repartos.length === 0 || Math.abs(d.repartos.reduce((s, r) => s + r.porcentaje, 0) - 100) < 0.01,
-  { message: 'La suma de porcentajes del reparto debe ser 100', path: ['repartos'] },
-);
+// La suma de porcentajes = 100 se valida en create(), después de resolver los
+// porcentaje/monto que falten para partes comisionistas (ver repartoSchema) —
+// acá no se puede: unas partes pueden llegar sin porcentaje todavía.
+const facturaEmitidaSchema = facturaEmitidaBaseSchema;
 
 const facturaEmitidaUpdateSchema = facturaEmitidaBaseSchema.omit({ repartos: true }).partial();
 
@@ -289,6 +294,35 @@ export async function create(req: Request, res: Response) {
     if (!evento) { res.status(400).json({ error: 'Evento no encontrado' }); return; }
   }
 
+  // Completa porcentaje/monto para partes comisionistas (ej. "Polaco") que
+  // el frontend mandó sin esos campos — Proveedor.porcentaje_comision manda,
+  // ignorando lo que venga en el body para esa parte. Cualquier otra parte
+  // sigue necesitando ambos campos (si no, 400 acá — reemplaza el refine que
+  // vivía en el schema).
+  let repartosResueltos: { razon_social: string; cuit: string | null; porcentaje: number; monto: number; empresa_id: number | null }[] = [];
+  if (d.repartos && d.repartos.length > 0) {
+    const cuits = [...new Set(d.repartos.map(r => r.cuit).filter((c): c is string => !!c))];
+    const comisionistas = cuits.length
+      ? await prisma.proveedor.findMany({ where: { cuit: { in: cuits }, es_comisionista: true, deleted_at: null } })
+      : [];
+    const comisionistaPorCuit = new Map(comisionistas.map(p => [p.cuit!, p]));
+
+    for (const r of d.repartos) {
+      const comisionista = r.cuit ? comisionistaPorCuit.get(r.cuit) : undefined;
+      const porcentaje = r.porcentaje ?? (comisionista?.porcentaje_comision !== null && comisionista?.porcentaje_comision !== undefined ? Number(comisionista.porcentaje_comision) : undefined);
+      if (porcentaje === undefined) {
+        res.status(400).json({ error: `Falta el porcentaje para "${r.razon_social}" en el reparto` }); return;
+      }
+      const monto = r.monto ?? Math.round(d.total * porcentaje) / 100;
+      repartosResueltos.push({ razon_social: r.razon_social, cuit: r.cuit ?? null, porcentaje, monto, empresa_id: r.empresa_id ?? null });
+    }
+
+    const sumaPorcentajes = repartosResueltos.reduce((s, r) => s + r.porcentaje, 0);
+    if (Math.abs(sumaPorcentajes - 100) >= 0.01) {
+      res.status(400).json({ error: `La suma de porcentajes del reparto debe ser 100 (actual: ${sumaPorcentajes})` }); return;
+    }
+  }
+
   const totalArs = convertirARS(d.total, d.moneda as Moneda, d.tasa_cambio ?? null);
 
   const factura = await prisma.$transaction(async tx => {
@@ -319,15 +353,15 @@ export async function create(req: Request, res: Response) {
       },
     });
 
-    if (d.repartos && d.repartos.length > 0) {
+    if (repartosResueltos.length > 0) {
       await tx.repartoFacturaEmitida.createMany({
-        data: d.repartos.map(r => ({
+        data: repartosResueltos.map(r => ({
           factura_emitida_id: nueva.id,
           razon_social:       r.razon_social,
-          cuit:                r.cuit       ?? null,
+          cuit:                r.cuit,
           porcentaje:          r.porcentaje,
           monto:               r.monto,
-          empresa_id:          r.empresa_id ?? null,
+          empresa_id:          r.empresa_id,
         })),
       });
     }
