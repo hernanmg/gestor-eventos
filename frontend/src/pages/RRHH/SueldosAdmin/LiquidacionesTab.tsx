@@ -6,15 +6,18 @@ import {
   useLiquidacionesAdmin, useLiquidacionAdmin, useGenerarLiquidacionAdmin, useUpdateLiquidacionAdmin,
   useAprobarLiquidacionAdmin, useCancelarLiquidacionAdmin, descargarLiquidacionAdminPDF,
   usePrestamosEmpleado, useHorasPeriodo, useResumenMensual, useResumenBitacora, useIpcIndec,
+  useEventosMesEmpleado, useCreateEventoEmpleadoMes, useUpdateEventoEmpleadoMes, useDeleteEventoEmpleadoMes,
   type LiquidacionAdminFiltros, type GenerarLiquidacionAdminPayload,
 } from '@/hooks/useSueldosAdmin';
 import { useResumenMesEmpleado } from '@/hooks/usePresentismo';
+import { useEventos } from '@/hooks/useEvento';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { Trash2 } from 'lucide-react';
 import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento, TipoAnticipo, ResumenMesEmpleadoResponse } from '@/types';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -32,9 +35,14 @@ const MESES = [
 
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
-function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, aumentoPorcentaje, presentismo, premioPresentismoOverride }: {
+function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, premioViaje = 0, premioProduccion = 0, aumentoPorcentaje, presentismo, premioPresentismoOverride }: {
   empleadoId: number; horasTrabajadas: string; valesDescuentos: number; vacacionesAguinaldo: string; prestamosDescuento?: number;
-  viaticoOverride?: number | null; aumentoPorcentaje?: number | null;
+  // Override manual del viático fijo (empleados no-chofer, botón "Usar viático
+  // calculado" sobre otro cálculo externo) — NUNCA se usa para el premio por
+  // vuelta de choferes, que viaja aparte en premioViaje.
+  viaticoOverride?: number | null;
+  premioViaje?: number; premioProduccion?: number;
+  aumentoPorcentaje?: number | null;
   presentismo?: ResumenMesEmpleadoResponse; premioPresentismoOverride?: number | null;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
@@ -59,6 +67,8 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
     : (premioPresentismoOverride ?? (cumpleHoras ? (acuerdo.premio_presentismo ?? 0) : 0));
   const vales   = valesDescuentos;
   const vacac   = parseFloat(vacacionesAguinaldo) || 0;
+  // Viático fijo del acuerdo — para CHOFER NUNCA se pisa con la bitácora (ver
+  // premioViaje abajo, que es lo que varía por recorrido).
   const viatico = viaticoOverride ?? acuerdo.viatico ?? 0;
 
   // La antigüedad real la trae el preview del acuerdo (ya calculada server-side).
@@ -69,6 +79,8 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
     basico
     + (acuerdo.premio_incentivo ?? 0)
     + viatico
+    + premioViaje
+    + premioProduccion
     + premioPresentismo
     + antiguedad
     + (acuerdo.telefono ?? 0)
@@ -90,8 +102,20 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
         {acuerdo.premio_incentivo   ? (<><span>Premio incentivo</span><span className="text-right">{formatCurrency(acuerdo.premio_incentivo)}</span></>) : null}
         {viatico ? (
           <>
-            <span>Viático{viaticoOverride != null ? ' (bitácora)' : ''}</span>
+            <span>Viático (fijo){viaticoOverride != null ? ' — calculado' : ''}</span>
             <span className="text-right">{formatCurrency(viatico)}</span>
+          </>
+        ) : null}
+        {premioViaje ? (
+          <>
+            <span>Premios por vuelta</span>
+            <span className="text-right">{formatCurrency(premioViaje)}</span>
+          </>
+        ) : null}
+        {premioProduccion ? (
+          <>
+            <span>Premio de producción</span>
+            <span className="text-right">{formatCurrency(premioProduccion)}</span>
           </>
         ) : null}
         {acuerdo.premio_presentismo ? (
@@ -203,6 +227,119 @@ function BitacoraResumenPanel({ empleadoId, mes, anio, onUsar, autoAplicado = fa
         <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => onUsar(resumen.total_viatico)}>
           Usar viático calculado
         </Button>
+      )}
+    </div>
+  );
+}
+
+// ── Panel: Premio de producción — eventos del mes (checkboxes + agregar) ─────
+
+function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, open, onClose }: {
+  empleadoId: number; mes: number; anio: number; montoDefault: number | null; open: boolean; onClose: () => void;
+}) {
+  const { data: eventos = [] } = useEventos();
+  const createMut = useCreateEventoEmpleadoMes(empleadoId);
+  const [eventoId, setEventoId]   = useState('');
+  const [nombreLibre, setNombreLibre] = useState('');
+  const [monto, setMonto] = useState(montoDefault !== null ? String(montoDefault) : '');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await createMut.mutateAsync({
+        evento_id:     eventoId ? Number(eventoId) : null,
+        evento_nombre: eventoId ? null : (nombreLibre.trim() || null),
+        periodo_mes:   mes,
+        periodo_anio:  anio,
+        monto_premio:  monto.trim() === '' ? null : Number(monto),
+      });
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Error al agregar el evento');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Agregar evento del mes</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div>
+            <label className={labelCls}>Evento del sistema</label>
+            <select value={eventoId} onChange={e => setEventoId(e.target.value)} className={inputCls}>
+              <option value="">(texto libre abajo)</option>
+              {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
+            </select>
+          </div>
+          {!eventoId && (
+            <div>
+              <label className={labelCls}>Nombre del evento (texto libre)</label>
+              <input value={nombreLibre} onChange={e => setNombreLibre(e.target.value)} className={inputCls} placeholder="Ej: RESCOLDO" />
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Monto del premio</label>
+            <MoneyInput value={monto} onChange={setMonto} />
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={createMut.isPending}>
+              {createMut.isPending ? 'Agregando…' : 'Agregar'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault }: {
+  empleadoId: number; mes: number; anio: number; valorDefault: number | null;
+}) {
+  const { data: resumen } = useEventosMesEmpleado(empleadoId, mes, anio);
+  const updateMut = useUpdateEventoEmpleadoMes();
+  const deleteMut = useDeleteEventoEmpleadoMes();
+  const [addOpen, setAddOpen] = useState(false);
+  if (!resumen) return null;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">🎯 Premio de producción — eventos del mes</p>
+      {resumen.eventos.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin eventos cargados para este período todavía.</p>
+      ) : (
+        <div className="space-y-1">
+          {resumen.eventos.map(ev => (
+            <div key={ev.id} className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={ev.cobra_premio}
+                onChange={() => updateMut.mutate({ id: ev.id, data: { cobra_premio: !ev.cobra_premio } })}
+              />
+              <span className={cn('flex-1', !ev.cobra_premio && 'line-through text-muted-foreground')}>
+                {(ev.evento?.nombre ?? ev.evento_nombre)}
+                {ev.evento?.fecha_inicio && ` (${formatDate(ev.evento.fecha_inicio)})`}
+              </span>
+              <span className={cn(!ev.cobra_premio && 'line-through text-muted-foreground')}>
+                {formatCurrency(ev.monto_premio ?? 0)}
+              </span>
+              <button type="button" onClick={() => deleteMut.mutate(ev.id)} className="text-destructive hover:bg-destructive/10 rounded p-0.5">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-sm font-semibold pt-1 border-t border-border">Total premios: {formatCurrency(resumen.total)}</p>
+      <Button type="button" variant="outline" size="sm" onClick={() => setAddOpen(true)}>+ Agregar evento</Button>
+      {addOpen && (
+        <AgregarEventoMesDialog
+          empleadoId={empleadoId} mes={mes} anio={anio} montoDefault={valorDefault}
+          open onClose={() => setAddOpen(false)}
+        />
       )}
     </div>
   );
@@ -407,6 +544,16 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const { data: acuerdoSel } = useAcuerdoEmpleado(empleadoIdNum);
   const esChofer = acuerdoSel?.categoria_acuerdo === 'CHOFER';
   const { data: presentismo, isLoading: presentismoLoading } = useResumenMesEmpleado(empleadoIdNum, Number(form.periodo_mes), Number(form.periodo_anio));
+  // Premio por vuelta (choferes) — igual criterio que generarLiquidacionAdmin
+  // en el backend: se suma aparte del viático fijo, nunca lo reemplaza.
+  const { data: bitacoraResumenSel } = useResumenBitacora(empleadoIdNum, Number(form.periodo_mes), Number(form.periodo_anio));
+  const premioViajeAuto = esChofer && bitacoraResumenSel && bitacoraResumenSel.registros.length > 0 ? bitacoraResumenSel.total_viatico : 0;
+  // Premio de producción — suma de EventoEmpleadoMes con cobra_premio=true del período.
+  const { data: eventosMesResumenSel } = useEventosMesEmpleado(
+    acuerdoSel?.cobra_premio_produccion ? empleadoIdNum : null,
+    Number(form.periodo_mes), Number(form.periodo_anio),
+  );
+  const premioProduccionAuto = eventosMesResumenSel?.total ?? 0;
   const { data: prestamos = [] } = usePrestamosEmpleado(empleadoIdNum);
   const prestamosPendientes = prestamos.filter(p => !p.saldado);
   const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
@@ -554,6 +701,15 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <AnticiposSection empleadoId={empleadoIdNum} selected={anticiposSel} onToggle={toggleAnticipo} />
           )}
 
+          {empleadoIdNum && acuerdoSel?.cobra_premio_produccion && (
+            <PremioProduccionPanel
+              empleadoId={empleadoIdNum}
+              mes={Number(form.periodo_mes)}
+              anio={Number(form.periodo_anio)}
+              valorDefault={acuerdoSel.valor_premio_produccion}
+            />
+          )}
+
           <div className="rounded-md border border-border p-3 space-y-2">
             <p className="text-xs font-medium">📈 Aumento sobre el básico (opcional)</p>
             <div className="flex gap-2">
@@ -628,7 +784,9 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               valesDescuentos={totalAnticiposSel}
               vacacionesAguinaldo={form.vacaciones_aguinaldo}
               prestamosDescuento={totalPrestamosSel}
-              viaticoOverride={form.viatico_override ? Number(form.viatico_override) : null}
+              viaticoOverride={!esChofer && form.viatico_override ? Number(form.viatico_override) : null}
+              premioViaje={premioViajeAuto}
+              premioProduccion={premioProduccionAuto}
               aumentoPorcentaje={aumentoPorcentaje}
               presentismo={presentismo}
               premioPresentismoOverride={form.premio_presentismo_override ? Number(form.premio_presentismo_override) : null}

@@ -382,6 +382,64 @@ export async function updateEspacio(req: Request, res: Response) {
   res.json(mapEspacio(updated));
 }
 
+const cerrarEspacioSchema = z.object({
+  transferir_a: z.number().int().positive().nullable().optional(),
+});
+
+// Cierra el espacio (activo=false) y, opcionalmente, transfiere su reparto de
+// partes (nombre/porcentaje/empresa/cuenta corriente) a otro espacio del
+// mismo tenant — caso "Nave 15 cierra en noviembre, Nave nueva la continúa"
+// con las mismas partes. Upsert por [espacio_id, nombre]: si el destino ya
+// tiene una parte con ese nombre, se pisa el porcentaje/vínculos.
+export async function cerrarEspacio(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const e = await findEspacio(id, req.empresaId!);
+  if (!e) { res.status(404).json({ error: 'Espacio no encontrado' }); return; }
+
+  const parsed = cerrarEspacioSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten() }); return;
+  }
+  const { transferir_a } = parsed.data;
+
+  if (transferir_a) {
+    const destino = await findEspacio(transferir_a, req.empresaId!);
+    if (!destino) { res.status(404).json({ error: 'Espacio destino no encontrado' }); return; }
+    if (destino.id === id) { res.status(400).json({ error: 'El espacio destino no puede ser el mismo que se cierra' }); return; }
+
+    const partesOrigen = await prisma.parteEspacio.findMany({ where: { espacio_id: id } });
+    await prisma.$transaction(
+      partesOrigen.map(p => prisma.parteEspacio.upsert({
+        where:  { espacio_id_nombre: { espacio_id: transferir_a, nombre: p.nombre } },
+        update: { porcentaje: p.porcentaje, empresa_id: p.empresa_id, cuenta_corriente_id: p.cuenta_corriente_id },
+        create: {
+          espacio_id: transferir_a, nombre: p.nombre, porcentaje: p.porcentaje,
+          empresa_id: p.empresa_id, cuenta_corriente_id: p.cuenta_corriente_id,
+        },
+      })),
+    );
+  }
+
+  const updated = await prisma.espacioCompartido.update({
+    where: { id },
+    data:  { activo: false },
+    include: { partes: true },
+  });
+
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'UPDATE',
+    entidad:     'EspacioCompartido',
+    entidadId:   id,
+    descripcion: `Cerró el espacio "${e.nombre}"${transferir_a ? ` y transfirió sus partes al espacio #${transferir_a}` : ''}`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  res.json(mapEspacio(updated));
+}
+
 export async function removeEspacio(req: Request, res: Response) {
   const id = Number(req.params.id);
   const e = await findEspacio(id, req.empresaId!);

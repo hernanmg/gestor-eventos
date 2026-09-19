@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Building2, Plus, ChevronDown, ChevronRight, Pencil, Trash2, Download, Lock, ExternalLink } from 'lucide-react';
 import {
-  useEspacioCompartido,
+  useEspacioCompartido, useEspaciosCompartidos, useCerrarEspacio,
   useMesesEspacio, useMesDetalle, useGenerarMes, useCerrarMes,
   useCreateParte, useUpdateParte, useRemoveParte,
   useCreateGastoTipo, useUpdateGastoTipo, useRemoveGastoTipo,
@@ -17,7 +17,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { LineaGastoEstadoBadge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { getApiErrorMessage, cn } from '@/lib/utils';
-import type { LineaGastoEspacio, ParteEspacio, GastoTipoEspacio } from '@/types';
+import type { LineaGastoEspacio, ParteEspacio, GastoTipoEspacio, EspacioCompartido } from '@/types';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -504,7 +504,71 @@ function GastoTipoDialog({ espacioId, tipo, onClose }: { espacioId: number; tipo
   );
 }
 
-function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number; partes: ParteEspacio[]; gastosTipo: GastoTipoEspacio[] }) {
+// ── Dialog: cerrar espacio, con opción de transferir el reparto de partes ────
+
+function CerrarEspacioDialog({ espacio, open, onClose }: { espacio: EspacioCompartido; open: boolean; onClose: () => void }) {
+  const { data: espacios = [] } = useEspaciosCompartidos();
+  const cerrarMut = useCerrarEspacio(espacio.id);
+  const [transferir, setTransferir] = useState(false);
+  const [destinoId, setDestinoId]   = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const destinosDisponibles = espacios.filter(e => e.id !== espacio.id && e.activo);
+
+  const handleConfirm = async () => {
+    setError(null);
+    try {
+      await cerrarMut.mutateAsync({ transferir_a: transferir && destinoId ? Number(destinoId) : null });
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Error al cerrar el espacio');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Cerrar "{espacio.nombre}"</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1">
+          <p className="text-sm text-muted-foreground">
+            No se van a generar más meses para este espacio. El historial queda disponible para consulta.
+          </p>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={transferir} onChange={e => setTransferir(e.target.checked)} />
+            ¿Querés transferir el reparto de partes a otro espacio?
+          </label>
+          {transferir && (
+            <div>
+              <label className={labelCls}>Espacio destino</label>
+              <select value={destinoId} onChange={e => setDestinoId(e.target.value)} className={inputCls}>
+                <option value="">Seleccionar...</option>
+                {destinosDisponibles.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+              </select>
+              {destinosDisponibles.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">No hay otros espacios activos para transferir.</p>
+              )}
+            </div>
+          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button
+              type="button" size="sm" variant="destructive"
+              disabled={cerrarMut.isPending || (transferir && !destinoId)}
+              onClick={handleConfirm}
+            >
+              {cerrarMut.isPending ? 'Cerrando…' : 'Cerrar espacio'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TabConfiguracion({ espacio, partes, gastosTipo }: { espacio: EspacioCompartido; partes: ParteEspacio[]; gastosTipo: GastoTipoEspacio[] }) {
+  const espacioId = espacio.id;
+  const [cerrarOpen, setCerrarOpen] = useState(false);
   const [parteDialog, setParteDialog] = useState<{ open: boolean; parte: ParteEspacio | null }>({ open: false, parte: null });
   const [tipoDialog, setTipoDialog]   = useState<{ open: boolean; tipo: GastoTipoEspacio | null }>({ open: false, tipo: null });
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
@@ -606,6 +670,19 @@ function TabConfiguracion({ espacioId, partes, gastosTipo }: { espacioId: number
         <ParteDialog espacioId={espacioId} parte={parteDialog.parte} partesActuales={partes} onClose={() => setParteDialog({ open: false, parte: null })} />
       )}
       {tipoDialog.open && <GastoTipoDialog espacioId={espacioId} tipo={tipoDialog.tipo} onClose={() => setTipoDialog({ open: false, tipo: null })} />}
+
+      {espacio.activo && (
+        <section className="border-t border-border pt-4">
+          <h3 className="text-sm font-semibold text-destructive mb-2">Cerrar espacio</h3>
+          <p className="text-xs text-muted-foreground mb-2">
+            Uso típico: un espacio termina y otro lo continúa con las mismas partes (ej. Nave 15 → Nave nueva).
+          </p>
+          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setCerrarOpen(true)}>
+            Cerrar espacio
+          </Button>
+        </section>
+      )}
+      {cerrarOpen && <CerrarEspacioDialog espacio={espacio} open onClose={() => setCerrarOpen(false)} />}
     </div>
   );
 }
@@ -663,7 +740,7 @@ export default function EspacioCompartidoDetallePage() {
         <TabHistorial espacioId={espacioId} onVerMes={(m, a) => { setMesSeleccionado({ mes: m, anio: a }); setTab('mes'); }} />
       )}
       {tab === 'configuracion' && (
-        <TabConfiguracion espacioId={espacioId} partes={espacio.partes} gastosTipo={espacio.gastosTipo ?? []} />
+        <TabConfiguracion espacio={espacio} partes={espacio.partes} gastosTipo={espacio.gastosTipo ?? []} />
       )}
     </div>
   );

@@ -29,6 +29,9 @@ import {
   getResumenBitacoraEmpleado,
 } from '../controllers/bitacoraViajes.controller';
 import { importarBitacoraViajes } from '../controllers/rrhhImporter.controller';
+import {
+  listEventosEmpleadoMes, createEventoEmpleadoMes, updateEventoEmpleadoMes, deleteEventoEmpleadoMes,
+} from '../controllers/eventosEmpleadoMes.controller';
 
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -128,5 +131,11 @@ router.post('/bitacora-viajes',                       requireRole('ADMIN'), asyn
 router.put('/bitacora-viajes/:id',                    requireRole('ADMIN'), asyncHandler(updateBitacoraViaje));
 router.delete('/bitacora-viajes/:id',                 requireRole('ADMIN'), asyncHandler(deleteBitacoraViaje));
 router.post('/bitacora-viajes/importar',              requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarBitacoraViajes));
+
+// ── Premio de producción — eventos del mes por empleado ──────────────────────
+router.get('/empleados/:id/eventos-mes',    requireRole('ADMIN'), asyncHandler(listEventosEmpleadoMes));
+router.post('/empleados/:id/eventos-mes',   requireRole('ADMIN'), asyncHandler(createEventoEmpleadoMes));
+router.put('/eventos-mes/:id',              requireRole('ADMIN'), asyncHandler(updateEventoEmpleadoMes));
+router.delete('/eventos-mes/:id',           requireRole('ADMIN'), asyncHandler(deleteEventoEmpleadoMes));
 
 export default router;

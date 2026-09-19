@@ -42,6 +42,13 @@ export interface ResultadoSueldoAdmin {
   importe_horas_extras: number;
   premio_incentivo:     number;
   viatico:              number;
+  // Premio por vuelta (choferes con bitácora) — vueltas × valor por tipo de
+  // recorrido, SIEMPRE separado de `viatico` (que es el monto fijo del
+  // acuerdo). Ver generarLiquidacionAdmin en sueldosAdmin.controller.ts.
+  premio_viaje:         number;
+  // Premio de producción — suma de EventoEmpleadoMes del período, sólo si
+  // AcuerdoSueldo.cobra_premio_produccion=true. Ver EventoEmpleadoMes.
+  premio_produccion:    number;
   premio_presentismo:   number;
   // true cuando horas_trabajadas < horas_acordadas_mes — perdió el
   // presentismo (premio_presentismo ya viene en 0 en ese caso). El frontend
@@ -75,6 +82,13 @@ export function calcularSueldoAdmin(
   // criterio de horas legado (cumpleHoras) — ver ResumenPresentismo en
   // presentismo.controller.ts.
   premioPresentismoOverride?: number,
+  // Premio por vuelta del período (choferes con bitácora) — ver comentario en
+  // ResultadoSueldoAdmin.premio_viaje. Distinto de viaticoOverride: NUNCA
+  // reemplaza `viatico`, se suma aparte.
+  premioViaje = 0,
+  // Premio de producción del período (suma de EventoEmpleadoMes) — ver
+  // ResultadoSueldoAdmin.premio_produccion.
+  premioProduccion = 0,
 ): ResultadoSueldoAdmin {
   const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
 
@@ -101,6 +115,8 @@ export function calcularSueldoAdmin(
     sueldoBasico
     + Number(acuerdo.premio_incentivo ?? 0)
     + viatico
+    + premioViaje
+    + premioProduccion
     + premioPresentismo
     + antiguedad.monto
     + Number(acuerdo.telefono ?? 0)
@@ -115,6 +131,8 @@ export function calcularSueldoAdmin(
     importe_horas_extras: importeHorasExtras,
     premio_incentivo:     Number(acuerdo.premio_incentivo ?? 0),
     viatico,
+    premio_viaje:         round2(premioViaje),
+    premio_produccion:    round2(premioProduccion),
     premio_presentismo:   premioPresentismo,
     presentismo_perdido:  premioPresentismoOverride !== undefined
       ? premioPresentismoOverride === 0 && Number(acuerdo.premio_presentismo ?? 0) > 0

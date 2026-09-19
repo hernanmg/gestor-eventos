@@ -9,9 +9,9 @@ export type MedioPago     = 'TRANSFERENCIA' | 'ECHEQ' | 'EFECTIVO' | 'CHEQUE';
 export type CondicionPago = 'CONTADO' | 'DIAS_30' | 'DIAS_60' | 'DIAS_90' | 'ECHEQ' | 'OTRO';
 export type Tipo         = 'EGRESO' | 'INGRESO';
 export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
-export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
+export type TipoCuenta   = 'EFECTIVO' | 'BANCO' | 'FIMA';
 export type EstadoCuenta = 'ABIERTA' | 'PENDIENTE_RENDICION' | 'CERRADA';
-export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
+export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO' | 'VENDIDO';
 export type Moneda       = 'ARS' | 'USD' | 'EUR';
 export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO'
   | 'JORNALERO' | 'FOFI' | 'NESTORAS' | 'EXTRANJERO' | 'SERENO' | 'OTRO';
@@ -696,6 +696,10 @@ export interface Echeq {
   fecha_emision:         string | null;
   fecha_cobro_estimada:  string | null;
   fecha_cobro_real:      string | null;
+  fecha_venta:           string | null;
+  banco_descuento:       string | null;
+  tasa_descuento:        number | null;
+  monto_neto_recibido:   number | null;
   dias_para_vencimiento: number | null;
   created_at:            string;
   updated_at:            string;
@@ -1763,6 +1767,10 @@ export interface AcuerdoSueldo {
   categoria_acuerdo:     CategoriaAcuerdo;
   // Banco de horas acumuladas (CHOFER) — null si no aplica.
   horas_pendientes_acum: number | null;
+  // Premio de producción — monto fijo por evento del mes en que participó
+  // (distinto del viático y del sueldo básico). Ver EventoEmpleadoMes.
+  cobra_premio_produccion: boolean;
+  valor_premio_produccion: number | null;
   activo:              boolean;
   notas:               string | null;
   created_at:          string;
@@ -1773,6 +1781,8 @@ export interface AcuerdoSueldo {
     importe_horas_extras: number;
     premio_incentivo:     number;
     viatico:              number;
+    premio_viaje:         number;
+    premio_produccion:    number;
     premio_presentismo:   number;
     antiguedad_anios:     number;
     importe_antiguedad:   number;
@@ -1780,6 +1790,28 @@ export interface AcuerdoSueldo {
     subtotal_bruto:       number;
     total_a_cobrar:       number;
   };
+}
+
+// ── Premio de producción — eventos del mes por empleado ───────────────────────
+
+export interface EventoEmpleadoMes {
+  id:            number;
+  empresa_id:    number;
+  empleado_id:   number;
+  evento_id:     number | null;
+  evento?:       { id: number; nombre: string; fecha_inicio: string | null } | null;
+  evento_nombre: string | null;
+  periodo_mes:   number;
+  periodo_anio:  number;
+  cobra_premio:  boolean;
+  monto_premio:  number | null;
+  created_at:    string;
+  created_by:    number | null;
+}
+
+export interface ResumenEventosMes {
+  total:   number;
+  eventos: EventoEmpleadoMes[];
 }
 
 export interface LiquidacionAdminMovimientoCaja {
@@ -1809,6 +1841,9 @@ export interface LiquidacionAdmin {
   importe_horas_extras: number;
   premio_incentivo:     number;
   viatico:              number;
+  premio_viaje:         number;
+  premio_produccion_total: number;
+  eventos_mes:          EventoEmpleadoMes[] | null;
   premio_presentismo:   number;
   antiguedad_anios:     number;
   importe_antiguedad:   number;
@@ -1835,6 +1870,9 @@ export interface LiquidacionAdmin {
   // Presente sólo en la respuesta de generar, si el empleado tiene registros
   // de BitacoraViaje en el período (choferes).
   bitacora_resumen?:     ResumenBitacora;
+  // Presente sólo en la respuesta de generar, si el acuerdo tiene
+  // cobra_premio_produccion=true.
+  eventos_mes_resumen?:  ResumenEventosMes;
   // Aumento aplicado al generar — snapshot, independiente de
   // AcuerdoSueldo.porcentaje_acuerdo.
   porcentaje_aumento_aplicado: number | null;

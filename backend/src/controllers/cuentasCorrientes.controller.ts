@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { recalcularSaldoCCC } from '../lib/recalcularSaldoCCC';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { EMPRESAS } from '../lib/empresasConstants';
 
 // ── Multer (documento adjunto — PDF o foto de comprobante) ────────────────────
 
@@ -107,15 +108,37 @@ async function findCuenta(id: number, empresaId: number) {
   return prisma.cuentaCorriente.findFirst({ where: { id, deleted_at: null, ...withTenant(empresaId) } });
 }
 
+// Cuentas personales de socios (tipo_tercero=SOCIO) son gastos personales de
+// Matías/Pollo/etc., no de la empresa — sólo el admin global y los admins
+// fijos de DOS57 pueden verlas, cross-empresa (ver FIX 6, pedido de Mayra).
+// El resto (incluidos los admins de Enjoy) nunca las ve, ni siquiera las de
+// su propio tenant.
+async function puedeVerCuentasPersonales(req: Request): Promise<boolean> {
+  if (req.user!.rol !== 'ADMIN') return false;
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null }, select: { empresa_id: true } });
+  const esAdminGlobal = usuario?.empresa_id === null;
+  const esAdminDos57  = req.empresaId === EMPRESAS.DOS57;
+  return esAdminGlobal || esAdminDos57;
+}
+
 // ── list ──────────────────────────────────────────────────────────────────────
 
 export async function list(req: Request, res: Response) {
   const { activa, tipo_tercero, moneda } = req.query;
+  const puedeVerPersonales = await puedeVerCuentasPersonales(req);
 
-  const where: any = { deleted_at: null, ...withTenant(req.empresaId!) };
+  const where: any = { deleted_at: null };
   if (activa !== undefined) where.activa = activa === 'true';
-  if (tipo_tercero) where.tipo_tercero = tipo_tercero;
   if (moneda) where.moneda = moneda;
+
+  if (puedeVerPersonales) {
+    // Cross-empresa sólo para las cuentas SOCIO — el resto sigue acotado al tenant activo.
+    where.OR = [withTenant(req.empresaId!), { tipo_tercero: TipoTercero.SOCIO }];
+  } else {
+    Object.assign(where, withTenant(req.empresaId!));
+    where.NOT = { tipo_tercero: TipoTercero.SOCIO };
+  }
+  if (tipo_tercero) where.tipo_tercero = tipo_tercero;
 
   const cuentas = await prisma.cuentaCorriente.findMany({
     where,
@@ -142,8 +165,14 @@ export async function list(req: Request, res: Response) {
 
 export async function detail(req: Request, res: Response) {
   const id = Number(req.params.id);
+  const puedeVerPersonales = await puedeVerCuentasPersonales(req);
   const c = await prisma.cuentaCorriente.findFirst({
-    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    where: {
+      id, deleted_at: null,
+      ...(puedeVerPersonales
+        ? { OR: [withTenant(req.empresaId!), { tipo_tercero: TipoTercero.SOCIO }] }
+        : { ...withTenant(req.empresaId!), NOT: { tipo_tercero: TipoTercero.SOCIO } }),
+    },
     include: {
       proveedor: { select: { id: true, nombre: true, cuit: true } },
       partes:    true,

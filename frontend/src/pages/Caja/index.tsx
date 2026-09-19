@@ -71,6 +71,7 @@ function NuevaCuentaEmpresaDialog({ open, onClose }: { open: boolean; onClose: (
               <select value={tipo} onChange={e => setTipo(e.target.value as TipoCuenta)} className={input}>
                 <option value="EFECTIVO">Efectivo</option>
                 <option value="BANCO">Banco</option>
+                <option value="FIMA">FIMA (inversión)</option>
               </select>
             </div>
             <div>
@@ -229,7 +230,13 @@ export default function CajaGlobalPage() {
                   <td className="px-3 py-2.5">
                     <EstadoBadge estado={c.estado} />
                   </td>
-                  <td className="px-3 py-2.5">{c.tipo}</td>
+                  <td className="px-3 py-2.5">
+                    {c.tipo === 'FIMA' ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600">
+                        📈 FIMA
+                      </span>
+                    ) : c.tipo}
+                  </td>
                   <td className="px-3 py-2.5">{c.moneda}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-medium">
                     <div className="flex items-center justify-end gap-1.5">

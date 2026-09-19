@@ -106,3 +106,15 @@ export function useRechazarEcheq(eventoId: number) {
     },
   });
 }
+
+export function useVenderEcheq(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, fecha_venta, banco_descuento, tasa_descuento, monto_neto_recibido }: {
+      id: number; fecha_venta: string; banco_descuento?: string | null; tasa_descuento?: number | null; monto_neto_recibido?: number | null;
+    }) => api.patch(`/echeqs/${id}/vender`, { fecha_venta, banco_descuento, tasa_descuento, monto_neto_recibido }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
+    },
+  });
+}

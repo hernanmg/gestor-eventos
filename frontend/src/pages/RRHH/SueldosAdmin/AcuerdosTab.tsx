@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   premio_incentivo: '', viatico: '', premio_presentismo: '', telefono: '', notas: '',
   viatico_provincial: '', viatico_nacional: '', viatico_nacional_1000: '',
   categoria_acuerdo: 'GENERAL' as CategoriaAcuerdo, porcentaje_acuerdo: '', horas_pendientes_acum: '',
+  cobra_premio_produccion: false, valor_premio_produccion: '',
 };
 
 type Step = 1 | 2 | 3;
@@ -85,6 +86,8 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         porcentaje_acuerdo:    acuerdo.porcentaje_acuerdo    !== null ? String(acuerdo.porcentaje_acuerdo)    : '',
         horas_pendientes_acum: acuerdo.horas_pendientes_acum !== null ? String(acuerdo.horas_pendientes_acum) : '',
         notas:               acuerdo.notas ?? '',
+        cobra_premio_produccion: acuerdo.cobra_premio_produccion,
+        valor_premio_produccion: acuerdo.valor_premio_produccion !== null ? String(acuerdo.valor_premio_produccion) : '',
       });
       // Todo acuerdo tiene al menos 1 split (el 100% a la empresa activa por
       // defecto) — sólo es un split "real" si involucra más de una empresa.
@@ -181,6 +184,8 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         porcentaje_acuerdo:    form.porcentaje_acuerdo    ? Number(form.porcentaje_acuerdo)    : null,
         horas_pendientes_acum: form.horas_pendientes_acum ? Number(form.horas_pendientes_acum) : null,
         notas:               form.notas || null,
+        cobra_premio_produccion: form.cobra_premio_produccion,
+        valor_premio_produccion: form.valor_premio_produccion ? Number(form.valor_premio_produccion) : null,
       };
 
       if (isEdit) {
@@ -423,9 +428,9 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
 
             {esChofer && (
               <div className="rounded-md border border-border p-3 space-y-2">
-                <p className="text-xs font-medium">Premios por Viajes</p>
+                <p className="text-xs font-medium">Premios por vuelta</p>
                 <p className="text-[11px] text-muted-foreground">
-                  $ por vuelta según tipo de recorrido — usados por la Bitácora de Viajes para calcular el viático de cada registro, reemplazan el "Viático" fijo de arriba para este empleado. Se pre-cargan desde el escalafón "CHOFER" y son editables.
+                  $ por vuelta según tipo de recorrido — usados por la Bitácora de Viajes. El "Viático" de arriba es fijo y se cobra siempre entero; esto es un premio APARTE que se suma según lo que la bitácora registre cada mes, nunca lo reemplaza. Se pre-cargan desde el escalafón "CHOFER" y son editables.
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -450,6 +455,26 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                 </div>
               </div>
             )}
+
+            <div className="rounded-md border border-border p-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.cobra_premio_produccion}
+                  onChange={e => setForm(p => ({ ...p, cobra_premio_produccion: e.target.checked }))}
+                />
+                Cobra premio de producción
+              </label>
+              <p className="text-[11px] text-muted-foreground">
+                Monto fijo por cada evento del mes en que participó — distinto del viático y del sueldo básico. Se carga evento por evento al generar la liquidación.
+              </p>
+              {form.cobra_premio_produccion && (
+                <div>
+                  <label className={labelCls}>Monto por evento ($)</label>
+                  <MoneyInput value={form.valor_premio_produccion} onChange={v => set('valor_premio_produccion', v)} />
+                </div>
+              )}
+            </div>
 
             <div>
               <label className={labelCls}>Notas</label>

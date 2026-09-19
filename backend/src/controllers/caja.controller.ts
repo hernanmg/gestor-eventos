@@ -79,7 +79,7 @@ function mapMovCaja(m: any, tabMap?: Map<string, string>) {
 
 const createCuentaSchema = z.object({
   nombre:        z.string().min(1),
-  tipo:          z.enum(['EFECTIVO', 'BANCO']),
+  tipo:          z.enum(['EFECTIVO', 'BANCO', 'FIMA']),
   moneda:        z.enum(['ARS', 'USD']).default('ARS'),
   saldo_inicial: z.number().default(0),
   saldo_minimo:  z.number().min(0).nullable().optional(),
@@ -87,7 +87,7 @@ const createCuentaSchema = z.object({
 
 const updateCuentaSchema = z.object({
   nombre:        z.string().min(1).optional(),
-  tipo:          z.enum(['EFECTIVO', 'BANCO']).optional(),
+  tipo:          z.enum(['EFECTIVO', 'BANCO', 'FIMA']).optional(),
   moneda:        z.enum(['ARS', 'USD']).optional(),
   saldo_inicial: z.number().optional(),
   saldo_minimo:  z.number().min(0).nullable().optional(),

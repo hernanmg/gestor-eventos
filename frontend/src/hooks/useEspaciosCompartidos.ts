@@ -76,6 +76,15 @@ export function useUpdateEspacio(id: number) {
   });
 }
 
+export function useCerrarEspacio(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { transferir_a?: number | null }) =>
+      api.patch<EspacioCompartido>(`/espacios-compartidos/${id}/cerrar`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
 export function useGenerarMesActual() {
   const qc = useQueryClient();
   return useMutation({

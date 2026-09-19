@@ -411,6 +411,9 @@ async function main() {
     { nombre: 'Adelantos DOS57', tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
     { nombre: 'Caja Miguel',     tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
     { nombre: 'Caja David',      tipo: TipoCuenta.EFECTIVO, moneda: Moneda.ARS, saldo_inicial: 0 },
+    // Fondo de inversión — se comporta como cualquier CuentaBancaria para
+    // movimientos y saldos, sólo se distingue con un badge en Caja Global.
+    { nombre: 'FIMA — Galicia',  tipo: TipoCuenta.FIMA,     moneda: Moneda.ARS, saldo_inicial: 0 },
   ];
 
   for (const cuenta of CUENTAS_DOS57) {
@@ -464,6 +467,88 @@ async function main() {
     });
   }
   console.log(`✓ Escalafones administrativos DOS57: ${ESCALAFONES_DOS57.length} cargados`);
+
+  // ── Espacios compartidos DOS57 ──────────────────────────────────────────────
+  // Nave 15 cierra en noviembre 2026 — Nave nueva la continúa con las mismas
+  // partes (DOS57/Jiménez 50/50). Nave 7 queda sin partes cargadas: el % de
+  // reparto y el tipo de gasto fijo están pendientes de confirmar con Mayra
+  // (admin los completa desde Configuración del espacio).
+  const nave15 = await prisma.espacioCompartido.upsert({
+    where:  { empresa_id_nombre: { empresa_id: dos57.id, nombre: 'Nave 15' } },
+    update: {},
+    create: {
+      empresa_id: dos57.id, nombre: 'Nave 15', dia_generacion: 1, activo: true,
+      descripcion: 'Cierra en noviembre 2026 — continúa como "Nave nueva".',
+    },
+  });
+  await prisma.parteEspacio.upsert({
+    where:  { espacio_id_nombre: { espacio_id: nave15.id, nombre: 'DOS57' } },
+    update: {},
+    create: { espacio_id: nave15.id, nombre: 'DOS57', porcentaje: 50, empresa_id: dos57.id },
+  });
+  await prisma.parteEspacio.upsert({
+    where:  { espacio_id_nombre: { espacio_id: nave15.id, nombre: 'Jiménez' } },
+    update: {},
+    create: { espacio_id: nave15.id, nombre: 'Jiménez', porcentaje: 50 },
+  });
+
+  const naveNueva = await prisma.espacioCompartido.upsert({
+    where:  { empresa_id_nombre: { empresa_id: dos57.id, nombre: 'Nave nueva' } },
+    update: {},
+    create: { empresa_id: dos57.id, nombre: 'Nave nueva', dia_generacion: 1, activo: true },
+  });
+  await prisma.parteEspacio.upsert({
+    where:  { espacio_id_nombre: { espacio_id: naveNueva.id, nombre: 'DOS57' } },
+    update: {},
+    create: { espacio_id: naveNueva.id, nombre: 'DOS57', porcentaje: 50, empresa_id: dos57.id },
+  });
+  await prisma.parteEspacio.upsert({
+    where:  { espacio_id_nombre: { espacio_id: naveNueva.id, nombre: 'Jiménez' } },
+    update: {},
+    create: { espacio_id: naveNueva.id, nombre: 'Jiménez', porcentaje: 50 },
+  });
+
+  await prisma.espacioCompartido.upsert({
+    where:  { empresa_id_nombre: { empresa_id: dos57.id, nombre: 'Nave 7' } },
+    update: {},
+    create: {
+      empresa_id: dos57.id, nombre: 'Nave 7', dia_generacion: 1, activo: true,
+      descripcion: 'Partes y tipo de gasto fijo pendientes de confirmar con Mayra.',
+    },
+  });
+
+  console.log('✓ Espacios compartidos DOS57: Nave 15, Nave nueva, Nave 7');
+
+  // ── Cuentas corrientes personales de socios (FIX 6) ─────────────────────────
+  // empresa_id es obligatorio en el schema — Matías (admin global) no tiene
+  // empresa "hogar" propia, así que se la archiva en DOS57 (mismo criterio que
+  // Pollo, explícito en el pedido). La visibilidad real no depende de esto:
+  // tipo_tercero=SOCIO se filtra cross-empresa para admin global + admins
+  // DOS57 en cuentasCorrientes.controller.ts, así que el empresa_id acá es
+  // sólo dónde queda archivada la fila, no quién puede verla. Confirmar con
+  // el usuario si prefiere Enjoy (id 1) en cambio — quedó marcado como
+  // "a decidir" en el pedido original.
+  const CUENTAS_PERSONALES: { nombre: string; tercero_nombre: string }[] = [
+    { nombre: 'Matías Personal', tercero_nombre: 'Matías Lorenzati' },
+    { nombre: 'Pollo Personal',  tercero_nombre: 'Sergio Bibiloni' },
+  ];
+
+  for (const c of CUENTAS_PERSONALES) {
+    const existente = await prisma.cuentaCorriente.findFirst({ where: { nombre: c.nombre, empresa_id: dos57.id, deleted_at: null } });
+    if (!existente) {
+      await prisma.cuentaCorriente.create({
+        data: {
+          empresa_id:     dos57.id,
+          nombre:         c.nombre,
+          tipo_tercero:   'SOCIO',
+          tercero_nombre: c.tercero_nombre,
+          moneda:         'ARS',
+          descripcion:    'Gastos personales del socio',
+        },
+      });
+    }
+  }
+  console.log(`✓ Cuentas corrientes personales de socios: ${CUENTAS_PERSONALES.length} cargadas`);
 }
 
 main()

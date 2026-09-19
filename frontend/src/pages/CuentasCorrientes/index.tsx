@@ -84,8 +84,15 @@ function FilaCuenta({ c, onEdit }: { c: CuentaCorriente; onEdit: (id: number) =>
       </td>
       <td className="py-2.5 px-3 text-muted-foreground">{terceroNombre}</td>
       <td className="py-2.5 px-3">
-        <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-secondary text-secondary-foreground">
-          {TIPO_TERCERO_LABEL[c.tipo_tercero]}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-secondary text-secondary-foreground">
+            {TIPO_TERCERO_LABEL[c.tipo_tercero]}
+          </span>
+          {c.tipo_tercero === 'SOCIO' && (
+            <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-gray-100 text-gray-600">
+              Personal
+            </span>
+          )}
         </span>
       </td>
       <td className="py-2.5 px-3 text-muted-foreground">{c.moneda}</td>
@@ -287,11 +294,22 @@ function CuentaFormDialog({ cuentaId, onClose }: { cuentaId: number | null; onCl
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Vista gruesa Todas/Empresas/Personales — distinta del filtro fino por
+// tipo_tercero de abajo; "Personales" son las cuentas SOCIO (gastos
+// personales de un socio, ver FIX 6), invisibles para quien no tiene permiso
+// (el backend simplemente no las devuelve, así que el filtro queda vacío).
+type Vista = 'todas' | 'empresas' | 'personales';
+
 export default function CuentasCorrientesPage() {
   const [filtros, setFiltros]       = useState<CuentaCorrienteFiltros>({ activa: 'true' });
+  const [vista, setVista]           = useState<Vista>('todas');
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId]   = useState<number | null>(null);
-  const { data: cuentas = [], isLoading } = useCuentasCorrientes(filtros);
+  const { data: cuentasSinVista = [], isLoading } = useCuentasCorrientes(filtros);
+
+  const cuentas = cuentasSinVista.filter(c =>
+    vista === 'todas' ? true : vista === 'personales' ? c.tipo_tercero === 'SOCIO' : c.tipo_tercero !== 'SOCIO',
+  );
 
   const dialogOpen = showCreate || editingId !== null;
   const closeDialog = () => { setShowCreate(false); setEditingId(null); };
@@ -306,6 +324,20 @@ export default function CuentasCorrientesPage() {
         <Button size="sm" onClick={() => setShowCreate(true)}>
           <Plus size={14} className="mr-1.5" /> Nueva cuenta corriente
         </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {([['todas', 'Todas'], ['empresas', 'Empresas'], ['personales', 'Personales']] as const).map(([v, l]) => (
+          <button
+            key={v} type="button" onClick={() => setVista(v)}
+            className={cn(
+              'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+              vista === v ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent',
+            )}
+          >
+            {l}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">

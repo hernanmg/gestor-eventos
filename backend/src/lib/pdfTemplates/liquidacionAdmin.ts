@@ -14,6 +14,8 @@ export interface LiquidacionAdminPdfData {
   importe_horas_extras: number;
   premio_incentivo: number;
   viatico: number;
+  premio_viaje: number;
+  premio_produccion_total: number;
   premio_presentismo: number;
   antiguedad_anios: number;
   importe_antiguedad: number;
@@ -50,7 +52,9 @@ export function templateLiquidacionAdmin(d: LiquidacionAdminPdfData): string {
   const conceptos: { label: string; monto: number }[] = [
     { label: 'Sueldo Básico', monto: d.sueldo_basico },
     { label: 'Premio incentivo', monto: d.premio_incentivo },
-    { label: 'Viático', monto: d.viatico },
+    { label: 'Viático (fijo)', monto: d.viatico },
+    { label: 'Premios por vuelta', monto: d.premio_viaje },
+    { label: 'Premio de producción', monto: d.premio_produccion_total },
     { label: 'Premio Presentismo', monto: d.premio_presentismo },
     { label: `Antigüedad (${d.antiguedad_anios} año${d.antiguedad_anios !== 1 ? 's' : ''})`, monto: d.importe_antiguedad },
     { label: 'Teléfono', monto: d.telefono },

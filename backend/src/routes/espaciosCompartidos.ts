@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   uploadComprobante,
-  listEspacios, detalleEspacio, createEspacio, updateEspacio, removeEspacio,
+  listEspacios, detalleEspacio, createEspacio, updateEspacio, removeEspacio, cerrarEspacio,
   createParte, updateParte, removeParte,
   createGastoTipo, updateGastoTipo, removeGastoTipo,
   listMeses, detalleMes, generarMes, generarMesActual,
@@ -36,6 +36,7 @@ espaciosCompartidosRouter.post('/',                                  asyncHandle
 espaciosCompartidosRouter.post('/generar-mes-actual',                asyncHandler(generarMesActual));
 espaciosCompartidosRouter.get('/:id',                                asyncHandler(detalleEspacio));
 espaciosCompartidosRouter.put('/:id',                                asyncHandler(updateEspacio));
+espaciosCompartidosRouter.patch('/:id/cerrar',                       asyncHandler(cerrarEspacio));
 espaciosCompartidosRouter.delete('/:id',                             asyncHandler(removeEspacio));
 
 espaciosCompartidosRouter.post('/:id/partes',                        asyncHandler(createParte));

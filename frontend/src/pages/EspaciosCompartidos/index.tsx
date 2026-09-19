@@ -199,6 +199,9 @@ export default function EspaciosCompartidosPage() {
               <div className="flex items-center gap-2 mb-1.5">
                 <Building2 size={16} className="text-muted-foreground" />
                 <h2 className="font-semibold">{e.nombre}</h2>
+                {!e.activo && (
+                  <span className="text-[11px] font-medium text-gray-600 bg-gray-100 rounded-full px-2 py-0.5">Cerrado</span>
+                )}
               </div>
               {incompleto && (
                 <p className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 mb-2">

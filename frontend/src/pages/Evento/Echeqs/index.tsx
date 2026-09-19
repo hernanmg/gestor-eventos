@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Search, Trash2, X, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import {
-  useEcheqs, useAlertasEcheqs, useDeleteEcheq, useRechazarEcheq,
+  useEcheqs, useAlertasEcheqs, useDeleteEcheq, useRechazarEcheq, useVenderEcheq,
   type EcheqFilters,
 } from '@/hooks/useEcheqs';
 import { useCuentas } from '@/hooks/useCaja';
@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import CobrarEcheqDialog from '@/components/domain/CobrarEcheqDialog';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Echeq } from '@/types';
@@ -96,6 +97,93 @@ function RechazarDialog({
   );
 }
 
+// ── Vender (descontar) Dialog ─────────────────────────────────────────────────
+
+function VenderDialog({
+  echeq, open, onClose,
+}: {
+  echeq:   Echeq;
+  open:    boolean;
+  onClose: () => void;
+}) {
+  const [fechaVenta,   setFechaVenta]   = useState(new Date().toISOString().slice(0, 10));
+  const [banco,        setBanco]        = useState('');
+  const [tasa,         setTasa]         = useState('');
+  const [montoNeto,    setMontoNeto]    = useState('');
+  const [error,        setError]        = useState<string | null>(null);
+  const vender = useVenderEcheq(echeq.evento_id);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await vender.mutateAsync({
+        id:                  echeq.id,
+        fecha_venta:         fechaVenta,
+        banco_descuento:     banco.trim() || null,
+        tasa_descuento:      tasa.trim() === ''      ? null : parseFloat(tasa),
+        monto_neto_recibido: montoNeto.trim() === '' ? null : parseFloat(montoNeto),
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Error al registrar la venta');
+    }
+  };
+
+  const input = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+  const label = 'block text-xs font-medium text-muted-foreground mb-0.5';
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Marcar echeq como vendido</DialogTitle>
+        </DialogHeader>
+        <div className="text-sm text-muted-foreground mb-3">
+          <span className="font-medium text-foreground">{echeq.numero}</span> — {echeq.razon_social}
+          <span className="ml-2 font-medium text-foreground">
+            {formatCurrency(echeq.importe, echeq.moneda)}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2 mb-1">
+          El echeq fue descontado en el banco antes del vencimiento — registrá los datos de la operación.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className={label}>Fecha de venta *</label>
+            <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)} className={input} required />
+          </div>
+          <div>
+            <label className={label}>Banco de descuento</label>
+            <input value={banco} onChange={e => setBanco(e.target.value)} className={input} placeholder="Ej: Banco Galicia" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Tasa de descuento (%)</label>
+              <input
+                type="number" step="0.01" min="0" max="100"
+                value={tasa} onChange={e => setTasa(e.target.value)}
+                className={input} placeholder="Ej: 8.5"
+              />
+            </div>
+            <div>
+              <label className={label}>Monto neto recibido</label>
+              <MoneyInput value={montoNeto} onChange={setMontoNeto} className={input} placeholder="Ej: 950000" />
+            </div>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={vender.isPending}>
+              {vender.isPending ? 'Guardando…' : 'Marcar como vendido'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Info Banner (colapsable) ──────────────────────────────────────────────────
 
 function InfoBanner() {
@@ -116,6 +204,7 @@ function InfoBanner() {
           <p><span className="font-medium">Estado PENDIENTE:</span> el echeq fue emitido pero todavía no se pagó.</p>
           <p><span className="font-medium">Registrar pago:</span> al "cobrar" un echeq estás registrando el <strong>pago efectivo</strong> — el dinero <strong>sale</strong> de una cuenta bancaria en esa fecha.</p>
           <p><span className="font-medium">Estado COBRADO:</span> el pago fue realizado y se creó un movimiento de salida en la cuenta seleccionada.</p>
+          <p><span className="font-medium">Estado VENDIDO:</span> el echeq fue descontado en el banco antes del vencimiento — no genera movimiento de caja, sólo queda registrada la operación de descuento.</p>
         </div>
       )}
     </div>
@@ -190,6 +279,7 @@ function FilterPanel({
         <option value="">Todos los estados</option>
         <option value="PENDIENTE">Pendiente</option>
         <option value="COBRADO">Cobrado</option>
+        <option value="VENDIDO">Vendido</option>
         <option value="RECHAZADO">Rechazado</option>
       </select>
       <select
@@ -243,6 +333,7 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
   const [filters,        setFilters]        = useState<EcheqFilters>({});
   const [cobrarTarget,   setCobrarTarget]   = useState<Echeq | null>(null);
   const [rechazarTarget, setRechazarTarget] = useState<Echeq | null>(null);
+  const [venderTarget,   setVenderTarget]   = useState<Echeq | null>(null);
 
   const { data: echeqs  = [], isLoading } = useEcheqs(eventoId, filters);
   const { data: cuentas = [] }            = useCuentas(eventoId);
@@ -299,6 +390,14 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
                     {e.estado === 'RECHAZADO' && e.motivo_rechazo && (
                       <div className="text-xs text-red-600">{e.motivo_rechazo}</div>
                     )}
+                    {e.estado === 'VENDIDO' && (
+                      <div className="text-xs text-orange-700">
+                        Vendido {formatDate(e.fecha_venta)}
+                        {e.banco_descuento && ` — ${e.banco_descuento}`}
+                        {e.tasa_descuento !== null && ` — tasa ${e.tasa_descuento}%`}
+                        {e.monto_neto_recibido !== null && ` — neto ${formatCurrency(e.monto_neto_recibido, e.moneda)}`}
+                      </div>
+                    )}
                   </td>
                   <td className={cn(td, 'text-right tabular-nums font-medium')}>
                     {formatCurrency(e.importe, e.moneda)}
@@ -329,6 +428,14 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
                             <Button
                               variant="outline"
                               size="sm"
+                              className="h-6 text-xs"
+                              onClick={() => setVenderTarget(e)}
+                            >
+                              Marcar como vendido
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               className="h-6 text-xs text-destructive hover:text-destructive"
                               onClick={() => setRechazarTarget(e)}
                             >
@@ -336,7 +443,7 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
                             </Button>
                           </>
                         )}
-                        {e.estado !== 'COBRADO' && (
+                        {e.estado !== 'COBRADO' && e.estado !== 'VENDIDO' && (
                           <button
                             onClick={() => handleDelete(e)}
                             title="Eliminar"
@@ -368,6 +475,13 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
           echeq={rechazarTarget}
           open
           onClose={() => setRechazarTarget(null)}
+        />
+      )}
+      {venderTarget && (
+        <VenderDialog
+          echeq={venderTarget}
+          open
+          onClose={() => setVenderTarget(null)}
         />
       )}
     </div>

@@ -9,6 +9,7 @@ import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacionAdmin } from '../lib/pdfTemplates/liquidacionAdmin';
 import { calcularSueldoAdmin, calcularSplits, type SplitCalculado } from '../lib/calcularSueldoAdmin';
 import { calcularResumenBitacora } from './bitacoraViajes.controller';
+import { calcularResumenEventosMes } from './eventosEmpleadoMes.controller';
 
 // ── Helpers de mapeo (Decimal → number) ───────────────────────────────────────
 
@@ -26,6 +27,7 @@ function mapDecimalsAcuerdo(a: any) {
     viatico_nacional_1000: a.viatico_nacional_1000 !== null ? Number(a.viatico_nacional_1000) : null,
     porcentaje_acuerdo:    a.porcentaje_acuerdo    !== null ? Number(a.porcentaje_acuerdo)    : null,
     horas_pendientes_acum: a.horas_pendientes_acum !== null ? Number(a.horas_pendientes_acum) : null,
+    valor_premio_produccion: a.valor_premio_produccion !== null ? Number(a.valor_premio_produccion) : null,
   };
 }
 
@@ -39,6 +41,8 @@ function mapDecimalsLiquidacionAdmin(l: any) {
     importe_horas_extras: Number(l.importe_horas_extras),
     premio_incentivo:     Number(l.premio_incentivo),
     viatico:              Number(l.viatico),
+    premio_viaje:         Number(l.premio_viaje),
+    premio_produccion_total: Number(l.premio_produccion_total),
     premio_presentismo:   Number(l.premio_presentismo),
     importe_antiguedad:   Number(l.importe_antiguedad),
     telefono:             Number(l.telefono),
@@ -188,6 +192,10 @@ const acuerdoSchema = z.object({
   // fuera del sistema; después sólo se actualiza al aprobar liquidaciones.
   horas_pendientes_acum: z.number().nullable().optional(),
   notas:               z.string().nullable().optional(),
+  // Premio de producción — monto fijo por evento del mes en que participó
+  // (distinto del viático y del sueldo básico). Ver EventoEmpleadoMes.
+  cobra_premio_produccion: z.boolean().default(false),
+  valor_premio_produccion: z.number().min(0).nullable().optional(),
 });
 
 export async function createAcuerdo(req: Request, res: Response) {
@@ -224,6 +232,8 @@ export async function createAcuerdo(req: Request, res: Response) {
         viatico_nacional_1000: d.viatico_nacional_1000 ?? null,
         porcentaje_acuerdo:    d.porcentaje_acuerdo    ?? null,
         categoria_acuerdo:     d.categoria_acuerdo,
+        cobra_premio_produccion: d.cobra_premio_produccion,
+        valor_premio_produccion: d.valor_premio_produccion ?? null,
         horas_pendientes_acum: d.horas_pendientes_acum ?? null,
         notas:               d.notas              ?? null,
         created_by:          req.user!.id,
@@ -300,6 +310,8 @@ export async function updateAcuerdo(req: Request, res: Response) {
       ...(d.porcentaje_acuerdo    !== undefined && { porcentaje_acuerdo: d.porcentaje_acuerdo }),
       ...(d.categoria_acuerdo     !== undefined && { categoria_acuerdo: d.categoria_acuerdo }),
       ...(d.horas_pendientes_acum !== undefined && { horas_pendientes_acum: d.horas_pendientes_acum }),
+      ...(d.cobra_premio_produccion !== undefined && { cobra_premio_produccion: d.cobra_premio_produccion }),
+      ...(d.valor_premio_produccion !== undefined && { valor_premio_produccion: d.valor_premio_produccion }),
       ...(d.notas               !== undefined && { notas: d.notas }),
       ...(d.activo              !== undefined && { activo: d.activo }),
     },
@@ -570,9 +582,9 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
   if (!acuerdo) { res.status(404).json({ error: 'Este empleado no tiene un acuerdo de sueldo activo' }); return; }
 
   // Bitácora de viajes del período (choferes) — informativa siempre que haya
-  // registros. Para acuerdos categoria_acuerdo=CHOFER se aplica automático
-  // como viático efectivo (reemplaza el fijo del acuerdo); para el resto,
-  // sólo si el frontend manda viatico_override (botón "Usar viático calculado").
+  // registros. El viático de Luis es FIJO (el del acuerdo) y no varía por
+  // recorrido — lo que la bitácora determina es el PREMIO POR VUELTA
+  // (premioViajeEfectivo abajo), que se suma aparte y ya NO pisa el viático.
   const bitacoraResumen = await calcularResumenBitacora(d.empleado_id, d.periodo_mes, d.periodo_anio);
   const tieneBitacora    = bitacoraResumen.registros.length > 0;
   const esChofer         = acuerdo.categoria_acuerdo === CategoriaAcuerdo.CHOFER;
@@ -581,7 +593,15 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
     res.status(400).json({ error: 'Falta el porcentaje de aumento' }); return;
   }
 
-  const viaticoEfectivo = esChofer && tieneBitacora ? bitacoraResumen.total_viatico : (d.viatico_override ?? undefined);
+  const viaticoEfectivo = d.viatico_override ?? undefined;
+  const premioViajeEfectivo = esChofer && tieneBitacora ? bitacoraResumen.total_viatico : 0;
+
+  // Premio de producción — suma de EventoEmpleadoMes del período (sólo si el
+  // acuerdo lo tiene habilitado). eventos_mes queda como snapshot en la
+  // liquidación, estable aunque después se edite/borre el EventoEmpleadoMes.
+  const resumenEventosMes = acuerdo.cobra_premio_produccion
+    ? await calcularResumenEventosMes(d.empleado_id, d.periodo_mes, d.periodo_anio)
+    : { total: 0, eventos: [] };
 
   // Presentismo (Lorena) — si el período está cerrado, manda siempre por
   // sobre cualquier valor mandado desde el frontend (ver Control de
@@ -614,6 +634,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
   const calculo = calcularSueldoAdmin(
     acuerdo, d.horas_trabajadas, valesDescuentos, d.vacaciones_aguinaldo, undefined,
     viaticoEfectivo, d.porcentaje_aumento ?? undefined, premioPresentismoEfectivo,
+    premioViajeEfectivo, resumenEventosMes.total,
   );
   const splits  = await obtenerSplitsCalculados(d.empleado_id, calculo.total_a_cobrar);
 
@@ -639,6 +660,9 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
         importe_horas_extras: calculo.importe_horas_extras,
         premio_incentivo:     calculo.premio_incentivo,
         viatico:              calculo.viatico,
+        premio_viaje:         calculo.premio_viaje,
+        premio_produccion_total: calculo.premio_produccion,
+        eventos_mes:          resumenEventosMes.eventos.length > 0 ? (resumenEventosMes.eventos as any) : undefined,
         premio_presentismo:   calculo.premio_presentismo,
         antiguedad_anios:     calculo.antiguedad_anios,
         importe_antiguedad:   calculo.importe_antiguedad,
@@ -700,6 +724,7 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
       ...mapDecimalsLiquidacionAdmin(liquidacion),
       prestamos_pendientes: prestamosPendientes.map(p => ({ ...p, monto_cuota: Number(p.monto_cuota) })),
       ...(tieneBitacora && { bitacora_resumen: bitacoraResumen }),
+      ...(acuerdo.cobra_premio_produccion && { eventos_mes_resumen: resumenEventosMes }),
     });
   } catch (err: any) {
     if (err.code === 'P2002') {
@@ -1041,6 +1066,8 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
     importe_horas_extras: Number(liquidacion.importe_horas_extras),
     premio_incentivo:     Number(liquidacion.premio_incentivo),
     viatico:              Number(liquidacion.viatico),
+    premio_viaje:         Number(liquidacion.premio_viaje),
+    premio_produccion_total: Number(liquidacion.premio_produccion_total),
     premio_presentismo:   Number(liquidacion.premio_presentismo),
     antiguedad_anios:     liquidacion.antiguedad_anios,
     importe_antiguedad:   Number(liquidacion.importe_antiguedad),

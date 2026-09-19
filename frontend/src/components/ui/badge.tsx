@@ -12,6 +12,7 @@ const badgeVariants = cva(
         muted:    'bg-gray-100 text-gray-600',
         info:     'bg-blue-100 text-blue-800',
         warning:  'bg-yellow-100 text-yellow-800',
+        orange:   'bg-orange-100 text-orange-700',
         destructive: 'bg-red-100 text-red-700',
       },
     },
@@ -51,12 +52,14 @@ const ECHEQ_VARIANT: Record<EstadoEcheq, VariantProps<typeof badgeVariants>['var
   PENDIENTE:  'warning',
   COBRADO:    'success',
   RECHAZADO:  'destructive',
+  VENDIDO:    'orange',
 };
 
 const ECHEQ_LABEL: Record<EstadoEcheq, string> = {
   PENDIENTE:  'Pendiente',
   COBRADO:    'Cobrado',
   RECHAZADO:  'Rechazado',
+  VENDIDO:    'Vendido',
 };
 
 export function EcheqEstadoBadge({ estado }: { estado: EstadoEcheq }) {

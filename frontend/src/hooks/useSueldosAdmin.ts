@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   AcuerdoSueldo, LiquidacionAdmin, EmpresaMini, CuentaMini, EstadoLiquidacionAdmin, PrestamoEmpleado,
-  BitacoraViaje, ResumenBitacora, TipoRecorrido, CategoriaAcuerdo, TipoAumento,
+  BitacoraViaje, ResumenBitacora, TipoRecorrido, CategoriaAcuerdo, TipoAumento, ResumenEventosMes,
 } from '@/types';
 
 const ACUERDOS_KEY  = ['rrhh', 'acuerdos'];
@@ -141,6 +141,9 @@ export interface AcuerdoPayload {
   categoria_acuerdo?:     CategoriaAcuerdo;
   horas_pendientes_acum?: number | null;
   notas?:              string | null;
+  // Premio de producción — monto fijo por evento del mes en que participó.
+  cobra_premio_produccion?: boolean;
+  valor_premio_produccion?: number | null;
 }
 
 export function useCreateAcuerdo() {
@@ -420,6 +423,58 @@ export function useImportarBitacoraViajes() {
       ).then(r => r.data);
     },
     onSuccess: (_data, vars) => { if (!vars.dryRun) invalidateBitacora(qc); },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PREMIO DE PRODUCCIÓN — eventos del mes por empleado (AcuerdoSueldo.cobra_premio_produccion)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const EVENTOS_MES_KEY = ['rrhh', 'eventos-mes'];
+
+export function useEventosMesEmpleado(empleadoId: number | null, mes: number | null, anio: number | null) {
+  return useQuery<ResumenEventosMes>({
+    queryKey: [...EVENTOS_MES_KEY, empleadoId, mes, anio],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/eventos-mes`, { params: { mes, anio } }).then(r => r.data),
+    enabled:  empleadoId !== null && mes !== null && anio !== null,
+  });
+}
+
+export interface EventoEmpleadoMesPayload {
+  evento_id?:     number | null;
+  evento_nombre?: string | null;
+  periodo_mes:    number;
+  periodo_anio:   number;
+  monto_premio?:  number | null;
+  cobra_premio?:  boolean;
+}
+
+function invalidateEventosMes(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: EVENTOS_MES_KEY });
+}
+
+export function useCreateEventoEmpleadoMes(empleadoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: EventoEmpleadoMesPayload) => api.post(`/rrhh/empleados/${empleadoId}/eventos-mes`, data).then(r => r.data),
+    onSuccess:  () => invalidateEventosMes(qc),
+  });
+}
+
+export function useUpdateEventoEmpleadoMes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { monto_premio?: number | null; cobra_premio?: boolean } }) =>
+      api.put(`/rrhh/eventos-mes/${id}`, data).then(r => r.data),
+    onSuccess: () => invalidateEventosMes(qc),
+  });
+}
+
+export function useDeleteEventoEmpleadoMes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/rrhh/eventos-mes/${id}`).then(r => r.data),
+    onSuccess:  () => invalidateEventosMes(qc),
   });
 }
 

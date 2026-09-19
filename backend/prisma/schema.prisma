@@ -34,6 +34,7 @@ enum EstadoEvento {
 enum TipoCuenta {
   EFECTIVO
   BANCO
+  FIMA // fondo de inversión (ej. FIMA Galicia) — se comporta como cualquier CuentaBancaria para movimientos/saldos
 }
 
 enum EstadoCuenta {
@@ -46,6 +47,7 @@ enum EstadoEcheq {
   PENDIENTE
   COBRADO
   RECHAZADO
+  VENDIDO // descontado en el banco antes del vencimiento — ver Echeq.fecha_venta/banco_descuento/tasa_descuento/monto_neto_recibido
 }
 
 enum Moneda {
@@ -274,6 +276,7 @@ model Empresa {
   resumenesPresentismo   ResumenPresentismo[]
   siniestrosEmpleado     SiniestroEmpleado[]
   excedentesHoras        ExcedenteHoras[]
+  eventosEmpleadoMes     EventoEmpleadoMes[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -401,6 +404,7 @@ model Evento {
   facturas_emitidas      FacturaEmitida[]
   cargas_combustible     CargaCombustible[]
   siniestros_empleado    SiniestroEmpleado[]
+  eventos_empleado_mes   EventoEmpleadoMes[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -729,6 +733,12 @@ model Echeq {
   fecha_emision        DateTime?
   fecha_cobro_estimada DateTime?
   fecha_cobro_real     DateTime?
+  // Venta/descuento del echeq en el banco antes del vencimiento (estado VENDIDO).
+  fecha_venta          DateTime?
+  banco_descuento      String?
+  tasa_descuento       Decimal?        @db.Decimal(5, 2)
+  // El monto que efectivamente ingresó al banco (menor al valor nominal por el descuento).
+  monto_neto_recibido  Decimal?        @db.Decimal(15, 2)
   created_at           DateTime        @default(now())
   updated_at           DateTime        @updatedAt
   deleted_at           DateTime?
@@ -1539,6 +1549,7 @@ model Empleado {
   resumenes_presentismo ResumenPresentismo[]
   siniestros            SiniestroEmpleado[]
   excedentes_horas      ExcedenteHoras[]
+  eventos_empleado_mes  EventoEmpleadoMes[]
 }
 
 model Jornada {
@@ -1791,6 +1802,11 @@ model AcuerdoSueldo {
   // al APROBAR una liquidación (ver aprobarLiquidacionAdmin), nunca al
   // generar un borrador ni al editarlo.
   horas_pendientes_acum Decimal?         @db.Decimal(8, 2)
+  // Premio de producción — monto fijo por cada evento del mes en que
+  // participó el empleado (distinto del viático y del sueldo básico). Ver
+  // EventoEmpleadoMes y calcularSueldoAdmin.ts.
+  cobra_premio_produccion Boolean        @default(false)
+  valor_premio_produccion Decimal?       @db.Decimal(10, 2)
   // Estado del acuerdo
   activo                Boolean          @default(true)
   notas                 String?
@@ -1801,6 +1817,30 @@ model AcuerdoSueldo {
   created_by            Int?
 
   liquidaciones LiquidacionAdmin[]
+}
+
+// Eventos del mes en que participó un empleado con premio de producción —
+// distinto de Jornada (que es para jornaleros por día). Cada fila es un
+// evento (del sistema o texto libre) con el monto del premio correspondiente;
+// calcularSueldoAdmin.ts suma todas las de un período para
+// premio_produccion_total. Ver AcuerdoSueldo.cobra_premio_produccion.
+model EventoEmpleadoMes {
+  id             Int       @id @default(autoincrement())
+  empresa_id     Int
+  empresa        Empresa   @relation(fields: [empresa_id], references: [id])
+  empleado_id    Int
+  empleado       Empleado  @relation(fields: [empleado_id], references: [id])
+  evento_id      Int?
+  evento         Evento?   @relation(fields: [evento_id], references: [id])
+  evento_nombre  String? // si el evento no está cargado en el sistema
+  periodo_mes    Int
+  periodo_anio   Int
+  cobra_premio   Boolean   @default(true)
+  monto_premio   Decimal?  @db.Decimal(10, 2)
+  created_at     DateTime  @default(now())
+  created_by     Int?
+
+  @@unique([empleado_id, evento_id, periodo_mes, periodo_anio])
 }
 
 enum EstadoLiquidacionAdmin {
@@ -1844,8 +1884,21 @@ model LiquidacionAdmin {
   valor_hora_extra            Decimal?               @db.Decimal(10, 2)
   importe_horas_extras        Decimal                @default(0) @db.Decimal(12, 2)
   premio_incentivo            Decimal                @default(0) @db.Decimal(12, 2)
+  // Viático fijo del acuerdo — para CHOFER con bitácora, YA NO se pisa con el
+  // total de la bitácora (ver premio_viaje abajo); es siempre el monto fijo.
   viatico                     Decimal                @default(0) @db.Decimal(12, 2)
+  // Premio por vuelta (choferes con bitácora de viajes) — vueltas × valor por
+  // tipo de recorrido (Provincial/Nacional/Nacional+1000). Antes se sumaba
+  // dentro de `viatico`, confundiendo el viático fijo con este premio
+  // variable — ver calcularSueldoAdmin.ts y bitacoraViajes.controller.ts.
+  premio_viaje                Decimal                @default(0) @db.Decimal(12, 2)
   premio_presentismo          Decimal                @default(0) @db.Decimal(12, 2)
+  // Premio de producción — suma de EventoEmpleadoMes.monto_premio del período
+  // (empleados con AcuerdoSueldo.cobra_premio_produccion=true). eventos_mes
+  // es el snapshot de qué eventos se incluyeron y su monto, estable aunque
+  // después se edite/elimine el EventoEmpleadoMes original.
+  premio_produccion_total     Decimal                @default(0) @db.Decimal(12, 2)
+  eventos_mes                 Json?
   antiguedad_anios            Int                    @default(0)
   importe_antiguedad          Decimal                @default(0) @db.Decimal(12, 2)
   telefono                    Decimal                @default(0) @db.Decimal(12, 2)
@@ -2516,6 +2569,8 @@ model EspacioCompartido {
   partes     ParteEspacio[]
   gastosTipo GastoTipoEspacio[]
   gastosMes  GastoMesEspacio[]
+
+  @@unique([empresa_id, nombre])
 }
 
 // Partes del espacio con su % de reparto — la suma de porcentajes = 100 se
