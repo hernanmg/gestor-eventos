@@ -173,7 +173,7 @@ async function resolveFacturas(empresaFiltro: number | undefined, desde: Date, h
   return facturas.map(f => ({
     id:             `factura-${f.id}`,
     tipo:           'FACTURA_VENCE' as const,
-    titulo:         `Vence factura ${f.numero_factura} — ${f.proveedor.nombre}`,
+    titulo:         `Vence factura ${f.numero_factura} — ${f.proveedor?.nombre ?? 'Sin proveedor'}`,
     fecha:          f.fecha_vencimiento!,
     empresa_id:     f.empresa_id,
     empresa_nombre: f.empresa.nombre,

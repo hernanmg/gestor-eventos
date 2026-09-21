@@ -9,7 +9,7 @@ import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import MoneyInput from '@/components/ui/MoneyInput';
 import ClienteCombobox from './ClienteCombobox';
 import CuitInput from '@/components/ui/CuitInput';
-import { TIPO_COMPROBANTE_LABEL, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
+import { TIPO_COMPROBANTE_LABEL, TIPOS_COMPROBANTE_EMITIBLES, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
 import type { TipoComprobanteEmitido, CondicionCliente, Moneda } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -51,7 +51,7 @@ function Paso1({ value, onChange, onNext, onCancel }: { value: Paso1State; onCha
         <div className="sm:col-span-2">
           <label className={labelCls}>Tipo de comprobante *</label>
           <select value={value.tipo_comprobante} onChange={e => onChange({ ...value, tipo_comprobante: e.target.value as TipoComprobanteEmitido })} className={inputCls}>
-            {Object.entries(TIPO_COMPROBANTE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {TIPOS_COMPROBANTE_EMITIBLES.map(v => <option key={v} value={v}>{TIPO_COMPROBANTE_LABEL[v]}</option>)}
           </select>
         </div>
         <div>

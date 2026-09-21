@@ -5,6 +5,10 @@ import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { generateFichaExcel } from '../lib/fichaExporter';
 import { calcDisponibilidad, calcSugerencias } from './stock.controller';
+import {
+  listarHojasEvento, parseHojaFichaEvento, normalizarNombreRubro,
+  type FichaEventoRowPreview,
+} from '../lib/fichaEventoImporter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -555,4 +559,157 @@ export async function deletePedidoItem(req: Request, res: Response) {
   });
 
   res.json({ message: 'Ítem de pedido eliminado correctamente' });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTAR FICHA DESDE EXCEL (docs/enjoy/rubro por evento.xlsx)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/eventos/:id/ficha/importar/hojas — lista las hojas de evento del
+// archivo subido, para que el usuario elija cuál corresponde a este evento.
+export async function listarHojasFichaImport(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  try {
+    const hojas = listarHojasEvento(req.file.buffer);
+    res.json({ hojas });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al leer el archivo', detail: err.message });
+  }
+}
+
+interface FilaResuelta extends FichaEventoRowPreview {
+  rubro_id:     number | null;
+  rubro_nombre: string | null;
+  proveedor_id: number | null;
+  accion:       'CREAR' | 'ACTUALIZAR' | 'SIN_RUBRO';
+}
+
+async function resolverFilas(filas: FichaEventoRowPreview[], eventoId: number, empresaId: number): Promise<FilaResuelta[]> {
+  const rubros = await prisma.rubro.findMany({
+    where: { empresa_id: empresaId, tipo: 'EGRESO', activo: true, deleted_at: null },
+    select: { id: true, nombre: true },
+  });
+  const rubroPorNombre = new Map(rubros.map(r => [normalizarNombreRubro(r.nombre), r]));
+
+  const existentes = await prisma.rubroEvento.findMany({
+    where: { evento_id: eventoId, deleted_at: null, ...withTenant(empresaId) },
+    select: { rubro_id: true },
+  });
+  const rubroIdsExistentes = new Set(existentes.map(re => re.rubro_id));
+
+  const proveedorCache = new Map<string, number | null>();
+  async function buscarProveedorId(nombreExcel: string | null): Promise<number | null> {
+    if (!nombreExcel) return null;
+    if (proveedorCache.has(nombreExcel)) return proveedorCache.get(nombreExcel)!;
+    const proveedor = await prisma.proveedor.findFirst({
+      where: {
+        ...withTenant(empresaId),
+        deleted_at: null,
+        OR: [
+          { nombre: { contains: nombreExcel, mode: 'insensitive' } },
+          { alias:  { contains: nombreExcel, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    proveedorCache.set(nombreExcel, proveedor?.id ?? null);
+    return proveedor?.id ?? null;
+  }
+
+  const out: FilaResuelta[] = [];
+  for (const fila of filas) {
+    const rubro = rubroPorNombre.get(normalizarNombreRubro(fila.servicio)) ?? null;
+    const proveedor_id = await buscarProveedorId(fila.proveedor_nombre_excel);
+    out.push({
+      ...fila,
+      rubro_id:     rubro?.id ?? null,
+      rubro_nombre: rubro?.nombre ?? null,
+      proveedor_id,
+      accion: !rubro ? 'SIN_RUBRO' : (rubroIdsExistentes.has(rubro.id) ? 'ACTUALIZAR' : 'CREAR'),
+    });
+  }
+  return out;
+}
+
+function resumenFilas(filas: FilaResuelta[]) {
+  const confirmados = filas.filter(f => f.corresponde && f.rubro_id).length;
+  const no_van      = filas.filter(f => !f.corresponde && f.rubro_id).length;
+  const creados      = filas.filter(f => f.accion === 'CREAR').length;
+  const actualizados = filas.filter(f => f.accion === 'ACTUALIZAR').length;
+  const rubros_no_encontrados = Array.from(new Set(filas.filter(f => f.accion === 'SIN_RUBRO').map(f => f.servicio)));
+  return { confirmados, no_van, creados, actualizados, rubros_no_encontrados };
+}
+
+// POST /api/eventos/:id/ficha/importar?preview=true|false
+// preview=true (default): sólo parsea y resuelve — no escribe nada.
+// preview=false: aplica el upsert de RubroEvento por [evento_id, rubro_id].
+export async function importarFicha(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const hoja = (req.body.hoja ?? req.query.hoja) as string | undefined;
+  if (!hoja) { res.status(400).json({ error: 'Se requiere el nombre de la hoja del evento' }); return; }
+
+  const esPreview = req.query.preview !== 'false';
+
+  let filasParseadas: FichaEventoRowPreview[];
+  try {
+    filasParseadas = parseHojaFichaEvento(req.file.buffer, hoja);
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
+  }
+
+  const filas = await resolverFilas(filasParseadas, eventoId, req.empresaId!);
+  const stats = resumenFilas(filas);
+
+  if (esPreview) {
+    res.json({ preview: true, ...stats, filas });
+    return;
+  }
+
+  await prisma.$transaction(async tx => {
+    for (const fila of filas) {
+      if (!fila.rubro_id) continue;
+
+      if (fila.corresponde) {
+        await tx.rubroEvento.upsert({
+          where: { evento_id_rubro_id: { evento_id: eventoId, rubro_id: fila.rubro_id } },
+          update: {
+            estado: 'CONFIRMADO',
+            proveedor_id:    fila.proveedor_id,
+            coordina_nombre: fila.responsable,
+            notas:           fila.comentario,
+            updated_by: req.user!.id,
+          },
+          create: {
+            evento_id: eventoId, rubro_id: fila.rubro_id, empresa_id: req.empresaId!,
+            estado: 'CONFIRMADO',
+            proveedor_id:    fila.proveedor_id,
+            coordina_nombre: fila.responsable,
+            notas:           fila.comentario,
+            created_by: req.user!.id, updated_by: req.user!.id,
+          },
+        });
+      } else {
+        await tx.rubroEvento.upsert({
+          where: { evento_id_rubro_id: { evento_id: eventoId, rubro_id: fila.rubro_id } },
+          update: { estado: 'NO_VA', updated_by: req.user!.id },
+          create: {
+            evento_id: eventoId, rubro_id: fila.rubro_id, empresa_id: req.empresaId!,
+            estado: 'NO_VA', created_by: req.user!.id, updated_by: req.user!.id,
+          },
+        });
+      }
+    }
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'RubroEvento', eventoId,
+      descripcion: `Importó la ficha de evento desde Excel (hoja "${hoja}") — ${stats.creados} creados, ${stats.actualizados} actualizados`,
+      ip: req.ip, tx: tx as any,
+    });
+  });
+
+  res.json({ preview: false, ...stats, filas });
 }

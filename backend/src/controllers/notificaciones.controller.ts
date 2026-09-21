@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { updateEstadoSeguros } from './flota.controller';
 import { ubicarPeriodo, periodoAnterior, rangoSemanaFija } from './combustible.controller';
 import { EMPRESAS } from '../lib/empresasConstants';
+import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -579,6 +580,39 @@ async function resolveExcedentesAtrasados(empresaId: number, hace60Dias: Date): 
   }));
 }
 
+// Facturas del libro AFIP (hoja "Faltantes") sin PDF ni comprobante físico. Facturas
+// es exclusivo de ADMIN, igual que el resto de sus alertas.
+async function resolveFacturasSinPdf(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+  const facturas = await prisma.factura.findMany({
+    where: {
+      empresa_id: req.empresaId!,
+      deleted_at: null,
+      origen_import: 'AFIP',
+      tiene_pdf: false,
+      tiene_comprobante_fisico: false,
+      pdf_data: null,
+      estado: { not: 'ANULADA' },
+      NOT: { tipo_comprobante: { in: ['NOTA_CREDITO_A', 'NOTA_CREDITO_B', 'NOTA_CREDITO_C'] } },
+      OR: [
+        { monto_ars: { gte: UMBRAL_FACTURA_SIN_PDF } },
+        { monto_ars: null, importe_total: { gte: UMBRAL_FACTURA_SIN_PDF } },
+      ],
+    },
+    include: { proveedor: { select: { nombre: true } } },
+    orderBy: { fecha_emision: 'desc' },
+  });
+  return facturas.map(f => ({
+    id:          `factura-sin-pdf-${f.id}`,
+    tipo:        'FACTURA_SIN_PDF',
+    titulo:      `Factura sin PDF — $${Number(f.monto_ars ?? f.importe_total).toLocaleString('es-AR')}`,
+    descripcion: `${f.proveedor?.nombre ?? 'Sin proveedor'} — ${f.numero_factura} del ${f.fecha_emision.toLocaleDateString('es-AR', { timeZone: 'UTC' })}`,
+    urgencia:    'warning' as Urgencia,
+    link:        `/facturas/${f.id}`,
+    fecha:       f.fecha_emision,
+  }));
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -612,6 +646,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveCombustibleSemanaCerrada(req),
     resolveSiniestrosSinNovedad(empresaId, hace30Dias),
     resolveExcedentesAtrasados(empresaId, hace60Dias),
+    resolveFacturasSinPdf(req),
   ]);
 
   const items = resultados

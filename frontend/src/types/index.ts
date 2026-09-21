@@ -166,6 +166,7 @@ export interface Rubro {
   nombre:      string;
   codigo:      string | null;
   descripcion: string | null;
+  grupo:       string | null;
   orden:       number;
   activo:      boolean;
   es_sistema:  boolean;
@@ -1384,10 +1385,10 @@ export interface Factura {
   tipo_factura:      string;
   fecha_emision:     string;
   fecha_vencimiento: string | null;
-  proveedor_id:      number;
-  proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null };
-  evento_id:         number;
-  evento?:           { id: number; nombre: string };
+  proveedor_id:      number | null;
+  proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null } | null;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
   tab_numero:        number | null;
   rubro_id:          number | null;
   rubro?:            { id: number; nombre: string } | null;
@@ -1402,6 +1403,16 @@ export interface Factura {
   notas:             string | null;
   pdf_nombre:        string | null;
   pdf_tamanio:       number | null;
+  // Libro de compras AFIP
+  tipo_comprobante?:         TipoComprobanteEmitido | null;
+  neto_gravado?:             number | string | null;
+  no_gravado?:               number | string | null;
+  exento?:                   number | string | null;
+  iva_importe?:              number | string | null;
+  tiene_pdf?:                boolean;
+  pdf_nombre_afip?:          string | null;
+  tiene_comprobante_fisico?: boolean;
+  origen_import?:            string | null;
   created_at:        string;
   updated_at:        string;
   deleted_at:        string | null;
@@ -1429,7 +1440,8 @@ export interface PagoFactura {
 
 export type TipoComprobanteEmitido =
   | 'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C' | 'FACTURA_MIPYMES_FCE_A' | 'FACTURA_MIPYMES_FCE_B'
-  | 'NOTA_CREDITO_A' | 'NOTA_CREDITO_B' | 'NOTA_CREDITO_C' | 'NOTA_DEBITO_A' | 'NOTA_DEBITO_B' | 'RECIBO';
+  | 'NOTA_CREDITO_A' | 'NOTA_CREDITO_B' | 'NOTA_CREDITO_C' | 'NOTA_DEBITO_A' | 'NOTA_DEBITO_B' | 'NOTA_DEBITO_C'
+  | 'RECIBO' | 'RECIBO_B' | 'LIQUIDACION_A' | 'TIQUE_FACTURA_A';
 
 export type EstadoFacturaEmitida = 'EMITIDA' | 'COBRADA_PARCIAL' | 'COBRADA' | 'INCOBRABLE' | 'ANULADA';
 

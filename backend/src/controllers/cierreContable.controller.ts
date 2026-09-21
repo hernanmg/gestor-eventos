@@ -109,6 +109,8 @@ async function calcularAcreedores(empresaId: number, fechaCorte: Date): Promise<
       empresa_id: empresaId, deleted_at: null,
       estado: { not: 'ANULADA' },
       fecha_emision: { lte: fechaCorte },
+      // Una nota de crédito no es una deuda con el proveedor (viene del libro AFIP con importe positivo).
+      NOT: { tipo_comprobante: { in: ['NOTA_CREDITO_A', 'NOTA_CREDITO_B', 'NOTA_CREDITO_C'] } },
     },
     include: { proveedor: { select: { nombre: true, cuit: true } }, pagos: { where: { fecha_pago: { lte: fechaCorte }, deleted_at: null }, select: { importe: true } } },
   });
@@ -119,8 +121,9 @@ async function calcularAcreedores(empresaId: number, fechaCorte: Date): Promise<
     const pendiente = Number(f.monto_ars ?? f.importe_total) - pagado;
     if (pendiente <= 0.01) continue;
 
-    const key = f.proveedor.cuit ?? `sin-cuit:${f.proveedor.nombre}`;
-    const acc = porProveedor.get(key) ?? { cuit: f.proveedor.cuit, nombre: f.proveedor.nombre, importe: 0 };
+    const prov = f.proveedor ?? { cuit: null, nombre: 'Sin proveedor' };
+    const key = prov.cuit ?? `sin-cuit:${prov.nombre}`;
+    const acc = porProveedor.get(key) ?? { cuit: prov.cuit, nombre: prov.nombre, importe: 0 };
     acc.importe = round2(acc.importe + pendiente);
     porProveedor.set(key, acc);
   }

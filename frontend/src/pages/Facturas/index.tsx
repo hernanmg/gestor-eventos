@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Filter, AlertTriangle, CheckCircle, Clock, Ban } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, CheckCircle, Clock, Ban, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useFacturas, type FacturaFiltros } from '@/hooks/useFacturas';
 import { useEventos } from '@/hooks/useEvento';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import FacturaForm from './FacturaForm';
+import ImportarLibroDialog from './ImportarLibroDialog';
 import { Button } from '@/components/ui/button';
-import type { EstadoFactura, Factura } from '@/types';
+import type { EstadoFactura, Factura, TipoComprobanteEmitido } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,12 @@ function EstadoBadge({ estado }: { estado: EstadoFactura }) {
   );
 }
 
+const TAG_COMPROBANTE: Partial<Record<TipoComprobanteEmitido, string>> = {
+  NOTA_CREDITO_A: 'NC', NOTA_CREDITO_B: 'NC', NOTA_CREDITO_C: 'NC',
+  NOTA_DEBITO_A: 'ND', NOTA_DEBITO_B: 'ND', NOTA_DEBITO_C: 'ND',
+  LIQUIDACION_A: 'Liquidación', TIQUE_FACTURA_A: 'Tique', RECIBO: 'Recibo', RECIBO_B: 'Recibo',
+};
+
 // ── Fila ──────────────────────────────────────────────────────────────────────
 
 function FilaFactura({ f }: { f: Factura }) {
@@ -42,6 +49,9 @@ function FilaFactura({ f }: { f: Factura }) {
         <Link to={`/facturas/${f.id}`} className="font-medium hover:underline text-primary">
           {f.tipo_factura} {f.numero_factura}
         </Link>
+        {f.tipo_comprobante && TAG_COMPROBANTE[f.tipo_comprobante] && (
+          <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-muted text-muted-foreground align-middle">{TAG_COMPROBANTE[f.tipo_comprobante]}</span>
+        )}
       </td>
       <td className="py-2.5 px-3 text-muted-foreground">{f.proveedor?.nombre ?? '—'}</td>
       <td className="py-2.5 px-3">
@@ -112,6 +122,7 @@ export default function FacturasPage() {
   const [filtros, setFiltros] = useState<FacturaFiltros>({});
   const [busqueda, setBusqueda] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImportar, setShowImportar] = useState(false);
 
   const { data: facturas = [], isLoading } = useFacturas(filtros);
 
@@ -138,9 +149,14 @@ export default function FacturasPage() {
           <h1 className="text-xl font-semibold">Facturas a Pagar</h1>
           <p className="text-sm text-muted-foreground">Facturas de todos los eventos</p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={14} className="mr-1.5" /> Nueva factura
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowImportar(true)}>
+            <Upload size={14} className="mr-1.5" /> Importar libro de compras AFIP
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} className="mr-1.5" /> Nueva factura
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -226,6 +242,8 @@ export default function FacturasPage() {
           </table>
         )}
       </div>
+
+      {showImportar && <ImportarLibroDialog onClose={() => setShowImportar(false)} />}
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-2xl">

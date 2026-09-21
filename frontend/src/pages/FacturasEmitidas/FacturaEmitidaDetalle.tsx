@@ -17,7 +17,7 @@ import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import MoneyInput from '@/components/ui/MoneyInput';
 import CuitInput from '@/components/ui/CuitInput';
 import RegistrarCobroDialog from './RegistrarCobroDialog';
-import { TIPO_COMPROBANTE_LABEL, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
+import { TIPO_COMPROBANTE_LABEL, TIPOS_COMPROBANTE_EMITIBLES, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/formatters';
 import type { CobroFacturaEmitida, CondicionCliente, Moneda, TipoComprobanteEmitido } from '@/types';
@@ -108,7 +108,7 @@ function EditForm({ facturaId, onDone }: { facturaId: number; onDone: () => void
         <div>
           <label className={label}>Tipo de comprobante</label>
           <select value={form.tipo_comprobante} onChange={e => setForm(x => ({ ...x, tipo_comprobante: e.target.value as TipoComprobanteEmitido }))} className={input}>
-            {Object.entries(TIPO_COMPROBANTE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {TIPOS_COMPROBANTE_EMITIBLES.map(v => <option key={v} value={v}>{TIPO_COMPROBANTE_LABEL[v]}</option>)}
           </select>
         </div>
         <div>

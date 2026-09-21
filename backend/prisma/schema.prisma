@@ -419,6 +419,7 @@ model Rubro {
   nombre        String // "Sonido", "Iluminación", "Tickets", "Sponsors"
   codigo        String? // código interno opcional/estable: "EG-IMP", "EG-EXTRA", "RRHH"
   descripcion   String?
+  grupo         String? // agrupador visual opcional (ej: "INFRAESTRUCTURA Y MONTAJE"); null = sin agrupar
   orden         Int // define el orden de visualización
   activo        Boolean       @default(true)
   es_sistema    Boolean       @default(false) // rubros predefinidos no borrables
@@ -683,25 +684,25 @@ model MovimientoCaja {
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
 
 model Proveedor {
-  id         Int       @id @default(autoincrement())
-  empresa_id Int
-  empresa    Empresa   @relation(fields: [empresa_id], references: [id])
-  nombre     String
-  alias      String?
-  cuit       String?   @unique
-  categoria  String?
-  telefono   String?
-  notas      String?
-  activo     Boolean   @default(true)
+  id                  Int       @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre              String
+  alias               String?
+  cuit                String?   @unique
+  categoria           String?
+  telefono            String?
+  notas               String?
+  activo              Boolean   @default(true)
   // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
   // participa del reparto. Ver POST /api/facturas-emitidas.
-  es_comisionista     Boolean  @default(false)
-  porcentaje_comision Decimal? @db.Decimal(5, 2)
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
-  deleted_at DateTime?
-  created_by Int?
-  updated_by Int?
+  es_comisionista     Boolean   @default(false)
+  porcentaje_comision Decimal?  @db.Decimal(5, 2)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+  updated_by          Int?
 
   movimientos       Movimiento[]
   echeqs            Echeq[]
@@ -1267,34 +1268,34 @@ model MovimientoPanol {
 // ─── ACTIVOS (bienes muebles de la empresa) ──────────────────────────────────
 
 model Activo {
-  id            Int          @id @default(autoincrement())
-  empresa_id    Int
-  empresa       Empresa      @relation(fields: [empresa_id], references: [id])
-  nombre        String
-  descripcion   String?
-  categoria     String? // "Vehículo", "Informático", "Mobiliario", "Herramienta"
-  numero_serie  String?
-  fecha_compra  DateTime?
-  valor_compra  Decimal?     @db.Decimal(12, 2)
-  estado        EstadoActivo @default(BUENO)
+  id                   Int          @id @default(autoincrement())
+  empresa_id           Int
+  empresa              Empresa      @relation(fields: [empresa_id], references: [id])
+  nombre               String
+  descripcion          String?
+  categoria            String? // "Vehículo", "Informático", "Mobiliario", "Herramienta"
+  numero_serie         String?
+  fecha_compra         DateTime?
+  valor_compra         Decimal?     @db.Decimal(12, 2)
+  estado               EstadoActivo @default(BUENO)
   // "DOS57 — Depósito Principal", "Enjoy — Depósito 1", etc. — string
   // descriptivo por empresa, no nombre de persona (ver responsable_deposito).
-  ubicacion     String?
+  ubicacion            String?
   // Cantidad de unidades — sólo tiene sentido para activos fungibles (ej.
   // stock de uniformes por talle); un activo individual (vehículo, notebook)
   // lo deja en el default. Ver importador de stock de uniformes (Lorena).
-  cantidad      Int?         @default(0)
+  cantidad             Int?         @default(0)
   // Si cantidad <= cantidad_minima → alerta de quiebre (notificaciones +
   // calendario, ver ACTIVO_STOCK_BAJO / STOCK_UNIFORME_BAJO).
-  cantidad_minima Int?       @default(0)
+  cantidad_minima      Int?         @default(0)
   // Responsable del depósito — texto libre (ej. "Sergio Bibiloni (Pollo)"),
   // no reemplaza a `ubicacion`, que es el nombre del depósito en sí.
   responsable_deposito String?
-  observaciones String?
-  created_at    DateTime     @default(now())
-  updated_at    DateTime     @updatedAt
-  deleted_at    DateTime?
-  created_by    Int?
+  observaciones        String?
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
 
   @@unique([empresa_id, nombre, categoria, ubicacion])
 }
@@ -1302,40 +1303,52 @@ model Activo {
 // ─── FACTURAS (cuentas a pagar) ───────────────────────────────────────────────
 
 model Factura {
-  id                Int           @id @default(autoincrement())
-  empresa_id        Int
-  empresa           Empresa       @relation(fields: [empresa_id], references: [id])
-  numero_factura    String
-  tipo_factura      String // "A", "B", "C", "X"
-  fecha_emision     DateTime
-  fecha_vencimiento DateTime?
-  proveedor_id      Int
-  proveedor         Proveedor     @relation(fields: [proveedor_id], references: [id])
-  evento_id         Int
-  evento            Evento        @relation(fields: [evento_id], references: [id])
-  tab_numero        Int?
-  tipo_movimiento   Tipo?
-  rubro_id          Int?
-  rubro             Rubro?        @relation(fields: [rubro_id], references: [id])
-  importe_total     Decimal       @db.Decimal(15, 2)
-  importe_pagado    Decimal       @default(0) @db.Decimal(15, 2)
-  importe_pendiente Decimal       @default(0) @db.Decimal(15, 2)
-  moneda            Moneda        @default(ARS)
+  id                       Int                     @id @default(autoincrement())
+  empresa_id               Int
+  empresa                  Empresa                 @relation(fields: [empresa_id], references: [id])
+  numero_factura           String
+  tipo_factura             String // "A", "B", "C", "X"
+  fecha_emision            DateTime
+  fecha_vencimiento        DateTime?
+  // Nullable: las facturas importadas del libro AFIP pueden llegar sin evento
+  // (se vincula a mano después) o de un vendedor sin CUIT válido.
+  proveedor_id             Int?
+  proveedor                Proveedor?              @relation(fields: [proveedor_id], references: [id])
+  evento_id                Int?
+  evento                   Evento?                 @relation(fields: [evento_id], references: [id])
+  tab_numero               Int?
+  tipo_movimiento          Tipo?
+  rubro_id                 Int?
+  rubro                    Rubro?                  @relation(fields: [rubro_id], references: [id])
+  importe_total            Decimal                 @db.Decimal(15, 2)
+  importe_pagado           Decimal                 @default(0) @db.Decimal(15, 2)
+  importe_pendiente        Decimal                 @default(0) @db.Decimal(15, 2)
+  moneda                   Moneda                  @default(ARS)
   // Cotización a ARS al momento de cargar la factura — ver comentario en Movimiento.
-  tasa_cambio       Decimal?      @db.Decimal(10, 4)
-  monto_ars         Decimal?      @db.Decimal(15, 2)
-  condicion_pago    CondicionPago @default(CONTADO)
-  estado            EstadoFactura @default(RECIBIDA)
-  notas             String?
-  pdf_data          Bytes?
-  pdf_nombre        String?
-  pdf_mime_type     String?
-  pdf_tamanio       Int?
-  created_at        DateTime      @default(now())
-  updated_at        DateTime      @updatedAt
-  deleted_at        DateTime?
-  created_by        Int?
-  updated_by        Int?
+  tasa_cambio              Decimal?                @db.Decimal(10, 4)
+  monto_ars                Decimal?                @db.Decimal(15, 2)
+  condicion_pago           CondicionPago           @default(CONTADO)
+  estado                   EstadoFactura           @default(RECIBIDA)
+  notas                    String?
+  pdf_data                 Bytes?
+  pdf_nombre               String?
+  pdf_mime_type            String?
+  pdf_tamanio              Int?
+  // Libro de compras AFIP — ver importarLibroCompras en facturas.controller.ts
+  tipo_comprobante         TipoComprobanteEmitido?
+  neto_gravado             Decimal?                @db.Decimal(15, 2)
+  no_gravado               Decimal?                @db.Decimal(15, 2)
+  exento                   Decimal?                @db.Decimal(15, 2)
+  iva_importe              Decimal?                @db.Decimal(15, 2)
+  tiene_pdf                Boolean                 @default(false)
+  pdf_nombre_afip          String? // nombre del archivo en la descarga de AFIP
+  tiene_comprobante_fisico Boolean                 @default(false)
+  origen_import            String? // "AFIP", "MANUAL", etc.
+  created_at               DateTime                @default(now())
+  updated_at               DateTime                @updatedAt
+  deleted_at               DateTime?
+  created_by               Int?
+  updated_by               Int?
 
   pagos          PagoFactura[]
   movimientosCCC MovimientoCCC[]
@@ -1776,65 +1789,65 @@ model EmpleadoEmpresaSplit {
 // (ver validación en updateAcuerdo: no se puede tocar si ya hay liquidaciones
 // APROBADAS, para no invalidar snapshots históricos).
 model AcuerdoSueldo {
-  id                    Int              @id @default(autoincrement())
-  empleado_id           Int              @unique
-  empleado              Empleado         @relation(fields: [empleado_id], references: [id])
-  empresa_id            Int // empresa principal del acuerdo
-  empresa               Empresa          @relation(fields: [empresa_id], references: [id])
+  id                      Int              @id @default(autoincrement())
+  empleado_id             Int              @unique
+  empleado                Empleado         @relation(fields: [empleado_id], references: [id])
+  empresa_id              Int // empresa principal del acuerdo
+  empresa                 Empresa          @relation(fields: [empresa_id], references: [id])
   // Acuerdo
-  fecha_inicio          DateTime
-  vigencia_meses        Int? // null = indefinido
-  escalafon             String? // "ADM 1", "ADM 2", "ADM 3"
-  tipo_seguro           String? // "ART", "SANCOR", "FEDERAL PATRONAL"
+  fecha_inicio            DateTime
+  vigencia_meses          Int? // null = indefinido
+  escalafon               String? // "ADM 1", "ADM 2", "ADM 3"
+  tipo_seguro             String? // "ART", "SANCOR", "FEDERAL PATRONAL"
   // Sueldo base
-  sueldo_basico         Decimal          @db.Decimal(12, 2)
-  horas_acordadas_mes   Int              @default(200)
+  sueldo_basico           Decimal          @db.Decimal(12, 2)
+  horas_acordadas_mes     Int              @default(200)
   // Conceptos fijos (configurables por acuerdo)
-  premio_incentivo      Decimal?         @db.Decimal(12, 2)
-  viatico               Decimal?         @db.Decimal(12, 2)
-  premio_presentismo    Decimal?         @db.Decimal(12, 2)
+  premio_incentivo        Decimal?         @db.Decimal(12, 2)
+  viatico                 Decimal?         @db.Decimal(12, 2)
+  premio_presentismo      Decimal?         @db.Decimal(12, 2)
   // Horas extras
-  valor_hora_extra      Decimal?         @db.Decimal(10, 2)
+  valor_hora_extra        Decimal?         @db.Decimal(10, 2)
   // Teléfono (algunos empleados lo tienen) — antigüedad NO vive acá: se
   // recalcula siempre desde fecha_inicio con la tabla fija de
   // calcularSueldoAdmin.ts, nunca se persiste en el acuerdo.
-  telefono              Decimal?         @db.Decimal(10, 2)
+  telefono                Decimal?         @db.Decimal(10, 2)
   // Viático por tipo de recorrido (choferes con bitácora de viajes) — cuando
   // están cargados, el viático efectivo de la liquidación se calcula desde
   // BitacoraViaje en vez de usar el campo `viatico` fijo de arriba. Ver
   // resolverValorPorVuelta() en bitacoraViajes.controller.ts.
-  viatico_provincial    Decimal?         @db.Decimal(10, 2)
-  viatico_nacional      Decimal?         @db.Decimal(10, 2)
-  viatico_nacional_1000 Decimal?         @db.Decimal(10, 2)
+  viatico_provincial      Decimal?         @db.Decimal(10, 2)
+  viatico_nacional        Decimal?         @db.Decimal(10, 2)
+  viatico_nacional_1000   Decimal?         @db.Decimal(10, 2)
   // % de aumento que representa este acuerdo sobre el básico del acuerdo
   // anterior — sólo informativo/histórico, no participa del cálculo mensual
   // (ese es LiquidacionAdmin.porcentaje_aumento_aplicado, que se define al
   // generar cada liquidación, no al renegociar el acuerdo).
-  porcentaje_acuerdo    Decimal?         @db.Decimal(5, 2)
+  porcentaje_acuerdo      Decimal?         @db.Decimal(5, 2)
   // GENERAL = administrativos normales (Mayra, Andre, etc.) — usan horas
   // acordadas/extras para el cálculo. CHOFER = Luis y similares — el sueldo
   // NO depende de horas trabajadas (se registran sólo para control/banco de
   // horas); los premios de viaje salen de BitacoraViaje. Ver
   // calcularSueldoAdmin.ts.
-  categoria_acuerdo     CategoriaAcuerdo @default(GENERAL)
+  categoria_acuerdo       CategoriaAcuerdo @default(GENERAL)
   // Banco de horas acumuladas (empleados CHOFER) — puede ser negativo (se le
   // debe trabajar) o positivo (se le debe pagar/compensar). Se actualiza sólo
   // al APROBAR una liquidación (ver aprobarLiquidacionAdmin), nunca al
   // generar un borrador ni al editarlo.
-  horas_pendientes_acum Decimal?         @db.Decimal(8, 2)
+  horas_pendientes_acum   Decimal?         @db.Decimal(8, 2)
   // Premio de producción — monto fijo por cada evento del mes en que
   // participó el empleado (distinto del viático y del sueldo básico). Ver
   // EventoEmpleadoMes y calcularSueldoAdmin.ts.
-  cobra_premio_produccion Boolean        @default(false)
-  valor_premio_produccion Decimal?       @db.Decimal(10, 2)
+  cobra_premio_produccion Boolean          @default(false)
+  valor_premio_produccion Decimal?         @db.Decimal(10, 2)
   // Estado del acuerdo
-  activo                Boolean          @default(true)
-  notas                 String?
+  activo                  Boolean          @default(true)
+  notas                   String?
   // audit
-  created_at            DateTime         @default(now())
-  updated_at            DateTime         @updatedAt
-  deleted_at            DateTime?
-  created_by            Int?
+  created_at              DateTime         @default(now())
+  updated_at              DateTime         @updatedAt
+  deleted_at              DateTime?
+  created_by              Int?
 
   liquidaciones LiquidacionAdmin[]
 }
@@ -1845,20 +1858,20 @@ model AcuerdoSueldo {
 // calcularSueldoAdmin.ts suma todas las de un período para
 // premio_produccion_total. Ver AcuerdoSueldo.cobra_premio_produccion.
 model EventoEmpleadoMes {
-  id             Int       @id @default(autoincrement())
-  empresa_id     Int
-  empresa        Empresa   @relation(fields: [empresa_id], references: [id])
-  empleado_id    Int
-  empleado       Empleado  @relation(fields: [empleado_id], references: [id])
-  evento_id      Int?
-  evento         Evento?   @relation(fields: [evento_id], references: [id])
-  evento_nombre  String? // si el evento no está cargado en el sistema
-  periodo_mes    Int
-  periodo_anio   Int
-  cobra_premio   Boolean   @default(true)
-  monto_premio   Decimal?  @db.Decimal(10, 2)
-  created_at     DateTime  @default(now())
-  created_by     Int?
+  id            Int      @id @default(autoincrement())
+  empresa_id    Int
+  empresa       Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id   Int
+  empleado      Empleado @relation(fields: [empleado_id], references: [id])
+  evento_id     Int?
+  evento        Evento?  @relation(fields: [evento_id], references: [id])
+  evento_nombre String? // si el evento no está cargado en el sistema
+  periodo_mes   Int
+  periodo_anio  Int
+  cobra_premio  Boolean  @default(true)
+  monto_premio  Decimal? @db.Decimal(10, 2)
+  created_at    DateTime @default(now())
+  created_by    Int?
 
   @@unique([empleado_id, evento_id, periodo_mes, periodo_anio])
 }
@@ -2258,12 +2271,12 @@ model SGR {
 // congela) a pedido y se puede regenerar mientras esté en BORRADOR.
 
 model CierreContable {
-  id           Int       @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   empresa_id   Int
-  empresa      Empresa   @relation(fields: [empresa_id], references: [id])
+  empresa      Empresa  @relation(fields: [empresa_id], references: [id])
   fecha_corte  DateTime // 31/05/2026 para DOS57
   periodo_anio Int // 2026
-  estado       String    @default("BORRADOR") // BORRADOR / ENVIADO / APROBADO
+  estado       String   @default("BORRADOR") // BORRADOR / ENVIADO / APROBADO
   // Snapshot calculado a la fecha de corte — ver generarCierreContable() en
   // cierreContable.controller.ts para la forma exacta (cajas/bancos/
   // inversiones/deudores/acreedores/mercaderias/creditos/deudas), y
@@ -2271,8 +2284,8 @@ model CierreContable {
   // columna dedicada por sección, van dentro del mismo JSON).
   snapshot     Json
   notas        String?
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
   created_by   Int?
 
   @@unique([empresa_id, fecha_corte])
@@ -2519,7 +2532,11 @@ enum TipoComprobanteEmitido {
   NOTA_CREDITO_C
   NOTA_DEBITO_A
   NOTA_DEBITO_B
+  NOTA_DEBITO_C
   RECIBO
+  RECIBO_B
+  LIQUIDACION_A
+  TIQUE_FACTURA_A
 }
 
 enum EstadoFacturaEmitida {
@@ -2772,14 +2789,14 @@ enum EstadoSiniestro {
 }
 
 model SiniestroEmpleado {
-  id          Int       @id @default(autoincrement())
-  empresa_id  Int
-  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  id                     Int       @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa   @relation(fields: [empresa_id], references: [id])
   // Nullable — el importador de la planilla de Lorena crea el registro con
   // empleado_nombre_manual cuando no encuentra un match en Empleado (personal
   // eventual/extranjero que todavía no está cargado en RRHH).
-  empleado_id Int?
-  empleado    Empleado? @relation(fields: [empleado_id], references: [id])
+  empleado_id            Int?
+  empleado               Empleado? @relation(fields: [empleado_id], references: [id])
   empleado_nombre_manual String? // nombre tal cual viene de la planilla, si empleado_id es null
 
   // ── Datos del siniestro ──────────────────────────────────────────────────────

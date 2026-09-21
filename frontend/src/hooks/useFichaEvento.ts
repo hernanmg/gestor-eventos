@@ -48,6 +48,59 @@ export function useExportarFicha() {
   return { exportar, isExporting };
 }
 
+// ── Importar desde Excel (rubro por evento.xlsx) ─────────────────────────────
+
+export interface FichaImportFila {
+  fila_excel:             number;
+  grupo:                  string | null;
+  servicio:               string;
+  corresponde:            boolean;
+  proveedor_nombre_excel: string | null;
+  responsable:            string | null;
+  comentario:             string | null;
+  rubro_id:               number | null;
+  rubro_nombre:           string | null;
+  proveedor_id:           number | null;
+  accion:                 'CREAR' | 'ACTUALIZAR' | 'SIN_RUBRO';
+}
+
+export interface FichaImportResultado {
+  preview:                boolean;
+  confirmados:            number;
+  no_van:                 number;
+  creados:                number;
+  actualizados:           number;
+  rubros_no_encontrados:  string[];
+  filas:                  FichaImportFila[];
+}
+
+export function useListarHojasFichaImport() {
+  return useMutation({
+    mutationFn: ({ eventoId, file }: { eventoId: number; file: File }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<{ hojas: { nombre_hoja: string; evento_nombre_excel: string | null }[] }>(
+        `/eventos/${eventoId}/ficha/importar/hojas`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data.hojas);
+    },
+  });
+}
+
+export function useImportarFicha(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, hoja, preview }: { file: File; hoja: string; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      fd.append('hoja', hoja);
+      return api.post<FichaImportResultado>(
+        `/eventos/${eventoId}/ficha/importar?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data);
+    },
+    onSuccess: (data) => { if (!data.preview) qc.invalidateQueries({ queryKey: fichaKey(eventoId) }); },
+  });
+}
+
 // ── RubroEvento ────────────────────────────────────────────────────────────────
 
 export interface RubroEventoPayload {

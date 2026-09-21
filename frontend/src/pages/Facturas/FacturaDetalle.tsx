@@ -14,8 +14,10 @@ import {
   usePagarFactura,
   useAnularPago,
   useUploadPDF,
+  useUpdateFactura,
   type PagoPayload,
 } from '@/hooks/useFacturas';
+import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import MoneyInput from '@/components/ui/MoneyInput';
 import api from '@/lib/api';
@@ -230,6 +232,28 @@ async function fetchPdfBlob(facturaId: number): Promise<Blob> {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Facturas importadas del libro AFIP pueden quedar sin evento — se vinculan a mano.
+function VincularEvento({ facturaId }: { facturaId: number }) {
+  const { data: eventos = [] } = useEventos();
+  const update = useUpdateFactura(facturaId);
+  const [eventoId, setEventoId] = useState('');
+  return (
+    <div className="col-span-2">
+      <p className="text-xs text-muted-foreground mb-1">Evento</p>
+      <div className="flex items-center gap-2">
+        <select value={eventoId} onChange={e => setEventoId(e.target.value)} className="flex-1 border rounded px-2 py-1.5 text-sm bg-white">
+          <option value="">Sin evento — elegir para vincular…</option>
+          {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
+        </select>
+        <Button size="sm" disabled={!eventoId || update.isPending} onClick={() => update.mutate({ evento_id: Number(eventoId) })}>
+          {update.isPending ? 'Vinculando…' : 'Vincular'}
+        </Button>
+      </div>
+      {update.isError && <p className="text-xs text-destructive mt-1">No se pudo vincular el evento.</p>}
+    </div>
+  );
+}
+
 export default function FacturaDetalle() {
   const { id }      = useParams<{ id: string }>();
   const navigate    = useNavigate();
@@ -314,7 +338,7 @@ export default function FacturaDetalle() {
             Factura {factura.tipo_factura} {factura.numero_factura}
           </h1>
           <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
-            {factura.proveedor?.nombre} — {factura.evento?.nombre}
+            {factura.proveedor?.nombre ?? 'Sin proveedor'} — {factura.evento?.nombre ?? 'Sin evento'}
             {factura.rubro && (
               <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-secondary text-secondary-foreground">
                 {factura.rubro.nombre}
@@ -363,7 +387,9 @@ export default function FacturaDetalle() {
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <Row label="Proveedor"   value={factura.proveedor?.nombre} />
-            <Row label="Evento"      value={factura.evento?.nombre} />
+            {factura.evento
+              ? <Row label="Evento" value={factura.evento.nombre} />
+              : <VincularEvento facturaId={factura.id} />}
             <Row label="Tipo"        value={`Tipo ${factura.tipo_factura}`} />
             <Row label="N° factura"  value={factura.numero_factura} />
             <Row label="Emisión"     value={fmt(factura.fecha_emision)} />
@@ -390,6 +416,17 @@ export default function FacturaDetalle() {
               </span>
             </div>
           </div>
+
+          {factura.origen_import === 'AFIP' && (
+            <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <Row label="Neto gravado" value={factura.neto_gravado != null ? formatCurrency(Number(factura.neto_gravado), factura.moneda) : undefined} />
+              <Row label="IVA"          value={factura.iva_importe  != null ? formatCurrency(Number(factura.iva_importe),  factura.moneda) : undefined} />
+              <Row label="No gravado"   value={factura.no_gravado   != null ? formatCurrency(Number(factura.no_gravado),   factura.moneda) : undefined} />
+              <Row label="Exento"       value={factura.exento       != null ? formatCurrency(Number(factura.exento),       factura.moneda) : undefined} />
+              <Row label="PDF (AFIP)"   value={factura.pdf_nombre_afip ?? (factura.tiene_pdf ? 'Sí' : 'Sin PDF')} />
+              <Row label="Comprobante físico" value={factura.tiene_comprobante_fisico ? 'Sí' : 'No'} />
+            </div>
+          )}
 
           {factura.notas && (
             <div className="bg-muted/30 rounded p-3 text-sm">

@@ -12,7 +12,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Trash2, ChevronDown, ChevronRight,
-  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse,
+  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse, Upload,
 } from 'lucide-react';
 import { format, subDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -20,7 +20,8 @@ import {
   useFichaEvento, useInicializarFicha, useExportarFicha,
   useUpdateRubroEvento, useAddPedidoItem, useUpdatePedidoItem, useDeletePedidoItem,
   useAsignarStock, useDesasignarStock,
-  type PedidoItemPayload,
+  useListarHojasFichaImport, useImportarFicha,
+  type PedidoItemPayload, type FichaImportResultado,
 } from '@/hooks/useFichaEvento';
 import { useDisponibilidad } from '@/hooks/useStock';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
@@ -665,6 +666,183 @@ function RubroEventoCard({ eventoId, evento, re, expanded, onToggleExpand }: {
   );
 }
 
+// ── Importar desde Excel (rubro por evento.xlsx) ─────────────────────────────
+
+type ImportStep = 'archivo' | 'hoja' | 'preview' | 'success';
+
+function ImportarExcelDialog({ eventoId, onClose }: { eventoId: number; onClose: () => void }) {
+  const [step, setStep]   = useState<ImportStep>('archivo');
+  const [file, setFile]   = useState<File | null>(null);
+  const [hojas, setHojas] = useState<{ nombre_hoja: string; evento_nombre_excel: string | null }[]>([]);
+  const [hoja, setHoja]   = useState('');
+  const [preview, setPreview]   = useState<FichaImportResultado | null>(null);
+  const [resultado, setResultado] = useState<FichaImportResultado | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const listarHojas = useListarHojasFichaImport();
+  const importar     = useImportarFicha(eventoId);
+
+  const handleFile = async (f: File) => {
+    setFile(f);
+    setError(null);
+    try {
+      const lista = await listarHojas.mutateAsync({ eventoId, file: f });
+      if (lista.length === 0) { setError('No se encontró ninguna hoja de evento en el archivo (se espera "EVENTO" en la celda A3).'); return; }
+      setHojas(lista);
+      setHoja(lista[0].nombre_hoja);
+      setStep('hoja');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  const handleVerPreview = async () => {
+    if (!file || !hoja) return;
+    setError(null);
+    try {
+      const r = await importar.mutateAsync({ file, hoja, preview: true });
+      setPreview(r);
+      setStep('preview');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  const handleConfirmar = async () => {
+    if (!file || !hoja) return;
+    setError(null);
+    try {
+      const r = await importar.mutateAsync({ file, hoja, preview: false });
+      setResultado(r);
+      setStep('success');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader><DialogTitle>Importar Ficha de Evento desde Excel</DialogTitle></DialogHeader>
+
+        {step === 'archivo' && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Subí el archivo "rubro por evento.xlsx" con las hojas por evento.
+            </p>
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg py-10 cursor-pointer hover:bg-accent/30 transition">
+              <Upload size={22} className="text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                {listarHojas.isPending ? 'Leyendo archivo…' : 'Hacé clic para elegir el archivo .xlsx'}
+              </span>
+              <input
+                type="file" accept=".xlsx" className="hidden" disabled={listarHojas.isPending}
+                onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+              />
+            </label>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+        )}
+
+        {step === 'hoja' && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Archivo: <span className="font-medium">{file?.name}</span></p>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Hoja del evento</label>
+              <select value={hoja} onChange={e => setHoja(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
+                {hojas.map(h => (
+                  <option key={h.nombre_hoja} value={h.nombre_hoja}>
+                    {h.nombre_hoja}{h.evento_nombre_excel && h.evento_nombre_excel !== h.nombre_hoja ? ` (${h.evento_nombre_excel})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setStep('archivo')}>Atrás</Button>
+              <Button size="sm" onClick={handleVerPreview} disabled={importar.isPending}>
+                {importar.isPending ? 'Analizando…' : 'Ver preview'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'preview' && preview && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span><span className="font-semibold text-green-700">{preview.confirmados}</span> confirmados</span>
+              <span><span className="font-semibold text-red-700">{preview.no_van}</span> no van</span>
+              <span><span className="font-semibold">{preview.creados}</span> a crear</span>
+              <span><span className="font-semibold">{preview.actualizados}</span> a actualizar</span>
+            </div>
+            {preview.rubros_no_encontrados.length > 0 && (
+              <div className="text-xs bg-yellow-50 text-yellow-800 rounded px-3 py-2">
+                <p className="font-medium mb-1 flex items-center gap-1"><AlertTriangle size={12} /> Rubros del Excel sin match en el catálogo (se omiten):</p>
+                <p>{preview.rubros_no_encontrados.join(', ')}</p>
+              </div>
+            )}
+            <div className="max-h-72 overflow-y-auto border border-border rounded-md">
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr className="border-b border-border text-muted-foreground font-medium">
+                    <th className="px-2 py-1.5 text-left">Servicio</th>
+                    <th className="px-2 py-1.5 text-left">Estado</th>
+                    <th className="px-2 py-1.5 text-left">Proveedor (Excel)</th>
+                    <th className="px-2 py-1.5 text-left">Responsable</th>
+                    <th className="px-2 py-1.5 text-left">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {preview.filas.map(f => (
+                    <tr key={f.fila_excel} className={cn(f.accion === 'SIN_RUBRO' && 'opacity-50')}>
+                      <td className="px-2 py-1">{f.servicio}</td>
+                      <td className="px-2 py-1">
+                        <Badge variant={f.corresponde ? 'success' : 'muted'}>{f.corresponde ? 'Confirmado' : 'No va'}</Badge>
+                      </td>
+                      <td className="px-2 py-1">
+                        {f.proveedor_nombre_excel ?? '—'}
+                        {f.proveedor_nombre_excel && !f.proveedor_id && <span className="text-yellow-700"> (sin match)</span>}
+                      </td>
+                      <td className="px-2 py-1">{f.responsable ?? '—'}</td>
+                      <td className="px-2 py-1">{f.accion === 'SIN_RUBRO' ? 'Rubro no encontrado' : f.accion === 'CREAR' ? 'Crear' : 'Actualizar'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setStep('hoja')}>Atrás</Button>
+              <Button size="sm" onClick={handleConfirmar} disabled={importar.isPending}>
+                {importar.isPending ? 'Importando…' : 'Confirmar importación'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'success' && resultado && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Importación completa: <span className="font-semibold text-green-700">{resultado.creados}</span> creados,{' '}
+              <span className="font-semibold">{resultado.actualizados}</span> actualizados,{' '}
+              <span className="font-semibold text-green-700">{resultado.confirmados}</span> confirmados,{' '}
+              <span className="font-semibold text-red-700">{resultado.no_van}</span> no van.
+            </p>
+            {resultado.rubros_no_encontrados.length > 0 && (
+              <p className="text-xs text-yellow-800 bg-yellow-50 rounded px-3 py-2">
+                Sin match en el catálogo: {resultado.rubros_no_encontrados.join(', ')}
+              </p>
+            )}
+            <div className="flex justify-end pt-1">
+              <Button size="sm" onClick={onClose}>Cerrar</Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
@@ -677,6 +855,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<EstadoRubroEvento | ''>('');
   const [busqueda, setBusqueda] = useState(initialBusqueda ?? '');
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const contadores = useMemo(() => ({
     confirmados: fichaData.filter(r => r.estado === 'CONFIRMADO').length,
@@ -721,8 +900,14 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
             {isExporting ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={13} className="mr-1.5" />}
             Exportar Excel
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportarOpen(true)}>
+            <Upload size={13} className="mr-1.5" />
+            Importar desde Excel
+          </Button>
         </div>
       </div>
+
+      {importarOpen && <ImportarExcelDialog eventoId={eventoId} onClose={() => setImportarOpen(false)} />}
 
       {fichaData.length === 0 ? (
         <p className="text-sm text-muted-foreground py-10 text-center">

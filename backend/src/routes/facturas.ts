@@ -4,6 +4,8 @@ import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
+import { upload as uploadXlsx } from '../controllers/importer.controller';
+import { importarLibroCompras } from '../controllers/libroCompras.controller';
 import {
   uploadPDF,
   list,
@@ -30,6 +32,13 @@ function pdfMiddleware(req: any, res: any, next: any) {
   });
 }
 
+function xlsxMiddleware(req: any, res: any, next: any) {
+  uploadXlsx.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
+
 // ── Router /api/facturas ──────────────────────────────────────────────────────
 
 export const facturasRouter = Router();
@@ -37,6 +46,7 @@ facturasRouter.use(auth);
 facturasRouter.use(tenantMiddleware);
 facturasRouter.use(requireRole('ADMIN')); // Facturas es exclusivo de ADMIN (matriz de permisos)
 
+facturasRouter.post('/importar-libro-compras', xlsxMiddleware, asyncHandler(importarLibroCompras));
 facturasRouter.get('/alertas',          asyncHandler(alertas));
 facturasRouter.get('/',                 asyncHandler(listGlobal));
 facturasRouter.get('/:id',              asyncHandler(detail));

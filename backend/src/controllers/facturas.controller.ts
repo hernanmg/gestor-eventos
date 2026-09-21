@@ -27,6 +27,7 @@ const facturaSchema = z.object({
   fecha_emision:     z.string().min(1),
   fecha_vencimiento: z.string().nullable().optional(),
   proveedor_id:      z.number().int().positive(),
+  evento_id:         z.number().int().positive().nullable().optional(), // sólo se usa en update (vincular a mano una factura importada sin evento)
   tab_numero:        z.number().int().min(1).max(5).nullable().optional(),
   rubro_id:          z.number().int().positive().nullable().optional(),
   importe_total:     z.number().positive(),
@@ -335,6 +336,11 @@ export async function update(req: Request, res: Response) {
     if (rubroError) { res.status(400).json({ error: rubroError }); return; }
   }
 
+  if (d.evento_id) {
+    const evento = await prisma.evento.findFirst({ where: { id: d.evento_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!evento) { res.status(400).json({ error: 'Evento no encontrado' }); return; }
+  }
+
   // Recalcular monto_ars si cambió algo que lo afecta.
   const importeFinal = d.importe_total !== undefined ? d.importe_total : Number(f.importe_total);
   const monedaFinal  = (d.moneda ?? f.moneda) as Moneda;
@@ -350,6 +356,7 @@ export async function update(req: Request, res: Response) {
       ...(d.fecha_emision     !== undefined && { fecha_emision:     new Date(d.fecha_emision) }),
       ...(d.fecha_vencimiento !== undefined && { fecha_vencimiento: d.fecha_vencimiento ? new Date(d.fecha_vencimiento) : null }),
       ...(d.proveedor_id      !== undefined && { proveedor_id:      d.proveedor_id }),
+      ...(d.evento_id         !== undefined && { evento_id:         d.evento_id }),
       ...(d.tab_numero        !== undefined && { tab_numero:        d.tab_numero }),
       ...(d.rubro_id          !== undefined && { rubro_id:          d.rubro_id }),
       ...(d.importe_total     !== undefined && { importe_total:     d.importe_total }),
@@ -468,6 +475,10 @@ export async function pagarFactura(req: Request, res: Response) {
     res.status(400).json({ error: `El importe (${importe}) supera el pendiente (${Number(factura.importe_pendiente)})` }); return;
   }
 
+  if (medio_pago === 'ECHEQ' && factura.evento_id === null) {
+    res.status(400).json({ error: 'Vinculá la factura a un evento antes de pagarla con echeq' }); return;
+  }
+
   const result = await prisma.$transaction(async tx => {
     // 1. Crear PagoFactura
     const pago = await tx.pagoFactura.create({
@@ -486,8 +497,9 @@ export async function pagarFactura(req: Request, res: Response) {
     let movimientoId: number | null = null;
     let echeqId:      number | null = null;
 
-    // 2. Crear Movimiento si hay tab o rubro configurado
-    if (factura.tab_numero || factura.rubro_id) {
+    // 2. Crear Movimiento si hay tab o rubro configurado (y evento: las facturas
+    // importadas del libro AFIP pueden estar todavía sin evento vinculado)
+    if (factura.evento_id !== null && (factura.tab_numero || factura.rubro_id)) {
       const lastOrder = await tx.movimiento.findFirst({
         where: {
           evento_id: factura.evento_id, tipo: Tipo.EGRESO, deleted_at: null,
@@ -504,7 +516,7 @@ export async function pagarFactura(req: Request, res: Response) {
           rubro_id:    factura.rubro_id,
           estado_movimiento: 'PAGADO',
           fecha:       new Date(fecha_pago),
-          concepto:    factura.proveedor.nombre,
+          concepto:    factura.proveedor?.nombre ?? 'Sin proveedor',
           descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
           haber:       importe,
           moneda:      factura.moneda,
@@ -529,11 +541,11 @@ export async function pagarFactura(req: Request, res: Response) {
     if (medio_pago === 'ECHEQ' && echeq_numero) {
       const echeq = await tx.echeq.create({
         data: {
-          evento_id:            factura.evento_id,
+          evento_id:            factura.evento_id!, // validado arriba: ECHEQ exige evento
           movimiento_id:        movimientoId,
           proveedor_id:         factura.proveedor_id,
           numero:               echeq_numero,
-          razon_social:         factura.proveedor.nombre,
+          razon_social:         factura.proveedor?.nombre ?? null,
           importe,
           moneda:               factura.moneda,
           estado:               'PENDIENTE',
@@ -561,7 +573,7 @@ export async function pagarFactura(req: Request, res: Response) {
       accion:       'CREATE',
       entidad:      'PagoFactura',
       entidadId:    pago.id,
-      eventoId:     factura.evento_id,
+      eventoId:     factura.evento_id ?? undefined,
       descripcion:  `Pago de $${importe} (${medio_pago}) registrado en factura ${factura.tipo_factura}${factura.numero_factura}`,
       datosDespues: { importe, medio_pago, movimientoId, echeqId },
       ip:           req.ip,

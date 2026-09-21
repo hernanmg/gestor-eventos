@@ -3,11 +3,20 @@ import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
 import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
+import { upload } from '../controllers/importer.controller';
 import {
   getFicha, resumenFicha, inicializarFicha, exportarFicha,
   updateRubroEvento, addPedidoItem, updatePedidoItem, deletePedidoItem,
   asignarStock, desasignarStock,
+  listarHojasFichaImport, importarFicha,
 } from '../controllers/fichaEvento.controller';
+
+const uploadXlsx = (req: any, res: any, next: any) => {
+  upload.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+};
 
 // ── Nested bajo /api/eventos/:id/ficha ────────────────────────────────────────
 // Lectura: TODOS_MENOS_RESTRINGIDOS. Escritura: ADMIN_OPERADOR, por rol global
@@ -18,6 +27,8 @@ fichaEventoRouter.use(tenantMiddleware);
 fichaEventoRouter.get('/resumen',      requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(resumenFicha));
 fichaEventoRouter.get('/exportar',     requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(exportarFicha));
 fichaEventoRouter.post('/inicializar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(inicializarFicha));
+fichaEventoRouter.post('/importar/hojas', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(listarHojasFichaImport));
+fichaEventoRouter.post('/importar',       requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarFicha));
 fichaEventoRouter.get('/',             requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getFicha));
 
 // ── /api/rubros-evento ─────────────────────────────────────────────────────────

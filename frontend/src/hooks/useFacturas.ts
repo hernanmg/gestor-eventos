@@ -24,6 +24,7 @@ export interface CreateFacturaPayload {
   fecha_emision:     string;
   fecha_vencimiento?: string | null;
   proveedor_id:      number;
+  evento_id?:        number | null;
   tab_numero?:       number | null;
   rubro_id?:         number | null;
   importe_total:     number;
@@ -182,6 +183,42 @@ export function useAnularPago() {
     mutationFn: (pagoId: number) => api.delete(`/pagos/${pagoId}`).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+// ── Importar libro de compras AFIP ─────────────────────────────────────────────
+
+export interface ImportarLibroResultado {
+  preview:              boolean;
+  total_filas:          number;
+  creadas:              number;
+  actualizadas:         number;
+  duplicadas_en_archivo: number;
+  vinculadas_a_evento:  number;
+  faltantes_marcadas:   number;
+  sin_texto_evento:     number;
+  proveedores_creados:  { nombre: string; cuit: string }[];
+  sin_evento:           { proveedor: string; total: number; texto_evento: string }[];
+  sin_pdf:              { proveedor: string; total: number }[];
+  errores:              { hoja: 'PRINCIPAL' | 'FALTANTES'; fila_excel: number; motivo: string }[];
+}
+
+export function useImportarLibroCompras() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, preview }: { file: File; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<ImportarLibroResultado>(
+        `/facturas/importar-libro-compras?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data);
+    },
+    onSuccess: (data) => {
+      if (data.preview) return;
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ['proveedores'] });
+      qc.invalidateQueries({ queryKey: ['notificaciones'] });
     },
   });
 }
