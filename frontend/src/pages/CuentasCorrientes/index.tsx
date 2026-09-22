@@ -19,6 +19,7 @@ import CuitInput from '@/components/ui/CuitInput';
 import type { CuentaCorriente, TipoTercero, MonedaCCC, ProveedorBusqueda } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 const TIPO_TERCERO_LABEL: Record<TipoTercero, string> = {
   PROVEEDOR: 'Proveedor',
@@ -369,7 +370,7 @@ export default function CuentasCorrientesPage() {
         ) : cuentas.length === 0 ? (
           <p className="text-sm text-muted-foreground p-6">Sin cuentas corrientes.</p>
         ) : (
-          <table className="w-full min-w-[700px]">
+          <BaseTable className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 <th className="text-left py-2.5 px-3 font-medium">Nombre</th>
@@ -384,7 +385,7 @@ export default function CuentasCorrientesPage() {
             <tbody>
               {cuentas.map(c => <FilaCuenta key={c.id} c={c} onEdit={setEditingId} />)}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

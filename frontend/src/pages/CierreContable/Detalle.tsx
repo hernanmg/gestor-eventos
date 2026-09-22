@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { EstadoCierreContable } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADO_VARIANT: Record<EstadoCierreContable, 'muted' | 'info' | 'success'> = {
   BORRADOR: 'muted', ENVIADO: 'info', APROBADO: 'success',
@@ -63,7 +64,7 @@ function TablaCuentas({ filas }: { filas: { cuenta: string; saldo: number }[] })
   const total = filas.reduce((s, f) => s + f.saldo, 0);
   if (filas.length === 0) return <p className="text-sm text-muted-foreground">Sin cuentas.</p>;
   return (
-    <table className="w-full text-sm">
+    <BaseTable className="w-full text-sm">
       <tbody className="divide-y">
         {filas.map((f, i) => (
           <tr key={i}>
@@ -78,7 +79,7 @@ function TablaCuentas({ filas }: { filas: { cuenta: string; saldo: number }[] })
           <td className="py-1.5 text-right tabular-nums">{formatCurrency(total)}</td>
         </tr>
       </tfoot>
-    </table>
+    </BaseTable>
   );
 }
 
@@ -86,7 +87,7 @@ function TablaTerceros({ filas }: { filas: { cuit: string | null; nombre: string
   const total = filas.reduce((s, f) => s + f.importe, 0);
   if (filas.length === 0) return <p className="text-sm text-muted-foreground">Sin registros.</p>;
   return (
-    <table className="w-full text-sm">
+    <BaseTable className="w-full text-sm">
       <thead>
         <tr className="text-xs text-muted-foreground text-left">
           <th className="py-1">CUIT</th><th className="py-1">Nombre</th><th className="py-1 text-right">Importe</th>
@@ -107,7 +108,7 @@ function TablaTerceros({ filas }: { filas: { cuit: string | null; nombre: string
           <td className="py-1.5 text-right tabular-nums">{formatCurrency(total)}</td>
         </tr>
       </tfoot>
-    </table>
+    </BaseTable>
   );
 }
 
@@ -115,7 +116,7 @@ function TablaCreditoDeuda({ filas }: { filas: { tipo: string; descripcion: stri
   const total = filas.reduce((s, f) => s + f.importe, 0);
   if (filas.length === 0) return <p className="text-sm text-muted-foreground">Sin registros.</p>;
   return (
-    <table className="w-full text-sm">
+    <BaseTable className="w-full text-sm">
       <thead>
         <tr className="text-xs text-muted-foreground text-left">
           <th className="py-1">Tipo</th><th className="py-1">Descripción</th><th className="py-1 text-right">Importe</th>
@@ -136,7 +137,7 @@ function TablaCreditoDeuda({ filas }: { filas: { tipo: string; descripcion: stri
           <td className="py-1.5 text-right tabular-nums">{formatCurrency(total)}</td>
         </tr>
       </tfoot>
-    </table>
+    </BaseTable>
   );
 }
 
@@ -246,7 +247,7 @@ export default function CierreContableDetallePage() {
           {s.mercaderias.productos.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin productos activos.</p>
           ) : (
-            <table className="w-full text-sm">
+            <BaseTable className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground text-left">
                   <th className="py-1">Producto</th><th className="py-1 text-right">Stock</th><th className="py-1">Unidad</th>
@@ -268,7 +269,7 @@ export default function CierreContableDetallePage() {
                   <td />
                 </tr>
               </tfoot>
-            </table>
+            </BaseTable>
           )}
           <p className="text-xs text-muted-foreground italic">Sin valorizar — a cargo del estudio contable.</p>
         </Seccion>

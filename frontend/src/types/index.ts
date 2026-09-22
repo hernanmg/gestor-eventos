@@ -188,6 +188,15 @@ export interface PedidoItem {
   horario_retiro:  string | null;
   observaciones:   string | null;
   orden:           number;
+  // Esquema de personal por turno — con fecha_turno el ítem es una línea de la
+  // grilla de dotación (seguridad, limpieza…) y no un pedido de material.
+  fecha_turno:       string | null; // ISO, medianoche UTC
+  hora_inicio_turno: string | null; // "08:00"
+  hora_fin_turno:    string | null;
+  ubicacion_turno:   string | null;
+  tipo_turno:        string | null;
+  horas_por_agente:  number | null; // derivado en el backend
+  total_horas_turno: number | null; // derivado: cantidad × horas_por_agente
   created_at:      string;
   updated_at:      string;
   deleted_at:      string | null;
@@ -260,6 +269,7 @@ export interface Evento {
   fecha_fin:       string | null;
   dias_montaje:    number;
   dias_desmontaje: number;
+  lugar:           string | null;
   estado:          EstadoEvento;
   socios:          Socio[];
   moneda_base:     Moneda;
@@ -283,6 +293,7 @@ export interface EventoPayload {
   fecha_fin:       string | null;
   dias_montaje?:   number;
   dias_desmontaje?: number;
+  lugar?:          string | null;
   socios:          Socio[];
   moneda_base:     Moneda;
   es_informal?:    boolean;

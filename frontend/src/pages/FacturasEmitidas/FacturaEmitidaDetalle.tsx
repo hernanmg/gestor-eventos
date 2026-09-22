@@ -22,6 +22,7 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/formatters';
 import type { CobroFacturaEmitida, CondicionCliente, Moneda, TipoComprobanteEmitido } from '@/types';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 function fmt(date: string | null | undefined) {
   if (!date) return '—';
@@ -346,7 +347,7 @@ export default function FacturaEmitidaDetalle({ facturaId, onClose }: Props) {
                       <div className="px-4 py-2.5 border-b border-border">
                         <h3 className="text-sm font-semibold">Reparto entre razones sociales</h3>
                       </div>
-                      <table className="w-full text-sm">
+                      <BaseTable className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border text-xs text-muted-foreground">
                             <th className="text-left py-1.5 px-3">Razón social</th>
@@ -365,7 +366,7 @@ export default function FacturaEmitidaDetalle({ facturaId, onClose }: Props) {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </BaseTable>
                     </div>
                   )}
                 </div>
@@ -458,7 +459,7 @@ export default function FacturaEmitidaDetalle({ facturaId, onClose }: Props) {
                 {!factura.cobros || factura.cobros.length === 0 ? (
                   <p className="text-sm text-muted-foreground p-4">Sin cobros registrados.</p>
                 ) : (
-                  <table className="w-full">
+                  <BaseTable className="w-full">
                     <thead>
                       <tr className="border-b border-border text-xs text-muted-foreground">
                         <th className="text-left py-2 px-3">Fecha</th>
@@ -472,7 +473,7 @@ export default function FacturaEmitidaDetalle({ facturaId, onClose }: Props) {
                     <tbody>
                       {factura.cobros.map(c => <FilaCobro key={c.id} cobro={c} moneda={factura.moneda} />)}
                     </tbody>
-                  </table>
+                  </BaseTable>
                 )}
               </div>
             )}

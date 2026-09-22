@@ -18,6 +18,7 @@ import { LineaGastoEstadoBadge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import type { LineaGastoEspacio, ParteEspacio, GastoTipoEspacio, EspacioCompartido } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -266,8 +267,8 @@ function TabMes({ espacioId, espacioNombre, mes, anio }: { espacioId: number; es
       {gastoMes.lineas.length === 0 ? (
         <p className="text-sm text-muted-foreground">Este mes no tiene gastos cargados.</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[560px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Gasto</th>
@@ -288,7 +289,7 @@ function TabMes({ espacioId, espacioNombre, mes, anio }: { espacioId: number; es
                 />
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 
@@ -324,8 +325,8 @@ function TabHistorial({ espacioId, onVerMes }: { espacioId: number; onVerMes: (m
   if (meses.length === 0) return <p className="text-sm text-muted-foreground">Sin meses generados todavía.</p>;
 
   return (
-    <div className="rounded-lg border bg-white overflow-x-auto">
-      <table className="w-full text-sm min-w-[480px]">
+    <div className="overflow-x-auto">
+      <BaseTable className="w-full text-sm min-w-[480px]">
         <thead className="border-b bg-muted/30">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Mes</th>
@@ -346,7 +347,7 @@ function TabHistorial({ espacioId, onVerMes }: { espacioId: number; onVerMes: (m
             </tr>
           ))}
         </tbody>
-      </table>
+      </BaseTable>
     </div>
   );
 }

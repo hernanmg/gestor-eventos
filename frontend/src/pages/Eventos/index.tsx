@@ -17,6 +17,7 @@ import CargaRapidaDialog from './CargaRapidaDialog';
 import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Evento } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 export default function EventosPage() {
   const navigate = useNavigate();
@@ -183,8 +184,8 @@ export default function EventosPage() {
       {/* Desktop table */}
       {!isLoading && eventos.length > 0 && (
         <>
-          <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+          <div className="hidden md:block overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-gray-50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nombre</th>
@@ -273,7 +274,7 @@ export default function EventosPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
 
           {/* Mobile cards */}

@@ -14,6 +14,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import type { LineaComida, TipoComida, ProveedorBusqueda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -305,9 +306,9 @@ function DiaComidas({ eventoId, fecha, canEdit, esDos57 }: { eventoId: number; f
           </div>
 
           {/* Tabla de líneas */}
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
+              <BaseTable className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-muted/30 text-muted-foreground text-xs font-medium">
                     <th className="px-2 py-2 text-left">Tipo</th>
@@ -345,7 +346,7 @@ function DiaComidas({ eventoId, fecha, canEdit, esDos57 }: { eventoId: number; f
                     </tr>
                   </tfoot>
                 )}
-              </table>
+              </BaseTable>
             </div>
           </div>
         </>
@@ -374,9 +375,9 @@ function ResumenMensual({ eventoId }: { eventoId: number }) {
   const granTotal = resumen.reduce((s, r) => s + r.total_personas, 0);
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <BaseTable className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-border bg-muted/30 text-muted-foreground text-xs font-medium">
               <th className="px-3 py-2 text-left sticky left-0 bg-muted/30">Área</th>
@@ -408,7 +409,7 @@ function ResumenMensual({ eventoId }: { eventoId: number }) {
               <td className="px-3 py-2 text-right">{granTotal}</td>
             </tr>
           </tfoot>
-        </table>
+        </BaseTable>
       </div>
     </div>
   );

@@ -176,6 +176,12 @@ export interface PedidoItemPayload {
   horario_retiro?:  string | null;
   observaciones?:   string | null;
   orden?:           number;
+  // Esquema de personal por turno (horas_por_agente/total los deriva el backend)
+  fecha_turno?:       string | null; // YYYY-MM-DD
+  hora_inicio_turno?: string | null;
+  hora_fin_turno?:    string | null;
+  ubicacion_turno?:   string | null;
+  tipo_turno?:        string | null;
 }
 
 export function useAddPedidoItem(eventoId: number) {
@@ -201,5 +207,47 @@ export function useDeletePedidoItem(eventoId: number) {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/pedido-items/${id}`).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: fichaKey(eventoId) }),
+  });
+}
+
+// ── Importar esquema de personal (SEGURIDAD_FESTIVAL_KM.xlsx) ─────────────────
+
+export interface EsquemaImportFila {
+  fila_excel:       number;
+  dia_numero:       number | null;
+  fecha:            string; // YYYY-MM-DD
+  tipo_turno:       string | null;
+  cantidad:         number;
+  ubicacion_turno:  string | null;
+  hora_inicio:      string | null;
+  hora_fin:         string | null;
+  horas_por_agente: number | null;
+  total_horas:      number | null;
+  advertencias:     string[];
+  accion:           'CREAR' | 'ACTUALIZAR';
+}
+
+export interface EsquemaImportResultado {
+  preview:      boolean;
+  hoja:         string;
+  creados:      number;
+  actualizados: number;
+  total_horas:  number;
+  omitidas:     { fila_excel: number; motivo: string }[];
+  filas:        EsquemaImportFila[];
+}
+
+export function useImportarEsquemaTurnos(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rubroEventoId, file, preview }: { rubroEventoId: number; file: File; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<EsquemaImportResultado>(
+        `/rubros-evento/${rubroEventoId}/importar-seguridad?preview=${preview}`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data);
+    },
+    onSuccess: (data) => { if (!data.preview) qc.invalidateQueries({ queryKey: fichaKey(eventoId) }); },
   });
 }

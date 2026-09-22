@@ -17,6 +17,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Echeq, Moneda, TipoCuenta, PosicionConsolidada } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Add Cuenta Dialog ─────────────────────────────────────────────────────────
 
@@ -378,7 +379,7 @@ function PosicionConsolidadaSection({ posicion }: { posicion: PosicionConsolidad
                 <span className="text-sm font-bold tabular-nums">{formatCurrency(pm.saldo_total, pm.moneda)}</span>
               </div>
               {/* Desktop: full breakdown */}
-              <table className="w-full hidden sm:table">
+              <BaseTable className="w-full hidden sm:table">
                 <thead>
                   <tr className="border-b border-border">
                     <th className={thClass}>Cuenta</th>
@@ -397,7 +398,7 @@ function PosicionConsolidadaSection({ posicion }: { posicion: PosicionConsolidad
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
           ))}
         </div>
@@ -447,7 +448,7 @@ function EcheqsSection({
         {pendientes.length === 0 ? (
           <p className="px-3 py-4 text-sm text-muted-foreground text-center">Sin echeqs pendientes.</p>
         ) : (
-          <table className="w-full">
+          <BaseTable className="w-full">
             <thead>
               <tr className="border-b border-border">
                 <th className={thClass}>N°</th>
@@ -497,7 +498,7 @@ function EcheqsSection({
                 </tr>
               );})}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 
@@ -512,7 +513,7 @@ function EcheqsSection({
             {historialOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
           {historialOpen && (
-            <table className="w-full">
+            <BaseTable className="w-full">
               <thead>
                 <tr className="border-b border-border">
                   <th className={thClass}>N°</th>
@@ -544,7 +545,7 @@ function EcheqsSection({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           )}
         </div>
       )}

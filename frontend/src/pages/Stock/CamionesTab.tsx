@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { normalizarPatente, formatearPatente } from '@/lib/formatters';
 import type { Camion } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 interface CamionFormData {
   codigo:      string;
@@ -128,8 +129,8 @@ export default function CamionesTab() {
           <p className="text-sm">No hay camiones registrados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código</th>
@@ -172,7 +173,7 @@ export default function CamionesTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

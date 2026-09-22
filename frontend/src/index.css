@@ -127,3 +127,69 @@
     font-size: 9px !important;
   }
 }
+
+/* ── Tabla "card por fila" (BaseTable) ─────────────────────────────────────────
+   Mismo look que la pantalla de Gastos del mes: cada fila es una tarjeta blanca
+   con borde suave y sombra, que se levanta 1px al pasar el mouse; el header de
+   columnas es una franja gris muy suave, sin sombra ni hover, con texto chico en
+   mayúsculas. Se aplica sobre <table> reales (BaseTable) para no perder
+   colSpan, tfoot, headers sticky ni celdas editables.
+   - Todo va envuelto en :where() (especificidad 0): cualquier utilidad de Tailwind
+     puesta en una fila o celda (bg-red-50, border-l-4, etc.) sigue ganando. El
+     @layer de Tailwind sólo ordena el CSS, no baja la especificidad.
+   - Las celdas heredan el fondo de su <tr> (background: inherit), así el color de
+     estado de una fila (bg-…) o su hover se propaga a toda la tarjeta. */
+@layer components {
+  .card-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 4px;
+  }
+
+  .card-table > :where(thead) > :where(tr) > :where(th) {
+    background-color: #f9fafb;
+    color: hsl(var(--muted-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .card-table > :where(thead) > :where(tr) > :where(th:first-child) { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+  .card-table > :where(thead) > :where(tr) > :where(th:last-child)  { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+
+  .card-table > :where(tbody, tfoot) > :where(tr) {
+    background-color: #fff;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  .card-table > :where(tbody) > :where(tr) {
+    transition: box-shadow 150ms ease, transform 150ms ease, background-color 150ms ease;
+  }
+  .card-table > :where(tbody, tfoot) > :where(tr) > :where(td) {
+    background-color: inherit;
+    border-top: 1px solid #f3f4f6;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .card-table > :where(tbody, tfoot) > :where(tr) > :where(td:first-child) {
+    border-left: 1px solid #f3f4f6;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+  }
+  .card-table > :where(tbody, tfoot) > :where(tr) > :where(td:last-child) {
+    border-right: 1px solid #f3f4f6;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+  .card-table > :where(tbody) > :where(tr:hover) {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    transform: translateY(-1px);
+  }
+
+  /* En papel no hay sombras ni levantado: filas planas y sin separación */
+  @media print {
+    .card-table { border-spacing: 0 !important; }
+    .card-table > tbody > tr,
+    .card-table > tfoot > tr { box-shadow: none !important; transform: none !important; }
+    .card-table > tbody > tr > td,
+    .card-table > tfoot > tr > td { border-radius: 0 !important; }
+  }
+}

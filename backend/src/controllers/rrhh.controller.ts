@@ -904,7 +904,8 @@ export async function aprobarLiquidacion(req: Request, res: Response) {
           fecha:       new Date(),
           concepto:    `Liquidación ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre}`,
           descripcion: `Período ${liquidacion.fecha_desde.toISOString().slice(0, 10)} a ${liquidacion.fecha_hasta.toISOString().slice(0, 10)}`,
-          haber:       liquidacion.total_a_cobrar,
+          // Convención de Movimiento: EGRESO → DEBE (haber = 0). Ver comentario en facturas.controller.
+          debe:        liquidacion.total_a_cobrar,
           orden:       (lastOrder?.orden ?? 0) + 1,
           saldo:       0,
           created_by:  req.user!.id,

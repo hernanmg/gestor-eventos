@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoAsistencia, RegistroAsistencia, PresentismoHoyItem } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -235,8 +236,8 @@ function VistaDiaria({ fecha, setFecha, onVerMensual, esMatias }: {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Empleado</th>
@@ -253,7 +254,7 @@ function VistaDiaria({ fecha, setFecha, onVerMensual, esMatias }: {
                 <tr><td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay empleados activos en DOS57.</td></tr>
               ) : items.map(item => <FilaDiaria key={item.empleado.id} item={item} fecha={fecha} esMatias={esMatias} />)}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
     </div>
@@ -369,8 +370,8 @@ function VistaMensual({ mes, anio, setMes, setAnio, onVerDiaria, esMatias }: {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-x-auto">
-          <table className="text-sm border-collapse">
+        <div className="overflow-x-auto">
+          <BaseTable className="text-sm border-collapse">
             <thead className="bg-gray-50 border-b border-border sticky top-0">
               <tr>
                 <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground sticky left-0 bg-gray-50 z-10 min-w-[160px]">Empleado</th>
@@ -421,7 +422,7 @@ function VistaMensual({ mes, anio, setMes, setAnio, onVerDiaria, esMatias }: {
                 <td colSpan={5} />
               </tr>
             </tfoot>
-          </table>
+          </BaseTable>
         </div>
       )}
     </div>

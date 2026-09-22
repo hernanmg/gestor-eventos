@@ -1024,10 +1024,10 @@ export async function resumen(req: Request, res: Response) {
     }
     const g = grupos.get(m.rubro_id)!;
     g.presupuesto_total += Number(m.presupuesto ?? 0);
-    // debe/haber: qué campo lleva el monto real depende de cómo se creó la fila
-    // (el importer/seed históricos y el alta manual usan convenciones opuestas
-    // por tipo) — sumar ambos es robusto porque en la práctica solo uno de los
-    // dos es distinto de cero por movimiento.
+    // debe/haber: la convención es EGRESO → debe, INGRESO → haber (unificada para el alta
+    // manual, los pagos de facturas y las liquidaciones de RRHH). Se suman ambos igual porque
+    // pueden quedar movimientos viejos con el monto del lado opuesto; en la práctica solo uno
+    // de los dos es distinto de cero por movimiento.
     g.costo_real_total  += Number(m.debe) + Number(m.haber);
     g.cantidad_movimientos++;
     g.estados[m.estado_movimiento]++;

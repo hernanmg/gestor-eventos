@@ -15,6 +15,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoSiniestro, TipoSiniestro } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -237,8 +238,8 @@ export function SiniestroDrawer({ id, canEdit, onClose }: { id: number; canEdit:
 
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 mt-2">Gastos asociados</p>
-          <div className="rounded border overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-xs">
               <thead className="bg-muted/30 border-b">
                 <tr>
                   <th className="px-2 py-1.5 text-left">Fecha</th>
@@ -280,7 +281,7 @@ export function SiniestroDrawer({ id, canEdit, onClose }: { id: number; canEdit:
                   {canEdit && <td />}
                 </tr>
               </tfoot>
-            </table>
+            </BaseTable>
           </div>
           {canEdit && <div className="mt-2"><AgregarGastoForm siniestroId={id} onDone={() => {}} /></div>}
         </div>

@@ -4,6 +4,7 @@ import { useResumenMensualCombustible, useResumenSemanalCombustible } from '@/ho
 import { formatCurrency, formatLitros } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { PrintButton, PrintHeader } from '@/components/ui/PrintSection';
+import BaseTable from '@/components/ui/BaseTable';
 
 const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
 
@@ -48,8 +49,8 @@ function TablaResumenConsumo({ filas, totalLabel, total }: {
   total: number;
 }) {
   return (
-    <div className="rounded-lg border bg-white overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+      <BaseTable className="w-full text-sm">
         <thead className="border-b bg-muted/30">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">RESUMEN</th>
@@ -72,7 +73,7 @@ function TablaResumenConsumo({ filas, totalLabel, total }: {
             <td className="px-3 py-2 text-right">{formatLitros(total)}</td>
           </tr>
         </tfoot>
-      </table>
+      </BaseTable>
     </div>
   );
 }

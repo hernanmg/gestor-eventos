@@ -20,6 +20,7 @@ import api from '@/lib/api';
 import type { TipoMovCCC, MonedaCCC, MovimientoCCC } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -338,7 +339,7 @@ export default function CuentaCorrienteDetalle() {
         ) : movimientos.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">Sin movimientos registrados.</p>
         ) : (
-          <table className="w-full min-w-[900px]">
+          <BaseTable className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
                 <th className="text-left py-2 px-3">Fecha</th>
@@ -358,7 +359,7 @@ export default function CuentaCorrienteDetalle() {
                 <FilaMovimiento key={m.id} m={m} onDelete={() => handleDelete(m.id)} deleting={deletingId === m.id} />
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

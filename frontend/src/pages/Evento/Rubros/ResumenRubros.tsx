@@ -3,6 +3,7 @@ import { MovimientoEstadoBadge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { ResumenRubro, EstadoMovimiento, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 function estadoGeneral(estados: ResumenRubro['estados']): EstadoMovimiento {
   const activos = estados.PENDIENTE + estados.COTIZANDO + estados.CONFIRMADO + estados.PAGADO;
@@ -27,8 +28,8 @@ function RubrosTable({ title, rows, moneda }: { title: string; rows: ResumenRubr
   return (
     <div>
       <h4 className="text-sm font-semibold mb-2">{title}</h4>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className={th}>Rubro</th>
@@ -75,7 +76,7 @@ function RubrosTable({ title, rows, moneda }: { title: string; rows: ResumenRubr
               <td />
             </tr>
           </tfoot>
-        </table>
+        </BaseTable>
       </div>
     </div>
   );

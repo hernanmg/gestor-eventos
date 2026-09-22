@@ -279,6 +279,7 @@ model Empresa {
   eventosEmpleadoMes     EventoEmpleadoMes[]
   sgrs                   SGR[]
   cierresContables       CierreContable[]
+  cortesiasEvento        CortesiaEvento[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -369,6 +370,9 @@ model Evento {
   fecha_fin       DateTime?
   dias_montaje    Int          @default(0) // días de armado previos a fecha_inicio
   dias_desmontaje Int          @default(0) // días de desarmado posteriores a fecha_fin
+  // Lugar del evento (texto libre: "Playa Norte - Estadio Kempes"). Lo usa la
+  // Ficha exportada ("Ubicación: ..."). El wizard Pre-Macro lo copia de lugar_nombre/ciudad.
+  lugar           String?
   estado          EstadoEvento @default(ACTIVO)
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
   socios          Json         @default("[]")
@@ -398,6 +402,7 @@ model Evento {
   liquidaciones          Liquidacion[]
   movimientosPanol       MovimientoPanol[]
   rubros_evento          RubroEvento[]
+  cortesias              CortesiaEvento[]
   asignaciones_diarias   AsignacionDiaria[]
   pedidos_comida         PedidoComida[]
   pre_macro              PreMacro?
@@ -507,10 +512,24 @@ model PedidoItem {
   horario_retiro  String?
   observaciones   String?
   orden           Int         @default(0)
+  // ── Esquema de personal por turno (seguridad, limpieza, etc.) ───────────────
+  // Si fecha_turno tiene valor, el ítem es una línea del esquema de dotación y
+  // NO un pedido de material: se exporta en la grilla "ESQUEMA DE ..." en vez
+  // de la tabla Cantidad/Material. `cantidad` = agentes en el turno.
+  // fecha_turno es calendario puro (medianoche UTC, ver fecha_offset_utc_fix).
+  fecha_turno       DateTime?
+  hora_inicio_turno String? // "08:00"
+  hora_fin_turno    String? // "20:00" — si es menor que el inicio, cruza medianoche
+  ubicacion_turno   String? // "Barrera playa Norte"
+  tipo_turno        String? // "Seguridad Diurna"
+  horas_por_agente  Decimal?    @db.Decimal(5, 2) // derivado de inicio/fin
+  total_horas_turno Decimal?    @db.Decimal(8, 2) // derivado: cantidad × horas_por_agente
   // audit
   created_at      DateTime    @default(now())
   updated_at      DateTime    @updatedAt
   deleted_at      DateTime?
+
+  @@index([rubro_evento_id, fecha_turno])
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
@@ -2894,4 +2913,54 @@ model ExcedenteHoras {
   created_by Int?
 
   @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
+}
+
+// ─── CORTESÍAS DE EVENTOS ────────────────────────────────────────────────────
+// Tickets de cortesía que se entregan a sponsors, contactos VIP, municipios,
+// tiendas amigas y casos especiales en eventos con inscripción (ej. L'Etape).
+// Espeja la planilla de asignación de Male (docs/especificaciones/Cortesias-  Male.xlsx):
+// una fila por beneficiario, con una cantidad por tipo de ticket.
+
+model CortesiaEvento {
+  id                Int       @id @default(autoincrement())
+  evento_id         Int
+  evento            Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id        Int
+  empresa           Empresa   @relation(fields: [empresa_id], references: [id])
+  // Beneficiario
+  cliente_nombre    String // empresa o persona
+  contacto_nombre   String? // quien lo gestiona / grupo ("MATIAS", "UCRA", "LA FALDA - MUNICIPIOS")
+  autorizado_por    String? // "MATIAS"
+  observacion       String? // categoría / motivo ("Sponsors", "Municipios", "Tiendas Amigas - Tourmalet")
+  // Estado
+  visado            Boolean   @default(false)
+  entregado         Boolean   @default(false)
+  // audit
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+  items             CortesiaItem[]
+
+  @@index([evento_id, deleted_at])
+}
+
+model CortesiaItem {
+  id                 Int            @id @default(autoincrement())
+  cortesia_id        Int
+  cortesia           CortesiaEvento @relation(fields: [cortesia_id], references: [id])
+  // "Ruta Larga - Kit Estándar", "Ruta Larga - Kit Full", "Ruta Larga - Tourmalet", "Ruta Corta - …"
+  tipo_ticket        String
+  cantidad           Int
+  // Datos del inscripto (del sistema de inscripciones Njuko). Un ítem con datos de
+  // inscripto representa UN ticket concreto (cantidad = 1); son opcionales porque
+  // la asignación existe antes de que el corredor se inscriba.
+  bib_number         String?
+  nombre_inscripto   String?
+  apellido_inscripto String?
+  dni                String?
+  email              String?
+  created_at         DateTime       @default(now())
+
+  @@index([cortesia_id])
 }

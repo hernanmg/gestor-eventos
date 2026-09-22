@@ -16,6 +16,7 @@ const createSchema = z.object({
   fecha_fin:       z.string().nullable().optional(),
   dias_montaje:    z.number().int().nonnegative().optional(),
   dias_desmontaje: z.number().int().nonnegative().optional(),
+  lugar:           z.string().trim().nullable().optional(),
   socios:          z.array(socioSchema).default([]),
   moneda_base:     z.enum(['ARS', 'USD']).default('ARS'),
   es_informal:     z.boolean().optional(),
@@ -32,6 +33,7 @@ const updateSchema = z.object({
   fecha_fin:       z.string().nullable().optional(),
   dias_montaje:    z.number().int().nonnegative().optional(),
   dias_desmontaje: z.number().int().nonnegative().optional(),
+  lugar:           z.string().trim().nullable().optional(),
   socios:          z.array(socioSchema).optional(),
   moneda_base:     z.enum(['ARS', 'USD']).optional(),
   estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
@@ -105,7 +107,7 @@ export async function create(req: Request, res: Response) {
     return;
   }
   const {
-    nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base,
+    nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base,
     es_informal, facturar, facturar_notas,
   } = parsed.data;
   if (!sociosSumOk(socios)) {
@@ -122,6 +124,7 @@ export async function create(req: Request, res: Response) {
         fecha_fin:       toDate(fecha_fin) ?? null,
         dias_montaje:    dias_montaje    ?? 0,
         dias_desmontaje: dias_desmontaje ?? 0,
+        lugar:           lugar || null,
         socios,
         moneda_base:  moneda_base as Moneda,
         es_informal:  es_informal ?? false,
@@ -160,7 +163,7 @@ export async function update(req: Request, res: Response) {
   const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, socios, moneda_base, estado } = parsed.data;
+  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base, estado } = parsed.data;
   if (socios !== undefined && !sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -175,6 +178,7 @@ export async function update(req: Request, res: Response) {
         ...(fecha_fin       !== undefined && { fecha_fin:    toDate(fecha_fin) }),
         ...(dias_montaje    !== undefined && { dias_montaje }),
         ...(dias_desmontaje !== undefined && { dias_desmontaje }),
+        ...(lugar !== undefined && { lugar: lugar || null }),
         ...(socios       !== undefined && { socios }),
         ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
         ...(estado       !== undefined && { estado: estado as EstadoEvento }),

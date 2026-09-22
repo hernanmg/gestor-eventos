@@ -4,6 +4,7 @@ import { useAuditoria } from '@/hooks/useAuditoria';
 import type { AuditoriaLog } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ACCIONES = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT'];
 const ENTIDADES = ['Movimiento', 'Evento', 'CuentaBancaria', 'MovimientoCaja', 'Echeq', 'Usuario', 'EventoAcceso'];
@@ -168,7 +169,7 @@ export default function AuditoriaPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <BaseTable className="w-full text-sm">
                 <thead className="border-b bg-muted/30">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -183,7 +184,7 @@ export default function AuditoriaPage() {
                 <tbody>
                   {data.data.map(log => <LogRow key={log.id} log={log} />)}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
 
             {/* Paginación */}

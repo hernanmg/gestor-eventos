@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/formatters';
 import { cn, getApiErrorMessage, getApiFieldErrors } from '@/lib/utils';
 import type { Empleado, CategoriaEmpleado, EstadoEmpleado, TipoLiquidacion } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const CATEGORIA_LABEL: Record<CategoriaEmpleado, string> = {
   CAPITAN: 'Capitán', ARMADOR: 'Armador', CHOFER: 'Chofer',
@@ -528,8 +529,8 @@ function HistorialTab({ empleado }: { empleado: Empleado }) {
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-orange-200 inline-block" /> Con viaje</span>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border max-h-96 overflow-y-auto">
-        <table className="w-full text-xs">
+      <div className="overflow-x-auto max-h-96 overflow-y-auto">
+        <BaseTable className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-border sticky top-0">
             <tr>
               <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Fecha</th>
@@ -565,7 +566,7 @@ function HistorialTab({ empleado }: { empleado: Empleado }) {
               <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(totales.viatico)}</td>
             </tr>
           </tfoot>
-        </table>
+        </BaseTable>
       </div>
 
       <ImportarHistorialDialog open={importarOpen} onClose={() => setImportarOpen(false)} empleadoId={empleado.id} mes={mes} anio={anio} />
@@ -604,8 +605,8 @@ function AsistenciaTab({ empleado }: { empleado: Empleado }) {
         <p className="text-xs text-muted-foreground">Cargando...</p>
       ) : (
         <>
-          <div className="rounded-md border border-border max-h-72 overflow-y-auto">
-            <table className="w-full text-xs">
+          <div className="max-h-72 overflow-y-auto">
+            <BaseTable className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-border sticky top-0">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Fecha</th>
@@ -626,7 +627,7 @@ function AsistenciaTab({ empleado }: { empleado: Empleado }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground pt-1 border-t border-border">
             <span>Presente: {data.conteo.dias_presente} · Ausente: {data.conteo.dias_ausente} · Tarde: {data.conteo.dias_tarde}</span>
@@ -803,8 +804,8 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Apellido</th>
@@ -836,7 +837,7 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

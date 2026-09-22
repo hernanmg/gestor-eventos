@@ -518,7 +518,9 @@ export async function pagarFactura(req: Request, res: Response) {
           fecha:       new Date(fecha_pago),
           concepto:    factura.proveedor?.nombre ?? 'Sin proveedor',
           descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
-          haber:       importe,
+          // Convención de Movimiento: EGRESO → DEBE (haber = 0). Los reportes calculan
+          // egresos = debe − haber, así que en HABER el pago restaba del total en vez de sumar.
+          debe:        importe,
           moneda:      factura.moneda,
           tasa_cambio: factura.tasa_cambio,
           monto_ars:   convertirARS(importe, factura.moneda, factura.tasa_cambio !== null ? Number(factura.tasa_cambio) : null),

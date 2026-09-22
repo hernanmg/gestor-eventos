@@ -10,6 +10,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import FacturaForm from '@/pages/Facturas/FacturaForm';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADO_META: Record<EstadoFactura, { label: string; cls: string; Icon: any }> = {
   RECIBIDA: { label: 'Recibida',  cls: 'bg-blue-100 text-blue-800',    Icon: Clock },
@@ -60,8 +61,8 @@ export default function EventoFacturas({ eventoId }: Props) {
           </Button>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-lg overflow-x-auto">
-          <table className="w-full min-w-[600px] text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full min-w-[600px] text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 <th className="text-left py-2 px-3 font-medium">Factura</th>
@@ -104,7 +105,7 @@ export default function EventoFacturas({ eventoId }: Props) {
                 );
               })}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

@@ -12,6 +12,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { SeguroVehiculo, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -194,8 +195,8 @@ export default function SegurosTab() {
           <p className="text-sm">No hay seguros cargados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[900px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[900px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Vehículo</th>
@@ -234,7 +235,7 @@ export default function SegurosTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

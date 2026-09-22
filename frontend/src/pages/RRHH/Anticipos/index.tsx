@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { TipoAnticipo } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const TIPO_LABEL: Record<TipoAnticipo, string> = { ADELANTO: 'Adelanto', VALE: 'Vale', DESCUENTO: 'Descuento', MULTA: 'Multa' };
 
@@ -120,8 +121,8 @@ export default function AnticiposTab({ empleadoIdInicial }: { empleadoIdInicial?
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
@@ -156,7 +157,7 @@ export default function AnticiposTab({ empleadoIdInicial }: { empleadoIdInicial?
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

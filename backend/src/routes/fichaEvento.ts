@@ -8,7 +8,7 @@ import {
   getFicha, resumenFicha, inicializarFicha, exportarFicha,
   updateRubroEvento, addPedidoItem, updatePedidoItem, deletePedidoItem,
   asignarStock, desasignarStock,
-  listarHojasFichaImport, importarFicha,
+  listarHojasFichaImport, importarFicha, importarEsquemaTurnos,
 } from '../controllers/fichaEvento.controller';
 
 const uploadXlsx = (req: any, res: any, next: any) => {
@@ -37,6 +37,7 @@ rubrosEventoRouter.use(auth);
 rubrosEventoRouter.use(tenantMiddleware);
 rubrosEventoRouter.put('/:id',        requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(updateRubroEvento));
 rubrosEventoRouter.post('/:id/items', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(addPedidoItem));
+rubrosEventoRouter.post('/:id/importar-seguridad',            requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarEsquemaTurnos));
 rubrosEventoRouter.post('/:id/asignar-stock',                requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(asignarStock));
 rubrosEventoRouter.delete('/:id/asignaciones/:asignacionId', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(desasignarStock));
 

@@ -8,6 +8,7 @@ import FacturaEmitidaForm from '@/pages/FacturasEmitidas/FacturaEmitidaForm';
 import FacturaEmitidaDetalle from '@/pages/FacturasEmitidas/FacturaEmitidaDetalle';
 import { TIPO_COMPROBANTE_LABEL } from '@/pages/FacturasEmitidas/labels';
 import { formatCurrency } from '@/lib/formatters';
+import BaseTable from '@/components/ui/BaseTable';
 
 interface Props {
   eventoId:   number;
@@ -43,8 +44,8 @@ export default function FacturasACobrarTab({ eventoId, eventoNombre }: Props) {
           </Button>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-lg overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 <th className="text-left py-2 px-3 font-medium">Tipo</th>
@@ -73,7 +74,7 @@ export default function FacturasACobrarTab({ eventoId, eventoNombre }: Props) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

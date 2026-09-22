@@ -8,6 +8,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate } from '@/lib/formatters';
 import type { Activo, EstadoActivo } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -229,8 +230,8 @@ export default function ActivosTab() {
           <p className="text-sm">No hay activos registrados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
@@ -264,7 +265,7 @@ export default function ActivosTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

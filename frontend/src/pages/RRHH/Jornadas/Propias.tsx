@@ -4,6 +4,7 @@ import { useJornadas } from '@/hooks/useRRHH';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { JornadaDialog, soloHora, ESTADO_LABEL, ESTADO_VARIANT } from './index';
+import BaseTable from '@/components/ui/BaseTable';
 
 export default function JornadasPropias({ empleadoId }: { empleadoId: number }) {
   const { data: jornadas = [], isLoading } = useJornadas({ empleado_id: empleadoId });
@@ -20,8 +21,8 @@ export default function JornadasPropias({ empleadoId }: { empleadoId: number }) 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Evento</th>
@@ -52,7 +53,7 @@ export default function JornadasPropias({ empleadoId }: { empleadoId: number }) 
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

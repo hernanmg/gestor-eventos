@@ -17,6 +17,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency, formatLitros } from '@/lib/formatters';
 import type { CargaCombustible, TipoCombustible } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -459,7 +460,7 @@ export default function CargasTab() {
                     {ultimoSaldo != null && <span>Saldo: <span className="font-semibold text-foreground">{formatCurrency(ultimoSaldo)}</span></span>}
                   </div>
                 </div>
-                <table className="w-full text-sm min-w-[1200px]">
+                <BaseTable className="w-full text-sm min-w-[1200px]">
                   <thead className="border-b bg-muted/10">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -512,7 +513,7 @@ export default function CargasTab() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </BaseTable>
               </div>
             );
           })}

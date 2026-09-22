@@ -15,6 +15,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Echeq } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -358,8 +359,8 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
       {isLoading ? (
         <p className="text-sm text-muted-foreground py-4">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className={th}>N°</th>
@@ -458,7 +459,7 @@ export default function EcheqsPage({ eventoId, canEdit }: Props) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

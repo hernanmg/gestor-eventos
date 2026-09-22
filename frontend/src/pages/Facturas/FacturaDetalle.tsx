@@ -24,6 +24,7 @@ import api from '@/lib/api';
 import type { EstadoFactura, MedioPago, PagoFactura } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Estado badge ───────────────────────────────────────────────────────────────
 
@@ -523,7 +524,7 @@ export default function FacturaDetalle() {
         {pagosActivos.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">Sin pagos registrados.</p>
         ) : (
-          <table className="w-full">
+          <BaseTable className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
                 <th className="text-left py-2 px-3">Fecha</th>
@@ -538,7 +539,7 @@ export default function FacturaDetalle() {
             <tbody>
               {pagosActivos.map(p => <FilaPago key={p.id} pago={p} moneda={factura.moneda} />)}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

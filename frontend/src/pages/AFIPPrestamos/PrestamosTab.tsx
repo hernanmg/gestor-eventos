@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { PrestamoBancario, CuotaPrestamo, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls   = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls   = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -214,8 +215,8 @@ function PrestamoDialog({ open, prestamo, onClose }: { open: boolean; prestamo: 
                 <p className="text-xs text-muted-foreground mt-1">Si no la cargás, se genera automáticamente dividiendo el capital en partes iguales — podés editarla después.</p>
               )}
               {cargarTabla && cuotasManuales.length > 0 && (
-                <div className="mt-2 border rounded-md overflow-x-auto max-h-56 overflow-y-auto">
-                  <table className="w-full text-xs min-w-[640px]">
+                <div className="mt-2 overflow-x-auto max-h-56 overflow-y-auto">
+                  <BaseTable className="w-full text-xs min-w-[640px]">
                     <thead className="border-b bg-muted/30 sticky top-0">
                       <tr>
                         <th className="px-2 py-1 text-left">N°</th>
@@ -242,7 +243,7 @@ function PrestamoDialog({ open, prestamo, onClose }: { open: boolean; prestamo: 
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </BaseTable>
                 </div>
               )}
             </div>
@@ -392,8 +393,8 @@ function DetallePrestamo({ id, onClose, onEditar }: { id: number | null; onClose
                 {!prestamo.cuotas || prestamo.cuotas.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Sin cuotas cargadas.</p>
                 ) : (
-                  <div className="border rounded-md overflow-x-auto max-h-80 overflow-y-auto">
-                    <table className="w-full text-xs min-w-[760px]">
+                  <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <BaseTable className="w-full text-xs min-w-[760px]">
                       <thead className="border-b bg-muted/30 sticky top-0">
                         <tr>
                           <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">N°</th>
@@ -411,7 +412,7 @@ function DetallePrestamo({ id, onClose, onEditar }: { id: number | null; onClose
                       <tbody className="divide-y">
                         {prestamo.cuotas.map(c => <CuotaRow key={c.id} cuota={c} onPagar={setCuotaAPagar} />)}
                       </tbody>
-                    </table>
+                    </BaseTable>
                   </div>
                 )}
               </section>
@@ -502,8 +503,8 @@ export default function PrestamosTab() {
           <p className="text-sm">No hay créditos bancarios cargados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[960px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[960px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Entidad</th>
@@ -536,7 +537,7 @@ export default function PrestamosTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

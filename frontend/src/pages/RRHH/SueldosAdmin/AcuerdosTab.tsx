@@ -17,6 +17,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { AcuerdoSueldo, CategoriaAcuerdo, TipoAnticipo } from '@/types';
 import api from '@/lib/api';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -583,7 +584,7 @@ function ValesSection({ empleadoId }: { empleadoId: number }) {
         <p className="text-xs text-muted-foreground">Sin vales o descuentos registrados.</p>
       ) : (
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-xs">
+          <BaseTable className="w-full text-xs">
             <thead className="text-muted-foreground">
               <tr>
                 <th className="text-left px-1.5 py-1 font-medium">Fecha</th>
@@ -604,7 +605,7 @@ function ValesSection({ empleadoId }: { empleadoId: number }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
     </div>
@@ -670,8 +671,8 @@ export default function AcuerdosTab() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Empleado</th>
@@ -727,7 +728,7 @@ export default function AcuerdosTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

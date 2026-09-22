@@ -85,6 +85,10 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
   const esLorena       = user.homeRoute === '/presentismo';
   const esCombustible  = user.homeRoute === '/combustible';
   const esParteDiario  = user.homeRoute === '/parte-diario';
+  // Operador de Enjoy sin dashboard propio (ej. Daniel): menú acotado a lo que usa
+  // — Eventos (con su Ficha, Caja y Comidas adentro de cada evento), Stock y
+  // Calendario. Sin Caja Global, Flota, Proveedores, Facturas, etc.
+  const esOperadorEnjoy = user.rol === 'OPERADOR' && user.empresaId === EMPRESAS.ENJOY && !user.homeRoute;
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -320,6 +324,56 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                           {stockQuiebres > 99 ? '99+' : stockQuiebres}
                         </span>
                       )}
+                    </>
+                  )}
+                </NavLink>
+              )}
+              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
+                <CalendarDays size={18} className="shrink-0" />
+                {isOpen && <span>Calendario</span>}
+              </NavLink>
+            </>
+          ) : esOperadorEnjoy ? (
+            <>
+              <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
+                <Calendar size={18} className="shrink-0" />
+                {isOpen && <span className="flex-1">Eventos</span>}
+                {isOpen && <HomeMark show />}
+              </NavLink>
+              {FEATURES.STOCK && (
+                <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
+                  <div className="relative shrink-0">
+                    <Package size={18} />
+                    {!isOpen && stockQuiebres > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                    )}
+                  </div>
+                  {isOpen && (
+                    <>
+                      <span className="flex-1">Stock</span>
+                      {stockQuiebres > 0 && (
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                          {stockQuiebres > 99 ? '99+' : stockQuiebres}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              )}
+              {FEATURES.STOCK && pendientesFirma > 0 && (
+                <NavLink to="/stock/firmar" title={!isOpen ? 'Firmar movimiento' : undefined} className={navItem}>
+                  <div className="relative shrink-0">
+                    <FileSignature size={18} />
+                    {!isOpen && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" />
+                    )}
+                  </div>
+                  {isOpen && (
+                    <>
+                      <span className="flex-1">Firmar movimiento</span>
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                        {pendientesFirma > 99 ? '99+' : pendientesFirma}
+                      </span>
                     </>
                   )}
                 </NavLink>

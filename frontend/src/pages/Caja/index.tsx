@@ -11,6 +11,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Moneda, TipoCuenta } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Nueva cuenta de empresa (sin evento) ──────────────────────────────────────
 
@@ -202,8 +203,8 @@ export default function CajaGlobalPage() {
       ) : cuentasFiltradas.length === 0 ? (
         <p className="text-sm text-muted-foreground">No hay cuentas para este filtro.</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
@@ -266,7 +267,7 @@ export default function CajaGlobalPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

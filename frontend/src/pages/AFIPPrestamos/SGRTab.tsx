@@ -9,6 +9,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { SGR, EstadoVinculacionSGR, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -249,8 +250,8 @@ export default function SGRTab() {
       ) : sgrs.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">Sin SGRs cargadas.</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[820px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[820px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
@@ -284,7 +285,7 @@ export default function SGRTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

@@ -17,6 +17,7 @@ import CunasTab from './CunasTab';
 import CamionesTab from './CamionesTab';
 import PanolTab from './PanolTab';
 import ActivosTab from './ActivosTab';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -474,8 +475,8 @@ function ProductosTab() {
       ) : productos.length === 0 ? (
         <p className="text-sm text-muted-foreground">No se encontraron productos.</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código interno</th>
@@ -536,7 +537,7 @@ function ProductosTab() {
                 );
               })}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

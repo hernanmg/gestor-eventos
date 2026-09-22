@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { AsignacionDiaria, EstadoAsignacionDiaria } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -368,7 +369,7 @@ function SeccionTabla({ titulo, asignaciones, parteId, fecha, cerrado, onAdd, on
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={asignaciones.map(a => a.id)} strategy={verticalListSortingStrategy}>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
+              <BaseTable className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-white text-muted-foreground text-xs font-medium">
                     <th className="w-6" />
@@ -392,7 +393,7 @@ function SeccionTabla({ titulo, asignaciones, parteId, fecha, cerrado, onAdd, on
                     />
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
           </SortableContext>
         </DndContext>

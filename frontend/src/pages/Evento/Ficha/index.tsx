@@ -12,7 +12,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Trash2, ChevronDown, ChevronRight,
-  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse, Upload,
+  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse, Upload, Users,
 } from 'lucide-react';
 import { format, subDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -20,8 +20,8 @@ import {
   useFichaEvento, useInicializarFicha, useExportarFicha,
   useUpdateRubroEvento, useAddPedidoItem, useUpdatePedidoItem, useDeletePedidoItem,
   useAsignarStock, useDesasignarStock,
-  useListarHojasFichaImport, useImportarFicha,
-  type PedidoItemPayload, type FichaImportResultado,
+  useListarHojasFichaImport, useImportarFicha, useImportarEsquemaTurnos,
+  type PedidoItemPayload, type FichaImportResultado, type EsquemaImportResultado,
 } from '@/hooks/useFichaEvento';
 import { useDisponibilidad } from '@/hooks/useStock';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
@@ -31,10 +31,12 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { parseMoney } from '@/lib/formatters';
+import { calcHorasPorAgente, esRubroPersonal, soloFecha, fmtFechaCorta, fmtHoras } from '@/lib/turnos';
 import type {
   RubroEvento, RubroEventoAsignacionStock, PedidoItem, EstadoRubroEvento,
   ProveedorBusqueda, Moneda, Evento, UbicacionStock, SugerenciaStock,
 } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -160,11 +162,19 @@ function SortablePedidoItemRow({ item, onSave, onDelete }: {
 
 // Tabla "pelada" (sin <tr><td> envolvente) — la ubica quien la use, sea la
 // fila expandida de la tabla desktop o directamente en la card mobile.
-function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEvento: RubroEvento }) {
+//
+// `items` es el subconjunto a mostrar (en modo esquema de personal, sólo los ítems
+// que NO son turnos). El backend reordena contra TODOS los hermanos, así que la
+// posición destino se calcula sobre `rubroEvento.pedido_items`, no sobre el subconjunto.
+function PedidoItemsTable({ eventoId, rubroEvento, items = rubroEvento.pedido_items }: {
+  eventoId:    number;
+  rubroEvento: RubroEvento;
+  items?:      PedidoItem[];
+}) {
   const addItem    = useAddPedidoItem(eventoId);
   const updateItem = useUpdatePedidoItem(eventoId);
   const deleteItem = useDeletePedidoItem(eventoId);
-  const items = rubroEvento.pedido_items;
+  const allItems = rubroEvento.pedido_items;
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -174,9 +184,9 @@ function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEv
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const newIndex = items.findIndex(i => i.id === Number(over.id));
+    const newIndex = allItems.findIndex(i => i.id === Number(over.id));
     updateItem.mutate({ id: Number(active.id), data: { orden: newIndex + 1 } });
-  }, [items, updateItem]);
+  }, [allItems, updateItem]);
 
   const handleSave = useCallback((id: number, data: Partial<PedidoItemPayload>) => {
     updateItem.mutate({ id, data });
@@ -195,8 +205,8 @@ function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEv
     <div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-          <div className="overflow-x-auto border border-border rounded-md bg-white">
-            <table className="w-full text-xs border-collapse">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-xs border-collapse">
               <thead>
                 <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
                   <th className="w-6" />
@@ -217,13 +227,400 @@ function PedidoItemsTable({ eventoId, rubroEvento }: { eventoId: number; rubroEv
                   <tr><td colSpan={8} className="py-4 text-center text-muted-foreground">Sin ítems cargados todavía.</td></tr>
                 )}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </SortableContext>
       </DndContext>
       <Button variant="ghost" size="sm" onClick={handleAdd} disabled={addItem.isPending} className="h-7 text-xs text-muted-foreground hover:text-foreground mt-1.5">
         <Plus size={13} className="mr-1" /> Agregar ítem
       </Button>
+    </div>
+  );
+}
+
+// ── Esquema de personal por turno (seguridad, limpieza…) ─────────────────────
+// Un PedidoItem con fecha_turno es una línea de la grilla de dotación:
+// Fecha | Tipo de turno | Ubicación | Ingreso | Salida | Hs/agente | Cantidad | Total hs.
+// Hs/agente y Total hs los deriva el backend (turnos que cruzan medianoche incluidos);
+// acá se recalculan en vivo sólo para mostrarlos mientras se edita.
+
+function turnoToLocal(item: PedidoItem) {
+  return {
+    fecha:     soloFecha(item.fecha_turno),
+    tipo:      item.tipo_turno ?? '',
+    ubicacion: item.ubicacion_turno ?? '',
+    inicio:    item.hora_inicio_turno ?? '',
+    fin:       item.hora_fin_turno ?? '',
+    cantidad:  item.cantidad !== null ? String(item.cantidad) : '',
+  };
+}
+
+function TurnoRow({ item, tiposListId, ubicListId, onSave, onDelete }: {
+  item:        PedidoItem;
+  tiposListId: string;
+  ubicListId:  string;
+  onSave:      (id: number, data: Partial<PedidoItemPayload>) => void;
+  onDelete:    (id: number) => void;
+}) {
+  const [local, setLocal] = useState(turnoToLocal(item));
+  useEffect(() => { setLocal(turnoToLocal(item)); }, [item]);
+
+  const cantidad = local.cantidad !== '' ? parseFloat(local.cantidad) : null;
+  const horas    = calcHorasPorAgente(local.inicio, local.fin) ?? item.horas_por_agente;
+  const total    = horas !== null && cantidad !== null && !Number.isNaN(cantidad) ? Math.round(horas * cantidad * 100) / 100 : null;
+
+  const field = (key: keyof typeof local) => ({
+    value: local[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setLocal(p => ({ ...p, [key]: e.target.value })),
+    onBlur: () => {
+      const orig = turnoToLocal(item);
+      if (local[key] === orig[key]) return;
+      // Vaciar la fecha sacaría al ítem del esquema — se restaura en vez de guardar
+      if (key === 'fecha' && !local.fecha) { setLocal(p => ({ ...p, fecha: orig.fecha })); return; }
+      const payload: Partial<PedidoItemPayload> = {};
+      if (key === 'fecha')          payload.fecha_turno       = local.fecha;
+      else if (key === 'tipo')      payload.tipo_turno        = local.tipo.trim() || null;
+      else if (key === 'ubicacion') payload.ubicacion_turno   = local.ubicacion.trim() || null;
+      else if (key === 'inicio')    payload.hora_inicio_turno = local.inicio || null;
+      else if (key === 'fin')       payload.hora_fin_turno    = local.fin || null;
+      else if (key === 'cantidad')  payload.cantidad          = cantidad !== null && !Number.isNaN(cantidad) ? cantidad : null;
+      onSave(item.id, payload);
+    },
+  });
+
+  const cell = 'px-1.5 py-1';
+  return (
+    <tr className="group border-b border-border/60">
+      <td className={cn(cell, 'w-32')}><input {...field('fecha')} type="date" className={inputCls} /></td>
+      <td className={cn(cell, 'w-40')}><input {...field('tipo')} list={tiposListId} placeholder="Seguridad Diurna" className={inputCls} /></td>
+      <td className={cell}><input {...field('ubicacion')} list={ubicListId} placeholder="Ubicación" className={inputCls} /></td>
+      <td className={cn(cell, 'w-24')}><input {...field('inicio')} type="time" className={inputCls} /></td>
+      <td className={cn(cell, 'w-24')}><input {...field('fin')} type="time" className={inputCls} /></td>
+      <td className={cn(cell, 'w-16 text-right text-muted-foreground tabular-nums')} title="Horas por agente (calculadas de Ingreso y Salida)">{fmtHoras(horas)}</td>
+      <td className={cn(cell, 'w-20')}><input {...field('cantidad')} type="number" step="1" min="0" className={cn(inputCls, 'text-right')} /></td>
+      <td className={cn(cell, 'w-20 text-right font-medium tabular-nums')} title="Cantidad × horas por agente">{fmtHoras(total)}</td>
+      <td className="w-8 px-1">
+        <button
+          tabIndex={-1}
+          onClick={() => onDelete(item.id)}
+          className="p-1 rounded text-destructive opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition"
+          title="Eliminar turno"
+        >
+          <Trash2 size={13} />
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function EsquemaPersonalTable({ eventoId, evento, rubroEvento, turnos }: {
+  eventoId:    number;
+  evento:      Evento;
+  rubroEvento: RubroEvento;
+  turnos:      PedidoItem[];
+}) {
+  const addItem    = useAddPedidoItem(eventoId);
+  const updateItem = useUpdatePedidoItem(eventoId);
+  const deleteItem = useDeletePedidoItem(eventoId);
+
+  // Por día y, dentro del día, en el orden cargado (igual que la grilla exportada)
+  const ordenados = useMemo(
+    () => [...turnos].sort((a, b) => soloFecha(a.fecha_turno).localeCompare(soloFecha(b.fecha_turno)) || a.orden - b.orden),
+    [turnos],
+  );
+  const totalHoras = turnos.reduce((acc, t) => acc + (t.total_horas_turno ?? 0), 0);
+
+  const listId = `turnos-${rubroEvento.id}`;
+  const tipos = useMemo(() => {
+    const base = /seguridad/i.test(rubroEvento.rubro.nombre) ? ['Seguridad Diurna', 'Seguridad Nocturna', 'Seguridad Evento'] : [];
+    return Array.from(new Set([...base, ...turnos.map(t => t.tipo_turno).filter((x): x is string => !!x)]));
+  }, [turnos, rubroEvento.rubro.nombre]);
+  const ubicaciones = useMemo(
+    () => Array.from(new Set(turnos.map(t => t.ubicacion_turno).filter((x): x is string => !!x))),
+    [turnos],
+  );
+
+  const handleSave = useCallback((id: number, data: Partial<PedidoItemPayload>) => {
+    updateItem.mutate({ id, data });
+  }, [updateItem]);
+
+  const handleDelete = useCallback((id: number) => {
+    if (!window.confirm('¿Eliminar este turno del esquema?')) return;
+    deleteItem.mutate(id);
+  }, [deleteItem]);
+
+  // El turno nuevo copia el último cargado (mismo día/tipo/horario/cantidad, sin
+  // ubicación): la grilla real repite casi todo y sólo cambia el puesto.
+  const handleAdd = () => {
+    const ultimo = ordenados[ordenados.length - 1];
+    addItem.mutate({
+      rubroEventoId: rubroEvento.id,
+      data: {
+        descripcion:       'Turno',
+        cantidad:          ultimo?.cantidad ?? 1,
+        fecha_turno:       soloFecha(ultimo?.fecha_turno) || soloFecha(evento.fecha_inicio) || format(new Date(), 'yyyy-MM-dd'),
+        tipo_turno:        ultimo?.tipo_turno ?? null,
+        hora_inicio_turno: ultimo?.hora_inicio_turno ?? null,
+        hora_fin_turno:    ultimo?.hora_fin_turno ?? null,
+      },
+    });
+  };
+
+  return (
+    <div>
+      <datalist id={`${listId}-tipos`}>{tipos.map(t => <option key={t} value={t} />)}</datalist>
+      <datalist id={`${listId}-ubic`}>{ubicaciones.map(u => <option key={u} value={u} />)}</datalist>
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
+              <th className="px-1.5 py-1.5 text-left w-32">Fecha</th>
+              <th className="px-1.5 py-1.5 text-left w-40">Tipo de turno</th>
+              <th className="px-1.5 py-1.5 text-left">Ubicación</th>
+              <th className="px-1.5 py-1.5 text-left w-24">Ingreso</th>
+              <th className="px-1.5 py-1.5 text-left w-24">Salida</th>
+              <th className="px-1.5 py-1.5 text-right w-16">Hs/agente</th>
+              <th className="px-1.5 py-1.5 text-right w-20">Cantidad</th>
+              <th className="px-1.5 py-1.5 text-right w-20">Total hs</th>
+              <th className="w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {ordenados.map(t => (
+              <TurnoRow
+                key={t.id} item={t}
+                tiposListId={`${listId}-tipos`} ubicListId={`${listId}-ubic`}
+                onSave={handleSave} onDelete={handleDelete}
+              />
+            ))}
+            {ordenados.length === 0 && (
+              <tr><td colSpan={9} className="py-4 text-center text-muted-foreground">Sin turnos cargados todavía.</td></tr>
+            )}
+          </tbody>
+          {ordenados.length > 0 && (
+            <tfoot>
+              <tr className="border-t border-border bg-gray-50 font-semibold">
+                <td colSpan={7} className="px-1.5 py-1.5 text-right">TOTAL HORAS:</td>
+                <td className="px-1.5 py-1.5 text-right tabular-nums">{fmtHoras(totalHoras)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </BaseTable>
+      </div>
+      <Button variant="ghost" size="sm" onClick={handleAdd} disabled={addItem.isPending} className="h-7 text-xs text-muted-foreground hover:text-foreground mt-1.5">
+        <Plus size={13} className="mr-1" /> Agregar turno
+      </Button>
+    </div>
+  );
+}
+
+// ── Importar esquema de personal desde Excel (SEGURIDAD_FESTIVAL_KM.xlsx) ────
+
+type EsquemaImportStep = 'archivo' | 'preview' | 'success';
+
+function ImportarEsquemaDialog({ eventoId, rubroEvento, onClose }: {
+  eventoId:    number;
+  rubroEvento: RubroEvento;
+  onClose:     () => void;
+}) {
+  const [step, setStep]           = useState<EsquemaImportStep>('archivo');
+  const [file, setFile]           = useState<File | null>(null);
+  const [preview, setPreview]     = useState<EsquemaImportResultado | null>(null);
+  const [resultado, setResultado] = useState<EsquemaImportResultado | null>(null);
+  const [error, setError]         = useState<string | null>(null);
+
+  const importar = useImportarEsquemaTurnos(eventoId);
+
+  const handleFile = async (f: File) => {
+    setFile(f);
+    setError(null);
+    try {
+      setPreview(await importar.mutateAsync({ rubroEventoId: rubroEvento.id, file: f, preview: true }));
+      setStep('preview');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  const handleConfirmar = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      setResultado(await importar.mutateAsync({ rubroEventoId: rubroEvento.id, file, preview: false }));
+      setStep('success');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader><DialogTitle>Importar esquema de {rubroEvento.rubro.nombre} desde Excel</DialogTitle></DialogHeader>
+
+        {step === 'archivo' && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Subí la planilla con la grilla <span className="font-medium">N° | Fecha | Tipo | Cantidad | Ubicación | Ingreso | Salida</span> (ej. SEGURIDAD FESTIVAL KM.xlsx).
+              Los turnos que ya existan (misma fecha, ubicación, ingreso y tipo) se actualizan; el resto se crea.
+            </p>
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg py-10 cursor-pointer hover:bg-accent/30 transition">
+              <Upload size={22} className="text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                {importar.isPending ? 'Leyendo archivo…' : 'Hacé clic para elegir el archivo .xlsx'}
+              </span>
+              <input
+                type="file" accept=".xlsx" className="hidden" disabled={importar.isPending}
+                onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+              />
+            </label>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+        )}
+
+        {step === 'preview' && preview && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span><span className="font-semibold text-green-700">{preview.creados}</span> a crear</span>
+              <span><span className="font-semibold">{preview.actualizados}</span> a actualizar</span>
+              <span>Total: <span className="font-semibold">{fmtHoras(preview.total_horas)}</span> hs</span>
+            </div>
+            {preview.omitidas.length > 0 && (
+              <div className="text-xs bg-yellow-50 text-yellow-800 rounded px-3 py-2">
+                <p className="font-medium mb-1 flex items-center gap-1"><AlertTriangle size={12} /> Filas omitidas:</p>
+                <p>{preview.omitidas.map(o => `fila ${o.fila_excel} (${o.motivo})`).join(', ')}</p>
+              </div>
+            )}
+            <div className="max-h-72 overflow-y-auto">
+              <BaseTable className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr className="border-b border-border text-muted-foreground font-medium">
+                    <th className="px-2 py-1.5 text-center">Día</th>
+                    <th className="px-2 py-1.5 text-left">Fecha</th>
+                    <th className="px-2 py-1.5 text-left">Tipo</th>
+                    <th className="px-2 py-1.5 text-left">Ubicación</th>
+                    <th className="px-2 py-1.5 text-left">Horario</th>
+                    <th className="px-2 py-1.5 text-right">Cant.</th>
+                    <th className="px-2 py-1.5 text-right">Total hs</th>
+                    <th className="px-2 py-1.5 text-left">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {preview.filas.map(f => (
+                    <tr key={f.fila_excel}>
+                      <td className="px-2 py-1 text-center text-muted-foreground">{f.dia_numero ?? '—'}</td>
+                      <td className="px-2 py-1">{fmtFechaCorta(f.fecha)}</td>
+                      <td className="px-2 py-1">{f.tipo_turno ?? '—'}</td>
+                      <td className="px-2 py-1">{f.ubicacion_turno ?? '—'}</td>
+                      <td className="px-2 py-1 whitespace-nowrap">{f.hora_inicio ?? '?'} – {f.hora_fin ?? '?'}</td>
+                      <td className="px-2 py-1 text-right">{f.cantidad}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{fmtHoras(f.total_horas)}</td>
+                      <td className="px-2 py-1">
+                        {f.accion === 'CREAR' ? 'Crear' : 'Actualizar'}
+                        {f.advertencias.length > 0 && (
+                          <span title={f.advertencias.join('\n')} className="ml-1 text-yellow-700 cursor-help">
+                            <AlertTriangle size={11} className="inline" />
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </BaseTable>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => { setStep('archivo'); setPreview(null); }}>Atrás</Button>
+              <Button size="sm" onClick={handleConfirmar} disabled={importar.isPending}>
+                {importar.isPending ? 'Importando…' : 'Confirmar importación'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'success' && resultado && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Importación completa: <span className="font-semibold text-green-700">{resultado.creados}</span> turnos creados,{' '}
+              <span className="font-semibold">{resultado.actualizados}</span> actualizados — {fmtHoras(resultado.total_horas)} hs en total.
+            </p>
+            <div className="flex justify-end pt-1">
+              <Button size="sm" onClick={onClose}>Cerrar</Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Pedido técnico: tabla de material o esquema de personal ───────────────────
+// En rubros de personal (Seguridad, Limpieza…) hay un toggle "Modo esquema de
+// personal". Si el rubro ya tiene turnos cargados (fecha_turno) se muestra en
+// modo esquema automáticamente y el toggle queda fijo: no se puede volver a la
+// tabla de material sin perder de vista los turnos existentes.
+
+function PedidoTecnicoSection({ eventoId, evento, rubroEvento }: {
+  eventoId:    number;
+  evento:      Evento;
+  rubroEvento: RubroEvento;
+}) {
+  const turnos = useMemo(() => rubroEvento.pedido_items.filter(i => i.fecha_turno), [rubroEvento.pedido_items]);
+  const otros  = useMemo(() => rubroEvento.pedido_items.filter(i => !i.fecha_turno), [rubroEvento.pedido_items]);
+
+  const tieneTurnos  = turnos.length > 0;
+  const puedeEsquema = tieneTurnos || esRubroPersonal(rubroEvento.rubro.nombre);
+  const [manual, setManual]         = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const modoEsquema = puedeEsquema && (tieneTurnos || manual);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {modoEsquema ? 'Esquema de personal' : 'Pedido técnico'} — {rubroEvento.rubro.nombre}
+        </p>
+        {puedeEsquema && (
+          <div className="flex items-center gap-3">
+            <label
+              className={cn('flex items-center gap-1.5 text-xs select-none', tieneTurnos ? 'cursor-not-allowed opacity-70' : 'cursor-pointer')}
+              title={tieneTurnos ? 'Eliminá los turnos cargados para volver a la tabla de material' : undefined}
+            >
+              <button
+                type="button" role="switch" aria-checked={modoEsquema} disabled={tieneTurnos}
+                onClick={() => setManual(m => !m)}
+                className={cn(
+                  'relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-ring',
+                  modoEsquema ? 'bg-primary' : 'bg-gray-300',
+                )}
+              >
+                <span className={cn('inline-block h-3 w-3 rounded-full bg-white shadow transition-transform', modoEsquema ? 'translate-x-3.5' : 'translate-x-0.5')} />
+              </button>
+              <span className="flex items-center gap-1"><Users size={12} /> Modo esquema de personal</span>
+            </label>
+            {modoEsquema && (
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="h-7 text-xs">
+                <Upload size={12} className="mr-1" /> Importar esquema desde Excel
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {modoEsquema ? (
+        <div className="space-y-3">
+          <EsquemaPersonalTable eventoId={eventoId} evento={evento} rubroEvento={rubroEvento} turnos={turnos} />
+          <div>
+            <p className="text-[11px] font-medium text-muted-foreground mb-1">Otros ítems del pedido (cantidad / descripción)</p>
+            <PedidoItemsTable eventoId={eventoId} rubroEvento={rubroEvento} items={otros} />
+          </div>
+        </div>
+      ) : (
+        <PedidoItemsTable eventoId={eventoId} rubroEvento={rubroEvento} />
+      )}
+
+      {importOpen && <ImportarEsquemaDialog eventoId={eventoId} rubroEvento={rubroEvento} onClose={() => setImportOpen(false)} />}
     </div>
   );
 }
@@ -415,8 +812,8 @@ function StockPropioSection({ eventoId, evento, rubroEvento }: {
       </div>
 
       {activas.length > 0 ? (
-        <div className="overflow-x-auto border border-border rounded-md bg-white">
-          <table className="w-full text-xs border-collapse">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-xs border-collapse">
             <thead>
               <tr className="border-b border-border bg-gray-50 text-muted-foreground text-[11px] font-medium">
                 <th className="px-2 py-1.5 text-left">Producto</th>
@@ -445,7 +842,7 @@ function StockPropioSection({ eventoId, evento, rubroEvento }: {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">Sin stock propio asignado a este rubro.</p>
@@ -478,16 +875,16 @@ function RubroDetallePanel({ eventoId, evento, rubroEvento, colSpan }: {
       <td colSpan={colSpan} className="bg-muted/10 px-4 py-3 space-y-4">
         <StockPropioSection eventoId={eventoId} evento={evento} rubroEvento={rubroEvento} />
 
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Pedido técnico — {rubroEvento.rubro.nombre}
-          </p>
-          {rubroEvento.estado === 'CONFIRMADO' ? (
-            <PedidoItemsTable eventoId={eventoId} rubroEvento={rubroEvento} />
-          ) : (
+        {rubroEvento.estado === 'CONFIRMADO' ? (
+          <PedidoTecnicoSection eventoId={eventoId} evento={evento} rubroEvento={rubroEvento} />
+        ) : (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Pedido técnico — {rubroEvento.rubro.nombre}
+            </p>
             <p className="text-xs text-muted-foreground">Confirmá el proveedor externo para cargar el pedido técnico.</p>
-          )}
-        </div>
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -649,10 +1046,7 @@ function RubroEventoCard({ eventoId, evento, re, expanded, onToggleExpand }: {
             <>
               <StockPropioSection eventoId={eventoId} evento={evento} rubroEvento={re} />
               {re.estado === 'CONFIRMADO' ? (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pedido técnico</p>
-                  <PedidoItemsTable eventoId={eventoId} rubroEvento={re} />
-                </div>
+                <PedidoTecnicoSection eventoId={eventoId} evento={evento} rubroEvento={re} />
               ) : (
                 <p className="text-xs text-muted-foreground">Confirmá el proveedor externo para cargar el pedido técnico.</p>
               )}
@@ -781,8 +1175,8 @@ function ImportarExcelDialog({ eventoId, onClose }: { eventoId: number; onClose:
                 <p>{preview.rubros_no_encontrados.join(', ')}</p>
               </div>
             )}
-            <div className="max-h-72 overflow-y-auto border border-border rounded-md">
-              <table className="w-full text-xs border-collapse">
+            <div className="max-h-72 overflow-y-auto">
+              <BaseTable className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-gray-50">
                   <tr className="border-b border-border text-muted-foreground font-medium">
                     <th className="px-2 py-1.5 text-left">Servicio</th>
@@ -808,7 +1202,7 @@ function ImportarExcelDialog({ eventoId, onClose }: { eventoId: number; onClose:
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
@@ -937,8 +1331,8 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
           </div>
 
           {/* Tabla — desktop */}
-          <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
-            <table className="w-full border-collapse">
+          <div className="hidden md:block overflow-x-auto">
+            <BaseTable className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-border bg-gray-50 text-muted-foreground text-xs font-medium">
                   <th className="px-2 py-2 text-center w-10">#</th>
@@ -967,7 +1361,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
                   <tr><td colSpan={9} className="py-8 text-center text-sm text-muted-foreground">Ningún rubro coincide con el filtro.</td></tr>
                 )}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
 
           {/* Cards — mobile */}

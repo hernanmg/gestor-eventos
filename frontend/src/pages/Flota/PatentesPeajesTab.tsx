@@ -14,6 +14,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { PatenteVehiculo } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -187,8 +188,8 @@ function PatentesSubTab({ focusVehiculoId }: { focusVehiculoId: number | null })
           <p className="text-sm">No hay patentes cargadas.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[800px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[800px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Vehículo</th>
@@ -219,7 +220,7 @@ function PatentesSubTab({ focusVehiculoId }: { focusVehiculoId: number | null })
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 
@@ -366,8 +367,8 @@ function PeajesSubTab() {
           <p className="text-sm">No hay gastos de peaje registrados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[800px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[800px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -405,7 +406,7 @@ function PeajesSubTab() {
                 <td colSpan={3} />
               </tr>
             </tfoot>
-          </table>
+          </BaseTable>
         </div>
       )}
 

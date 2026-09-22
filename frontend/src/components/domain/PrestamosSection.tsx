@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { getApiErrorMessage } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -121,7 +122,7 @@ export default function PrestamosSection({ empleadoId }: { empleadoId: number })
         <p className="text-xs text-muted-foreground">Sin préstamos registrados.</p>
       ) : (
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-xs">
+          <BaseTable className="w-full text-xs">
             <thead className="text-muted-foreground">
               <tr>
                 <th className="text-left px-1.5 py-1 font-medium">Detalle</th>
@@ -155,7 +156,7 @@ export default function PrestamosSection({ empleadoId }: { empleadoId: number })
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

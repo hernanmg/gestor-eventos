@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -185,7 +186,7 @@ function HojaRow({ hoja }: { hoja: HojaPreview }) {
           {hoja.movimientos.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">Sin movimientos</p>
           ) : (
-            <table className="w-full text-xs min-w-[600px]">
+            <BaseTable className="w-full text-xs min-w-[600px]">
               <thead>
                 <tr className="text-muted-foreground border-b border-border">
                   <th className="py-1 pr-3 text-left font-medium">Fila</th>
@@ -225,13 +226,13 @@ function HojaRow({ hoja }: { hoja: HojaPreview }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           )}
 
           {hoja.echeqs && hoja.echeqs.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground mb-2">Echeqs detectados ({hoja.echeqs.length})</p>
-              <table className="w-full text-xs min-w-[500px]">
+              <BaseTable className="w-full text-xs min-w-[500px]">
                 <thead>
                   <tr className="text-muted-foreground border-b border-border">
                     <th className="py-1 pr-3 text-left font-medium">N°</th>
@@ -252,7 +253,7 @@ function HojaRow({ hoja }: { hoja: HojaPreview }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
           )}
         </div>

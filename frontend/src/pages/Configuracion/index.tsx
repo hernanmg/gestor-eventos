@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -181,8 +182,8 @@ function DraggableTipGroup({
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className="px-2 py-2 w-8" />
@@ -200,7 +201,7 @@ function DraggableTipGroup({
                   />
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </SortableContext>
       </DndContext>
@@ -434,8 +435,8 @@ function DraggableRubroGroup({
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(r => r.id)} strategy={verticalListSortingStrategy}>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className="px-2 py-2 w-8" />
@@ -455,7 +456,7 @@ function DraggableRubroGroup({
                   />
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </SortableContext>
       </DndContext>
@@ -1001,8 +1002,8 @@ function UsuariosSection({ currentUserId, esAdminGlobal }: { currentUserId: numb
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className="px-3 py-2 w-6" />
@@ -1104,7 +1105,7 @@ function UsuariosSection({ currentUserId, esAdminGlobal }: { currentUserId: numb
               );
             })}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
 
       <UsuarioDialog
@@ -1253,8 +1254,8 @@ function CategoriasSection() {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-10">Color</th>
@@ -1317,7 +1318,7 @@ function CategoriasSection() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
 
       <CategoriaDialog open={dialogOpen} categoria={editing} onClose={close} />

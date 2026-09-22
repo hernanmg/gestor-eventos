@@ -3,6 +3,7 @@ import { usePendientesAutorizacionCombustible, useAutorizarCombustible, useRecha
 import { Button } from '@/components/ui/button';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency, formatLitros } from '@/lib/formatters';
+import BaseTable from '@/components/ui/BaseTable';
 
 export default function AutorizadasTab() {
   const { data: pendientes = [], isLoading } = usePendientesAutorizacionCombustible();
@@ -21,8 +22,8 @@ export default function AutorizadasTab() {
   }
 
   return (
-    <div className="rounded-lg border bg-white overflow-x-auto">
-      <table className="w-full text-sm min-w-[800px]">
+    <div className="overflow-x-auto">
+      <BaseTable className="w-full text-sm min-w-[800px]">
         <thead className="border-b bg-muted/30">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -64,7 +65,7 @@ export default function AutorizadasTab() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </BaseTable>
     </div>
   );
 }

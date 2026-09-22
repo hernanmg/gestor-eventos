@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ function TabsTable({ title, rows, moneda }: { title: string; rows: TabResumen[];
   return (
     <div>
       <h4 className="text-sm font-semibold mb-2">{title}</h4>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className={th}>Pestaña</th>
@@ -65,7 +66,7 @@ function TabsTable({ title, rows, moneda }: { title: string; rows: TabResumen[];
               <td className={cn(td, 'text-right')}><SaldoAmount value={totalSaldo} moneda={moneda} /></td>
             </tr>
           </tfoot>
-        </table>
+        </BaseTable>
       </div>
     </div>
   );
@@ -113,8 +114,8 @@ function ResumenMoneda({ pm }: { pm: PorMoneda }) {
         {pm.distribucion_socios.length > 0 && (
           <div>
             <h4 className="text-sm font-semibold mb-2">Distribución de socios</h4>
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full">
+            <div className="overflow-x-auto">
+              <BaseTable className="w-full">
                 <thead className="bg-gray-50 border-b border-border">
                   <tr>
                     <th className={th}>Socio</th>
@@ -135,7 +136,7 @@ function ResumenMoneda({ pm }: { pm: PorMoneda }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
           </div>
         )}
@@ -155,7 +156,7 @@ function CajaResumen({ cuentas }: { cuentas: CajaCuenta[] }) {
       <div className="px-4 py-3 bg-gray-50 border-b border-border">
         <h3 className="font-semibold">Caja</h3>
       </div>
-      <table className="w-full">
+      <BaseTable className="w-full">
         <thead className="border-b border-border">
           <tr>
             <th className={th}>Cuenta</th>
@@ -180,7 +181,7 @@ function CajaResumen({ cuentas }: { cuentas: CajaCuenta[] }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </BaseTable>
     </section>
   );
 }

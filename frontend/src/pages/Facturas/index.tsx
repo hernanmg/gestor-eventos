@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import type { EstadoFactura, Factura, TipoComprobanteEmitido } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
@@ -224,7 +225,7 @@ export default function FacturasPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground p-6">Sin facturas.</p>
         ) : (
-          <table className="w-full min-w-[700px]">
+          <BaseTable className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 <th className="text-left py-2.5 px-3 font-medium">Factura</th>
@@ -239,7 +240,7 @@ export default function FacturasPage() {
             <tbody>
               {filtered.map(f => <FilaFactura key={f.id} f={f} />)}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Lock, Unlock } from 'lucide-react';
 import { useListaPartes } from '@/hooks/useParteDiario';
 import { Badge } from '@/components/ui/badge';
+import BaseTable from '@/components/ui/BaseTable';
 
 export default function ParteDiarioHistorialPage() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ export default function ParteDiarioHistorialPage() {
         ) : partes.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground text-center">No hay partes diarios registrados en este rango.</p>
         ) : (
-          <table className="w-full text-sm">
+          <BaseTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground text-left">
                 <th className="px-3 py-2">Fecha</th>
@@ -68,7 +69,7 @@ export default function ParteDiarioHistorialPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
     </div>

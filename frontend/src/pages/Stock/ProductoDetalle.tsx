@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import type { EstadoAsignacion } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADO_CLASS: Record<EstadoAsignacion, string> = {
   ACTIVA:      'bg-green-100 text-green-800',
@@ -108,8 +109,8 @@ export default function ProductoDetallePage() {
         {asignacionesActivas.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin asignaciones activas.</p>
         ) : (
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Evento</th>
@@ -146,7 +147,7 @@ export default function ProductoDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>
@@ -157,8 +158,8 @@ export default function ProductoDetallePage() {
         {!producto.movimientos?.length ? (
           <p className="text-sm text-muted-foreground">Sin movimientos registrados.</p>
         ) : (
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -185,7 +186,7 @@ export default function ProductoDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>
@@ -194,8 +195,8 @@ export default function ProductoDetallePage() {
       {(producto.asignaciones ?? []).filter(a => a.estado !== 'ACTIVA').length > 0 && (
         <div>
           <h2 className="text-sm font-semibold mb-2">Historial de asignaciones</h2>
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Evento</th>
@@ -218,7 +219,7 @@ export default function ProductoDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </div>
       )}

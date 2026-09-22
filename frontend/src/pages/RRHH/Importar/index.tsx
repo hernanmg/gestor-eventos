@@ -3,6 +3,7 @@ import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from 'lucide-rea
 import { useImportarEmpleados, useImportarJornadas } from '@/hooks/useRRHH';
 import { Button } from '@/components/ui/button';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Dropzone genérico ─────────────────────────────────────────────────────────
 
@@ -100,8 +101,8 @@ function ImportarEmpleados() {
             <span className="text-green-600">{preview.importables} importables</span>
             {preview.omitidas > 0 && <span className="text-destructive">{preview.omitidas} omitidas</span>}
           </div>
-          <div className="rounded-lg border border-border overflow-hidden max-h-96 overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border sticky top-0">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fila</th>
@@ -122,7 +123,7 @@ function ImportarEmpleados() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setPreview(null); setFile(null); }}>Cancelar</Button>

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import CuitInput from '@/components/ui/CuitInput';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── CUIT formatter ────────────────────────────────────────────────────────────
 
@@ -226,8 +227,8 @@ export default function ProveedoresPage() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className={th}>Nombre</th>
@@ -313,7 +314,7 @@ export default function ProveedoresPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

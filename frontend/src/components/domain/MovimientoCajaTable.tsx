@@ -12,6 +12,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { MovimientoCaja, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Types ─────────────���──────────────────────────────��────────────────────────
 
@@ -162,7 +163,7 @@ function ConciliarDialog({
               {query ? 'Sin resultados.' : 'Todos los movimientos están conciliados.'}
             </p>
           ) : (
-            <table className="w-full text-xs">
+            <BaseTable className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tab</th>
@@ -200,7 +201,7 @@ function ConciliarDialog({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           )}
         </div>
 
@@ -425,8 +426,8 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
 
   return (
     <>
-      <div className="overflow-x-auto border border-border rounded-lg">
-        <table className="w-full text-sm border-collapse">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-border bg-gray-50 text-muted-foreground text-xs font-medium">
               <th className="px-2 py-2 text-left w-28">Fecha</th>
@@ -527,7 +528,7 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
               </tr>
             )}
           </tbody>
-        </table>
+        </BaseTable>
 
         {canEdit && !newRow && (
           <div className="px-2 py-1.5 border-t border-border bg-gray-50/50">

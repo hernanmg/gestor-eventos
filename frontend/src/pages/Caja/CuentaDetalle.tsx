@@ -13,6 +13,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { MovimientoCaja } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -310,7 +311,7 @@ export default function CuentaDetallePage() {
         <div className="px-3 py-2 bg-gray-50 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           Resumen por evento
         </div>
-        <table className="w-full text-sm">
+        <BaseTable className="w-full text-sm">
           <thead className="border-b bg-muted/30">
             <tr>
               <th className={th}>Evento</th>
@@ -341,7 +342,7 @@ export default function CuentaDetallePage() {
               </tr>
             </tfoot>
           )}
-        </table>
+        </BaseTable>
       </div>
 
       {/* Filtros */}
@@ -360,8 +361,8 @@ export default function CuentaDetallePage() {
       {loadingMovs ? (
         <p className="text-sm text-muted-foreground">Cargando movimientos...</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className={th}>Fecha</th>
@@ -436,7 +437,7 @@ export default function CuentaDetallePage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </BaseTable>
 
           {canEdit && !newRow && (
             <div className="px-2 py-1.5 border-t bg-gray-50/50">

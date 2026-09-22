@@ -312,6 +312,8 @@ export async function confirmar(req: Request, res: Response) {
         fecha_fin:    preMacro.fecha_fin,
         dias_montaje:    preMacro.dias_montaje ?? 0,
         dias_desmontaje: preMacro.dias_desmontaje ?? 0,
+        // "Estadio Mario Kempes, Córdoba" — alimenta "Ubicación" en la Ficha exportada
+        lugar: [preMacro.lugar_nombre, preMacro.lugar_ciudad].map(x => x?.trim()).filter(Boolean).join(', ') || null,
         socios,
         moneda_base:  preMacro.moneda,
         created_by:   req.user!.id,

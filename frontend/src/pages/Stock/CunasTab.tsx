@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { Cuna } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 function CunaFormDialog({ open, cuna, onClose }: { open: boolean; cuna: Cuna | null; onClose: () => void }) {
   const isEdit      = !!cuna;
@@ -107,11 +108,11 @@ function CunaContenidoDialog({ cunaId, onClose }: { cunaId: number | null; onClo
         <div className="space-y-3 mt-1">
           {cuna.descripcion && <p className="text-sm text-muted-foreground">{cuna.descripcion}</p>}
 
-          <div className="rounded-lg border overflow-hidden">
+          <div>
             {(cuna.productos ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground p-4 text-center">Esta cuna no tiene productos cargados.</p>
             ) : (
-              <table className="w-full text-sm">
+              <BaseTable className="w-full text-sm">
                 <thead className="border-b bg-muted/30">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Producto</th>
@@ -136,7 +137,7 @@ function CunaContenidoDialog({ cunaId, onClose }: { cunaId: number | null; onClo
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             )}
           </div>
 
@@ -197,8 +198,8 @@ export default function CunasTab() {
           <p className="text-sm">No hay cunas registradas.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código</th>
@@ -226,7 +227,7 @@ export default function CunasTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

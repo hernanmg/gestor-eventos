@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { Jornada, EstadoJornada } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADO_LABEL: Record<EstadoJornada, string> = { PENDIENTE: 'Pendiente', APROBADA: 'Aprobada', RECHAZADA: 'Rechazada' };
 const ESTADO_VARIANT: Record<EstadoJornada, 'warning' | 'success' | 'destructive'> = {
@@ -279,8 +280,8 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-2 py-2 w-8" />
@@ -344,7 +345,7 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
                 );
               })}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

@@ -18,6 +18,7 @@ const socioSchema = z.object({
 
 const schema = z.object({
   nombre:          z.string().min(1, 'El nombre es requerido'),
+  lugar:           z.string().optional(),
   fecha_inicio:    z.string().optional(),
   fecha_fin:       z.string().optional(),
   dias_montaje:    z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
@@ -59,6 +60,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       nombre:          evento?.nombre          ?? '',
+      lugar:           evento?.lugar           ?? '',
       fecha_inicio:    toDateInputValue(evento?.fecha_inicio),
       fecha_fin:       toDateInputValue(evento?.fecha_fin),
       dias_montaje:    evento?.dias_montaje    ?? 0,
@@ -75,6 +77,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
   const onSubmit = async (data: FormData) => {
     const payload = {
       nombre:          data.nombre,
+      lugar:           data.lugar?.trim() || null,
       fecha_inicio:    data.fecha_inicio || null,
       fecha_fin:       data.fecha_fin    || null,
       dias_montaje:    data.dias_montaje,
@@ -106,6 +109,12 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
           className={errors.nombre ? 'border-destructive' : ''}
         />
         {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
+      </div>
+
+      {/* Lugar — se imprime como "Ubicación" en la Ficha exportada */}
+      <div className="space-y-1">
+        <Label htmlFor="lugar">Lugar</Label>
+        <Input id="lugar" placeholder="Ej: Playa Norte - Estadio Kempes" disabled={isPending} {...register('lugar')} />
       </div>
 
       {/* Fechas */}

@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { PlanAFIP, CuotaPlanAFIP } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -316,8 +317,8 @@ function DetallePlanAfip({ id, onClose, onEditar }: { id: number | null; onClose
                 {!plan.cuotas || plan.cuotas.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Este plan no tiene un cronograma de cuotas cargado.</p>
                 ) : (
-                  <div className="border rounded-md overflow-x-auto max-h-72 overflow-y-auto">
-                    <table className="w-full text-xs min-w-[560px]">
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                    <BaseTable className="w-full text-xs min-w-[560px]">
                       <thead className="border-b bg-muted/30 sticky top-0">
                         <tr>
                           <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">N°</th>
@@ -344,7 +345,7 @@ function DetallePlanAfip({ id, onClose, onEditar }: { id: number | null; onClose
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </BaseTable>
                   </div>
                 )}
               </section>
@@ -428,8 +429,8 @@ export default function PlanesAfipTab() {
           <p className="text-sm">No hay planes de AFIP cargados.</p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <table className="w-full text-sm min-w-[900px]">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[900px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Descripción</th>
@@ -462,7 +463,7 @@ export default function PlanesAfipTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

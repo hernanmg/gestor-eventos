@@ -2,6 +2,7 @@ import { Fuel } from 'lucide-react';
 import { useCombustible } from '@/hooks/useCombustible';
 import { formatDate, formatCurrency, formatLitros } from '@/lib/formatters';
 import { CombustibleEstadoBadge } from '@/components/ui/badge';
+import BaseTable from '@/components/ui/BaseTable';
 
 export default function EventoCombustibleTab({ eventoId }: { eventoId: number }) {
   const { data: cargas = [], isLoading } = useCombustible({ evento_id: eventoId });
@@ -20,8 +21,8 @@ export default function EventoCombustibleTab({ eventoId }: { eventoId: number })
         </div>
       ) : (
         <>
-          <div className="rounded-lg border bg-white overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm min-w-[700px]">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -42,7 +43,7 @@ export default function EventoCombustibleTab({ eventoId }: { eventoId: number })
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <p>Total litros: <span className="font-semibold text-foreground">{formatLitros(totalLitros)} L</span></p>

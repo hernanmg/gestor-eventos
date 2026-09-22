@@ -16,6 +16,13 @@ function debeHaberArs(m: { debe: unknown; haber: unknown; moneda: string; monto_
   return { debeArs: debe > 0 ? montoArs : 0, haberArs: haber > 0 ? montoArs : 0 };
 }
 
+// Signo del saldo corrido según el tipo, con la convención del sistema (la que usan el
+// importer, el seed y los reportes): EGRESO carga el monto en DEBE, INGRESO en HABER. El
+// saldo de la tab es lo acumulado de ese tipo (positivo), igual que la Conciliatoria:
+//   EGRESO  → Σ(debe − haber)      INGRESO → Σ(haber − debe)
+// Antes era Σ(debe − haber) para ambos, lo que dejaba los ingresos en negativo.
+const signoSaldo = (tipo: Tipo): 1 | -1 => (tipo === Tipo.INGRESO ? -1 : 1);
+
 // Legado — agrupa por tab_numero. Usado por movimientos generados fuera del
 // modelo de rubros configurables (Facturas, aún ligadas a TabConfig).
 export async function recalcularSaldos(
@@ -30,10 +37,11 @@ export async function recalcularSaldos(
     select:  { id: true, debe: true, haber: true, moneda: true, monto_ars: true },
   });
 
+  const signo = signoSaldo(tipo);
   let saldo = 0;
   for (const m of movs) {
     const { debeArs, haberArs } = debeHaberArs(m);
-    saldo = parseFloat((saldo + debeArs - haberArs).toFixed(2));
+    saldo = parseFloat((saldo + signo * (debeArs - haberArs)).toFixed(2));
     await tx.movimiento.update({ where: { id: m.id }, data: { saldo } });
   }
 }
@@ -53,10 +61,11 @@ export async function recalcularSaldosRubro(
     select:  { id: true, debe: true, haber: true, moneda: true, monto_ars: true },
   });
 
+  const signo = signoSaldo(tipo);
   let saldo = 0;
   for (const m of movs) {
     const { debeArs, haberArs } = debeHaberArs(m);
-    saldo = parseFloat((saldo + debeArs - haberArs).toFixed(2));
+    saldo = parseFloat((saldo + signo * (debeArs - haberArs)).toFixed(2));
     await tx.movimiento.update({ where: { id: m.id }, data: { saldo } });
   }
 }

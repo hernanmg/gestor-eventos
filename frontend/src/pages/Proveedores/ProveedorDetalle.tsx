@@ -11,6 +11,7 @@ import CuitInput from '@/components/ui/CuitInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -217,8 +218,8 @@ export default function ProveedorDetallePage() {
         </div>
 
         {histTab === 'movimientos' && (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className={th}>Evento</th>
@@ -255,7 +256,7 @@ export default function ProveedorDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
             {historial.movimientos.length === 20 && (
               <p className="px-3 py-2 text-xs text-muted-foreground border-t border-border">
                 Mostrando los últimos 20 movimientos.
@@ -265,8 +266,8 @@ export default function ProveedorDetallePage() {
         )}
 
         {histTab === 'echeqs' && (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className={th}>Evento</th>
@@ -310,7 +311,7 @@ export default function ProveedorDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>

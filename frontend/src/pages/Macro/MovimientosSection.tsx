@@ -12,6 +12,7 @@ import { Badge, MovimientoEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import type { EstadoMovimiento, MacroFiltros, MovimientoMacro, Tipo } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADOS: EstadoMovimiento[] = ['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'PAGADO', 'CANCELADO'];
 
@@ -483,7 +484,7 @@ export default function MovimientosSection() {
         ) : !data?.data.length ? (
           <p className="text-sm text-muted-foreground p-6">Sin movimientos para los filtros seleccionados.</p>
         ) : (
-          <table className="w-full min-w-[1100px]">
+          <BaseTable className="w-full min-w-[1100px]">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 {showEmpresaColumn && <th className="text-left py-2.5 px-3 font-medium">Empresa</th>}
@@ -507,7 +508,7 @@ export default function MovimientosSection() {
                 <FilaMovimiento key={m.id} m={m} showEmpresa={showEmpresaColumn} onUpdate={handleUpdate} />
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

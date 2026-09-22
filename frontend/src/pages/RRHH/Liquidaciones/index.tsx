@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoLiquidacion } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const ESTADO_LABEL: Record<EstadoLiquidacion, string> = { BORRADOR: 'Borrador', APROBADA: 'Aprobada', PAGADA: 'Pagada', CANCELADA: 'Cancelada' };
 const ESTADO_VARIANT: Record<EstadoLiquidacion, 'muted' | 'success' | 'info' | 'destructive'> = {
@@ -49,7 +50,7 @@ function PreviewLiquidacion({ empleadoId, fechaDesde, fechaHasta }: {
 
       {preview.jornadas.length > 0 && (
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-xs">
+          <BaseTable className="w-full text-xs">
             <thead className="text-muted-foreground">
               <tr>
                 <th className={thCls}>Fecha</th>
@@ -76,7 +77,7 @@ function PreviewLiquidacion({ empleadoId, fechaDesde, fechaHasta }: {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 
@@ -206,8 +207,8 @@ export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInic
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Empleado</th>
@@ -253,7 +254,7 @@ export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInic
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

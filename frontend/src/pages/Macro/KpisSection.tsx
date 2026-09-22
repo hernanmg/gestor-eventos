@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ function RecentEventsTable({ data }: { data: ResumenDashboard }) {
           Ver todos los eventos
         </Button>
       </div>
-      <table className="w-full text-sm">
+      <BaseTable className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
             <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Nombre</th>
@@ -205,7 +206,7 @@ function RecentEventsTable({ data }: { data: ResumenDashboard }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </BaseTable>
     </div>
   );
 }

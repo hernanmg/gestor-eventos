@@ -10,6 +10,7 @@ import type { AsignacionStock, Evento, RiesgoSugerencia, SugerenciaStock } from 
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Plus, AlertTriangle, ArrowRight, Warehouse } from 'lucide-react';
+import BaseTable from '@/components/ui/BaseTable';
 
 const RIESGO_CLASS: Record<RiesgoSugerencia, string> = {
   BAJO:  'bg-green-100 text-green-800',
@@ -342,8 +343,8 @@ export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
         {activas.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin stock asignado.</p>
         ) : (
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Producto</th>
@@ -399,7 +400,7 @@ export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>
@@ -408,8 +409,8 @@ export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
       {prestadas.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold mb-3">Stock prestado a otros eventos</h2>
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Producto</th>
@@ -443,7 +444,7 @@ export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
                   );
                 })}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </div>
       )}

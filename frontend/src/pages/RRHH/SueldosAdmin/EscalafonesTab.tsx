@@ -10,6 +10,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { EscalafonAdmin } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -153,8 +154,8 @@ export default function EscalafonesTab() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
@@ -184,7 +185,7 @@ export default function EscalafonesTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 

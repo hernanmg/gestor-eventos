@@ -9,6 +9,8 @@ import {
   listarHojasEvento, parseHojaFichaEvento, normalizarNombreRubro,
   type FichaEventoRowPreview,
 } from '../lib/fichaEventoImporter';
+import { parseEsquemaTurnos } from '../lib/esquemaTurnosImporter';
+import { derivarTurno, descripcionTurno, normalizarHora, esRubroPersonal } from '../lib/esquemaTurnos';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,8 +29,15 @@ const RUBRO_EVENTO_INCLUDE = {
   },
 };
 
+const numOrNull = (v: unknown) => (v !== null && v !== undefined ? Number(v) : null);
+
 function mapPedidoItem(pi: any) {
-  return { ...pi, cantidad: pi.cantidad !== null && pi.cantidad !== undefined ? Number(pi.cantidad) : null };
+  return {
+    ...pi,
+    cantidad:          numOrNull(pi.cantidad),
+    horas_por_agente:  numOrNull(pi.horas_por_agente),
+    total_horas_turno: numOrNull(pi.total_horas_turno),
+  };
 }
 
 // Disponibilidad "si esta asignación no existiera" — mismo uso de
@@ -415,7 +424,7 @@ export async function desasignarStock(req: Request, res: Response) {
 // PEDIDO ITEMS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const pedidoItemSchema = z.object({
+const pedidoItemBaseSchema = z.object({
   cantidad:        z.number().nonnegative().nullable().optional(),
   descripcion:     z.string().min(1),
   dias_uso:        z.number().int().nonnegative().nullable().optional(),
@@ -423,7 +432,28 @@ const pedidoItemSchema = z.object({
   horario_retiro:  z.string().nullable().optional(),
   observaciones:   z.string().nullable().optional(),
   orden:           z.number().int().positive().optional(),
+  // Esquema de personal por turno — con fecha_turno el ítem es una línea de la
+  // grilla de dotación. horas_por_agente/total_horas_turno son DERIVADOS: se
+  // calculan de inicio/fin × cantidad (horas_por_agente sólo se respeta si el
+  // turno no trae las dos horas).
+  fecha_turno:       z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Fecha inválida (YYYY-MM-DD)').nullable().optional(),
+  hora_inicio_turno: z.string().nullable().optional(),
+  hora_fin_turno:    z.string().nullable().optional(),
+  ubicacion_turno:   z.string().nullable().optional(),
+  tipo_turno:        z.string().nullable().optional(),
+  horas_por_agente:  z.number().nonnegative().max(24).nullable().optional(),
 });
+
+function pedidoItemRefine(d: { hora_inicio_turno?: string | null; hora_fin_turno?: string | null }, ctx: z.RefinementCtx) {
+  for (const k of ['hora_inicio_turno', 'hora_fin_turno'] as const) {
+    if (d[k] && !normalizarHora(d[k])) ctx.addIssue({ code: 'custom', path: [k], message: 'Hora inválida (HH:mm)' });
+  }
+}
+
+const pedidoItemSchema = pedidoItemBaseSchema.superRefine(pedidoItemRefine);
+
+// Fecha calendario (YYYY-MM-DD) → medianoche UTC, como el resto de las fechas de negocio.
+const fechaTurnoDate = (s: string | null | undefined) => (s ? new Date(`${s.slice(0, 10)}T00:00:00.000Z`) : null);
 
 // POST /api/rubros-evento/:id/items
 export async function addPedidoItem(req: Request, res: Response) {
@@ -449,6 +479,13 @@ export async function addPedidoItem(req: Request, res: Response) {
     orden = (last?.orden ?? 0) + 1;
   }
 
+  const esTurno = !!d.fecha_turno;
+  const horaInicio = normalizarHora(d.hora_inicio_turno);
+  const horaFin    = normalizarHora(d.hora_fin_turno);
+  const derivado = esTurno
+    ? derivarTurno({ cantidad: d.cantidad ?? null, horaInicio, horaFin, horasManual: d.horas_por_agente })
+    : { horas_por_agente: null, total_horas_turno: null };
+
   const item = await prisma.$transaction(async tx => {
     const created = await tx.pedidoItem.create({
       data: {
@@ -460,6 +497,14 @@ export async function addPedidoItem(req: Request, res: Response) {
         horario_retiro:  d.horario_retiro ?? null,
         observaciones:   d.observaciones ?? null,
         orden:           orden!,
+        ...(esTurno && {
+          fecha_turno:       fechaTurnoDate(d.fecha_turno),
+          hora_inicio_turno: horaInicio,
+          hora_fin_turno:    horaFin,
+          ubicacion_turno:   d.ubicacion_turno ?? null,
+          tipo_turno:        d.tipo_turno ?? null,
+          ...derivado,
+        }),
       },
     });
 
@@ -476,9 +521,10 @@ export async function addPedidoItem(req: Request, res: Response) {
   res.status(201).json(mapPedidoItem(item));
 }
 
-const updatePedidoItemSchema = pedidoItemSchema.partial().extend({
+// pedidoItemSchema lleva superRefine (ZodEffects) — se parcializa el objeto base.
+const updatePedidoItemSchema = pedidoItemBaseSchema.partial().extend({
   descripcion: z.string().min(1).optional(),
-});
+}).superRefine(pedidoItemRefine);
 
 // PUT /api/pedido-items/:id — también resuelve el reordenamiento drag&drop
 // cuando el body incluye `orden` (mismo patrón de resequencing que
@@ -497,16 +543,51 @@ export async function updatePedidoItem(req: Request, res: Response) {
   }
   const d = parsed.data;
 
+  // Esquema de turno: se recalculan los derivados (horas × cantidad) y, si el
+  // usuario no tocó la descripción, ésta sigue a tipo/ubicación.
+  const toca = (...keys: (keyof typeof d)[]) => keys.some(k => d[k] !== undefined);
+  const fechaTurno = d.fecha_turno !== undefined ? fechaTurnoDate(d.fecha_turno) : existing.fecha_turno;
+  const turnoData: Record<string, unknown> = {};
+  if (d.fecha_turno       !== undefined) turnoData.fecha_turno       = fechaTurno;
+  if (d.hora_inicio_turno !== undefined) turnoData.hora_inicio_turno = normalizarHora(d.hora_inicio_turno);
+  if (d.hora_fin_turno    !== undefined) turnoData.hora_fin_turno    = normalizarHora(d.hora_fin_turno);
+  if (d.ubicacion_turno   !== undefined) turnoData.ubicacion_turno   = d.ubicacion_turno;
+  if (d.tipo_turno        !== undefined) turnoData.tipo_turno        = d.tipo_turno;
+  if (fechaTurno && toca('cantidad', 'hora_inicio_turno', 'hora_fin_turno', 'horas_por_agente', 'fecha_turno')) {
+    Object.assign(turnoData, derivarTurno({
+      cantidad:    d.cantidad !== undefined ? d.cantidad : numOrNull(existing.cantidad),
+      horaInicio:  d.hora_inicio_turno !== undefined ? normalizarHora(d.hora_inicio_turno) : existing.hora_inicio_turno,
+      horaFin:     d.hora_fin_turno    !== undefined ? normalizarHora(d.hora_fin_turno)    : existing.hora_fin_turno,
+      horasManual: d.horas_por_agente  !== undefined ? d.horas_por_agente : numOrNull(existing.horas_por_agente),
+    }));
+  }
+  // Quitar la fecha saca al ítem del esquema: se limpia todo lo derivado del turno
+  if (d.fecha_turno === null) {
+    Object.assign(turnoData, {
+      hora_inicio_turno: null, hora_fin_turno: null, ubicacion_turno: null, tipo_turno: null,
+      horas_por_agente: null, total_horas_turno: null,
+    });
+  }
+  const descripcion = d.descripcion !== undefined
+    ? d.descripcion
+    : (fechaTurno && toca('tipo_turno', 'ubicacion_turno')
+        ? descripcionTurno(
+            d.tipo_turno !== undefined ? d.tipo_turno : existing.tipo_turno,
+            d.ubicacion_turno !== undefined ? d.ubicacion_turno : existing.ubicacion_turno,
+          )
+        : undefined);
+
   const updated = await prisma.$transaction(async tx => {
     await tx.pedidoItem.update({
       where: { id },
       data: {
         ...(d.cantidad        !== undefined && { cantidad:        d.cantidad }),
-        ...(d.descripcion     !== undefined && { descripcion:     d.descripcion }),
+        ...(descripcion       !== undefined && { descripcion }),
         ...(d.dias_uso        !== undefined && { dias_uso:        d.dias_uso }),
         ...(d.horario_llegada !== undefined && { horario_llegada: d.horario_llegada }),
         ...(d.horario_retiro  !== undefined && { horario_retiro:  d.horario_retiro }),
         ...(d.observaciones   !== undefined && { observaciones:   d.observaciones }),
+        ...turnoData,
       },
     });
 
@@ -712,4 +793,114 @@ export async function importarFicha(req: Request, res: Response) {
   });
 
   res.json({ preview: false, ...stats, filas });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTAR ESQUEMA DE PERSONAL POR TURNO (docs/enjoy/dani/SEGURIDAD FESTIVAL KM.xlsx)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Clave de upsert: [rubro_evento_id, fecha_turno, ubicacion_turno, hora_inicio_turno]
+// + tipo_turno (Diurna/Nocturna/Evento pueden coincidir en lugar y hora). Se compara
+// en memoria, sin distinguir mayúsculas ni espacios, y NULL == NULL: un @@unique de
+// Postgres no sirve acá porque ubicacion_turno puede ser NULL (ej. "Seguridad Evento").
+const claveTurno = (fecha: string, ubicacion: string | null, horaInicio: string | null, tipo: string | null) =>
+  [fecha, (ubicacion ?? '').trim().toLowerCase(), horaInicio ?? '', (tipo ?? '').trim().toLowerCase()].join('|');
+
+// POST /api/rubros-evento/:id/importar-seguridad?preview=true|false
+// preview=true (default): sólo parsea y resuelve CREAR/ACTUALIZAR — no escribe nada.
+// preview=false: upsert de PedidoItems con el esquema de turnos.
+export async function importarEsquemaTurnos(req: Request, res: Response) {
+  const rubroEventoId = Number(req.params.id);
+  const rubroEvento = await prisma.rubroEvento.findFirst({
+    where:   { id: rubroEventoId, deleted_at: null, ...withTenant(req.empresaId!) },
+    include: { rubro: { select: { nombre: true } } },
+  });
+  if (!rubroEvento) { res.status(404).json({ error: 'Rubro de la ficha no encontrado' }); return; }
+  if (rubroEvento.estado !== 'CONFIRMADO') {
+    res.status(400).json({ error: 'El rubro debe estar CONFIRMADO para cargar su esquema' }); return;
+  }
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+
+  const esPreview = req.query.preview !== 'false';
+  const hoja = (req.body?.hoja ?? req.query.hoja) as string | undefined;
+
+  let parsed;
+  try {
+    parsed = await parseEsquemaTurnos(req.file.buffer, hoja);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+  if (parsed.filas.length === 0) {
+    res.status(400).json({ error: 'La grilla no tiene filas válidas (se requiere fecha y cantidad)', omitidas: parsed.omitidas }); return;
+  }
+
+  const existentes = await prisma.pedidoItem.findMany({
+    where: { rubro_evento_id: rubroEventoId, deleted_at: null, fecha_turno: { not: null } },
+    select: { id: true, fecha_turno: true, ubicacion_turno: true, hora_inicio_turno: true, tipo_turno: true },
+  });
+  const idPorClave = new Map<string, number>();
+  for (const e of existentes) {
+    idPorClave.set(claveTurno(e.fecha_turno!.toISOString().slice(0, 10), e.ubicacion_turno, e.hora_inicio_turno, e.tipo_turno), e.id);
+  }
+
+  // Un mismo turno repetido en el archivo pisa al anterior (last wins) — se avisa.
+  const vistas = new Set<string>();
+  const filas = parsed.filas.map(f => {
+    const clave = claveTurno(f.fecha, f.ubicacion_turno, f.hora_inicio, f.tipo_turno);
+    const repetida = vistas.has(clave);
+    vistas.add(clave);
+    return {
+      ...f,
+      clave,
+      accion: (idPorClave.has(clave) || repetida ? 'ACTUALIZAR' : 'CREAR') as 'CREAR' | 'ACTUALIZAR',
+      advertencias: repetida ? [...f.advertencias, 'Turno repetido en el archivo — se toma esta fila'] : f.advertencias,
+    };
+  });
+
+  const creados      = filas.filter(f => f.accion === 'CREAR').length;
+  const actualizados = filas.length - creados;
+  const total_horas  = Math.round(filas.reduce((a, f) => a + (f.total_horas ?? 0), 0) * 100) / 100;
+  const salida = (fs: typeof filas) => fs.map(({ clave: _c, ...f }) => f);
+
+  if (esPreview) {
+    res.json({ preview: true, hoja: parsed.hoja, creados, actualizados, total_horas, omitidas: parsed.omitidas, filas: salida(filas) });
+    return;
+  }
+
+  await prisma.$transaction(async tx => {
+    const last = await tx.pedidoItem.findFirst({
+      where: { rubro_evento_id: rubroEventoId, deleted_at: null }, orderBy: { orden: 'desc' },
+    });
+    let orden = last?.orden ?? 0;
+
+    for (const f of filas) {
+      const data = {
+        cantidad:          f.cantidad,
+        descripcion:       descripcionTurno(f.tipo_turno, f.ubicacion_turno),
+        fecha_turno:       fechaTurnoDate(f.fecha),
+        hora_inicio_turno: f.hora_inicio,
+        hora_fin_turno:    f.hora_fin,
+        ubicacion_turno:   f.ubicacion_turno,
+        tipo_turno:        f.tipo_turno,
+        horas_por_agente:  f.horas_por_agente,
+        total_horas_turno: f.total_horas,
+      };
+      const id = idPorClave.get(f.clave);
+      if (id) {
+        await tx.pedidoItem.update({ where: { id }, data });
+      } else {
+        const created = await tx.pedidoItem.create({ data: { rubro_evento_id: rubroEventoId, orden: ++orden, ...data } });
+        idPorClave.set(f.clave, created.id);
+      }
+    }
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'PedidoItem', entidadId: rubroEventoId,
+      eventoId:    rubroEvento.evento_id,
+      descripcion: `Importó el esquema de personal de "${rubroEvento.rubro.nombre}" desde Excel (hoja "${parsed.hoja}") — ${creados} turnos creados, ${actualizados} actualizados`,
+      ip: req.ip, tx: tx as any,
+    });
+  });
+
+  res.json({ preview: false, hoja: parsed.hoja, creados, actualizados, total_horas, omitidas: parsed.omitidas, filas: salida(filas) });
 }

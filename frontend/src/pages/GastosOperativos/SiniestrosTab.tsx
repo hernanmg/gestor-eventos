@@ -11,6 +11,7 @@ import { NuevoSiniestroDialog, SiniestroDrawer, TIPO_SINIESTRO_LABEL, ESTADOS_SI
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { EstadoSiniestro, SiniestroEmpleado } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 
@@ -68,8 +69,8 @@ export default function SiniestrosTab() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className={th}>Empleado</th>
@@ -113,7 +114,7 @@ export default function SiniestrosTab() {
                 </tr>
               </tfoot>
             )}
-          </table>
+          </BaseTable>
         </div>
       )}
 

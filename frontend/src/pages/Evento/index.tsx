@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2, XCircle, MessageCircleQuestion } from 'lucide-react';
 import { useEvento, useExportarExcel, useExportarPDF, useMarcarFacturar } from '@/hooks/useEvento';
+import { useExportarFicha } from '@/hooks/useFichaEvento';
+import { useCortesias } from '@/hooks/useCortesias';
 import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
@@ -23,17 +25,21 @@ import EventoStockPage from './Stock';
 import EventoFacturas from './Facturas';
 import FacturasACobrarTab from './FacturasACobrar';
 import ComidasPage from './Comidas';
+import CortesiasPage from './Cortesias';
 import EventoCombustibleTab from './EventoCombustibleTab';
 import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
+import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
 import type { Rubro } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
 
 function ExportDropdown({ eventoId, rubros }: { eventoId: number; rubros: Rubro[] }) {
   const { exportar: exportExcel } = useExportarExcel();
   const { exportar: exportPDF }   = useExportarPDF();
+  const { exportar: exportFicha } = useExportarFicha();
   const [open,        setOpen]        = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -50,6 +56,13 @@ function ExportDropdown({ eventoId, rubros }: { eventoId: number; rubros: Rubro[
     setOpen(false);
     setIsExporting(true);
     try { await exportExcel(eventoId, tab); } finally { setIsExporting(false); }
+  };
+
+  // Ficha de proveedores: hoja "PROVEEDORES CONFIRMADOS" + un pedido de material por rubro confirmado
+  const handleFicha = async () => {
+    setOpen(false);
+    setIsExporting(true);
+    try { await exportFicha(eventoId); } finally { setIsExporting(false); }
   };
 
   const handlePDF = async (seccion?: string) => {
@@ -84,6 +97,9 @@ function ExportDropdown({ eventoId, rubros }: { eventoId: number; rubros: Rubro[
         <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-white shadow-lg py-1 max-h-96 overflow-y-auto">
           {/* Excel section */}
           <div className={sectionLabel}>Excel</div>
+          <button onClick={handleFicha} className={itemClass}>
+            Ficha de proveedores (pedidos)
+          </button>
           <button onClick={() => handleExcel()} className={itemClass}>
             Evento completo
           </button>
@@ -144,8 +160,8 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="border-b bg-muted/30">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -204,7 +220,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
               );
             })}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
       {data.pages > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -219,7 +235,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'COMBUSTIBLE' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'COMBUSTIBLE' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -236,6 +252,7 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'ECHEQS',        label: 'Echeqs',        adminOnly: true },
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
   { key: 'COMIDAS',       label: 'Comidas'       },
+  { key: 'CORTESIAS',     label: 'Cortesías'     },
   { key: 'COMBUSTIBLE',   label: 'Combustible'   },
   { key: 'FACTURAS',      label: 'Facturas',      adminOnly: true },
   { key: 'A_COBRAR',      label: 'A Cobrar',      adminOnly: true },
@@ -270,8 +287,17 @@ export default function EventoPage() {
 
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const isAdmin  = user?.rol === 'ADMIN';
+
+  // Cortesías: visible si el evento ya tiene o si el usuario es ADMIN/OPERADOR de Enjoy
+  // (donde se cargan). En el resto de las empresas la tab no aparece salvo que haya datos.
+  const { data: cortesiasData } = useCortesias(eventoId);
+  const mostrarCortesias = (cortesiasData?.cortesias.length ?? 0) > 0
+    || (canEdit && user?.empresaId === EMPRESAS.ENJOY);
+
   const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
-    (!t.adminOnly || isAdmin) && (!evento?.es_informal || INFORMAL_TABS.includes(t.key)),
+    (!t.adminOnly || isAdmin)
+    && (!evento?.es_informal || INFORMAL_TABS.includes(t.key))
+    && (t.key !== 'CORTESIAS' || mostrarCortesias),
   );
   const MAIN_TABS_KEYS_VISIBLES = MAIN_TABS.map(t => t.key);
 
@@ -545,6 +571,10 @@ export default function EventoPage() {
 
         {mainTab === 'COMIDAS' && (
           <ComidasPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'CORTESIAS' && (
+          <CortesiasPage eventoId={eventoId} canEdit={canEdit} />
         )}
 
         {mainTab === 'COMBUSTIBLE' && (
