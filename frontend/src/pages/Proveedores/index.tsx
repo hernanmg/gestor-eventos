@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useProveedores, useCreateProveedor, useUpdateProveedor,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import CuitInput from '@/components/ui/CuitInput';
+import ImportarFormularioDialog from '@/components/domain/ImportarFormularioDialog';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
@@ -150,6 +151,7 @@ export default function ProveedoresPage() {
   const [showInactivo, setShowInactivo] = useState(false);
   const [dialogOpen,  setDialogOpen]  = useState(false);
   const [editing,     setEditing]     = useState<Proveedor | null>(null);
+  const [importarOpen, setImportarOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search
@@ -188,9 +190,14 @@ export default function ProveedoresPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Proveedores</h1>
         {user?.rol === 'ADMIN' && (
-          <Button size="sm" onClick={openNew}>
-            <Plus size={14} className="mr-1.5" /> Nuevo proveedor
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar desde formulario
+            </Button>
+            <Button size="sm" onClick={openNew}>
+              <Plus size={14} className="mr-1.5" /> Nuevo proveedor
+            </Button>
+          </div>
         )}
       </div>
 
@@ -323,6 +330,7 @@ export default function ProveedoresPage() {
         proveedor={editing}
         onClose={closeDialog}
       />
+      {importarOpen && <ImportarFormularioDialog onClose={() => setImportarOpen(false)} />}
     </div>
   );
 }

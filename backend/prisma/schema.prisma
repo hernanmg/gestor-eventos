@@ -713,6 +713,21 @@ model Proveedor {
   telefono            String?
   notas               String?
   activo              Boolean   @default(true)
+  // Datos del formulario de Google (Enjoy) — ver importarProveedoresFormulario.
+  // `alias` de arriba es el nombre corto comercial; el alias del CBU va en alias_bancario.
+  // `dni` es la clave de upsert cuando el CUIT del formulario no es válido (< 11 dígitos).
+  dni                 String?
+  email               String?
+  banco               String?
+  alias_bancario      String?
+  cbu                 String?
+  numero_cuenta       String?
+  titular_cuenta      String?
+  // null = el proveedor no respondió la pregunta "¿Podés presentar factura?"
+  puede_facturar      Boolean?
+  // "A" | "C" — null si no factura o si el formulario dice "A o C según el evento"
+  tipo_factura        String?
+  servicio            String?
   // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
   // participa del reparto. Ver POST /api/facturas-emitidas.
   es_comisionista     Boolean   @default(false)

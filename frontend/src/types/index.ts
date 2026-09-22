@@ -66,6 +66,18 @@ export interface Proveedor {
   telefono:   string | null;
   notas:      string | null;
   activo:     boolean;
+  // Datos del formulario de Google — ver POST /api/importar/proveedores-formulario.
+  // `alias` es el nombre corto; el alias del CBU es `alias_bancario`.
+  dni:            string | null;
+  email:          string | null;
+  banco:          string | null;
+  alias_bancario: string | null;
+  cbu:            string | null;
+  numero_cuenta:  string | null;
+  titular_cuenta: string | null;
+  puede_facturar: boolean | null; // null = no respondió
+  tipo_factura:   string | null;  // "A" | "C"
+  servicio:       string | null;
   // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
   // participa del reparto. Ver POST /api/facturas-emitidas.
   es_comisionista:     boolean;

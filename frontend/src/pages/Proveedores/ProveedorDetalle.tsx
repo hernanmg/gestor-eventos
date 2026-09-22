@@ -24,6 +24,40 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+// ── Datos de contacto y bancarios (import del formulario de Google) ───────────
+
+function Dato({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn('text-sm break-words', mono && 'font-mono text-xs')}>{value}</p>
+    </div>
+  );
+}
+
+function DatosProveedor({ p }: { p: Proveedor }) {
+  const factura = p.puede_facturar === null ? null
+    : !p.puede_facturar ? 'No'
+    : p.tipo_factura ? `Sí, tipo ${p.tipo_factura}` : 'Sí';
+  const hayDatos = [p.servicio, factura, p.email, p.telefono, p.dni, p.banco, p.alias_bancario, p.cbu, p.numero_cuenta, p.titular_cuenta].some(Boolean);
+  if (!hayDatos) return null;
+  return (
+    <div className="rounded-lg border border-border p-4 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
+      <Dato label="Servicio" value={p.servicio} />
+      <Dato label="Puede facturar" value={factura} />
+      <Dato label="Email" value={p.email} />
+      <Dato label="Teléfono" value={p.telefono} />
+      <Dato label="DNI" value={p.dni} />
+      <Dato label="Banco" value={p.banco} />
+      <Dato label="Alias bancario" value={p.alias_bancario} />
+      <Dato label="CBU" value={p.cbu} mono />
+      <Dato label="N° de cuenta" value={p.numero_cuenta} />
+      <Dato label="Titular de la cuenta" value={p.titular_cuenta} />
+    </div>
+  );
+}
+
 // ── Edit dialog ───────────────────────────────────────────────────────────────
 
 function EditDialog({ proveedor, open, onClose }: { proveedor: Proveedor; open: boolean; onClose: () => void }) {
@@ -182,9 +216,11 @@ export default function ProveedorDetallePage() {
         )}
       </div>
 
+      <DatosProveedor p={proveedor} />
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Movimientos"  value={stats.total_movimientos} />
+        <StatCard label="Movimientos" value={stats.total_movimientos} />
         <StatCard label="Eventos"      value={stats.total_eventos} />
         <StatCard label="Facturado ARS" value={formatCurrency(stats.total_facturado_ars, 'ARS')} />
         <StatCard label="Facturado USD" value={formatCurrency(stats.total_facturado_usd, 'USD')} />
