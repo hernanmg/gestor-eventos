@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -247,6 +247,10 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
                 <Ambulance size={18} className="shrink-0" />
                 {isOpen && <span>Siniestros</span>}
+              </NavLink>
+              <NavLink to="/uniformes" title={!isOpen ? 'Uniformes' : undefined} className={navItem}>
+                <Shirt size={18} className="shrink-0" />
+                {isOpen && <span>Uniformes</span>}
               </NavLink>
               <NavLink to="/flota" title={!isOpen ? 'Flota y Seguros' : undefined} className={navItem}>
                 <div className="relative shrink-0">
@@ -519,6 +523,14 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
               <Ambulance size={18} className="shrink-0" />
               {isOpen && <span>Siniestros</span>}
+            </NavLink>
+          )}
+
+          {/* Entrega de uniformes (Lorena, DOS57) — Lorena lo tiene en su menú acotado. */}
+          {user.rol === 'ADMIN' && (
+            <NavLink to="/uniformes" title={!isOpen ? 'Uniformes' : undefined} className={navItem}>
+              <Shirt size={18} className="shrink-0" />
+              {isOpen && <span>Uniformes</span>}
             </NavLink>
           )}
 

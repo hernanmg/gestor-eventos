@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import {
-  useSiniestro, useCreateSiniestro, useUpdateSiniestro, useCerrarSiniestro,
+  useSiniestro, useCreateSiniestro, useUpdateSiniestro, useCerrarSiniestro, useEmpleadosSiniestros,
   useAddGastoSiniestro, useDeleteGastoSiniestro, useSubirDocumentoSiniestro, documentoSiniestroUrl,
   type SiniestroPayload,
 } from '@/hooks/useSiniestros';
-import { useEmpleados } from '@/hooks/useRRHH';
 import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -33,7 +32,7 @@ export const ESTADOS_SINIESTRO: EstadoSiniestro[] = ['ABIERTO', 'EN_TRAMITE', 'C
 
 export function NuevoSiniestroDialog({ onClose }: { onClose: () => void }) {
   const createMut = useCreateSiniestro();
-  const { data: empleados = [] } = useEmpleados();
+  const { data: empleados = [] } = useEmpleadosSiniestros();
   const { data: eventos = [] } = useEventos();
 
   const [form, setForm] = useState<SiniestroPayload>({

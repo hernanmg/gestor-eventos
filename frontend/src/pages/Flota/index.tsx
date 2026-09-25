@@ -6,10 +6,14 @@ import VehiculosTab from './VehiculosTab';
 import SegurosTab from './SegurosTab';
 import PatentesPeajesTab from './PatentesPeajesTab';
 import TallerTab from './TallerTab';
+import SiniestrosVehiculoPanel from '@/components/siniestros/SiniestrosVehiculoPanel';
+import { useAuth } from '@/hooks/useAuth';
 
-type FlotaTab = 'vehiculos' | 'seguros' | 'patentes' | 'taller';
+type FlotaTab = 'vehiculos' | 'seguros' | 'patentes' | 'taller' | 'siniestros';
 
 export default function FlotaPage() {
+  const { user } = useAuth();
+  const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as FlotaTab | null;
   const vehiculoParam = searchParams.get('vehiculo');
@@ -28,6 +32,7 @@ export default function FlotaPage() {
           { key: 'seguros',   label: 'Seguros' },
           { key: 'patentes',  label: 'Patentes y Peajes' },
           { key: 'taller',    label: 'Taller mecánico' },
+          { key: 'siniestros', label: 'Siniestros' },
         ] as { key: FlotaTab; label: string }[]).map(({ key, label }) => (
           <button
             key={key}
@@ -48,6 +53,7 @@ export default function FlotaPage() {
       {tab === 'seguros'   && <SegurosTab />}
       {tab === 'patentes'  && <PatentesPeajesTab focusVehiculoId={vehiculoParam ? Number(vehiculoParam) : null} />}
       {tab === 'taller'    && <TallerTab />}
+      {tab === 'siniestros' && <SiniestrosVehiculoPanel canEdit={canEdit} />}
     </div>
   );
 }

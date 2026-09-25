@@ -562,6 +562,25 @@ async function resolveSiniestrosSinNovedad(empresaId: number, hace30Dias: Date):
   }));
 }
 
+// Siniestros de vehículos (Lorena, flota) abiertos/en proceso sin
+// actualización hace más de 30 días — mismo criterio que los de empleados.
+async function resolveSiniestrosVehiculoSinNovedad(empresaId: number, hace30Dias: Date): Promise<NotificacionItem[]> {
+  const siniestros = await prisma.siniestroVehiculo.findMany({
+    where: { deleted_at: null, empresa_id: empresaId, estado: { in: ['ABIERTO', 'EN_PROCESO'] }, updated_at: { lt: hace30Dias } },
+    include: { camion: { select: { codigo: true, patente: true } } },
+    orderBy: { updated_at: 'asc' },
+  });
+  return siniestros.map(s => ({
+    id:          `siniestro-vehiculo-${s.id}`,
+    tipo:        'SINIESTRO_VEHICULO_SIN_NOVEDAD',
+    titulo:      `${s.camion?.patente ?? s.camion?.codigo ?? s.patente_texto ?? 'Vehículo'} — siniestro sin novedad`,
+    descripcion: `${s.estado === 'ABIERTO' ? 'Abierto' : 'En proceso'} — sin actualizar desde el ${s.updated_at.toLocaleDateString('es-AR')}`,
+    urgencia:    'warning' as Urgencia,
+    link:        '/flota?tab=siniestros',
+    fecha:       s.updated_at,
+  }));
+}
+
 // Excedentes de horas (Fofi/Nestoras) pendientes de pago hace más de 60 días.
 async function resolveExcedentesAtrasados(empresaId: number, hace60Dias: Date): Promise<NotificacionItem[]> {
   const excedentes = await prisma.excedenteHoras.findMany({
@@ -645,6 +664,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolvePresentismoCerradoPendiente(empresaId),
     resolveCombustibleSemanaCerrada(req),
     resolveSiniestrosSinNovedad(empresaId, hace30Dias),
+    resolveSiniestrosVehiculoSinNovedad(empresaId, hace30Dias),
     resolveExcedentesAtrasados(empresaId, hace60Dias),
     resolveFacturasSinPdf(req),
   ]);

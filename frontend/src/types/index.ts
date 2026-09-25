@@ -1903,13 +1903,19 @@ export interface EventoEmpleadoMes {
   periodo_anio:  number;
   cobra_premio:  boolean;
   monto_premio:  number | null;
+  // Premio PAX (Fofi/Nestoras): cantidad_pax × valor_por_pax × dias_trabajados
+  cantidad_pax:     number | null;
+  valor_por_pax:    number | null;
+  dias_trabajados:  number | null;
+  premio_pax_total: number | null;
   created_at:    string;
   created_by:    number | null;
 }
 
 export interface ResumenEventosMes {
-  total:   number;
-  eventos: EventoEmpleadoMes[];
+  total:     number; // monto_premio + premio_pax_total de las filas con cobra_premio
+  total_pax: number;
+  eventos:   EventoEmpleadoMes[];
 }
 
 export interface LiquidacionAdminMovimientoCaja {
@@ -2257,7 +2263,8 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO';
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO'
+  | 'SINIESTRO_VEHICULO_PENDIENTE';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 
@@ -2419,4 +2426,103 @@ export interface EspacioCompartido {
   gastosTipo?:     GastoTipoEspacio[];
   mes_actual?:     { id: number; total_gastos: number; cerrado: boolean; pagados: number; pendientes: number } | null;
   created_at:      string;
+}
+
+// ── Siniestros de vehículos (Lorena, flota) ───────────────────────────────────
+
+export type EstadoSiniestroVehiculo = 'ABIERTO' | 'EN_PROCESO' | 'RESUELTO' | 'SIN_NOVEDAD';
+
+export interface SiniestroVehiculo {
+  id:                     number;
+  empresa_id:             number;
+  camion_id:              number | null;
+  camion?:                { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_texto:          string | null;
+  empleado_id:            number | null;
+  empleado?:              { id: number; nombre: string; apellido: string } | null;
+  empleado_nombre_manual: string | null;
+  aseguradora:            string | null;
+  numero_siniestro:       string | null;
+  fecha_denuncia:         string | null;
+  fecha_ocurrencia:       string;
+  lugar:                  string | null;
+  descripcion:            string | null;
+  danios:                 string | null;
+  tercero_nombre:         string | null;
+  tercero_vehiculo:       string | null;
+  tercero_seguro:         string | null;
+  estado:                 EstadoSiniestroVehiculo;
+  observaciones:          string | null;
+  created_at:             string;
+  updated_at:             string;
+}
+
+export interface ImportarSiniestrosVehiculoResultado {
+  filas_procesadas:       number;
+  creados:                number;
+  actualizados:           number;
+  omitidos:               number;
+  sin_empleado:           string[];
+  sin_vehiculo:           string[];
+  estados_no_reconocidos: string[];
+  errores:                string[];
+}
+
+// ── Entregas de uniformes (Lorena, DOS57) ─────────────────────────────────────
+
+// Orden de columnas: PRENDAS_UNIFORME en hooks/useUniformes.ts
+export type PrendaUniforme =
+  | 'borcegos' | 'remeras' | 'camperon' | 'chombas' | 'campera' | 'mochila'
+  | 'buzo' | 'pantalon' | 'bermuda' | 'gorra' | 'prot_lumbar' | 'guantes';
+export type TotalesUniforme = Record<PrendaUniforme, number>;
+
+export interface EntregaUniforme extends TotalesUniforme {
+  id:              number;
+  empresa_id:      number;
+  empleado_id:     number | null;
+  empleado_nombre: string;
+  fecha_entrega:   string;
+  otros:           string | null;
+  origen_hoja:     string;
+  anio_resumen:    number | null;
+  // false = no suma al acumulado (fila de resumen anual o duplicado de PLANTA ESTABLE)
+  cuenta_en_total: boolean;
+}
+
+export interface HistorialUniformesResponse {
+  empleado:        { id: number; nombre: string; apellido: string } | null; // null = persona sin legajo en RRHH
+  empleado_nombre: string;
+  entregas: EntregaUniforme[];
+  totales:  TotalesUniforme;
+}
+
+export interface ResumenUniformesFila extends TotalesUniforme {
+  empleado_id:     number | null;
+  empleado_nombre: string;
+  empleado_estado: EstadoEmpleado | null;
+  fuente:          'RESUMEN' | 'DETALLE';
+  entregas:        number;
+  otros:           string | null;
+}
+
+export interface ResumenUniformesResponse {
+  anio:              number;
+  empresa_id:        number;
+  filas:             ResumenUniformesFila[];
+  totales:           TotalesUniforme;
+  anios_disponibles: number[];
+}
+
+export type ModoImportUniformes = 'HISTORIAL' | 'RESUMEN' | 'TODO';
+
+export interface ImportarUniformesResultado {
+  preview:                  boolean;
+  modo:                     ModoImportUniformes;
+  hojas_procesadas:         string[];
+  entregas_creadas:         number;
+  entregas_actualizadas:    number;
+  empleados_dados_baja:     { nombre: string; empleado_id: number; hoja: string }[];
+  bajas_ambiguas:           { nombre: string; hoja: string; motivo: string }[];
+  empleados_no_encontrados: { nombre: string }[];
+  errores:                  { hoja: string; motivo: string }[];
 }

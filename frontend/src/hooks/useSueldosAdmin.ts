@@ -447,6 +447,9 @@ export interface EventoEmpleadoMesPayload {
   periodo_anio:   number;
   monto_premio?:  number | null;
   cobra_premio?:  boolean;
+  cantidad_pax?:    number | null;
+  valor_por_pax?:   number | null;
+  dias_trabajados?: number | null;
 }
 
 function invalidateEventosMes(qc: ReturnType<typeof useQueryClient>) {
@@ -464,7 +467,7 @@ export function useCreateEventoEmpleadoMes(empleadoId: number) {
 export function useUpdateEventoEmpleadoMes() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { monto_premio?: number | null; cobra_premio?: boolean } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { monto_premio?: number | null; cobra_premio?: boolean; cantidad_pax?: number | null; valor_por_pax?: number | null; dias_trabajados?: number | null } }) =>
       api.put(`/rrhh/eventos-mes/${id}`, data).then(r => r.data),
     onSuccess: () => invalidateEventosMes(qc),
   });

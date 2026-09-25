@@ -277,6 +277,8 @@ model Empresa {
   siniestrosEmpleado     SiniestroEmpleado[]
   excedentesHoras        ExcedenteHoras[]
   eventosEmpleadoMes     EventoEmpleadoMes[]
+  entregasUniforme       EntregaUniforme[]
+  siniestrosVehiculo     SiniestroVehiculo[]
   sgrs                   SGR[]
   cierresContables       CierreContable[]
   cortesiasEvento        CortesiaEvento[]
@@ -501,17 +503,17 @@ model RubroEvento {
 }
 
 model PedidoItem {
-  id              Int         @id @default(autoincrement())
-  rubro_evento_id Int
-  rubro_evento    RubroEvento @relation(fields: [rubro_evento_id], references: [id])
+  id                Int         @id @default(autoincrement())
+  rubro_evento_id   Int
+  rubro_evento      RubroEvento @relation(fields: [rubro_evento_id], references: [id])
   // El pedido técnico: qué se le pide al proveedor
-  cantidad        Decimal?    @db.Decimal(10, 2)
-  descripcion     String // "Sistema de sonido line array", "Generador 100kva", etc.
-  dias_uso        Int?
-  horario_llegada String? // texto libre: "08:00", "día anterior al evento"
-  horario_retiro  String?
-  observaciones   String?
-  orden           Int         @default(0)
+  cantidad          Decimal?    @db.Decimal(10, 2)
+  descripcion       String // "Sistema de sonido line array", "Generador 100kva", etc.
+  dias_uso          Int?
+  horario_llegada   String? // texto libre: "08:00", "día anterior al evento"
+  horario_retiro    String?
+  observaciones     String?
+  orden             Int         @default(0)
   // ── Esquema de personal por turno (seguridad, limpieza, etc.) ───────────────
   // Si fecha_turno tiene valor, el ítem es una línea del esquema de dotación y
   // NO un pedido de material: se exporta en la grilla "ESQUEMA DE ..." en vez
@@ -525,9 +527,9 @@ model PedidoItem {
   horas_por_agente  Decimal?    @db.Decimal(5, 2) // derivado de inicio/fin
   total_horas_turno Decimal?    @db.Decimal(8, 2) // derivado: cantidad × horas_por_agente
   // audit
-  created_at      DateTime    @default(now())
-  updated_at      DateTime    @updatedAt
-  deleted_at      DateTime?
+  created_at        DateTime    @default(now())
+  updated_at        DateTime    @updatedAt
+  deleted_at        DateTime?
 
   @@index([rubro_evento_id, fecha_turno])
 }
@@ -979,6 +981,7 @@ model Camion {
   gastos_peaje         GastoPeaje[]
   servicios_taller     ServicioTaller[]
   cargas_combustible   CargaCombustible[]
+  siniestros           SiniestroVehiculo[]
 
   @@unique([codigo, empresa_id])
 }
@@ -1617,6 +1620,8 @@ model Empleado {
   siniestros            SiniestroEmpleado[]
   excedentes_horas      ExcedenteHoras[]
   eventos_empleado_mes  EventoEmpleadoMes[]
+  entregas_uniforme     EntregaUniforme[]
+  siniestros_vehiculo   SiniestroVehiculo[]
 }
 
 model Jornada {
@@ -1892,20 +1897,28 @@ model AcuerdoSueldo {
 // calcularSueldoAdmin.ts suma todas las de un período para
 // premio_produccion_total. Ver AcuerdoSueldo.cobra_premio_produccion.
 model EventoEmpleadoMes {
-  id            Int      @id @default(autoincrement())
-  empresa_id    Int
-  empresa       Empresa  @relation(fields: [empresa_id], references: [id])
-  empleado_id   Int
-  empleado      Empleado @relation(fields: [empleado_id], references: [id])
-  evento_id     Int?
-  evento        Evento?  @relation(fields: [evento_id], references: [id])
-  evento_nombre String? // si el evento no está cargado en el sistema
-  periodo_mes   Int
-  periodo_anio  Int
-  cobra_premio  Boolean  @default(true)
-  monto_premio  Decimal? @db.Decimal(10, 2)
-  created_at    DateTime @default(now())
-  created_by    Int?
+  id               Int      @id @default(autoincrement())
+  empresa_id       Int
+  empresa          Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id      Int
+  empleado         Empleado @relation(fields: [empleado_id], references: [id])
+  evento_id        Int?
+  evento           Evento?  @relation(fields: [evento_id], references: [id])
+  evento_nombre    String? // si el evento no está cargado en el sistema
+  periodo_mes      Int
+  periodo_anio     Int
+  cobra_premio     Boolean  @default(true)
+  monto_premio     Decimal? @db.Decimal(10, 2)
+  // Premio PAX (líderes Fofi/Nestoras): cantidad_pax × valor_por_pax ×
+  // dias_trabajados. valor_por_pax lo define Matías por evento (no es fijo).
+  // premio_pax_total se persiste calculado — se SUMA a monto_premio en el
+  // total del premio de producción (ver calcularPremioPax en calcularSueldoAdmin.ts).
+  cantidad_pax     Int?
+  valor_por_pax    Decimal? @db.Decimal(10, 2)
+  dias_trabajados  Int?     @default(1)
+  premio_pax_total Decimal? @db.Decimal(12, 2)
+  created_at       DateTime @default(now())
+  created_by       Int?
 
   @@unique([empleado_id, evento_id, periodo_mes, periodo_anio])
 }
@@ -2937,25 +2950,25 @@ model ExcedenteHoras {
 // una fila por beneficiario, con una cantidad por tipo de ticket.
 
 model CortesiaEvento {
-  id                Int       @id @default(autoincrement())
-  evento_id         Int
-  evento            Evento    @relation(fields: [evento_id], references: [id])
-  empresa_id        Int
-  empresa           Empresa   @relation(fields: [empresa_id], references: [id])
+  id              Int            @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento         @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa        @relation(fields: [empresa_id], references: [id])
   // Beneficiario
-  cliente_nombre    String // empresa o persona
-  contacto_nombre   String? // quien lo gestiona / grupo ("MATIAS", "UCRA", "LA FALDA - MUNICIPIOS")
-  autorizado_por    String? // "MATIAS"
-  observacion       String? // categoría / motivo ("Sponsors", "Municipios", "Tiendas Amigas - Tourmalet")
+  cliente_nombre  String // empresa o persona
+  contacto_nombre String? // quien lo gestiona / grupo ("MATIAS", "UCRA", "LA FALDA - MUNICIPIOS")
+  autorizado_por  String? // "MATIAS"
+  observacion     String? // categoría / motivo ("Sponsors", "Municipios", "Tiendas Amigas - Tourmalet")
   // Estado
-  visado            Boolean   @default(false)
-  entregado         Boolean   @default(false)
+  visado          Boolean        @default(false)
+  entregado       Boolean        @default(false)
   // audit
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-  deleted_at        DateTime?
-  created_by        Int?
-  items             CortesiaItem[]
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+  items           CortesiaItem[]
 
   @@index([evento_id, deleted_at])
 }
@@ -2978,4 +2991,89 @@ model CortesiaItem {
   created_at         DateTime       @default(now())
 
   @@index([cortesia_id])
+}
+
+// ─── ENTREGA DE UNIFORMES (Lorena, DOS57) ────────────────────────────────────
+// Historial de prendas entregadas por empleado — importado de
+// docs/dos57/lorena/DOS57- PERSONAL ENTREGA UNIFORME 2024.xlsx. Distinto del
+// stock de depósito (Activo categoria=UNIFORME): esto es lo que se le dio a
+// cada persona, no lo que queda en el depósito.
+model EntregaUniforme {
+  id              Int       @id @default(autoincrement())
+  empresa_id      Int
+  empresa         Empresa   @relation(fields: [empresa_id], references: [id])
+  empleado_id     Int? // null si el empleado no está en el sistema
+  empleado        Empleado? @relation(fields: [empleado_id], references: [id])
+  empleado_nombre String // nombre tal cual aparece en el Excel
+  fecha_entrega   DateTime
+  // Prendas entregadas
+  borcegos        Int       @default(0)
+  remeras         Int       @default(0)
+  camperon        Int       @default(0)
+  chombas         Int       @default(0)
+  campera         Int       @default(0)
+  mochila         Int       @default(0)
+  buzo            Int       @default(0) // columna BUZO de la hoja PLANTA ESTABLE
+  pantalon        Int       @default(0)
+  bermuda         Int       @default(0)
+  gorra           Int       @default(0)
+  prot_lumbar     Int       @default(0)
+  guantes         Int       @default(0)
+  otros           String? // otros ítems (ej: "MARTILLO LAYHER", "CASCO x1")
+  // De qué hoja vino — "PLANTA ESTABLE", "DOS57_ENTREGA_2024", nombre de la
+  // hoja individual, o "MANUAL". Requerido (no nullable) porque es parte de
+  // la clave de upsert del importador.
+  origen_hoja     String    @default("MANUAL")
+  anio_resumen    Int? // si viene de una hoja de resumen anual
+  created_at      DateTime  @default(now())
+  created_by      Int?
+
+  @@unique([empresa_id, empleado_nombre, fecha_entrega, origen_hoja])
+  @@index([empleado_id])
+}
+
+// ─── SINIESTROS DE VEHÍCULOS (Lorena, DOS57) ─────────────────────────────────
+// Planilla docs/dos57/lorena/2026_Informe siniestros vehiculos.xlsx — análogo
+// a SiniestroEmpleado pero con vehículo y tercero involucrado.
+enum EstadoSiniestroVehiculo {
+  ABIERTO
+  EN_PROCESO
+  RESUELTO
+  SIN_NOVEDAD // "S/N" en el Excel
+}
+
+model SiniestroVehiculo {
+  id                     Int                     @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa                 @relation(fields: [empresa_id], references: [id])
+  camion_id              Int?
+  camion                 Camion?                 @relation(fields: [camion_id], references: [id])
+  patente_texto          String? // si el vehículo no está en el sistema
+  // Conductor
+  empleado_id            Int?
+  empleado               Empleado?               @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String?
+  // Seguro
+  aseguradora            String?
+  numero_siniestro       String?
+  fecha_denuncia         DateTime?
+  // Detalles del siniestro
+  fecha_ocurrencia       DateTime
+  lugar                  String?
+  descripcion            String?
+  danios                 String?
+  // Tercero involucrado
+  tercero_nombre         String?
+  tercero_vehiculo       String? // vehículo/patente del tercero
+  tercero_seguro         String?
+  // Estado y resolución
+  estado                 EstadoSiniestroVehiculo @default(ABIERTO)
+  observaciones          String?
+  // audit
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  deleted_at             DateTime?
+  created_by             Int?
+
+  @@unique([empresa_id, numero_siniestro])
 }

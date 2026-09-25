@@ -8,7 +8,7 @@ import {
   listSiniestros, getSiniestro, createSiniestro, updateSiniestro, cerrarSiniestro,
   addGastoSiniestro, deleteGastoSiniestro,
   subirDocumentoSiniestro, descargarDocumentoSiniestro,
-  importarSiniestros,
+  importarSiniestros, listEmpleadosSiniestros,
 } from '../controllers/siniestros.controller';
 
 function docMiddleware(req: any, res: any, next: any) {
@@ -32,6 +32,8 @@ router.use(auth);
 router.use(tenantMiddleware);
 
 router.post('/importar',              requireAnyRole(ROLES.ADMIN_OPERADOR), excelMiddleware, asyncHandler(importarSiniestros));
+// Antes de '/:id' — si no, 'empleados' se toma como un id.
+router.get('/empleados',              requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listEmpleadosSiniestros));
 router.get('/',                       requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listSiniestros));
 router.get('/:id',                    requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getSiniestro));
 router.post('/',                      requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createSiniestro));

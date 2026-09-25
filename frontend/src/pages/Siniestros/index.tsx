@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import SiniestrosVehiculoPanel from '@/components/siniestros/SiniestrosVehiculoPanel';
 import { Plus, Upload } from 'lucide-react';
-import { useSiniestros, useImportarSiniestros, type ImportarSiniestrosResultado } from '@/hooks/useSiniestros';
-import { useEmpleados } from '@/hooks/useRRHH';
+import { useSiniestros, useImportarSiniestros, useEmpleadosSiniestros, type ImportarSiniestrosResultado } from '@/hooks/useSiniestros';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -88,7 +88,50 @@ function ImportarDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Página ────────────────────────────────────────────────────────────────────
 
+// Lorena gestiona siniestros de personal (ART) y de vehículos desde la misma
+// pantalla — toggle [Empleados] [Vehículos] (?vista=vehiculos).
 export default function SiniestrosPage() {
+  const { user } = useAuth();
+  const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const vista: 'empleados' | 'vehiculos' = !id && searchParams.get('vista') === 'vehiculos' ? 'vehiculos' : 'empleados';
+  const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+
+  const setVista = (v: 'empleados' | 'vehiculos') => setSearchParams(v === 'vehiculos' ? { vista: 'vehiculos' } : {}, { replace: true });
+
+  const toggle = (
+    <div className="inline-flex rounded-md border border-border p-0.5 bg-muted/30">
+      {([['empleados', '👷 Empleados'], ['vehiculos', '🚗 Vehículos']] as const).map(([k, label]) => (
+        <button
+          key={k}
+          onClick={() => setVista(k)}
+          className={cn('px-3 py-1 text-sm rounded', vista === k ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (vista === 'vehiculos') {
+    return (
+      <div className="p-4 md:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold">🚗 Siniestros de vehículos</h1>
+            <p className="text-xs text-muted-foreground">Informe de siniestros de la flota — seguro, tercero involucrado y resolución.</p>
+          </div>
+          {toggle}
+        </div>
+        <SiniestrosVehiculoPanel canEdit={canEdit} />
+      </div>
+    );
+  }
+
+  return <SiniestrosEmpleadosView toggle={toggle} />;
+}
+
+function SiniestrosEmpleadosView({ toggle }: { toggle: React.ReactNode }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -105,7 +148,7 @@ export default function SiniestrosPage() {
 
   useEffect(() => { setViewingId(id ? Number(id) : null); }, [id]);
 
-  const { data: empleados = [] } = useEmpleados();
+  const { data: empleados = [] } = useEmpleadosSiniestros();
   const { data: siniestros = [], isLoading } = useSiniestros({
     estado: estado === 'TODOS' ? undefined : estado,
     empleado_id: empleadoId ?? undefined,
@@ -158,6 +201,7 @@ export default function SiniestrosPage() {
           <p className="text-xs text-muted-foreground">Informe de siniestros de personal (ART) — carga y seguimiento.</p>
         </div>
         <div className="flex items-center gap-2">
+          {toggle}
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
               <Upload size={14} className="mr-1.5" /> Importar desde Excel
@@ -196,23 +240,25 @@ export default function SiniestrosPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={estado} onChange={e => setEstado(e.target.value as EstadoSiniestro | 'TODOS')} className={inputCls}>
-          <option value="TODOS">Todos los estados</option>
-          {ESTADOS_SINIESTRO.map(e => <option key={e} value={e}>{e}</option>)}
-        </select>
-        <div className="w-52"><Combobox options={empleadoOptions} value={empleadoId ? String(empleadoId) : null} onChange={v => setEmpleadoId(v ? Number(v) : null)} placeholder="Todos los empleados" className="w-full" /></div>
-        <select value={art} onChange={e => setArt(e.target.value)} className={inputCls}>
+      {/* Grid: el Combobox trae sm:w-64 propio — sin sm:w-full se desborda
+          de su celda y se monta sobre el filtro de al lado. */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+        <Combobox options={empleadoOptions} value={empleadoId ? String(empleadoId) : null} onChange={v => setEmpleadoId(v ? Number(v) : null)} placeholder="Todos los empleados" className="w-full sm:w-full" />
+        <select value={art} onChange={e => setArt(e.target.value)} className={cn(inputCls, 'w-full')}>
           <option value="TODOS">Todas las ART</option>
           {artOptions.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select value={condicion} onChange={e => setCondicion(e.target.value)} className={inputCls}>
-          <option value="TODOS">Toda condición laboral</option>
-          {condicionOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        <select value={estado} onChange={e => setEstado(e.target.value as EstadoSiniestro | 'TODOS')} className={cn(inputCls, 'w-full')}>
+          <option value="TODOS">Todos los estados</option>
+          {ESTADOS_SINIESTRO.map(e => <option key={e} value={e}>{e}</option>)}
         </select>
-        <select value={String(anio)} onChange={e => setAnio(e.target.value === 'TODOS' ? 'TODOS' : Number(e.target.value))} className={inputCls}>
+        <select value={String(anio)} onChange={e => setAnio(e.target.value === 'TODOS' ? 'TODOS' : Number(e.target.value))} className={cn(inputCls, 'w-full')}>
           <option value="TODOS">Todos los años</option>
           {anios.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={condicion} onChange={e => setCondicion(e.target.value)} className={cn(inputCls, 'w-full')}>
+          <option value="TODOS">Toda condición laboral</option>
+          {condicionOptions.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 

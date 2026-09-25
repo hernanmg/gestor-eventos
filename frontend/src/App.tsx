@@ -39,6 +39,7 @@ import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
 import GastosOperativosPage from '@/pages/GastosOperativos';
 import SiniestrosPage       from '@/pages/Siniestros';
+import UniformesPage        from '@/pages/Uniformes';
 import { useAuth }          from '@/hooks/useAuth';
 import { resolveHomeRoute } from '@/lib/homeRoute';
 
@@ -102,6 +103,7 @@ export default function App() {
             <Route path="/gastos-operativos"       element={<GastosOperativosPage />} />
             <Route path="/siniestros"              element={<SiniestrosPage />} />
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
+            <Route path="/uniformes"               element={<UniformesPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />

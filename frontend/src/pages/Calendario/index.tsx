@@ -30,6 +30,7 @@ const TIPO_LABEL: Record<TipoCalendario, string> = {
   CUOTA_PRESTAMO:       'Cuotas créditos',
   FACTURA_EMITIDA_VENCE: 'Facturas a Cobrar',
   ACTIVO_STOCK_BAJO:    'Quiebre de stock uniformes',
+  SINIESTRO_VEHICULO_PENDIENTE: 'Siniestros vehículos',
 };
 
 const COLORES: Record<TipoCalendario, string> = {
@@ -50,6 +51,7 @@ const COLORES: Record<TipoCalendario, string> = {
   CUOTA_PRESTAMO:       '#92400E',
   FACTURA_EMITIDA_VENCE: '#065F46',
   ACTIVO_STOCK_BAJO:    '#DC2626',
+  SINIESTRO_VEHICULO_PENDIENTE: '#B91C1C',
 };
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -103,6 +105,7 @@ function getDetailLink(item: CalendarioItem): string {
     case 'CUOTA_AFIP':     return '/afip-prestamos?tab=afip';
     case 'CUOTA_PRESTAMO': return '/afip-prestamos?tab=prestamos';
     case 'FACTURA_EMITIDA_VENCE': return `/facturas-emitidas?abrir=${m.factura_id}`;
+    case 'SINIESTRO_VEHICULO_PENDIENTE': return '/flota?tab=siniestros';
     default:               return '/calendario';
   }
 }
@@ -125,6 +128,7 @@ function metadataResumen(item: CalendarioItem): string[] {
     case 'CUOTA_AFIP':     return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     case 'CUOTA_PRESTAMO': return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
+    case 'SINIESTRO_VEHICULO_PENDIENTE': return [`N° ${m.numero_siniestro ?? '—'}`, `${m.dias_sin_actividad} días sin actualizar`];
     default:               return [];
   }
 }

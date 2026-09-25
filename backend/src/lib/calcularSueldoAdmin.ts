@@ -145,6 +145,23 @@ export function calcularSueldoAdmin(
   };
 }
 
+// Premio PAX (líderes Fofi/Nestoras) — cantidad_pax × valor_por_pax ×
+// dias_trabajados por evento (EventoEmpleadoMes). valor_por_pax lo define
+// Matías por evento. Se persiste en EventoEmpleadoMes.premio_pax_total y se
+// SUMA al monto_premio de la fila en el total del premio de producción (ver
+// calcularResumenEventosMes), que llega a calcularSueldoAdmin como
+// `premioProduccion` sólo si AcuerdoSueldo.cobra_premio_produccion=true.
+// Devuelve null si falta cantidad o valor (fila sin PAX).
+export function calcularPremioPax(
+  cantidadPax:    number | null | undefined,
+  valorPorPax:    number | null | undefined,
+  diasTrabajados: number | null | undefined,
+): number | null {
+  if (!cantidadPax || cantidadPax <= 0 || valorPorPax == null) return null;
+  const dias = diasTrabajados == null ? 1 : diasTrabajados;
+  return round2(cantidadPax * Number(valorPorPax) * dias);
+}
+
 export interface SplitCalculado {
   empresa_id:     number;
   empresa_nombre: string;

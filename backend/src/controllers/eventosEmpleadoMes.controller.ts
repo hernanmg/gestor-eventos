@@ -3,13 +3,25 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
+import { calcularPremioPax } from '../lib/calcularSueldoAdmin';
 
 // Premio de producción — eventos del mes en que participó un empleado (ver
 // AcuerdoSueldo.cobra_premio_produccion / EventoEmpleadoMes en schema.prisma).
 // Distinto de Jornada: esto es un monto fijo por evento, no por día trabajado.
 
 function mapDecimals(e: any) {
-  return { ...e, monto_premio: e.monto_premio !== null ? Number(e.monto_premio) : null };
+  return {
+    ...e,
+    monto_premio:     e.monto_premio     !== null ? Number(e.monto_premio)     : null,
+    valor_por_pax:    e.valor_por_pax    !== null ? Number(e.valor_por_pax)    : null,
+    premio_pax_total: e.premio_pax_total !== null ? Number(e.premio_pax_total) : null,
+  };
+}
+
+// Monto efectivo de una fila: premio fijo + premio PAX (Fofi/Nestoras).
+function montoFila(e: { monto_premio: any; premio_pax_total: any }): number {
+  return (e.monto_premio !== null ? Number(e.monto_premio) : 0)
+    + (e.premio_pax_total !== null ? Number(e.premio_pax_total) : 0);
 }
 
 function round2(n: number): number {
@@ -25,11 +37,11 @@ export async function calcularResumenEventosMes(empleadoId: number, mes: number,
     orderBy: { created_at: 'asc' },
   });
 
-  const total = round2(
-    eventos.filter(e => e.cobra_premio).reduce((s, e) => s + (e.monto_premio !== null ? Number(e.monto_premio) : 0), 0),
-  );
+  const cobrados = eventos.filter(e => e.cobra_premio);
+  const total     = round2(cobrados.reduce((s, e) => s + montoFila(e), 0));
+  const total_pax = round2(cobrados.reduce((s, e) => s + (e.premio_pax_total !== null ? Number(e.premio_pax_total) : 0), 0));
 
-  return { total, eventos: eventos.map(mapDecimals) };
+  return { total, total_pax, eventos: eventos.map(mapDecimals) };
 }
 
 const querySchema = z.object({
@@ -56,6 +68,9 @@ const createSchema = z.object({
   periodo_anio:  z.number().int().min(2000).max(2100),
   monto_premio:  z.number().min(0).nullable().optional(),
   cobra_premio:  z.boolean().default(true),
+  cantidad_pax:    z.number().int().min(0).nullable().optional(),
+  valor_por_pax:   z.number().min(0).nullable().optional(),
+  dias_trabajados: z.number().int().min(0).nullable().optional(),
 }).refine(d => d.evento_id || d.evento_nombre, {
   message: 'evento_id o evento_nombre son requeridos', path: ['evento_nombre'],
 });
@@ -88,6 +103,10 @@ export async function createEventoEmpleadoMes(req: Request, res: Response) {
         periodo_anio:  d.periodo_anio,
         cobra_premio:  d.cobra_premio,
         monto_premio:  d.monto_premio ?? null,
+        cantidad_pax:     d.cantidad_pax    ?? null,
+        valor_por_pax:    d.valor_por_pax   ?? null,
+        dias_trabajados:  d.dias_trabajados ?? 1,
+        premio_pax_total: calcularPremioPax(d.cantidad_pax, d.valor_por_pax, d.dias_trabajados ?? 1),
         created_by:    req.user!.id,
       },
       include: { evento: { select: { id: true, nombre: true, fecha_inicio: true } } },
@@ -115,8 +134,11 @@ export async function createEventoEmpleadoMes(req: Request, res: Response) {
 }
 
 const updateSchema = z.object({
-  monto_premio: z.number().min(0).nullable().optional(),
-  cobra_premio: z.boolean().optional(),
+  monto_premio:    z.number().min(0).nullable().optional(),
+  cobra_premio:    z.boolean().optional(),
+  cantidad_pax:    z.number().int().min(0).nullable().optional(),
+  valor_por_pax:   z.number().min(0).nullable().optional(),
+  dias_trabajados: z.number().int().min(0).nullable().optional(),
 });
 
 export async function updateEventoEmpleadoMes(req: Request, res: Response) {
@@ -130,11 +152,23 @@ export async function updateEventoEmpleadoMes(req: Request, res: Response) {
   const existing = await prisma.eventoEmpleadoMes.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Registro no encontrado' }); return; }
 
+  const d = parsed.data;
+  // premio_pax_total se recalcula siempre server-side sobre los valores
+  // resultantes (lo mandado + lo ya persistido) — nunca viene del frontend.
+  const cantidadPax    = d.cantidad_pax    !== undefined ? d.cantidad_pax    : existing.cantidad_pax;
+  const valorPorPax    = d.valor_por_pax   !== undefined ? d.valor_por_pax   : (existing.valor_por_pax !== null ? Number(existing.valor_por_pax) : null);
+  const diasTrabajados = d.dias_trabajados !== undefined ? d.dias_trabajados : existing.dias_trabajados;
+  const tocaPax = d.cantidad_pax !== undefined || d.valor_por_pax !== undefined || d.dias_trabajados !== undefined;
+
   const updated = await prisma.eventoEmpleadoMes.update({
     where: { id },
     data: {
-      ...(parsed.data.monto_premio !== undefined && { monto_premio: parsed.data.monto_premio }),
-      ...(parsed.data.cobra_premio !== undefined && { cobra_premio: parsed.data.cobra_premio }),
+      ...(d.monto_premio    !== undefined && { monto_premio: d.monto_premio }),
+      ...(d.cobra_premio    !== undefined && { cobra_premio: d.cobra_premio }),
+      ...(d.cantidad_pax    !== undefined && { cantidad_pax: d.cantidad_pax }),
+      ...(d.valor_por_pax   !== undefined && { valor_por_pax: d.valor_por_pax }),
+      ...(d.dias_trabajados !== undefined && { dias_trabajados: d.dias_trabajados }),
+      ...(tocaPax && { premio_pax_total: calcularPremioPax(cantidadPax, valorPorPax, diasTrabajados) }),
     },
     include: { evento: { select: { id: true, nombre: true, fecha_inicio: true } } },
   });

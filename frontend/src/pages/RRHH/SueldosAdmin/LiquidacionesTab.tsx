@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, Download } from 'lucide-react';
 import { useEmpleados, useAnticiposEmpleado, useCreateAnticipo, type AnticipoPayload } from '@/hooks/useRRHH';
 import {
@@ -18,7 +18,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { Trash2 } from 'lucide-react';
-import type { EstadoLiquidacionAdmin, LiquidacionAdmin, TipoAumento, TipoAnticipo, ResumenMesEmpleadoResponse } from '@/types';
+import type { EstadoLiquidacionAdmin, EventoEmpleadoMes, LiquidacionAdmin, TipoAumento, TipoAnticipo, ResumenMesEmpleadoResponse } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
@@ -235,9 +235,12 @@ function BitacoraResumenPanel({ empleadoId, mes, anio, onUsar, autoAplicado = fa
 
 // ── Panel: Premio de producción — eventos del mes (checkboxes + agregar) ─────
 
-function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, open, onClose }: {
-  empleadoId: number; mes: number; anio: number; montoDefault: number | null; open: boolean; onClose: () => void;
+function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, esLiderPax = false, open, onClose }: {
+  empleadoId: number; mes: number; anio: number; montoDefault: number | null; esLiderPax?: boolean; open: boolean; onClose: () => void;
 }) {
+  const [pax, setPax]           = useState('');
+  const [valorPax, setValorPax] = useState('');
+  const [dias, setDias]         = useState('1');
   const { data: eventos = [] } = useEventos();
   const createMut = useCreateEventoEmpleadoMes(empleadoId);
   const [eventoId, setEventoId]   = useState('');
@@ -255,6 +258,11 @@ function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, open, onC
         periodo_mes:   mes,
         periodo_anio:  anio,
         monto_premio:  monto.trim() === '' ? null : Number(monto),
+        ...(esLiderPax && {
+          cantidad_pax:    pax.trim() === '' ? null : Math.trunc(Number(pax)),
+          valor_por_pax:   valorPax.trim() === '' ? null : Number(valorPax),
+          dias_trabajados: dias.trim() === '' ? 1 : Math.trunc(Number(dias)),
+        }),
       });
       onClose();
     } catch (err) {
@@ -280,8 +288,27 @@ function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, open, onC
               <input value={nombreLibre} onChange={e => setNombreLibre(e.target.value)} className={inputCls} placeholder="Ej: RESCOLDO" />
             </div>
           )}
+          {esLiderPax && (
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className={labelCls}>Pax</label>
+                <input type="number" min={0} step={1} value={pax} onChange={e => setPax(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Valor por PAX</label>
+                <MoneyInput value={valorPax} onChange={setValorPax} />
+              </div>
+              <div>
+                <label className={labelCls}>Días</label>
+                <input type="number" min={0} step={1} value={dias} onChange={e => setDias(e.target.value)} className={inputCls} />
+              </div>
+              <p className="col-span-3 text-xs text-muted-foreground">
+                = {formatCurrency((Number(pax) || 0) * (Number(valorPax) || 0) * (dias.trim() === '' ? 1 : Number(dias) || 0))}
+              </p>
+            </div>
+          )}
           <div>
-            <label className={labelCls}>Monto del premio</label>
+            <label className={labelCls}>{esLiderPax ? 'Premio fijo adicional (opcional)' : 'Monto del premio'}</label>
             <MoneyInput value={monto} onChange={setMonto} />
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -297,20 +324,113 @@ function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, open, onC
   );
 }
 
-function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault }: {
+// Fila de evento con Premio PAX (líderes Fofi/Nestoras): Pax × $valor × días.
+// Los 3 campos son editables y el total se recalcula en tiempo real con el
+// estado local; se persiste al salir del campo (el backend recalcula
+// premio_pax_total — nunca se manda desde acá).
+function PaxRow({ ev, onToggle, onDelete, onLocalTotal }: {
+  ev: EventoEmpleadoMes; onToggle: () => void; onDelete: () => void; onLocalTotal: (id: number, total: number) => void;
+}) {
+  const updateMut = useUpdateEventoEmpleadoMes();
+  const [pax, setPax]     = useState(ev.cantidad_pax != null ? String(ev.cantidad_pax) : '');
+  const [valor, setValor] = useState(ev.valor_por_pax != null ? String(ev.valor_por_pax) : '');
+  const [dias, setDias]   = useState(String(ev.dias_trabajados ?? 1));
+
+  useEffect(() => {
+    setPax(ev.cantidad_pax != null ? String(ev.cantidad_pax) : '');
+    setValor(ev.valor_por_pax != null ? String(ev.valor_por_pax) : '');
+    setDias(String(ev.dias_trabajados ?? 1));
+  }, [ev.cantidad_pax, ev.valor_por_pax, ev.dias_trabajados]);
+
+  const paxN   = Number(pax) || 0;
+  const valorN = Number(valor) || 0;
+  const diasN  = dias.trim() === '' ? 1 : (Number(dias) || 0);
+  const totalPax = Math.round(paxN * valorN * diasN * 100) / 100;
+
+  useEffect(() => { onLocalTotal(ev.id, totalPax); }, [ev.id, totalPax, onLocalTotal]);
+
+  const persist = () => {
+    const data = {
+      cantidad_pax:    pax.trim() === '' ? null : Math.trunc(paxN),
+      valor_por_pax:   valor.trim() === '' ? null : valorN,
+      dias_trabajados: Math.trunc(diasN),
+    };
+    if (data.cantidad_pax === ev.cantidad_pax && data.valor_por_pax === ev.valor_por_pax && data.dias_trabajados === (ev.dias_trabajados ?? 1)) return;
+    updateMut.mutate({ id: ev.id, data });
+  };
+
+  const tachado = !ev.cobra_premio && 'line-through text-muted-foreground';
+  const numCls = 'border border-input rounded px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring';
+
+  return (
+    <div className="text-xs space-y-1 py-1">
+      <div className="flex items-center gap-2">
+        <input type="checkbox" checked={ev.cobra_premio} onChange={onToggle} />
+        <span className={cn('flex-1 font-medium', tachado)}>
+          {(ev.evento?.nombre ?? ev.evento_nombre)}
+          {ev.evento?.fecha_inicio && ` (${formatDate(ev.evento.fecha_inicio)})`}
+        </span>
+        <button type="button" onClick={onDelete} className="text-destructive hover:bg-destructive/10 rounded p-0.5">
+          <Trash2 size={12} />
+        </button>
+      </div>
+      <div className={cn('flex flex-wrap items-center gap-1.5 pl-5', tachado)}>
+        <span>Pax:</span>
+        <input type="number" min={0} step={1} value={pax} onChange={e => setPax(e.target.value)} onBlur={persist} className={cn(numCls, 'w-14')} />
+        <span>× $</span>
+        <input type="number" min={0} step="0.01" value={valor} onChange={e => setValor(e.target.value)} onBlur={persist} className={cn(numCls, 'w-24')} placeholder="Valor/PAX" />
+        <span>×</span>
+        <input type="number" min={0} step={1} value={dias} onChange={e => setDias(e.target.value)} onBlur={persist} className={cn(numCls, 'w-12')} />
+        <span>{diasN === 1 ? 'día' : 'días'} =</span>
+        <span className="font-semibold">{formatCurrency(totalPax)}</span>
+      </div>
+      {!!ev.monto_premio && (
+        <p className={cn('pl-5 text-muted-foreground', tachado)}>+ premio fijo {formatCurrency(ev.monto_premio)}</p>
+      )}
+    </div>
+  );
+}
+
+function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault, esLiderPax = false }: {
   empleadoId: number; mes: number; anio: number; valorDefault: number | null;
+  // Fofi/Nestoras — muestra Pax × valor × días por evento (Premio PAX)
+  esLiderPax?: boolean;
 }) {
   const { data: resumen } = useEventosMesEmpleado(empleadoId, mes, anio);
   const updateMut = useUpdateEventoEmpleadoMes();
   const deleteMut = useDeleteEventoEmpleadoMes();
   const [addOpen, setAddOpen] = useState(false);
+  // Totales PAX en vivo (lo que se está tipeando, antes de persistir)
+  const [paxLocal, setPaxLocal] = useState<Record<number, number>>({});
+  const onLocalTotal = useCallback((id: number, total: number) => {
+    setPaxLocal(p => (p[id] === total ? p : { ...p, [id]: total }));
+  }, []);
   if (!resumen) return null;
+
+  const cobrados = resumen.eventos.filter(ev => ev.cobra_premio);
+  const paxDe = (ev: EventoEmpleadoMes) => paxLocal[ev.id] ?? ev.premio_pax_total ?? 0;
+  const totalPaxVivo = Math.round(cobrados.reduce((s, ev) => s + paxDe(ev), 0) * 100) / 100;
+  const totalVivo = esLiderPax
+    ? Math.round(cobrados.reduce((s, ev) => s + (ev.monto_premio ?? 0) + paxDe(ev), 0) * 100) / 100
+    : resumen.total;
 
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">🎯 Premio de producción — eventos del mes</p>
+      <p className="text-xs font-medium text-muted-foreground">🎯 Premio de producción — eventos del mes{esLiderPax && ' (Premio PAX)'}</p>
       {resumen.eventos.length === 0 ? (
         <p className="text-xs text-muted-foreground">Sin eventos cargados para este período todavía.</p>
+      ) : esLiderPax ? (
+        <div className="divide-y divide-border">
+          {resumen.eventos.map(ev => (
+            <PaxRow
+              key={ev.id}
+              ev={ev}
+              onToggle={() => updateMut.mutate({ id: ev.id, data: { cobra_premio: !ev.cobra_premio } })}
+              onDelete={() => deleteMut.mutate(ev.id)}
+              onLocalTotal={onLocalTotal}
+            />
+          ))}
+        </div>
       ) : (
         <div className="space-y-1">
           {resumen.eventos.map(ev => (
@@ -334,11 +454,16 @@ function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault }: {
           ))}
         </div>
       )}
-      <p className="text-sm font-semibold pt-1 border-t border-border">Total premios: {formatCurrency(resumen.total)}</p>
+      {esLiderPax && (
+        <p className="text-xs font-medium pt-1 border-t border-border flex justify-between">
+          <span>Total premios PAX</span><span>{formatCurrency(totalPaxVivo)}</span>
+        </p>
+      )}
+      <p className="text-sm font-semibold pt-1 border-t border-border">Total premios: {formatCurrency(totalVivo)}</p>
       <Button type="button" variant="outline" size="sm" onClick={() => setAddOpen(true)}>+ Agregar evento</Button>
       {addOpen && (
         <AgregarEventoMesDialog
-          empleadoId={empleadoId} mes={mes} anio={anio} montoDefault={valorDefault}
+          empleadoId={empleadoId} mes={mes} anio={anio} montoDefault={esLiderPax ? null : valorDefault} esLiderPax={esLiderPax}
           open onClose={() => setAddOpen(false)}
         />
       )}
@@ -708,6 +833,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               mes={Number(form.periodo_mes)}
               anio={Number(form.periodo_anio)}
               valorDefault={acuerdoSel.valor_premio_produccion}
+              esLiderPax={acuerdoSel.empleado?.categoria === 'FOFI' || acuerdoSel.empleado?.categoria === 'NESTORAS'}
             />
           )}
 

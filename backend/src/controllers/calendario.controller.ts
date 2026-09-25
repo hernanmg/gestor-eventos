@@ -13,7 +13,8 @@ export type TipoCalendario =
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
-  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE';
+  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
+  | 'SINIESTRO_VEHICULO_PENDIENTE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -54,6 +55,7 @@ const COLORES: Record<TipoCalendario, string> = {
   // mínimo — este valor del mapa es sólo el default/fallback.
   ACTIVO_STOCK_BAJO:    '#DC2626',
   SGR_VENCE:            '#F59E0B',
+  SINIESTRO_VEHICULO_PENDIENTE: '#B91C1C',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -79,6 +81,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   excedentes_horas: 'EXCEDENTE_PENDIENTE',
   stock_bajo:      'ACTIVO_STOCK_BAJO',
   sgr:             'SGR_VENCE',
+  siniestros_vehiculo: 'SINIESTRO_VEHICULO_PENDIENTE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -690,6 +693,38 @@ async function resolveSiniestrosPendientes(empresaFiltro: number | undefined, de
   return items;
 }
 
+// Siniestros de vehículos (flota) ABIERTO/EN_PROCESO — todos los pendientes,
+// anclados a "hoy" (condición vigente). warning si pasaron más de 30 días sin
+// actualización (mismo umbral que la campanita), normal si no.
+async function resolveSiniestrosVehiculoPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  if (hoy < desde || hoy > hasta) return [];
+
+  const siniestros = await prisma.siniestroVehiculo.findMany({
+    where: {
+      deleted_at: null,
+      estado: { in: ['ABIERTO', 'EN_PROCESO'] },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true, patente: true } }, empresa: { select: { nombre: true } } },
+  });
+
+  return siniestros.map(s => {
+    const diasSinActividad = Math.floor((hoy.getTime() - s.updated_at.getTime()) / 86_400_000);
+    const vehiculo = s.camion?.patente ?? s.camion?.codigo ?? s.patente_texto ?? 'Vehículo';
+    return {
+      id:             `siniestro-vehiculo-${s.id}`,
+      tipo:           'SINIESTRO_VEHICULO_PENDIENTE' as const,
+      titulo:         `${vehiculo} — siniestro ${s.estado === 'ABIERTO' ? 'abierto' : 'en proceso'}`,
+      fecha:          hoy,
+      empresa_id:     s.empresa_id,
+      empresa_nombre: s.empresa.nombre,
+      color:          COLORES.SINIESTRO_VEHICULO_PENDIENTE,
+      urgencia:       diasSinActividad > 30 ? 'warning' as const : 'normal' as const,
+      metadata:       { siniestro_vehiculo_id: s.id, estado: s.estado, numero_siniestro: s.numero_siniestro, dias_sin_actividad: diasSinActividad },
+    };
+  });
+}
+
 // Excedentes de horas (Fofi/Nestoras) pendientes de pago — mismo criterio.
 async function resolveExcedentesPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
   if (hoy < desde || hoy > hasta) return [];
@@ -863,6 +898,7 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('EXCEDENTE_PENDIENTE')) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('ACTIVO_STOCK_BAJO'))   tareas.push(resolveActivosStockBajo(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SGR_VENCE'))           tareas.push(resolveSGRVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('SINIESTRO_VEHICULO_PENDIENTE')) tareas.push(resolveSiniestrosVehiculoPendientes(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

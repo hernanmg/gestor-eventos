@@ -42,6 +42,8 @@ import { espaciosCompartidosRouter } from './routes/espaciosCompartidos';
 import presentismoRouter from './routes/presentismo';
 import { cajaAndreaRouter } from './routes/cajaAndrea';
 import siniestrosRouter from './routes/siniestros';
+import siniestrosVehiculoRouter from './routes/siniestrosVehiculo';
+import uniformesRouter from './routes/uniformes';
 import excedenteHorasRouter from './routes/excedenteHoras';
 
 const app = express();
@@ -131,6 +133,8 @@ app.use('/api/espacios-compartidos', espaciosCompartidosRouter);
 app.use('/api/presentismo',         presentismoRouter);
 app.use('/api/caja',                cajaAndreaRouter);
 app.use('/api/siniestros',          siniestrosRouter);
+app.use('/api/siniestros-vehiculos', siniestrosVehiculoRouter);
+app.use('/api/uniformes',           uniformesRouter);
 app.use('/api/excedente-horas',     excedenteHorasRouter);
 
 app.use(errorHandler);

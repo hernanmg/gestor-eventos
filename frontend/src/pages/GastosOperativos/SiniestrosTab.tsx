@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useSiniestros } from '@/hooks/useSiniestros';
-import { useEmpleados } from '@/hooks/useRRHH';
+import { useSiniestros, useEmpleadosSiniestros } from '@/hooks/useSiniestros';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
@@ -29,7 +28,7 @@ export default function SiniestrosTab() {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [viewingId, setViewingId] = useState<number | null>(null);
 
-  const { data: empleados = [] } = useEmpleados();
+  const { data: empleados = [] } = useEmpleadosSiniestros();
   const { data: siniestros = [], isLoading } = useSiniestros({
     estado: estado === 'TODOS' ? undefined : estado,
     empleado_id: empleadoId ?? undefined,

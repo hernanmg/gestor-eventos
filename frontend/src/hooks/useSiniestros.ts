@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { SiniestroEmpleado, GastoSiniestro, DocumentoSiniestro, TipoSiniestro, EstadoSiniestro } from '@/types';
+import type { SiniestroEmpleado, GastoSiniestro, DocumentoSiniestro, TipoSiniestro, EstadoSiniestro, CategoriaEmpleado, EstadoEmpleado } from '@/types';
 
 const SINIESTROS_KEY = ['siniestros'];
 
@@ -9,6 +9,18 @@ export interface SiniestroFiltros {
   empleado_id?: number;
   desde?:       string;
   hasta?:       string;
+}
+
+export interface EmpleadoSiniestros { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado; estado: EstadoEmpleado }
+
+// Listado de empleados para los selectores de siniestros (personas y conductor
+// de vehículos). No usa /rrhh/empleados porque Lorena (OPERADOR) no tiene
+// acceso a RRHH — ver GET /api/siniestros/empleados.
+export function useEmpleadosSiniestros() {
+  return useQuery<EmpleadoSiniestros[]>({
+    queryKey: [...SINIESTROS_KEY, 'empleados'],
+    queryFn:  () => api.get('/siniestros/empleados').then(r => r.data),
+  });
 }
 
 export function useSiniestros(filtros: SiniestroFiltros = {}) {

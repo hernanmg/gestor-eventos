@@ -62,6 +62,19 @@ function mapDocumento(d: any) {
   return { ...d, archivo_data: undefined };
 }
 
+// GET /api/siniestros/empleados — listado liviano para filtros/selectores de
+// siniestros (personas y conductor de vehículos). Lorena (OPERADOR) administra
+// esta pantalla pero no tiene acceso a /api/rrhh/empleados (RRHH es sólo
+// ADMIN) — mismo criterio que GET /api/uniformes/empleados.
+export async function listEmpleadosSiniestros(req: Request, res: Response) {
+  const empleados = await prisma.empleado.findMany({
+    where:   { deleted_at: null, ...withTenant(req.empresaId!) },
+    select:  { id: true, nombre: true, apellido: true, categoria: true, estado: true },
+    orderBy: [{ apellido: 'asc' }, { nombre: 'asc' }],
+  });
+  res.json(empleados);
+}
+
 // ── Siniestros ────────────────────────────────────────────────────────────────
 
 const createSiniestroSchema = z.object({

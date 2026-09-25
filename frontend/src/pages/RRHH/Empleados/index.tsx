@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/formatters';
+import HistorialUniformes from '@/components/uniformes/HistorialUniformes';
 import { cn, getApiErrorMessage, getApiFieldErrors } from '@/lib/utils';
 import type { Empleado, CategoriaEmpleado, EstadoEmpleado, TipoLiquidacion } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
@@ -648,6 +649,13 @@ function AsistenciaTab({ empleado }: { empleado: Empleado }) {
   );
 }
 
+// ── Uniformes entregados (Lorena, DOS57) ──────────────────────────────────────
+
+function UniformesTab({ empleado }: { empleado: Empleado }) {
+  // RRHH es sólo ADMIN — acá siempre se puede editar.
+  return <HistorialUniformes refEmpleado={{ empleadoId: empleado.id }} canEdit />;
+}
+
 // ── Drawer de detalle ──────────────────────────────────────────────────────────
 
 function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones }: {
@@ -657,7 +665,7 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
   onVerLiquidaciones: (id: number) => void;
 }) {
   const { data: empleado, isLoading } = useEmpleado(empleadoId);
-  const [tab, setTab] = useState<'personal' | 'bancarios' | 'historial' | 'asistencia'>('personal');
+  const [tab, setTab] = useState<'personal' | 'bancarios' | 'historial' | 'asistencia' | 'uniformes'>('personal');
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
 
   return (
@@ -692,13 +700,13 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
               </div>
             </div>
 
-            <div className="flex border-b border-border">
-              {(['personal', 'bancarios', 'historial', 'asistencia'] as const).map(t => (
+            <div className="flex border-b border-border overflow-x-auto">
+              {(['personal', 'bancarios', 'historial', 'asistencia', 'uniformes'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)} className={cn(
-                  'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px',
+                  'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px whitespace-nowrap',
                   tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
                 )}>
-                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : t === 'historial' ? 'Historial de convocatorias' : 'Asistencia'}
+                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : t === 'historial' ? 'Historial de convocatorias' : t === 'asistencia' ? 'Asistencia' : 'Uniformes'}
                 </button>
               ))}
             </div>
@@ -721,6 +729,8 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
               </dl>
             ) : tab === 'historial' ? (
               <HistorialTab empleado={empleado} />
+            ) : tab === 'uniformes' ? (
+              <UniformesTab empleado={empleado} />
             ) : (
               <AsistenciaTab empleado={empleado} />
             )}
