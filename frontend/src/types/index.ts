@@ -2526,3 +2526,104 @@ export interface ImportarUniformesResultado {
   empleados_no_encontrados: { nombre: string }[];
   errores:                  { hoja: string; motivo: string }[];
 }
+
+// ── Tarjeta Corporativa (DOS57 / Enjoy) ──────────────────────────────────────
+
+export type TipoResponsableTC = 'PERSONAL' | 'EMPRESA';
+
+export interface ResponsableTC {
+  id:         number;
+  tarjeta_id: number;
+  nombre:     string;
+  tipo:       TipoResponsableTC;
+  usuario_id: number | null;
+  usuario?:   { id: number; nombre: string } | null;
+  activo:     boolean;
+}
+
+export interface TarjetaCorporativa {
+  id:           number;
+  empresa_id:   number;
+  empresa:      { id: number; nombre: string; nombre_corto: string | null };
+  nombre:       string;
+  banco:        string;
+  moneda_base:  Moneda;
+  activa:       boolean;
+  responsables: ResponsableTC[];
+  _count:       { consumos: number };
+}
+
+export interface TarjetasCorporativasResponse {
+  empresas: { id: number; nombre: string; nombre_corto: string | null }[];
+  tarjetas: TarjetaCorporativa[];
+}
+
+export interface ConsumoTC {
+  id:             number;
+  tarjeta_id:     number;
+  responsable_id: number;
+  responsable:    { id: number; nombre: string; tipo: TipoResponsableTC; usuario_id: number | null };
+  fecha:          string;
+  periodo_mes:    number;
+  periodo_anio:   number;
+  monto_ars:      number | null;
+  monto_usd:      number | null;
+  detalle:        string | null;
+  observaciones:  string | null;
+  empresa_imputa: string | null;
+  descontado:     boolean;
+  nota_descuento: string | null;
+  import_key:     string | null;
+}
+
+export interface TotalResponsableTC {
+  responsable_id: number;
+  nombre:         string;
+  tipo:           TipoResponsableTC;
+  consumos:       number;
+  total_ars:      number;
+  total_usd:      number;
+}
+
+export interface ResumenTC {
+  por_responsable: TotalResponsableTC[];
+  total_ars:       number;
+  total_usd:       number;
+}
+
+export interface ConsumosTCResponse extends ResumenTC {
+  consumos: ConsumoTC[];
+}
+
+export interface ImportarTCResultado {
+  preview:          boolean;
+  tarjeta:          { id: number | null; nombre: string };
+  hojas: {
+    hoja: string; mes: number | null; anio: number | null; consumos: number;
+    total_ars: number; total_usd: number; mixtos: number;
+    por_responsable: { responsable: string; tipo: TipoResponsableTC; consumos: number; total_ars: number; total_usd: number }[];
+    advertencias: string[];
+  }[];
+  meses_detectados:    number;
+  meses_con_datos:     number;
+  total_consumos:      number;
+  creados:             number;
+  actualizados:        number;
+  eliminados:          number;
+  responsables_nuevos: string[];
+}
+
+export interface ConsumoTCPayload {
+  responsable_id?:     number;
+  responsable_nombre?: string;
+  responsable_tipo?:   TipoResponsableTC;
+  fecha:               string; // YYYY-MM-DD
+  periodo_mes?:        number;
+  periodo_anio?:       number;
+  monto_ars?:          number | null;
+  monto_usd?:          number | null;
+  detalle?:            string | null;
+  observaciones?:      string | null;
+  empresa_imputa?:     string | null;
+  descontado?:         boolean;
+}

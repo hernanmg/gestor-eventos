@@ -435,6 +435,26 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Tarjeta Corporativa ──────────────────────────────────────────────────────
+  '/tarjeta-corporativa': {
+    titulo: 'Tarjeta Corporativa',
+    descripcion: 'Consumos mensuales de las tarjetas Galicia de DOS57 y Enjoy por responsable, en $ y USD.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Reemplaza la planilla mensual de tarjeta corporativa: arriba el resumen por responsable (igual al bloque del Excel) y abajo el detalle de cada consumo. Hacé click en un responsable o en los chips para ver sólo sus consumos.',
+      },
+      {
+        titulo: 'Importar desde Excel',
+        contenido: 'Subí la planilla anual (una hoja por mes). Los totales se recalculan desde el detalle — el bloque resumen del Excel no se usa. Reimportar el mismo archivo no duplica: actualiza los consumos existentes. Los consumos de ANDRE marcados "PERSONAL Y DOS57" quedan en la parte Empresa con la observación "(MIXTO – revisar)" para repartirlos a mano.',
+      },
+      {
+        titulo: 'Descontado',
+        contenido: 'Si la observación dice "SE DESCONTO" (ej. multas descontadas al chofer) el consumo muestra el badge rojo "Descontado"; si dice "NO SE DESCONTO", el gris "No descontado". También se puede marcar a mano al editar.',
+      },
+    ],
+  },
+
   // ── Sueldos administrativos ──────────────────────────────────────────────────
   '/rrhh/sueldos-admin': {
     titulo: 'Sueldos Administrativos',

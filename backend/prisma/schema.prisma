@@ -282,6 +282,7 @@ model Empresa {
   sgrs                   SGR[]
   cierresContables       CierreContable[]
   cortesiasEvento        CortesiaEvento[]
+  tarjetasCorporativas   TarjetaCorporativa[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -323,6 +324,7 @@ model Usuario {
   empleado               Empleado?
   movimientosResponsable Movimiento[]
   cuentasResponsable     CuentaBancaria[]
+  responsablesTC         ResponsableTC[]
 }
 
 // Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
@@ -3076,4 +3078,73 @@ model SiniestroVehiculo {
   created_by             Int?
 
   @@unique([empresa_id, numero_siniestro])
+}
+
+// ─── TARJETA CORPORATIVA ──────────────────────────────────────────────────────
+// Tarjetas Galicia de DOS57 y Enjoy (Santi lleva el registro en el Drive).
+// Importador: docs/dos57/santi-nico/Tarjeta Corporativa {DOS57,ENJOY} 2026 (1).xlsx
+// — una hoja por mes, se importa sólo el bloque de detalle (el resumen del
+// Excel no es confiable); ver lib/tarjetaCorporativaImporter.ts.
+
+model TarjetaCorporativa {
+  id           Int             @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa         @relation(fields: [empresa_id], references: [id])
+  nombre       String // "TC DOS57 Galicia" / "TC Enjoy Galicia"
+  banco        String          @default("Galicia")
+  moneda_base  Moneda          @default(ARS)
+  activa       Boolean         @default(true)
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  responsables ResponsableTC[]
+  consumos     ConsumoTC[]
+
+  @@unique([empresa_id, nombre])
+}
+
+model ResponsableTC {
+  id         Int                @id @default(autoincrement())
+  tarjeta_id Int
+  tarjeta    TarjetaCorporativa @relation(fields: [tarjeta_id], references: [id])
+  nombre     String // "POLLO", "ANDRE", "MATI", etc.
+  // "PERSONAL" o "EMPRESA" — sólo ANDRE (DOS57) tiene los dos; el resto PERSONAL.
+  tipo       String             @default("PERSONAL")
+  usuario_id Int? // si está vinculado a un usuario del sistema
+  usuario    Usuario?           @relation(fields: [usuario_id], references: [id])
+  activo     Boolean            @default(true)
+  consumos   ConsumoTC[]
+
+  @@unique([tarjeta_id, nombre, tipo])
+}
+
+model ConsumoTC {
+  id             Int                @id @default(autoincrement())
+  tarjeta_id     Int
+  tarjeta        TarjetaCorporativa @relation(fields: [tarjeta_id], references: [id])
+  responsable_id Int
+  responsable    ResponsableTC      @relation(fields: [responsable_id], references: [id])
+  fecha          DateTime
+  periodo_mes    Int // mes al que imputa (puede diferir del mes de la fecha: la hoja de enero trae consumos del 30/12)
+  periodo_anio   Int
+  monto_ars      Decimal?           @db.Decimal(15, 2)
+  monto_usd      Decimal?           @db.Decimal(15, 2)
+  detalle        String? // descripción del consumo (texto del resumen del banco)
+  observaciones  String?
+  empresa_imputa String? // columna EMPRESA del Excel
+  // Si se descontó al responsable
+  descontado     Boolean            @default(false)
+  nota_descuento String?
+  // Clave de idempotencia del importador: período + responsable + fecha +
+  // detalle + montos + N° de aparición. [tarjeta, responsable, fecha, detalle]
+  // no alcanza — la planilla repite cargos idénticos legítimos (ej. 5 × NIC
+  // ARGENTINA $8.500 el mismo día). null en consumos cargados a mano.
+  import_key     String?
+  // audit
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+  created_by     Int?
+  deleted_at     DateTime?
+
+  @@unique([tarjeta_id, import_key])
+  @@index([tarjeta_id, periodo_anio, periodo_mes])
 }

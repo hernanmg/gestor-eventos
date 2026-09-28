@@ -44,6 +44,7 @@ import { cajaAndreaRouter } from './routes/cajaAndrea';
 import siniestrosRouter from './routes/siniestros';
 import siniestrosVehiculoRouter from './routes/siniestrosVehiculo';
 import uniformesRouter from './routes/uniformes';
+import tarjetaCorporativaRouter from './routes/tarjetaCorporativa';
 import excedenteHorasRouter from './routes/excedenteHoras';
 
 const app = express();
@@ -135,6 +136,7 @@ app.use('/api/caja',                cajaAndreaRouter);
 app.use('/api/siniestros',          siniestrosRouter);
 app.use('/api/siniestros-vehiculos', siniestrosVehiculoRouter);
 app.use('/api/uniformes',           uniformesRouter);
+app.use('/api/tarjeta-corporativa', tarjetaCorporativaRouter);
 app.use('/api/excedente-horas',     excedenteHorasRouter);
 
 app.use(errorHandler);
