@@ -8,7 +8,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:     'bg-primary text-primary-foreground hover:bg-primary/90',
+        // Color de marca de la empresa activa (Empresa.color_primario):
+        // amarillo-verde con texto negro en DOS57, rojo con texto blanco en Enjoy.
+        default:     'bg-empresa text-empresa-text shadow-sm hover:brightness-95 dark:hover:brightness-110',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
         outline:     'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary:   'bg-secondary text-secondary-foreground hover:bg-secondary/80',

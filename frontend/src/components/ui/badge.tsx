@@ -14,6 +14,8 @@ const badgeVariants = cva(
         warning:  'bg-yellow-100 text-yellow-800',
         orange:   'bg-orange-100 text-orange-700',
         destructive: 'bg-red-100 text-red-700',
+        // Acento de la empresa activa (Empresa.color_primario)
+        empresa:  'bg-empresa text-empresa-text',
       },
     },
     defaultVariants: { variant: 'default' },

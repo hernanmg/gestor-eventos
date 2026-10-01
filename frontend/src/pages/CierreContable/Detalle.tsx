@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Wallet, Users, Building2, FileText, ClipboardList, Package } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Download, Wallet, Users, Building2, FileText, ClipboardList, Package } from 'lucide-react';
 import {
   useCierreContable, useUpdateEstadoCierreContable, useUpdateNotaSeccionCierreContable, descargarCierreContable,
 } from '@/hooks/useCierreContable';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import type { EstadoCierreContable } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import { cn } from '@/lib/utils';
 
 const ESTADO_VARIANT: Record<EstadoCierreContable, 'muted' | 'info' | 'success'> = {
   BORRADOR: 'muted', ENVIADO: 'info', APROBADO: 'success',
@@ -30,32 +31,45 @@ function Seccion({ id, icono, titulo, defaultOpen, notaInicial, onGuardarNota, c
   useEffect(() => { setNota(notaInicial ?? ''); }, [notaInicial]);
 
   return (
-    <div className="rounded-lg border border-border bg-white overflow-hidden">
+    // Estilo card (mismo lenguaje que las tablas-card): botón redondeado entero
+    // cerrado, 12px 12px 0 0 abierto; el panel se despliega animando
+    // grid-template-rows 0fr→1fr (anima a la altura real sin medirla).
+    <div className={cn(
+      'rounded-xl border border-border bg-white transition-shadow duration-200',
+      open ? 'shadow-[0_4px_12px_var(--shadow)]' : 'shadow-sm',
+    )}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left font-medium"
+        aria-expanded={open}
+        className={cn(
+          'flex items-center gap-2 w-full px-4 py-3 text-left font-medium hover:bg-accent/50 transition-colors',
+          open ? 'rounded-t-xl' : 'rounded-xl',
+        )}
       >
         {icono}
         <span className="flex-1">{titulo}</span>
-        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <ChevronDown size={16} className={cn('transition-transform duration-200', !open && '-rotate-90')} />
       </button>
-      {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
-          {children}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-0.5">Notas para el contador</label>
-            <textarea
-              value={nota}
-              onChange={e => setNota(e.target.value)}
-              onBlur={() => { if (nota !== (notaInicial ?? '')) onGuardarNota(nota || null); }}
-              rows={2}
-              placeholder="Aclaraciones libres antes de mandar al contador…"
-              className="w-full border rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-              id={`nota-${id}`}
-            />
+      {/* invisible al cerrar (visibility transiciona al final) → lo de adentro no queda tabulable */}
+      <div className={cn('grid transition-[grid-template-rows,visibility] duration-200 ease-out', open ? 'grid-rows-[1fr] visible' : 'grid-rows-[0fr] invisible')}>
+        <div className="overflow-hidden rounded-b-xl">
+          <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+            {children}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-0.5">Notas para el contador</label>
+              <textarea
+                value={nota}
+                onChange={e => setNota(e.target.value)}
+                onBlur={() => { if (nota !== (notaInicial ?? '')) onGuardarNota(nota || null); }}
+                rows={2}
+                placeholder="Aclaraciones libres antes de mandar al contador…"
+                className="w-full border rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                id={`nota-${id}`}
+              />
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

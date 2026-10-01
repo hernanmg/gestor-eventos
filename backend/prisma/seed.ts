@@ -171,7 +171,7 @@ async function main() {
       id:             1,
       nombre:         'Enjoy Producciones',
       nombre_corto:   'Enjoy',
-      color_primario: '#1E3A5F',
+      color_primario: '#E31E24', // rojo Enjoy
       activo:         true,
     },
   });
@@ -183,7 +183,7 @@ async function main() {
       id:             2,
       nombre:         'DOS57 Estructuras',
       nombre_corto:   'DOS57',
-      color_primario: '#065F46',
+      color_primario: '#C8FF00', // amarillo-verde DOS57
       activo:         true,
     },
   });

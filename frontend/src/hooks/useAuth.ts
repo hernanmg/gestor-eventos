@@ -32,7 +32,11 @@ export function useAuth() {
   const { data: empresaActual } = useEmpresaActual(user?.empresaId != null);
 
   useEffect(() => {
-    if (empresaActual) applyEmpresaTheme(empresaActual.color_primario, empresaActual.color_secundario);
+    if (empresaActual) applyEmpresaTheme(
+      empresaActual.color_primario,
+      empresaActual.color_secundario,
+      empresaActual.logo_mime ? { empresaId: empresaActual.id, version: empresaActual.updated_at } : null,
+    );
     else if (user && user.empresaId == null) applyEmpresaTheme(null, null);
   }, [empresaActual, user]);
 

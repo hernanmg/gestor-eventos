@@ -26,25 +26,29 @@
     --radius:                0.5rem;
   }
 
+  /* Oscuro neutro (negros, no azul pizarra) — misma escala que las
+     variables --bg-* de más abajo. --primary queda azul: lo usan links y
+     resaltados de texto (text-primary), que en el color de marca no se
+     leerían (amarillo-verde sobre blanco). */
   .dark {
-    --background:            222.2 84% 4.9%;
-    --foreground:            210 40% 98%;
-    --card:                  222.2 84% 4.9%;
-    --card-foreground:       210 40% 98%;
-    --popover:               222.2 84% 4.9%;
-    --popover-foreground:    210 40% 98%;
+    --background:            0 0% 3.9%;    /* #0A0A0A */
+    --foreground:            210 20% 98%;  /* #F9FAFB */
+    --card:                  0 0% 10.2%;   /* #1A1A1A */
+    --card-foreground:       210 20% 98%;
+    --popover:               0 0% 10.2%;
+    --popover-foreground:    210 20% 98%;
     --primary:               217.2 91.2% 59.8%;
     --primary-foreground:    222.2 47.4% 11.2%;
-    --secondary:             217.2 32.6% 17.5%;
-    --secondary-foreground:  210 40% 98%;
-    --muted:                 217.2 32.6% 17.5%;
-    --muted-foreground:      215 20.2% 65.1%;
-    --accent:                217.2 32.6% 17.5%;
-    --accent-foreground:     210 40% 98%;
-    --destructive:           0 62.8% 30.6%;
+    --secondary:             0 0% 13%;
+    --secondary-foreground:  210 20% 98%;
+    --muted:                 0 0% 13%;
+    --muted-foreground:      218 11% 65%;  /* #9CA3AF */
+    --accent:                0 0% 15%;
+    --accent-foreground:     210 20% 98%;
+    --destructive:           0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    --border:                217.2 32.6% 17.5%;
-    --input:                 217.2 32.6% 17.5%;
+    --border:                0 0% 17.6%;   /* #2D2D2D */
+    --input:                 0 0% 22%;
     --ring:                  224.3 76.3% 48%;
   }
 }
@@ -56,6 +60,187 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ── Tema claro/oscuro + identidad de empresa ────────────────────────────────
+   - El tema (lib/theme.ts) pone/saca la clase .dark en <html>.
+   - La empresa activa (lib/empresaTheme.ts) setea --color-empresa,
+     --color-empresa-text y el patrón de fondo --empresa-pattern-light/-dark,
+     todo derivado de Empresa.color_primario.
+   - --border-color y no --border: --border ya es el triplete HSL de shadcn
+     (hsl(var(--border))) y pisarlo con un hex rompería todos los bordes. */
+:root {
+  --bg-primary:     #F8F9FA; /* casi blanco: las cards blancas se despegan del fondo */
+  --bg-secondary:   #F9FAFB;
+  --bg-card:        #FFFFFF;
+  --bg-hover:       #F3F4F6;
+  --text-primary:   #1F2937;
+  --text-secondary: #6B7280;
+  --border-color:   #E5E7EB;
+  --border-soft:    #F3F4F6;
+  --shadow:         rgba(0,0,0,0.08);
+  --color-empresa:      #1E3A5F;
+  --color-empresa-text: #FFFFFF;
+  --empresa-pattern-light: none;
+  --empresa-pattern-dark:  none;
+}
+.dark {
+  --bg-primary:     #0A0A0A;
+  --bg-secondary:   #111111;
+  --bg-card:        #1A1A1A;
+  --bg-hover:       #232323;
+  --text-primary:   #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --border-color:   #2D2D2D;
+  --border-soft:    #262626;
+  --shadow:         rgba(0,0,0,0.4);
+  /* Controles nativos (select, date, scrollbars) en oscuro */
+  color-scheme: dark;
+}
+
+/* Fondo de la app con la identidad de la empresa activa (lib/empresaTheme.ts,
+   que vuelca cada fondo como pila image/size/repeat/position en variables):
+   - Enjoy (logo con grano): claro → motas grises del logo + resplandor rojo
+     suave; oscuro → las mismas motas en claro.
+   - DOS57 (logo foto lisa): claro → cruzado fino gris + amarillo-verde;
+     oscuro → la foto de los caños sin la marca, oscurecida al 82%.
+   - Las imágenes van en .app-main (el área de contenido), no en todo el
+     wrapper: bajo el sidebar no se ven, y la foto de DOS57 tiene los caños
+     justo en su borde izquierdo. <main> es el que scrollea y, con
+     background-attachment por defecto (scroll, nunca fixed — caro en móvil),
+     su fondo queda quieto mientras el contenido se mueve.
+   - Todo es background del propio elemento (el velo oscuro es un
+     linear-gradient en la misma pila), no una capa ::before encima: el
+     contenido no necesita z-index y nada queda tapado ni sin clicks. */
+.app-wrapper {
+  background-color: var(--empresa-bg-light, var(--bg-primary));
+  color: var(--text-primary);
+}
+.dark .app-wrapper {
+  background-color: var(--bg-primary);
+}
+.app-wrapper > .app-main {
+  background-image: var(--empresa-pattern-light);
+  background-size: var(--empresa-pattern-light-size, auto);
+  background-repeat: var(--empresa-pattern-light-repeat, repeat);
+  background-position: var(--empresa-pattern-light-position, 0 0);
+}
+.dark .app-wrapper > .app-main {
+  background-image: var(--empresa-pattern-dark);
+  background-size: var(--empresa-pattern-dark-size, auto);
+  background-repeat: var(--empresa-pattern-dark-repeat, repeat);
+  background-position: var(--empresa-pattern-dark-position, 0 0);
+}
+
+/* Cards blancas levemente translúcidas en tema claro: el fondo de la empresa
+   se transparenta un poco y da profundidad.
+   - Sólo dentro de .app-main y sólo la clase exacta bg-white ([class~=]) —
+     bg-white/50 y similares ya son translúcidas a propósito.
+   - Las filas de BaseTable (.card-table) no usan bg-white sino --bg-card:
+     se redefine en ese ámbito.
+   - Quedan opacos: inputs/selects/textarea, popovers y listas (Radix sin
+     Portal se monta dentro de main), headers sticky (si no, el contenido que
+     scrollea por debajo se lee a través) y los modales (Radix los porta al
+     <body>, fuera de main).
+   - Sin backdrop-filter: aplicado a cientos de filas/cards encarece el
+     scroll (sobre todo en móvil) y con un fondo tan suave no se percibe. */
+html:not(.dark) .app-main {
+  --bg-card: rgba(255, 255, 255, 0.85);
+}
+html:not(.dark) .app-main [class~='bg-white']:not(input, select, textarea, [role='dialog'], [role='listbox'], [role='menu'], .sticky, thead, th, [data-radix-popper-content-wrapper] *) {
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+.app-sidebar {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Desplegables con estilo card ─────────────────────────────────────────────
+   Selects nativos (más de 200, cada uno con sus clases): select:not([multiple])
+   tiene especificidad (0,1,1) y le gana a rounded/rounded-md (0,1,0) sin tocar
+   cada archivo.
+   La lista abierta de un <select> nativo la dibuja el sistema operativo y es
+   rectangular. `appearance: base-select` (Chrome/Edge 135+) la convierte en un
+   popover HTML estilable vía ::picker(select) — panel redondeado y opciones
+   card sin reemplazar los 200 selects por un componente. Firefox/Safari
+   todavía no lo soportan: ignoran la regla y siguen con la lista nativa. */
+select:not([multiple]) {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+.dark select:not([multiple]) {
+  background-color: var(--bg-card);
+}
+@supports (appearance: base-select) {
+  select:not([multiple]),
+  select:not([multiple])::picker(select) {
+    appearance: base-select;
+  }
+  select:not([multiple]) {
+    /* base-select pone el texto/flecha en una fila flex; mantener altura y
+       truncado como el nativo */
+    align-items: center;
+    gap: 6px;
+  }
+  select:not([multiple])::picker-icon {
+    color: hsl(var(--muted-foreground));
+    transition: rotate 150ms ease;
+  }
+  select:not([multiple]):open::picker-icon {
+    rotate: 180deg;
+  }
+  select:not([multiple])::picker(select) {
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    padding: 6px;
+    margin-block: 4px;
+    max-height: 320px;
+  }
+  .dark select:not([multiple])::picker(select) {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+  select:not([multiple]) option {
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-block: 2px;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  select:not([multiple]) option:hover,
+  select:not([multiple]) option:focus-visible {
+    background: hsl(var(--accent));
+    outline: none;
+  }
+  select:not([multiple]) option:checked {
+    font-weight: 600;
+  }
+  select:not([multiple]) option::checkmark {
+    color: hsl(var(--muted-foreground));
+  }
+  select:not([multiple]) optgroup {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+/* Paneles de Radix (popover del combobox, etc.) — red de seguridad por si
+   algún contenido se monta sin pasar por components/ui/popover.tsx. */
+[data-radix-popper-content-wrapper] > div,
+[cmdk-root] {
+  border-radius: 12px;
+}
+
+/* <details> usados como acordeón (instructivos de importadores, etc.) */
+details:where(.border) {
+  border-radius: 12px;
+  overflow: hidden;
+  transition: box-shadow 150ms ease;
+}
+details:where(.border)[open] {
+  box-shadow: 0 4px 12px var(--shadow);
 }
 
 /* ── Exportar PDF (Combustible) ────────────────────────────────────────────
@@ -103,6 +288,7 @@
      colores explícitos sólo para la impresión, sin tocar el tema en pantalla. */
   html, body, .app-shell, .app-main, .app-main * {
     background-color: #fff !important;
+    background-image: none !important; /* patrón de empresa de .app-wrapper */
     color: #0f172a !important;
     color-scheme: light !important;
   }
@@ -147,7 +333,7 @@
   }
 
   .card-table > :where(thead) > :where(tr) > :where(th) {
-    background-color: #f9fafb;
+    background-color: var(--bg-secondary);
     color: hsl(var(--muted-foreground));
     font-size: 11px;
     font-weight: 600;
@@ -158,7 +344,7 @@
   .card-table > :where(thead) > :where(tr) > :where(th:last-child)  { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 
   .card-table > :where(tbody, tfoot) > :where(tr) {
-    background-color: #fff;
+    background-color: var(--bg-card);
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
   .card-table > :where(tbody) > :where(tr) {
@@ -166,16 +352,16 @@
   }
   .card-table > :where(tbody, tfoot) > :where(tr) > :where(td) {
     background-color: inherit;
-    border-top: 1px solid #f3f4f6;
-    border-bottom: 1px solid #f3f4f6;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
   }
   .card-table > :where(tbody, tfoot) > :where(tr) > :where(td:first-child) {
-    border-left: 1px solid #f3f4f6;
+    border-left: 1px solid var(--border-soft);
     border-top-left-radius: 8px;
     border-bottom-left-radius: 8px;
   }
   .card-table > :where(tbody, tfoot) > :where(tr) > :where(td:last-child) {
-    border-right: 1px solid #f3f4f6;
+    border-right: 1px solid var(--border-soft);
     border-top-right-radius: 8px;
     border-bottom-right-radius: 8px;
   }

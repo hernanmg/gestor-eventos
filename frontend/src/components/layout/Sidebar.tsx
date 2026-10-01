@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -12,6 +12,7 @@ import { useLogoBlobUrl } from '@/hooks/useEmpresas';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/lib/theme';
 import type { MeResponse } from '@/types';
 
 // Logo si existe, si no un badge con nombre_corto coloreado con color_primario.
@@ -31,6 +32,45 @@ function EmpresaBrand({ empresaId, hasLogo, nombre, colorPrimario, size = 'heade
       className="h-2 w-2 shrink-0 rounded-full"
       style={{ backgroundColor: colorPrimario ?? '#94a3b8' }}
     />
+  );
+}
+
+// Logo al tope del sidebar (sobre la navegación), de borde a borde: sin
+// padding, a todo el ancho de los 256px. Alto natural de la imagen con tope
+// de 176px (DOS57 580×384 → 256×169 entero; Enjoy 621×536 → tope, queda
+// 204px de ancho centrado). Detrás va #1A1A1A: los logos reales son fotos
+// oscuras, así los costados que deja el tope se funden y un logo con fondo
+// transparente o blanco igual se lee en tema oscuro.
+// Sin empresa activa (admin global antes de elegir) muestra los logos de
+// todas las disponibles, chicos y lado a lado. Si una empresa no tiene logo
+// cargado no se muestra nada para ella — el nombre ya está en el header.
+function SidebarLogo({ empresaId, nombre }: { empresaId: number; nombre: string }) {
+  const url = useLogoBlobUrl(empresaId, true);
+  if (!url) return null;
+  return (
+    <div className="w-full shrink-0 border-b border-border bg-[#1A1A1A]">
+      <img src={url} alt={nombre} className="mx-auto block h-auto max-h-44 w-full object-contain" />
+    </div>
+  );
+}
+
+function SidebarLogoChico({ empresaId, nombre }: { empresaId: number; nombre: string }) {
+  const url = useLogoBlobUrl(empresaId, true);
+  if (!url) return null;
+  return <img src={url} alt={nombre} className="h-full min-w-0 flex-1 rounded-lg object-contain" />;
+}
+
+function SidebarLogos({ user }: { user: MeResponse }) {
+  if (user.empresa) {
+    if (!user.empresa.tiene_logo) return null;
+    return <SidebarLogo empresaId={user.empresa.id} nombre={user.empresa.nombre} />;
+  }
+  const conLogo = (user.empresasDisponibles ?? []).filter(e => e.tiene_logo);
+  if (conLogo.length === 0) return null;
+  return (
+    <div className="flex h-20 w-full items-center gap-2 px-4 py-3 shrink-0 border-b border-border">
+      {conLogo.map(e => <SidebarLogoChico key={e.id} empresaId={e.id} nombre={e.nombre} />)}
+    </div>
   );
 }
 
@@ -59,6 +99,7 @@ const ROL_LABEL: Record<MeResponse['rol'], string> = {
 
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
   const { switchEmpresa, isSwitchingEmpresa } = useAuth();
+  const [theme, toggleTheme] = useTheme();
   const [empresaMenuOpen, setEmpresaMenuOpen] = useState(false);
   const { data: alertasData }        = useAlertasDashboard();
   const { data: stockAlertasData }   = useAlertasStock();
@@ -110,7 +151,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
 
       <aside
         className={cn(
-          'no-print flex flex-col h-full bg-white border-r border-border',
+          'app-sidebar no-print flex flex-col h-full border-r border-border',
           'transition-all duration-200 ease-in-out overflow-hidden',
           'fixed inset-y-0 left-0 z-30',
           isOpen ? 'translate-x-0' : '-translate-x-full',
@@ -129,13 +170,12 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               >
                 <EmpresaBrand
                   empresaId={user.empresa?.id}
-                  hasLogo={user.empresa?.tiene_logo ?? false}
+                  hasLogo={false}
                   nombre={user.empresa?.nombre ?? 'Admin Portal'}
                   colorPrimario={user.empresa?.color_primario}
                 />
                 <span
                   className="text-sm font-semibold truncate"
-                  style={{ color: !user.empresa?.tiene_logo ? (user.empresa?.color_primario ?? undefined) : undefined }}
                 >
                   {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
                 </span>
@@ -145,13 +185,12 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               <div className="flex-1 flex items-center gap-1.5 mr-2 min-w-0">
                 <EmpresaBrand
                   empresaId={user.empresa?.id}
-                  hasLogo={user.empresa?.tiene_logo ?? false}
+                  hasLogo={false}
                   nombre={user.empresa?.nombre ?? 'Admin Portal'}
                   colorPrimario={user.empresa?.color_primario}
                 />
                 <span
                   className="text-sm font-semibold truncate"
-                  style={{ color: !user.empresa?.tiene_logo ? (user.empresa?.color_primario ?? undefined) : undefined }}
                 >
                   {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
                 </span>
@@ -170,7 +209,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           </div>
 
           {isOpen && empresaMenuOpen && user.puedeCambiarEmpresa && (
-            <div className="absolute left-3 top-14 z-10 w-56 rounded-md border border-border bg-white py-1 shadow-md">
+            <div className="absolute left-3 top-14 z-10 w-56 rounded-xl border border-border bg-popover p-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
               {(user.empresasDisponibles ?? []).map((empresa) => (
                 <button
                   key={empresa.id}
@@ -179,7 +218,7 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                     if (empresa.id !== user.empresaId) switchEmpresa(empresa.id);
                   }}
                   className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-accent transition-colors',
+                    'flex w-full items-center gap-2 rounded-lg px-4 py-2.5 my-0.5 text-sm text-left hover:bg-accent transition-colors',
                     empresa.id === user.empresaId && 'font-medium bg-accent/50',
                   )}
                 >
@@ -196,6 +235,8 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             </div>
           )}
         </div>
+
+        {isOpen && <SidebarLogos user={user} />}
 
         {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
@@ -701,16 +742,26 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   {ROL_LABEL[user.rol]}
                 </span>
                 {user.empresa && (
-                  <span
-                    className="inline-block text-xs px-2 py-0.5 rounded-full text-white"
-                    style={{ backgroundColor: user.empresa.color_primario ?? '#64748b' }}
-                  >
+                  <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-empresa text-empresa-text">
                     {user.empresa.nombre_corto ?? user.empresa.nombre}
                   </span>
                 )}
               </div>
             </div>
           )}
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              'flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm mb-1',
+              'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+              !isOpen && 'justify-center',
+            )}
+            title={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+            aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          >
+            {theme === 'dark' ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
+            {isOpen && <span>{theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}</span>}
+          </button>
           <button
             onClick={onLogout}
             className={cn(

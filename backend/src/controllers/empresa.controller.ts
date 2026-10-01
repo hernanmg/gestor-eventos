@@ -9,8 +9,8 @@ export const uploadLogo = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: 2 * 1024 * 1024 }, // 2 MB
   fileFilter: (_req, file, cb) => {
-    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Solo se aceptan imágenes JPEG, PNG o WEBP'));
+    if (['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'].includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Solo se aceptan imágenes PNG, JPG, WEBP o SVG'));
   },
 });
 
@@ -130,6 +130,9 @@ export async function getLogo(req: Request, res: Response) {
   res.setHeader('Content-Type',        empresa.logo_mime ?? 'application/octet-stream');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.setHeader('Content-Length',      buffer.length);
+  // Un SVG puede traer <script>: si alguien abre la URL directo en el navegador,
+  // esta CSP le impide ejecutar nada. Dentro de un <img> no aplica (no corre JS).
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
   res.end(buffer);
 }
 

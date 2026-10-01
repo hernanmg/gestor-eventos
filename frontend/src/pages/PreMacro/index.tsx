@@ -734,7 +734,7 @@ export default function PreMacroPage() {
   const isSaving = updateMutation.isPending;
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
+    <div className="min-h-screen">
       <div className="sticky top-0 z-10 bg-white border-b border-border px-6 py-3 space-y-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0">

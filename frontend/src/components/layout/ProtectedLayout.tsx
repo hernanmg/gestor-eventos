@@ -27,7 +27,9 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden bg-gray-50">
+    // app-wrapper: fondo con el patrón de la empresa activa (index.css + lib/empresaTheme.ts);
+    // empresa-N queda como gancho para estilos puntuales por empresa.
+    <div className={`app-shell app-wrapper empresa-${user.empresaId} flex h-screen overflow-hidden`}>
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(v => !v)}

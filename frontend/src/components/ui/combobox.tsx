@@ -57,7 +57,7 @@ export function Combobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn('w-full sm:w-64 justify-between font-normal', className)}
+          className={cn('w-full sm:w-64 justify-between rounded-xl font-normal shadow-[0_2px_8px_var(--shadow)]', className)}
         >
           <span className="truncate">{selected ? selected.label : placeholder}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
