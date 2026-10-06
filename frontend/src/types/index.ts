@@ -2734,3 +2734,94 @@ export interface LogisticaEvento {
     litros_iniciales_detalle:    { viaje_id: number; chofer: string | null; patente: string | null; litros: number }[];
   };
 }
+
+// ── Costo Real / Presupuestador (DOS57) ───────────────────────────────────────
+
+export type OrigenMaterialRental = 'NAC' | 'IMP';
+export type EstadoPresupuesto = 'BORRADOR' | 'ENVIADO' | 'APROBADO' | 'CERRADO';
+export type PorcentajeAlquiler = '2' | '4' | '6' | '8' | '10' | 'FULL';
+
+export interface MaterialRental {
+  id:                 number;
+  origen:             OrigenMaterialRental;
+  nro_item:           number | null;
+  codigo_oficial:     string | null;
+  detalle:            string;
+  medida:             string | null;
+  peso_por_unidad:    number | null;
+  costo_unitario_ars: number | null; // null = la planilla no trae precio
+  costo_unitario_usd: number | null;
+  tipo_cambio:        number | null;
+  porc_2: boolean; porc_4: boolean; porc_6: boolean; porc_8: boolean; porc_10: boolean; porc_full: boolean;
+  activo:             boolean;
+}
+
+export interface ImportarMaterialesResultado {
+  preview:      boolean;
+  creados:      number;
+  actualizados: number;
+  errores:      { hoja: string; fila: number; mensaje: string }[];
+  advertencias: { hoja: string; fila: number; mensaje: string }[];
+  hojas:        { hoja: string; origen: OrigenMaterialRental; items: number }[];
+  tipo_cambio:  number | null;          // TC con el que se pesificaron los IMP
+  tipo_cambio_planilla: number | null; // TC escrito en la planilla (celda H5)
+  sin_precio:   { origen: OrigenMaterialRental; nro_item: number; detalle: string }[];
+}
+
+export interface TotalesPresupuesto {
+  nac_material: number; nac_rental: number;
+  imp_material: number; imp_rental: number;
+  total_material: number; total_rental: number;
+}
+
+export interface PresupuestoLinea {
+  id:                   number;
+  material_id:          number;
+  material:             Omit<MaterialRental, 'peso_por_unidad'>;
+  cantidad:             number;
+  costo_unitario_snap:  number;
+  tipo_cambio_snap:     number | null;
+  porcentaje_snap:      number;
+  costo_total_material: number;
+  valor_rental:         number;
+  orden:                number;
+}
+
+export interface PresupuestoResumen {
+  id:                  number;
+  evento_id:           number | null;
+  evento:              { id: number; nombre: string } | null;
+  nombre:              string;
+  estado:              EstadoPresupuesto;
+  porcentaje_alquiler: PorcentajeAlquiler;
+  tipo_cambio_usd:     number;
+  notas:               string | null;
+  version:             number;
+  version_de_id:       number | null;
+  created_at:          string;
+  updated_at:          string;
+  totales:             TotalesPresupuesto;
+  cantidad_lineas?:    number;
+}
+
+export interface Presupuesto extends PresupuestoResumen {
+  lineas: PresupuestoLinea[];
+}
+
+// ── Indicadores económicos (globales) ─────────────────────────────────────────
+
+export type TipoIndicador = 'DOLAR_OFICIAL' | 'DOLAR_BLUE' | 'IPC';
+
+export interface CotizacionDolar {
+  compra:      number;
+  venta:       number;
+  fecha:       string | null; // fechaActualizacion de dolarapi
+  guardado_en: string;
+}
+
+export interface IndicadoresActuales {
+  dolar_oficial:  CotizacionDolar | null;
+  dolar_blue:     CotizacionDolar | null;
+  ipc:            { valor: number; periodo: string | null; fecha: string | null; guardado_en: string } | null;
+  actualizado_en: string | null;
+}

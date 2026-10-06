@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto, EstadoCargaCombustible, EstadoSiniestro, EstadoSiniestroVehiculo } from '@/types';
+import type { EstadoEvento, EstadoEcheq, EstadoMovimiento, EstadoSeguro, EstadoPatente, EstadoServicioTaller, EstadoPlanAFIP, EstadoPrestamo, EstadoFacturaEmitida, TipoRecorrido, EstadoLineaGasto, EstadoCargaCombustible, EstadoSiniestro, EstadoSiniestroVehiculo, EstadoPresupuesto } from '@/types';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -322,4 +322,22 @@ export const SINIESTRO_VEHICULO_LABEL: Record<EstadoSiniestroVehiculo, string> =
 
 export function SiniestroVehiculoEstadoBadge({ estado }: { estado: EstadoSiniestroVehiculo }) {
   return <Badge variant={SINIESTRO_VEHICULO_VARIANT[estado]}>{SINIESTRO_VEHICULO_LABEL[estado]}</Badge>;
+}
+
+const PRESUPUESTO_VARIANT: Record<EstadoPresupuesto, VariantProps<typeof badgeVariants>['variant']> = {
+  BORRADOR: 'muted',
+  ENVIADO:  'info',
+  APROBADO: 'success',
+  CERRADO:  'default',
+};
+
+export const PRESUPUESTO_LABEL: Record<EstadoPresupuesto, string> = {
+  BORRADOR: 'Borrador',
+  ENVIADO:  'Enviado',
+  APROBADO: 'Aprobado',
+  CERRADO:  'Cerrado',
+};
+
+export function PresupuestoEstadoBadge({ estado }: { estado: EstadoPresupuesto }) {
+  return <Badge variant={PRESUPUESTO_VARIANT[estado]}>{PRESUPUESTO_LABEL[estado]}</Badge>;
 }

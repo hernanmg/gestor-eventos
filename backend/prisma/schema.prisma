@@ -283,6 +283,8 @@ model Empresa {
   cierresContables       CierreContable[]
   cortesiasEvento        CortesiaEvento[]
   tarjetasCorporativas   TarjetaCorporativa[]
+  materialesRental       MaterialRental[]
+  presupuestosEvento     PresupuestoEvento[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -415,6 +417,7 @@ model Evento {
   facturas_emitidas      FacturaEmitida[]
   cargas_combustible     CargaCombustible[]
   viajes_flota           BitacoraViaje[]
+  presupuestos           PresupuestoEvento[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
 }
@@ -3191,4 +3194,141 @@ model ConsumoTC {
 
   @@unique([tarjeta_id, import_key])
   @@index([tarjeta_id, periodo_anio, periodo_mes])
+}
+
+// ── Costo Real / Presupuestador (DOS57) ───────────────────────────────────────
+// Catálogo de materiales de rental (planilla DOS57_BASE MATRICES_RENTAL COST:
+// hojas RENTAL COSTS (NAC.) y (IMP.)) y presupuestos por evento con snapshot
+// de precios por línea.
+
+enum OrigenMaterialRental {
+  NAC // nacionales, precio en ARS, alquiler 2/4/6/8/10% o FULL
+  IMP // importados Layher AllRound, precio en USD pesificado, siempre 4%
+}
+
+enum EstadoPresupuesto {
+  BORRADOR
+  ENVIADO
+  APROBADO
+  CERRADO
+}
+
+model MaterialRental {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+
+  origen          OrigenMaterialRental
+  nro_item        Int?
+  codigo_oficial  String? // sólo IMP ("1752008"); en la planilla viene como número
+  detalle         String
+  medida          String?
+  peso_por_unidad Decimal?             @db.Decimal(10, 3) // sólo IMP, kg
+
+  // NAC: precio en ARS (null = la planilla no lo trae, ej. escaleras Wenge).
+  // IMP: costo_unitario_usd × tipo_cambio (se recalcula al editar USD/TC).
+  costo_unitario_ars Decimal? @db.Decimal(14, 2)
+  costo_unitario_usd Decimal? @db.Decimal(12, 2)
+  tipo_cambio        Decimal? @db.Decimal(10, 2) // IMP: TC de la pesificación (celda H5 de la planilla, 1700)
+
+  // Porcentajes de alquiler habilitados en la planilla NAC (la celda tiene
+  // fórmula). IMP: sólo porc_4. El cálculo los admite igual aunque estén en false.
+  porc_2    Boolean @default(false)
+  porc_4    Boolean @default(false)
+  porc_6    Boolean @default(false)
+  porc_8    Boolean @default(false)
+  porc_10   Boolean @default(false)
+  porc_full Boolean @default(false)
+
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  lineas PresupuestoLinea[]
+
+  @@index([empresa_id, origen])
+}
+
+model PresupuestoEvento {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+
+  evento_id Int?
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+
+  nombre String // nombre del evento, o descripción libre si no hay evento formal
+  estado EstadoPresupuesto @default(BORRADOR)
+
+  // Aplica a los ítems NAC: "2" | "4" | "6" | "8" | "10" | "FULL" (FULL = 100%).
+  // Los IMP van siempre al 4%.
+  porcentaje_alquiler String
+  // TC del presupuesto: costo de las líneas IMP = USD × este TC
+  tipo_cambio_usd     Decimal @default(1700) @db.Decimal(10, 2)
+
+  notas String?
+
+  // "Nueva versión" de un presupuesto ya enviado/aprobado: copia con version+1
+  version       Int                 @default(1)
+  version_de_id Int?
+  version_de    PresupuestoEvento?  @relation("VersionesPresupuesto", fields: [version_de_id], references: [id])
+  versiones     PresupuestoEvento[] @relation("VersionesPresupuesto")
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  lineas PresupuestoLinea[]
+
+  @@index([empresa_id, estado])
+  @@index([evento_id])
+}
+
+model PresupuestoLinea {
+  id             Int               @id @default(autoincrement())
+  presupuesto_id Int
+  presupuesto    PresupuestoEvento @relation(fields: [presupuesto_id], references: [id], onDelete: Cascade)
+
+  material_id Int
+  material    MaterialRental @relation(fields: [material_id], references: [id])
+
+  cantidad Decimal @db.Decimal(12, 2)
+
+  // Snapshot al guardar: si el catálogo cambia después, el presupuesto no.
+  costo_unitario_snap Decimal  @db.Decimal(14, 2) // ARS (IMP: USD × TC del presupuesto); 0 si el ítem no tiene precio
+  tipo_cambio_snap    Decimal? @db.Decimal(10, 2) // sólo IMP
+  porcentaje_snap     Decimal  @db.Decimal(5, 2) // % aplicado (NAC: el del presupuesto, FULL = 100; IMP: 4)
+
+  costo_total_material Decimal @db.Decimal(16, 2) // cantidad × costo_unitario_snap
+  valor_rental         Decimal @db.Decimal(16, 2) // costo_total_material × porcentaje_snap / 100
+
+  orden Int @default(0)
+
+  @@index([presupuesto_id])
+  @@index([material_id])
+}
+
+// ── Indicadores económicos (globales, sin empresa) ────────────────────────────
+// Dólar oficial/blue (dolarapi.com) e IPC mensual (INDEC, series de
+// datos.gob.ar). Cada actualización inserta una fila por tipo: queda historial.
+
+enum TipoIndicador {
+  DOLAR_OFICIAL
+  DOLAR_BLUE
+  IPC
+}
+
+model IndicadorEconomico {
+  id           Int           @id @default(autoincrement())
+  tipo         TipoIndicador
+  valor        Decimal       @db.Decimal(12, 4) // dólar: venta; IPC: % mensual (1.66)
+  compra       Decimal?      @db.Decimal(12, 2) // sólo dólar
+  venta        Decimal?      @db.Decimal(12, 2) // sólo dólar
+  periodo      String? // sólo IPC: "2026-08"
+  fuente_fecha DateTime? // dólar: fechaActualizacion de la API; IPC: primer día del mes del dato
+  created_at   DateTime      @default(now())
+
+  @@index([tipo, created_at])
 }

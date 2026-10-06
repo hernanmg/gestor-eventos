@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon, Boxes, Calculator } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -607,6 +607,23 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
               <RouteIcon size={18} className="shrink-0" />
               {isOpen && <span>Bitácora</span>}
             </NavLink>
+          )}
+
+          {/* Presupuestación (Costo Real, DOS57) — sólo ADMIN: con DOS57 activa
+              o admin global, mismo criterio que el resto de los módulos DOS57 */}
+          {user.rol === 'ADMIN' && (user.empresaId === EMPRESAS.DOS57 || user.puedeCambiarEmpresa) && (
+            <>
+              {isOpen && <p className="mx-4 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Presupuestación</p>}
+              <NavLink to="/materiales-rental" title={!isOpen ? 'Ítems de Rental' : undefined} className={navItem}>
+                <Boxes size={18} className="shrink-0" />
+                {isOpen && <span>Ítems de Rental</span>}
+              </NavLink>
+              <NavLink to="/presupuestos" title={!isOpen ? 'Presupuestos' : undefined} className={navItem}>
+                <Calculator size={18} className="shrink-0" />
+                {isOpen && <span>Presupuestos</span>}
+              </NavLink>
+              {isOpen && <div className="mx-4 my-2 border-t" />}
+            </>
           )}
 
           {user.rol === 'ADMIN' && (

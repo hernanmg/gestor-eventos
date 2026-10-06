@@ -38,6 +38,9 @@ import CierreContableDetallePage from '@/pages/CierreContable/Detalle';
 import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
 import BitacoraViajesPage   from '@/pages/BitacoraViajes';
+import MaterialesRentalPage from '@/pages/MaterialesRental';
+import PresupuestosPage     from '@/pages/Presupuestos';
+import PresupuestoEditorPage from '@/pages/Presupuestos/Editor';
 import GastosOperativosPage from '@/pages/GastosOperativos';
 import SiniestrosPage       from '@/pages/Siniestros';
 import UniformesPage        from '@/pages/Uniformes';
@@ -103,6 +106,10 @@ export default function App() {
             <Route path="/flota"                   element={<FlotaPage />} />
             <Route path="/combustible"             element={<CombustiblePage />} />
             <Route path="/bitacora-viajes"         element={<BitacoraViajesPage />} />
+            <Route path="/materiales-rental"       element={<MaterialesRentalPage />} />
+            <Route path="/presupuestos"            element={<PresupuestosPage />} />
+            <Route path="/presupuestos/nuevo"      element={<PresupuestoEditorPage />} />
+            <Route path="/presupuestos/:id"        element={<PresupuestoEditorPage />} />
             <Route path="/gastos-operativos"       element={<GastosOperativosPage />} />
             <Route path="/siniestros"              element={<SiniestrosPage />} />
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
