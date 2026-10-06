@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { OrigenBitacoraViaje, type Prisma } from '@prisma/client';
+import { OrigenBitacoraViaje, EstadoCargaCombustible, type Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
@@ -21,6 +21,8 @@ const FLOTA = { origen: OrigenBitacoraViaje.FLOTA } as const;
 const sinAcentos = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
 
 const num = (d: unknown) => (d !== null && d !== undefined ? Number(d) : null);
+
+const EVENTO_SELECT = { id: true, nombre: true } as const;
 
 function mapViaje(v: any) {
   return {
@@ -86,6 +88,100 @@ function crearResolverChofer(empleados: EmpleadoRef[]) {
   };
 }
 
+// ── Sugerencia de evento real para un nombre de la planilla ──────────────────
+// "JUJUY - LA RENGA" (hoja de Flor) vs "La Renga Jujuy 2026" (Evento del
+// sistema): case-insensitive, sin tildes, match parcial. El puntaje es el
+// mayor entre (a) proporción de palabras del nombre más corto presentes en el
+// otro y (b) coeficiente de Dice sobre bigramas de letras (tolera abreviaturas
+// tipo "SGO" vs "SANTIAGO"). Se sugiere sólo si llega al 60%.
+
+const UMBRAL_SIMILITUD = 0.6;
+const PALABRAS_VACIAS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'y', 'en']);
+
+const normNombre = (s: string) => sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+function bigramas(s: string): string[] {
+  const t = s.replace(/ /g, '');
+  const out: string[] = [];
+  for (let i = 0; i < t.length - 1; i++) out.push(t.slice(i, i + 2));
+  return out;
+}
+
+export function similitudNombres(a: string, b: string): number {
+  const na = normNombre(a);
+  const nb = normNombre(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+
+  const pa = new Set(na.split(' ').filter(w => w.length >= 2 && !PALABRAS_VACIAS.has(w)));
+  const pb = new Set(nb.split(' ').filter(w => w.length >= 2 && !PALABRAS_VACIAS.has(w)));
+  let porPalabras = 0;
+  if (pa.size && pb.size) {
+    const [chico, grande] = pa.size <= pb.size ? [pa, pb] : [pb, pa];
+    let comunes = 0;
+    for (const w of chico) if (grande.has(w)) comunes++;
+    porPalabras = comunes / chico.size;
+  }
+
+  const ba = bigramas(na);
+  const bb = bigramas(nb);
+  let dice = 0;
+  if (ba.length && bb.length) {
+    const resto = [...bb];
+    let comunes = 0;
+    for (const g of ba) {
+      const i = resto.indexOf(g);
+      if (i >= 0) { comunes++; resto.splice(i, 1); }
+    }
+    dice = (2 * comunes) / (ba.length + bb.length);
+  }
+  return Math.max(porPalabras, dice);
+}
+
+type EventoRef = { id: number; nombre: string };
+
+// Proporción de palabras compartidas sobre el total (simétrica) — sólo para
+// desempatar: "RESCOLDO/KEMPES" da 100% contra "Rescoldo" y contra "Kempes
+// Rescoldo Fest", y gana el segundo porque comparte las dos palabras.
+function jaccardPalabras(a: string, b: string): number {
+  const pa = new Set(normNombre(a).split(' ').filter(Boolean));
+  const pb = new Set(normNombre(b).split(' ').filter(Boolean));
+  const comunes = [...pa].filter(w => pb.has(w)).length;
+  return comunes / (pa.size + pb.size - comunes || 1);
+}
+
+function sugerirEvento(nombre: string, eventos: EventoRef[]): { evento: EventoRef; similitud: number } | null {
+  let mejor: { evento: EventoRef; similitud: number; desempate: number } | null = null;
+  for (const ev of eventos) {
+    const sim = similitudNombres(nombre, ev.nombre);
+    if (sim < UMBRAL_SIMILITUD) continue;
+    const desempate = jaccardPalabras(nombre, ev.nombre);
+    if (!mejor || sim > mejor.similitud || (sim === mejor.similitud && desempate > mejor.desempate)) {
+      mejor = { evento: ev, similitud: sim, desempate };
+    }
+  }
+  return mejor && { evento: mejor.evento, similitud: Math.round(mejor.similitud * 100) / 100 };
+}
+
+// Campo multipart `vinculos` del importador: {"JUJUY - LA RENGA": 12, ...} —
+// sólo los grupos que el usuario confirmó en el preview.
+function parseVinculos(raw: unknown): Map<string, number> | { error: string } {
+  if (raw === undefined || raw === null || raw === '') return new Map();
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error();
+    const m = new Map<string, number>();
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) throw new Error();
+      m.set(k, v);
+    }
+    return m;
+  } catch {
+    return { error: 'El campo vinculos no es válido (se espera {"nombre del evento en la planilla": evento_id})' };
+  }
+}
+
 // ── Importador ────────────────────────────────────────────────────────────────
 
 // POST /api/importar/bitacora-viajes?preview=true|false
@@ -106,9 +202,12 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     res.status(400).json({ error: 'No se encontró ninguna planilla de viajes reconocible (encabezado con CAMIÓN y CHOFER)' }); return;
   }
 
+  const vinculos = parseVinculos(req.body?.vinculos);
+  if (!(vinculos instanceof Map)) { res.status(400).json({ error: vinculos.error }); return; }
+
   const viajes = consolidarViajes(parseo.viajes, parseo.advertencias);
 
-  const [camiones, empleados, existentes] = await Promise.all([
+  const [camiones, empleados, existentes, eventos] = await Promise.all([
     prisma.camion.findMany({
       where:  { ...withTenant(empresaId), deleted_at: null },
       select: { id: true, codigo: true, patente: true, tipo_vehiculo: true, descripcion: true },
@@ -119,9 +218,21 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     }),
     prisma.bitacoraViaje.findMany({
       where:  { ...withTenant(empresaId), ...FLOTA, deleted_at: null },
-      select: { id: true, fecha: true, recorrido: true, km_iniciales: true, alias_camion: true, patente_camion: true, camion_id: true, empleado_id: true },
+      select: {
+        id: true, fecha: true, recorrido: true, km_iniciales: true, alias_camion: true, patente_camion: true,
+        camion_id: true, empleado_id: true, evento_id: true,
+      },
+    }),
+    prisma.evento.findMany({
+      where:   { ...withTenant(empresaId), deleted_at: null },
+      select:  EVENTO_SELECT,
+      orderBy: { id: 'desc' },
     }),
   ]);
+  const eventoPorId = new Map(eventos.map(e => [e.id, e]));
+  for (const [grupo, eventoId] of vinculos) {
+    if (!eventoPorId.has(eventoId)) { res.status(400).json({ error: `Evento #${eventoId} (para "${grupo}") no encontrado` }); return; }
+  }
   const resolverCamion = crearResolverCamion(camiones);
   const resolverChofer = crearResolverChofer(empleados);
   const existentePorClave = new Map(existentes.map(e => [
@@ -153,6 +264,10 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     if (v.chofer_raw && !chofer) obs.push(`Chofer "${v.chofer_raw}" no encontrado en Empleados`);
 
     const existente = existentePorClave.get(v.clave) ?? null;
+    // Vínculo con un Evento real: sólo si el usuario confirmó la sugerencia
+    // para este grupo. Si no, se conserva el que ya tenía (vinculado a mano o
+    // en una importación anterior) — reimportar no desvincula.
+    const eventoConfirmado = v.convocatoria ? vinculos.get(v.convocatoria) : undefined;
     const data: Prisma.BitacoraViajeUncheckedCreateInput = {
       origen:               OrigenBitacoraViaje.FLOTA,
       empresa_id:           empresaId,
@@ -163,6 +278,7 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
       fecha:                v.fecha,
       dia_semana:           v.fecha ? calcularDiaSemana(v.fecha) : null,
       convocatoria:         v.convocatoria,
+      evento_id:            eventoConfirmado ?? existente?.evento_id ?? null,
       recorrido:            v.tramo,
       cantidad_vueltas:     1,
       patente_camion:       v.patente ?? normalizarPatente(camion?.patente) ?? null,
@@ -210,6 +326,27 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     }
   }
 
+  // Un grupo por nombre de evento de la planilla (hoja / columna EVENTO)
+  const grupos = new Map<string, Fila[]>();
+  for (const f of filas) {
+    if (!f.viaje.convocatoria) continue;
+    grupos.set(f.viaje.convocatoria, [...(grupos.get(f.viaje.convocatoria) ?? []), f]);
+  }
+  const vinculaciones = [...grupos.entries()].map(([convocatoria, fs]) => {
+    // Evento con el que ya quedaron vinculados (el más frecuente), si alguno
+    const conteo = new Map<number, number>();
+    for (const f of fs) if (f.data.evento_id) conteo.set(f.data.evento_id, (conteo.get(f.data.evento_id) ?? 0) + 1);
+    const [actualId, vinculados] = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+    const sugerencia = sugerirEvento(convocatoria, eventos);
+    return {
+      convocatoria,
+      viajes:        fs.length,
+      vinculados,
+      evento_actual: actualId ? eventoPorId.get(actualId) ?? null : null,
+      candidato:     sugerencia ? { ...sugerencia.evento, similitud: sugerencia.similitud } : null,
+    };
+  }).sort((a, b) => a.convocatoria.localeCompare(b.convocatoria, 'es'));
+
   const camionesLista = [...camionesReporte.values()];
   const choferesLista = [...choferesReporte.values()];
   const empleadoDTO = (e: EmpleadoRef) => ({ id: e.id, nombre: e.nombre, apellido: e.apellido, categoria: e.categoria });
@@ -241,6 +378,7 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
       no_encontrados: choferesLista.filter(c => !c.empleado).map(c => ({ nombre: c.nombre, viajes: c.viajes })),
     },
     saldos_iniciales: parseo.saldos_iniciales,
+    vinculaciones,
     ignoradas:    parseo.ignoradas,
     advertencias: parseo.advertencias,
     totales: {
@@ -255,14 +393,17 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
 
 // ── Listado ───────────────────────────────────────────────────────────────────
 
-// GET /api/flota/bitacora-viajes?evento=&camion=&chofer=&desde=&hasta=
+// GET /api/flota/bitacora-viajes?evento_id=&evento=&camion=&chofer=&desde=&hasta=
+//   evento_id: Evento real vinculado · evento: texto libre de la planilla, sólo
+//   entre los viajes SIN evento real (así ambos filtros no se pisan — ver opciones)
 //   camion: patente o alias (C1…) · chofer: id de empleado o nombre de la planilla
 export async function listBitacoraFlota(req: Request, res: Response) {
-  const { evento, camion, chofer, desde, hasta } = req.query as Record<string, string | undefined>;
+  const { evento_id, evento, camion, chofer, desde, hasta } = req.query as Record<string, string | undefined>;
   const where: Prisma.BitacoraViajeWhereInput = { ...withTenant(req.empresaId!), ...FLOTA, deleted_at: null };
   const and: Prisma.BitacoraViajeWhereInput[] = [];
 
-  if (evento) where.convocatoria = evento;
+  if (evento_id) where.evento_id = Number(evento_id);
+  else if (evento) { where.convocatoria = evento; where.evento_id = null; }
   if (camion) and.push({ OR: [{ patente_camion: camion }, { patente_camion: null, alias_camion: camion }] });
   if (chofer) {
     if (/^\d+$/.test(chofer)) where.empleado_id = Number(chofer);
@@ -278,10 +419,7 @@ export async function listBitacoraFlota(req: Request, res: Response) {
 
   const viajes = await prisma.bitacoraViaje.findMany({
     where,
-    include: {
-      camion:   { select: { id: true, codigo: true, patente: true, descripcion: true } },
-      empleado: { select: { id: true, nombre: true, apellido: true } },
-    },
+    include: VIAJE_INCLUDE,
     orderBy: [{ fecha: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
   });
   res.json(viajes.map(mapViaje));
@@ -295,14 +433,22 @@ export async function opcionesBitacoraFlota(req: Request, res: Response) {
       convocatoria: true, patente_camion: true, alias_camion: true, chofer_nombre: true,
       camion:   { select: { descripcion: true } },
       empleado: { select: { id: true, nombre: true, apellido: true } },
+      evento:   { select: EVENTO_SELECT },
     },
   });
 
-  const eventos  = new Set<string>();
+  // Filtro de evento combinado: eventos reales vinculados + textos libres de
+  // los viajes sin vínculo. Un texto cuyos viajes ya están todos vinculados no
+  // aparece (no se duplica con su evento real).
+  const eventosReales = new Map<number, string>();
+  const eventosTexto  = new Set<string>();
+  const convocatorias = new Set<string>();
   const camiones = new Map<string, string>();
   const choferes = new Map<string, string>();
   for (const v of viajes) {
-    if (v.convocatoria) eventos.add(v.convocatoria);
+    if (v.convocatoria) convocatorias.add(v.convocatoria);
+    if (v.evento) eventosReales.set(v.evento.id, v.evento.nombre);
+    else if (v.convocatoria) eventosTexto.add(v.convocatoria);
     if (v.patente_camion) camiones.set(v.patente_camion, v.camion?.descripcion ? `${v.patente_camion} — ${v.camion.descripcion}` : v.patente_camion);
     else if (v.alias_camion) camiones.set(v.alias_camion, `${v.alias_camion} (sin patente)`);
     if (v.empleado) choferes.set(String(v.empleado.id), `${v.empleado.nombre} ${v.empleado.apellido}`);
@@ -312,7 +458,12 @@ export async function opcionesBitacoraFlota(req: Request, res: Response) {
     [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'es'));
 
   res.json({
-    eventos:  [...eventos].sort((a, b) => a.localeCompare(b, 'es')),
+    eventos: [
+      ...[...eventosReales.entries()].map(([id, nombre]) => ({ tipo: 'evento' as const, evento_id: id, valor: nombre })),
+      ...[...eventosTexto].map(t => ({ tipo: 'texto' as const, evento_id: null, valor: t })),
+    ].sort((a, b) => a.valor.localeCompare(b.valor, 'es')),
+    // Todos los textos libres (sugerencias del campo Evento en el alta manual)
+    convocatorias: [...convocatorias].sort((a, b) => a.localeCompare(b, 'es')),
     camiones: ordenar(camiones),
     choferes: ordenar(choferes),
   });
@@ -326,6 +477,7 @@ const enteroOpt  = z.number().int().nonnegative().nullable().optional();
 const viajeSchema = z.object({
   fecha:                z.string().min(1).nullable().optional(),
   convocatoria:         z.string().trim().nullable().optional(),
+  evento_id:            z.number().int().positive().nullable().optional(),
   recorrido:            z.string().trim().min(1, 'El tramo es obligatorio'),
   camion_id:            z.number().int().positive().nullable().optional(),
   patente_camion:       z.string().nullable().optional(),
@@ -350,6 +502,7 @@ type ViajePayload = z.infer<typeof viajeSchema>;
 const VIAJE_INCLUDE = {
   camion:   { select: { id: true, codigo: true, patente: true, descripcion: true } },
   empleado: { select: { id: true, nombre: true, apellido: true } },
+  evento:   { select: EVENTO_SELECT },
 } as const;
 
 const vacioANull = (s: string | null | undefined) => (s?.trim() ? s.trim() : null);
@@ -382,6 +535,14 @@ async function armarDataViaje(
     data.empleado_id = empleado.id;
   } else if (d.empleado_id === null) {
     data.empleado_id = null;
+  }
+
+  if (d.evento_id) {
+    const evento = await prisma.evento.findFirst({ where: { id: d.evento_id, deleted_at: null, ...withTenant(empresaId) } });
+    if (!evento) return { error: 'Evento no encontrado' };
+    data.evento_id = evento.id;
+  } else if (d.evento_id === null) {
+    data.evento_id = null;
   }
 
   if (d.fecha !== undefined) {
@@ -461,4 +622,66 @@ export async function deleteViajeFlota(req: Request, res: Response) {
     descripcion: `Eliminó el viaje de camión #${id} (${existing.recorrido ?? ''})`, ip: req.ip, tx: prisma as any,
   });
   res.json({ message: 'Viaje eliminado' });
+}
+
+// ── Logística de un evento ────────────────────────────────────────────────────
+
+// GET /api/eventos/:id/logistica — viajes de la bitácora (FLOTA) y cargas de
+// combustible vinculadas al evento, con los totales consolidados. Las cargas
+// RECHAZADAS no son un costo real y no se incluyen.
+export async function logisticaEvento(req: Request, res: Response) {
+  const eventoId  = Number(req.params.id);
+  const empresaId = req.empresaId!;
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(empresaId) }, select: EVENTO_SELECT });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const [viajes, cargas] = await Promise.all([
+    prisma.bitacoraViaje.findMany({
+      where:   { ...withTenant(empresaId), ...FLOTA, deleted_at: null, evento_id: eventoId },
+      include: VIAJE_INCLUDE,
+      orderBy: [{ fecha: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+    }),
+    prisma.cargaCombustible.findMany({
+      where:   { ...withTenant(empresaId), deleted_at: null, evento_id: eventoId, estado: { not: EstadoCargaCombustible.RECHAZADA } },
+      select:  {
+        id: true, fecha: true, litros: true, monto_total: true, estacion_nombre: true, estacion_ciudad: true, estado: true,
+        camion: { select: { id: true, codigo: true, patente: true, descripcion: true } },
+      },
+      orderBy: [{ fecha: 'asc' }, { orden: 'asc' }, { id: 'asc' }],
+    }),
+  ]);
+
+  const viajesDTO = viajes.map(mapViaje);
+  const cargasDTO = cargas.map(c => ({ ...c, litros: Number(c.litros), monto_total: Number(c.monto_total) }));
+  const suma = <T,>(xs: T[], f: (x: T) => number | null) => xs.reduce((s, x) => s + (f(x) ?? 0), 0);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+
+  const conTanque = viajesDTO.filter(v => v.litros_iniciales_tanque != null);
+  const combustibleViajes = suma(viajesDTO, v => v.monto_combustible);
+  const combustibleCargas = suma(cargasDTO, c => c.monto_total);
+
+  res.json({
+    evento,
+    viajes: viajesDTO,
+    cargas: cargasDTO,
+    resumen: {
+      total_km:                 suma(viajesDTO, v => v.km_recorridos),
+      total_litros_viajes:      r2(suma(viajesDTO, v => v.litros_cargados_ruta)),
+      total_litros_consumidos:  r2(suma(viajesDTO, v => v.litros_consumidos)),
+      total_litros_cargas:      Math.round(suma(cargasDTO, c => c.litros) * 1000) / 1000,
+      total_combustible_viajes: r2(combustibleViajes),
+      total_combustible_cargas: r2(combustibleCargas),
+      total_combustible:        r2(combustibleViajes + combustibleCargas),
+      total_caja:               r2(suma(viajesDTO, v => v.monto_caja_entregada)),
+      // Saldo de tanque declarado por los choferes al arrancar (fila COMB.INICIAL)
+      // — para contrastar con las cargas de estación de Santi
+      litros_iniciales_declarados: conTanque.length ? r2(suma(conTanque, v => v.litros_iniciales_tanque)) : null,
+      litros_iniciales_detalle: conTanque.map(v => ({
+        viaje_id: v.id,
+        chofer:   v.empleado ? `${v.empleado.nombre} ${v.empleado.apellido}` : v.chofer_nombre,
+        patente:  v.camion?.patente ?? v.patente_camion,
+        litros:   v.litros_iniciales_tanque as number,
+      })),
+    },
+  });
 }

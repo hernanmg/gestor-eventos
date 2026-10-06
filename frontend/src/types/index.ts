@@ -2635,7 +2635,9 @@ export interface ViajeFlota {
   id:                   number;
   fecha:                string | null; // null = la planilla no traía fecha
   dia_semana:           string | null;
-  convocatoria:         string | null; // evento
+  convocatoria:         string | null; // evento (texto libre de la planilla)
+  evento_id:            number | null; // Evento real vinculado (opcional)
+  evento:               { id: number; nombre: string } | null;
   recorrido:            string | null; // tramo
   camion_id:            number | null;
   camion:               { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
@@ -2658,8 +2660,15 @@ export interface ViajeFlota {
   observaciones:        string | null;
 }
 
+// Filtro de evento combinado: eventos reales vinculados + textos libres de
+// viajes sin vínculo (un texto ya vinculado no se repite)
+export type OpcionEventoBitacora =
+  | { tipo: 'evento'; evento_id: number; valor: string }
+  | { tipo: 'texto'; evento_id: null; valor: string };
+
 export interface OpcionesBitacoraFlota {
-  eventos:  string[];
+  eventos:       OpcionEventoBitacora[];
+  convocatorias: string[]; // todos los textos libres (sugerencias del alta manual)
   camiones: { value: string; label: string }[];
   choferes: { value: string; label: string }[];
 }
@@ -2683,7 +2692,45 @@ export interface ImportarBitacoraFlotaResultado {
     no_encontrados: { nombre: string; viajes: number }[];
   };
   saldos_iniciales: { hoja: string; fila: number; litros: number | null; km_inicial: number | null; chofer: string | null }[];
+  // Un grupo por nombre de evento de la planilla, con el Evento real sugerido (≥ 60% de similitud)
+  vinculaciones: {
+    convocatoria:  string;
+    viajes:        number;
+    vinculados:    number; // cuántos quedan/quedarían vinculados a evento_actual
+    evento_actual: { id: number; nombre: string } | null;
+    candidato:     { id: number; nombre: string; similitud: number } | null;
+  }[];
   ignoradas:    { hoja: string; fila: number; motivo: string }[];
   advertencias: { hoja: string; fila: number; mensaje: string }[];
   totales:      { km: number; litros: number; litros_consumidos: number; combustible: number; caja: number };
+}
+
+// GET /eventos/:id/logistica — tab Logística del evento
+export interface CargaCombustibleLogistica {
+  id:              number;
+  fecha:           string;
+  litros:          number;
+  monto_total:     number;
+  estacion_nombre: string | null;
+  estacion_ciudad: string | null;
+  estado:          EstadoCargaCombustible;
+  camion:          { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+}
+
+export interface LogisticaEvento {
+  evento: { id: number; nombre: string };
+  viajes: ViajeFlota[];
+  cargas: CargaCombustibleLogistica[];
+  resumen: {
+    total_km:                    number;
+    total_litros_viajes:         number;
+    total_litros_consumidos:     number;
+    total_litros_cargas:         number;
+    total_combustible_viajes:    number;
+    total_combustible_cargas:    number;
+    total_combustible:           number;
+    total_caja:                  number;
+    litros_iniciales_declarados: number | null;
+    litros_iniciales_detalle:    { viaje_id: number; chofer: string | null; patente: string | null; litros: number }[];
+  };
 }

@@ -5,6 +5,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { useGuardarViajeFlota, type ViajeFlotaPayload } from '@/hooks/useBitacoraFlota';
 import { useVehiculosFlota } from '@/hooks/useFlota';
 import { useEmpleados } from '@/hooks/useRRHH';
+import { useEventos } from '@/hooks/useEvento';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatearPatente } from '@/lib/formatters';
 import type { ViajeFlota } from '@/types';
@@ -13,7 +14,7 @@ const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none f
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
 
 type Form = {
-  fecha: string; convocatoria: string; recorrido: string;
+  fecha: string; convocatoria: string; evento_id: string; recorrido: string;
   camion_id: string; patente_camion: string; alias_camion: string;
   empleado_id: string; chofer_nombre: string;
   km_iniciales: string; km_finales: string; km_recorridos: string;
@@ -39,6 +40,7 @@ function formInicial(v: ViajeFlota | null): Form {
   return {
     fecha:                v?.fecha?.slice(0, 10) ?? '',
     convocatoria:         v?.convocatoria ?? '',
+    evento_id:            str(v?.evento_id),
     recorrido:            v?.recorrido ?? '',
     camion_id:            str(v?.camion_id),
     patente_camion:       v?.camion_id ? '' : (v?.patente_camion ?? ''),
@@ -85,12 +87,13 @@ function Campo({ label, children, className }: { label: string; children: React.
   return <div className={className}><label className={labelCls}>{label}</label>{children}</div>;
 }
 
-export default function ViajeDrawer({ viaje, eventos, onClose }: {
-  viaje:   ViajeFlota | null; // null = alta
-  eventos: string[];
-  onClose: () => void;
+export default function ViajeDrawer({ viaje, convocatorias, onClose }: {
+  viaje:         ViajeFlota | null; // null = alta
+  convocatorias: string[]; // textos libres ya usados en la bitácora
+  onClose:       () => void;
 }) {
   const guardar = useGuardarViajeFlota();
+  const { data: eventos = [] } = useEventos();
   const { data: vehiculos = [] } = useVehiculosFlota();
   const { data: empleados = [] } = useEmpleados();
   const [form, setForm] = useState<Form>(() => formInicial(viaje));
@@ -114,6 +117,7 @@ export default function ViajeDrawer({ viaje, eventos, onClose }: {
     const data: ViajeFlotaPayload = {
       fecha:                form.fecha || null,
       convocatoria:         txt(form.convocatoria),
+      evento_id:            form.evento_id ? Number(form.evento_id) : null,
       recorrido:            form.recorrido.trim(),
       camion_id:            form.camion_id ? Number(form.camion_id) : null,
       patente_camion:       form.camion_id ? undefined : txt(form.patente_camion),
@@ -152,9 +156,23 @@ export default function ViajeDrawer({ viaje, eventos, onClose }: {
         <form onSubmit={handleSubmit} className="space-y-5">
           <section className="grid grid-cols-2 gap-3">
             <Campo label="Fecha"><input type="date" value={form.fecha} onChange={on('fecha')} className={inputCls} /></Campo>
-            <Campo label="Evento">
+            <Campo label="Evento del sistema (opcional)">
+              <select
+                value={form.evento_id}
+                // Elegir un evento real completa el texto con su nombre (editable)
+                onChange={e => {
+                  const ev = eventos.find(x => String(x.id) === e.target.value);
+                  set({ evento_id: e.target.value, ...(ev && { convocatoria: ev.nombre }) });
+                }}
+                className={inputCls}
+              >
+                <option value="">— Sin vincular —</option>
+                {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Evento (texto de la planilla)" className="col-span-2">
               <input list="bitacora-eventos" value={form.convocatoria} onChange={on('convocatoria')} className={inputCls} />
-              <datalist id="bitacora-eventos">{eventos.map(e => <option key={e} value={e} />)}</datalist>
+              <datalist id="bitacora-eventos">{convocatorias.map(e => <option key={e} value={e} />)}</datalist>
             </Campo>
             <Campo label="Tramo *" className="col-span-2">
               <input value={form.recorrido} onChange={on('recorrido')} required placeholder="COR - TUCUMAN" className={inputCls} />

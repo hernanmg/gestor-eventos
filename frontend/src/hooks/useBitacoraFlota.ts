@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { ViajeFlota, OpcionesBitacoraFlota, ImportarBitacoraFlotaResultado } from '@/types';
+import type { ViajeFlota, OpcionesBitacoraFlota, ImportarBitacoraFlotaResultado, LogisticaEvento } from '@/types';
 
 const KEY = ['bitacora-flota'] as const;
 
 export interface BitacoraFlotaFiltros {
-  evento?: string;
+  evento_id?: number; // Evento real vinculado
+  evento?: string;    // texto libre de la planilla (sólo viajes sin evento real)
   camion?: string; // patente o alias (C1…)
   chofer?: string; // id de empleado o nombre de la planilla
   desde?:  string;
@@ -31,6 +32,7 @@ export function useOpcionesBitacoraFlota() {
 export interface ViajeFlotaPayload {
   fecha?:                string | null; // YYYY-MM-DD
   convocatoria?:         string | null;
+  evento_id?:            number | null;
   recorrido:             string;
   camion_id?:            number | null;
   patente_camion?:       string | null;
@@ -59,7 +61,10 @@ export function useGuardarViajeFlota() {
         ? api.put<ViajeFlota>(`/flota/bitacora-viajes/${id}`, data)
         : api.post<ViajeFlota>('/flota/bitacora-viajes', data)
       ).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ['evento-logistica'] });
+    },
   });
 }
 
@@ -67,16 +72,22 @@ export function useEliminarViajeFlota() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete(`/flota/bitacora-viajes/${id}`).then(r => r.data),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ['evento-logistica'] });
+    },
   });
 }
 
 export function useImportarBitacoraFlota() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, preview }: { file: File; preview: boolean }) => {
+    // vinculos: {"nombre del evento en la planilla": evento_id} — sólo los
+    // grupos cuya sugerencia de vinculación confirmó el usuario
+    mutationFn: ({ file, preview, vinculos }: { file: File; preview: boolean; vinculos?: Record<string, number> }) => {
       const fd = new FormData();
       fd.append('archivo', file);
+      if (vinculos && Object.keys(vinculos).length) fd.append('vinculos', JSON.stringify(vinculos));
       return api.post<ImportarBitacoraFlotaResultado>(
         `/importar/bitacora-viajes?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
       ).then(r => r.data);
@@ -84,6 +95,16 @@ export function useImportarBitacoraFlota() {
     onSuccess: (data) => {
       if (data.preview) return;
       qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ['evento-logistica'] });
     },
+  });
+}
+
+// Tab Logística del evento: viajes de la bitácora + cargas de combustible vinculadas
+export function useLogisticaEvento(eventoId: number) {
+  return useQuery({
+    queryKey: ['evento-logistica', eventoId],
+    queryFn:  () => api.get<LogisticaEvento>(`/eventos/${eventoId}/logistica`).then(r => r.data),
+    enabled:  eventoId > 0,
   });
 }

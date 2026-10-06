@@ -16,6 +16,7 @@ import {
   listMovimientosCajaEvento, createMovimientoCajaEvento,
 } from '../controllers/caja.controller';
 import { listEcheqs, createEcheq, alertasEcheqs } from '../controllers/echeqs.controller';
+import { logisticaEvento } from '../controllers/bitacoraFlota.controller';
 
 const router = Router();
 
@@ -33,6 +34,10 @@ router.get('/:id',    requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandl
 router.post('/',      requireRole('ADMIN'), asyncHandler(create));
 router.put('/:id',    requireRole('ADMIN'), asyncHandler(update));
 router.delete('/:id', requireRole('ADMIN'), asyncHandler(remove));
+
+// Tab Logística: bitácora de viajes + cargas de combustible del evento. Mismo
+// alcance que /flota y /combustible (ADMIN y OPERADOR), no VIEWER.
+router.get('/:id/logistica', requireRole('OPERADOR'), asyncHandler(logisticaEvento));
 router.patch('/:id/marcar-facturar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(marcarFacturar));
 
 // Movimientos anidados bajo un evento

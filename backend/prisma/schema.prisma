@@ -414,6 +414,7 @@ model Evento {
   gastos_peaje           GastoPeaje[]
   facturas_emitidas      FacturaEmitida[]
   cargas_combustible     CargaCombustible[]
+  viajes_flota           BitacoraViaje[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
 }
@@ -2161,6 +2162,11 @@ model BitacoraViaje {
   valor_por_vuelta  Decimal?            @db.Decimal(10, 2) // snapshot del acuerdo al momento de cargar
   viatico_calculado Decimal?            @db.Decimal(10, 2) // cantidad_vueltas × valor_por_vuelta
   observaciones     String?
+  // Vínculo con un Evento real (Logística del evento). `convocatoria` sigue
+  // siendo el texto libre de la planilla; evento_id es opcional y lo setea el
+  // alta manual o el importador cuando el usuario confirma la sugerencia.
+  evento_id         Int?
+  evento            Evento?             @relation(fields: [evento_id], references: [id])
 
   // ── Viajes de camiones (origen FLOTA, planillas de Flor) ─────────────────────
   camion_id               Int?
@@ -2190,6 +2196,7 @@ model BitacoraViaje {
   created_by           Int?
 
   @@index([empresa_id, origen])
+  @@index([evento_id])
 }
 
 // ─── AFIP Y PRÉSTAMOS BANCARIOS ───────────────────────────────────────────────

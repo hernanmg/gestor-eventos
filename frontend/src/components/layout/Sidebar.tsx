@@ -341,6 +341,10 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   </>
                 )}
               </NavLink>
+              <NavLink to="/bitacora-viajes" title={!isOpen ? 'Bitácora' : undefined} className={navItem}>
+                <RouteIcon size={18} className="shrink-0" />
+                {isOpen && <span>Bitácora</span>}
+              </NavLink>
               <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
                 <CalendarDays size={18} className="shrink-0" />
                 {isOpen && <span>Calendario</span>}

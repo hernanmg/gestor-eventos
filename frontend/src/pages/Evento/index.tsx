@@ -26,7 +26,7 @@ import EventoFacturas from './Facturas';
 import FacturasACobrarTab from './FacturasACobrar';
 import ComidasPage from './Comidas';
 import CortesiasPage from './Cortesias';
-import EventoCombustibleTab from './EventoCombustibleTab';
+import EventoLogisticaTab from './EventoLogisticaTab';
 import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
@@ -235,7 +235,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'COMBUSTIBLE' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -253,7 +253,9 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
   { key: 'COMIDAS',       label: 'Comidas'       },
   { key: 'CORTESIAS',     label: 'Cortesías'     },
-  { key: 'COMBUSTIBLE',   label: 'Combustible'   },
+  // Bitácora de viajes + cargas de combustible del evento (ADMIN/OPERADOR,
+  // igual que /flota y /combustible). Reemplaza al viejo tab "Combustible".
+  { key: 'LOGISTICA',     label: 'Logística'     },
   { key: 'FACTURAS',      label: 'Facturas',      adminOnly: true },
   { key: 'A_COBRAR',      label: 'A Cobrar',      adminOnly: true },
   { key: 'AUDITORIA',     label: 'Auditoría',     adminOnly: true },
@@ -264,7 +266,7 @@ const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
 // Evento informal (carga rápida, sin presupuesto) — no tiene ficha, socios ni
 // rubros configurados, así que Ficha/Conciliatoria/Echeqs/Egresos/Ingresos/
 // Facturas/A-Cobrar/Auditoría no aplican. Ver banner "¿Se factura?" abajo.
-const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS'];
+const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS', 'LOGISTICA'];
 
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
@@ -297,7 +299,8 @@ export default function EventoPage() {
   const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
     (!t.adminOnly || isAdmin)
     && (!evento?.es_informal || INFORMAL_TABS.includes(t.key))
-    && (t.key !== 'CORTESIAS' || mostrarCortesias),
+    && (t.key !== 'CORTESIAS' || mostrarCortesias)
+    && (t.key !== 'LOGISTICA' || canEdit),
   );
   const MAIN_TABS_KEYS_VISIBLES = MAIN_TABS.map(t => t.key);
 
@@ -577,8 +580,8 @@ export default function EventoPage() {
           <CortesiasPage eventoId={eventoId} canEdit={canEdit} />
         )}
 
-        {mainTab === 'COMBUSTIBLE' && (
-          <EventoCombustibleTab eventoId={eventoId} />
+        {mainTab === 'LOGISTICA' && canEdit && (
+          <EventoLogisticaTab eventoId={eventoId} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

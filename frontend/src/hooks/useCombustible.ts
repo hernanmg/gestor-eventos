@@ -51,6 +51,9 @@ function cargaFormData(data: Partial<CombustiblePayload>): FormData {
   const fd = new FormData();
   for (const [key, value] of Object.entries(data)) {
     if (key === 'archivo') { if (value) fd.append('comprobante', value as File); continue; }
+    // null = desvincular el evento en una edición (el backend toma '' como null;
+    // si se omitiera, la carga quedaría vinculada al evento anterior)
+    if (key === 'evento_id' && value === null) { fd.append(key, ''); continue; }
     if (value !== undefined && value !== null) fd.append(key, String(value));
   }
   return fd;
@@ -58,6 +61,7 @@ function cargaFormData(data: Partial<CombustiblePayload>): FormData {
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: KEY });
+  qc.invalidateQueries({ queryKey: ['evento-logistica'] });
 }
 
 export function useCreateCombustible() {
