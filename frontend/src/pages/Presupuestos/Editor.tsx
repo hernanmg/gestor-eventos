@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { PresupuestoEstadoBadge } from '@/components/ui/badge';
 import BaseTable from '@/components/ui/BaseTable';
+import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
 import type { MaterialRental, PorcentajeAlquiler, Presupuesto, PresupuestoLinea } from '@/types';
@@ -28,7 +29,11 @@ const tdNum    = 'px-2 py-2 text-right tabular-nums';
 const DASH     = <span className="text-muted-foreground">–</span>;
 
 type MaterialLinea = Omit<MaterialRental, 'peso_por_unidad'>;
-type LineaForm = { key: string; material: MaterialLinea; cantidad: string; snap?: PresupuestoLinea };
+// full: ALQUILER FULL negociado a mano ('' = sin cargar). No hay regla fija.
+type LineaForm = { key: string; material: MaterialLinea; cantidad: string; full: string; snap?: PresupuestoLinea };
+
+// Sólo los NAC con FULL habilitado en la planilla admiten el valor FULL
+const admiteFull = (m: MaterialLinea) => m.origen === 'NAC' && m.porc_full;
 
 type Form = {
   evento_id: string; nombre: string; porcentaje: PorcentajeAlquiler; tc: string; notas: string;
@@ -46,7 +51,10 @@ function formDesde(p: Presupuesto | undefined): Form {
     porcentaje: p.porcentaje_alquiler,
     tc:         String(p.tipo_cambio_usd),
     notas:      p.notas ?? '',
-    lineas:     p.lineas.map(l => ({ key: nuevaKey(), material: l.material, cantidad: String(l.cantidad), snap: l })),
+    lineas:     p.lineas.map(l => ({
+      key: nuevaKey(), material: l.material, cantidad: String(l.cantidad),
+      full: l.valor_rental_full !== null ? String(l.valor_rental_full) : '', snap: l,
+    })),
   };
 }
 
@@ -57,7 +65,11 @@ function payloadDesde(f: Form): PresupuestoPayload {
     porcentaje_alquiler: f.porcentaje,
     tipo_cambio_usd:     Number(f.tc) || 1700,
     notas:               f.notas.trim() || null,
-    lineas:              f.lineas.map(l => ({ material_id: l.material.id, cantidad: Number(l.cantidad) })),
+    lineas:              f.lineas.map(l => ({
+      material_id:       l.material.id,
+      cantidad:          Number(l.cantidad),
+      valor_rental_full: admiteFull(l.material) && l.full.trim() !== '' ? Number(l.full) : null,
+    })),
   };
 }
 
@@ -161,14 +173,19 @@ export default function PresupuestoEditorPage() {
   // Importes por línea: en vivo (editable) o el snapshot guardado (sólo lectura)
   const filas = useMemo(() => form.lineas.map(l => {
     if (!editable && l.snap) {
-      return { l, unitario: l.snap.costo_unitario_snap as number | null, pct: l.snap.porcentaje_snap, total: l.snap.costo_total_material, rental: l.snap.valor_rental };
+      return { l, unitario: l.snap.costo_unitario_snap as number | null, pct: l.snap.porcentaje_snap, total: l.snap.costo_total_material, rental: l.snap.valor_rental, full: l.snap.valor_rental_full };
     }
-    return { l, ...calcularLinea(l.material, Number(l.cantidad) || 0, form.porcentaje, tc) };
+    const full = admiteFull(l.material) && l.full.trim() !== '' ? Number(l.full) || 0 : null;
+    return { l, ...calcularLinea(l.material, Number(l.cantidad) || 0, form.porcentaje, tc), full };
   }), [form.lineas, form.porcentaje, tc, editable]);
 
   const totales = useMemo(() => {
-    const t = { NAC: { material: 0, rental: 0 }, IMP: { material: 0, rental: 0 } };
-    for (const f of filas) { t[f.l.material.origen].material += f.total; t[f.l.material.origen].rental += f.rental; }
+    const t = { NAC: { material: 0, rental: 0 }, IMP: { material: 0, rental: 0 }, full: null as number | null };
+    for (const f of filas) {
+      t[f.l.material.origen].material += f.total;
+      t[f.l.material.origen].rental += f.rental;
+      if (f.full !== null) t.full = (t.full ?? 0) + f.full;
+    }
     return t;
   }, [filas]);
 
@@ -177,9 +194,9 @@ export default function PresupuestoEditorPage() {
   if (id && (isError || !presupuesto)) return <p className="p-6 text-sm text-destructive">Presupuesto no encontrado.</p>;
 
   const set = (patch: Partial<Form>) => setForm(f => ({ ...f, ...patch }));
-  const setLinea = (key: string, cantidad: string) => set({ lineas: form.lineas.map(l => (l.key === key ? { ...l, cantidad } : l)) });
+  const setLinea = (key: string, patch: Partial<Pick<LineaForm, 'cantidad' | 'full'>>) => set({ lineas: form.lineas.map(l => (l.key === key ? { ...l, ...patch } : l)) });
   const quitarLinea = (key: string) => set({ lineas: form.lineas.filter(l => l.key !== key) });
-  const agregar = (m: MaterialRental) => set({ lineas: [...form.lineas, { key: nuevaKey(), material: m, cantidad: '1' }] });
+  const agregar = (m: MaterialRental) => set({ lineas: [...form.lineas, { key: nuevaKey(), material: m, cantidad: '1', full: '' }] });
 
   const elegirEvento = (v: string) => {
     const ev = eventos.find(e => String(e.id) === v);
@@ -194,6 +211,8 @@ export default function PresupuestoEditorPage() {
     if (!(Number(form.tc) > 0)) return 'El tipo de cambio tiene que ser mayor a 0';
     const mal = form.lineas.find(l => !(Number(l.cantidad) > 0));
     if (mal) return `Cantidad inválida en "${mal.material.detalle}"`;
+    const fullMal = form.lineas.find(l => admiteFull(l.material) && l.full.trim() !== '' && !(Number(l.full) >= 0));
+    if (fullMal) return `Valor FULL inválido en "${fullMal.material.detalle}"`;
     return null;
   };
 
@@ -316,7 +335,7 @@ export default function PresupuestoEditorPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <BaseTable className="w-full text-sm min-w-[1150px]">
+            <BaseTable className="w-full text-sm min-w-[1300px]">
               <thead className="border-b bg-muted/10">
                 <tr>
                   <th className={thCls}>Origen</th>
@@ -329,11 +348,12 @@ export default function PresupuestoEditorPage() {
                   <th className={`${thCls} text-right`}>Costo total</th>
                   <th className={`${thCls} text-right`}>% Rental</th>
                   <th className={`${thCls} text-right`}>Valor rental</th>
+                  <th className={`${thCls} text-right w-36`} title="Alquiler FULL negociado por evento/cliente — se carga a mano, no se calcula">FULL</th>
                   {editable && <th className="w-8" />}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filas.map(({ l, unitario, pct, total, rental }) => {
+                {filas.map(({ l, unitario, pct, total, rental, full }) => {
                   const m = l.material;
                   const pctNoHabilitado = editable && !porcentajeHabilitado(m, form.porcentaje);
                   return (
@@ -345,7 +365,7 @@ export default function PresupuestoEditorPage() {
                       <td className="px-2 py-2 text-muted-foreground">{m.medida ?? DASH}</td>
                       <td className="px-2 py-1 text-right">
                         {editable
-                          ? <input type="number" min={0} step="any" value={l.cantidad} onChange={e => setLinea(l.key, e.target.value)} className={cn(inputCls, 'text-right w-24 ml-auto')} />
+                          ? <input type="number" min={0} step="any" value={l.cantidad} onChange={e => setLinea(l.key, { cantidad: e.target.value })} className={cn(inputCls, 'text-right w-24 ml-auto')} />
                           : <span className="tabular-nums">{Number(l.cantidad).toLocaleString('es-AR')}</span>}
                       </td>
                       <td className={tdNum}>
@@ -358,6 +378,12 @@ export default function PresupuestoEditorPage() {
                         </span>
                       </td>
                       <td className={cn(tdNum, 'font-medium')}>{formatCurrency(rental)}</td>
+                      <td className={cn(tdNum, 'py-1')}>
+                        {!admiteFull(m) ? DASH
+                          : editable
+                            ? <MoneyInput value={l.full} onChange={v => setLinea(l.key, { full: v })} placeholder="—" className={cn(inputCls, 'text-right w-32 ml-auto')} />
+                            : full !== null ? formatCurrency(full) : DASH}
+                      </td>
                       {editable && (
                         <td className="px-1 py-2 text-center">
                           <button type="button" onClick={() => quitarLinea(l.key)} className="text-muted-foreground hover:text-destructive" title="Quitar"><X size={14} /></button>
@@ -374,6 +400,7 @@ export default function PresupuestoEditorPage() {
                     <td className={cn(tdNum, 'py-1.5')}>{formatCurrency(totales[o].material)}</td>
                     <td />
                     <td className={cn(tdNum, 'py-1.5')}>{formatCurrency(totales[o].rental)}</td>
+                    <td />
                     {editable && <td />}
                   </tr>
                 ))}
@@ -382,6 +409,7 @@ export default function PresupuestoEditorPage() {
                   <td className={tdNum}>{formatCurrency(totales.NAC.material + totales.IMP.material)}</td>
                   <td />
                   <td className={tdNum}>{formatCurrency(totales.NAC.rental + totales.IMP.rental)}</td>
+                  <td className={tdNum}>{totales.full !== null ? formatCurrency(totales.full) : DASH}</td>
                   {editable && <td />}
                 </tr>
               </tfoot>

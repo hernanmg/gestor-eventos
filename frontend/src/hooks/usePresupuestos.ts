@@ -69,7 +69,7 @@ export interface PresupuestoPayload {
   porcentaje_alquiler: PorcentajeAlquiler;
   tipo_cambio_usd:     number;
   notas:               string | null;
-  lineas:              { material_id: number; cantidad: number }[];
+  lineas:              { material_id: number; cantidad: number; valor_rental_full: number | null }[];
 }
 
 function usePresupuestoMutation<V>(fn: (v: V) => Promise<Presupuesto>) {

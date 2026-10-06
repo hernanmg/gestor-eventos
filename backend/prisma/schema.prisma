@@ -3303,6 +3303,9 @@ model PresupuestoLinea {
 
   costo_total_material Decimal @db.Decimal(16, 2) // cantidad × costo_unitario_snap
   valor_rental         Decimal @db.Decimal(16, 2) // costo_total_material × porcentaje_snap / 100
+  // ALQUILER FULL negociado a mano (no hay regla fija: varía por evento/cliente).
+  // Sólo NAC con material.porc_full; null si no aplica o no se cargó.
+  valor_rental_full    Decimal? @db.Decimal(16, 2)
 
   orden Int @default(0)
 

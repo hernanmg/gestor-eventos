@@ -188,12 +188,14 @@ const PRESUPUESTO_INCLUDE = {
 
 type PresupuestoFull = Prisma.PresupuestoEventoGetPayload<{ include: typeof PRESUPUESTO_INCLUDE }>;
 
-function totalesDe(lineas: { costo_total_material: unknown; valor_rental: unknown; material: { origen: string } }[]) {
+function totalesDe(lineas: { costo_total_material: unknown; valor_rental: unknown; valor_rental_full: unknown; material: { origen: string } }[]) {
   const t = { nac_material: 0, nac_rental: 0, imp_material: 0, imp_rental: 0 };
+  let full: number | null = null; // null = ninguna línea tiene FULL cargado
   for (const l of lineas) {
     const pre = l.material.origen === 'IMP' ? 'imp' : 'nac';
     t[`${pre}_material`] += Number(l.costo_total_material);
     t[`${pre}_rental`]   += Number(l.valor_rental);
+    if (l.valor_rental_full !== null) full = (full ?? 0) + Number(l.valor_rental_full);
   }
   return {
     nac_material:   round2(t.nac_material),
@@ -202,6 +204,7 @@ function totalesDe(lineas: { costo_total_material: unknown; valor_rental: unknow
     imp_rental:     round2(t.imp_rental),
     total_material: round2(t.nac_material + t.imp_material),
     total_rental:   round2(t.nac_rental + t.imp_rental),
+    total_full:     full !== null ? round2(full) : null,
   };
 }
 
@@ -217,6 +220,7 @@ function mapPresupuesto(p: PresupuestoFull) {
       porcentaje_snap:      Number(l.porcentaje_snap),
       costo_total_material: Number(l.costo_total_material),
       valor_rental:         Number(l.valor_rental),
+      valor_rental_full:    num(l.valor_rental_full),
       material:             mapMaterial(l.material),
     })),
     totales: totalesDe(p.lineas),
@@ -226,6 +230,8 @@ function mapPresupuesto(p: PresupuestoFull) {
 const lineaSchema = z.object({
   material_id: z.number().int().positive(),
   cantidad:    z.number().positive('La cantidad tiene que ser mayor a 0'),
+  // ALQUILER FULL negociado a mano; se ignora si la línea no admite FULL
+  valor_rental_full: z.number().nonnegative().nullable().optional(),
 });
 
 const presupuestoSchema = z.object({
@@ -251,7 +257,7 @@ async function armarPresupuesto(d: z.infer<typeof presupuestoSchema>, empresaId:
   const ids = [...new Set(d.lineas.map(l => l.material_id))];
   const materiales = await prisma.materialRental.findMany({
     where:  { id: { in: ids }, ...withTenant(empresaId) },
-    select: { id: true, origen: true, costo_unitario_ars: true, costo_unitario_usd: true },
+    select: { id: true, origen: true, costo_unitario_ars: true, costo_unitario_usd: true, porc_full: true },
   });
   const porId = new Map(materiales.map(m => [m.id, m]));
   const faltantes = ids.filter(id => !porId.has(id));
@@ -268,6 +274,8 @@ async function armarPresupuesto(d: z.infer<typeof presupuestoSchema>, empresaId:
         { origen: m.origen, costo_unitario_ars: num(m.costo_unitario_ars), costo_unitario_usd: num(m.costo_unitario_usd) },
         l.cantidad, d.porcentaje_alquiler, tc,
       ),
+      // FULL no se calcula nunca: sólo NAC con porc_full, y tal cual vino (o null)
+      valor_rental_full: m.origen === 'NAC' && m.porc_full ? (l.valor_rental_full ?? null) : null,
     };
   });
   return { nombre, tc, lineas } as const;
@@ -291,7 +299,7 @@ export async function listPresupuestos(req: Request, res: Response) {
     where,
     include: {
       evento: { select: { id: true, nombre: true } },
-      lineas: { select: { costo_total_material: true, valor_rental: true, material: { select: { origen: true } } } },
+      lineas: { select: { costo_total_material: true, valor_rental: true, valor_rental_full: true, material: { select: { origen: true } } } },
     },
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
   });
@@ -445,7 +453,7 @@ export async function nuevaVersionPresupuesto(req: Request, res: Response) {
         create: p.lineas.map(l => ({
           material_id: l.material_id, cantidad: l.cantidad, orden: l.orden,
           costo_unitario_snap: l.costo_unitario_snap, tipo_cambio_snap: l.tipo_cambio_snap, porcentaje_snap: l.porcentaje_snap,
-          costo_total_material: l.costo_total_material, valor_rental: l.valor_rental,
+          costo_total_material: l.costo_total_material, valor_rental: l.valor_rental, valor_rental_full: l.valor_rental_full,
         })),
       },
     },

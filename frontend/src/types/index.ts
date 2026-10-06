@@ -2772,6 +2772,7 @@ export interface TotalesPresupuesto {
   nac_material: number; nac_rental: number;
   imp_material: number; imp_rental: number;
   total_material: number; total_rental: number;
+  total_full: number | null; // suma de los FULL cargados a mano; null si no hay ninguno
 }
 
 export interface PresupuestoLinea {
@@ -2784,6 +2785,7 @@ export interface PresupuestoLinea {
   porcentaje_snap:      number;
   costo_total_material: number;
   valor_rental:         number;
+  valor_rental_full:    number | null; // FULL negociado a mano (sólo NAC con porc_full)
   orden:                number;
 }
 
