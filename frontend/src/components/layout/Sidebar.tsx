@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -593,6 +593,15 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                   )}
                 </>
               )}
+            </NavLink>
+          )}
+
+          {/* Bitácora de viajes de camiones (planillas de Flor, DOS57) — debajo
+              de Flota, mismo criterio de visibilidad que Combustible. */}
+          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
+            <NavLink to="/bitacora-viajes" title={!isOpen ? 'Bitácora' : undefined} className={navItem}>
+              <RouteIcon size={18} className="shrink-0" />
+              {isOpen && <span>Bitácora</span>}
             </NavLink>
           )}
 

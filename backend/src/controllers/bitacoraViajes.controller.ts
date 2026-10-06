@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { TipoRecorrido, EstadoLiquidacionAdmin } from '@prisma/client';
+import { TipoRecorrido, EstadoLiquidacionAdmin, OrigenBitacoraViaje } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
@@ -67,6 +67,12 @@ function mapDecimalsBitacora(b: any) {
 // que updateAcuerdo/deleteAcuerdo con APROBADA/PAGADA).
 export const ESTADOS_BLOQUEAN_EDICION: EstadoLiquidacionAdmin[] = [EstadoLiquidacionAdmin.APROBADA, EstadoLiquidacionAdmin.PAGADA];
 
+// Todo lo de este controller (RRHH / viático de choferes) opera sólo sobre
+// registros de origen RRHH — los viajes de camiones importados de las
+// planillas de Flor (origen FLOTA, ver bitacoraFlota.controller.ts) viven en
+// la misma tabla pero no cuentan para sueldos.
+const SOLO_RRHH = { origen: OrigenBitacoraViaje.RRHH } as const;
+
 function rangoPeriodo(mes: number | undefined, anio: number): { gte: Date; lt: Date } {
   if (mes) return { gte: new Date(Date.UTC(anio, mes - 1, 1)), lt: new Date(Date.UTC(anio, mes, 1)) };
   return { gte: new Date(Date.UTC(anio, 0, 1)), lt: new Date(Date.UTC(anio + 1, 0, 1)) };
@@ -76,7 +82,7 @@ function rangoPeriodo(mes: number | undefined, anio: number): { gte: Date; lt: D
 
 export async function listBitacoraViajes(req: Request, res: Response) {
   const { empleado_id, mes, anio, tipo_recorrido } = req.query;
-  const where: any = { deleted_at: null, ...withTenant(req.empresaId!) };
+  const where: any = { deleted_at: null, ...SOLO_RRHH, ...withTenant(req.empresaId!) };
   if (empleado_id)    where.empleado_id    = Number(empleado_id);
   if (tipo_recorrido) where.tipo_recorrido = tipo_recorrido;
   if (mes || anio)     where.fecha         = rangoPeriodo(mes ? Number(mes) : undefined, anio ? Number(anio) : new Date().getFullYear());
@@ -96,7 +102,7 @@ export async function listBitacoraViajesEmpleado(req: Request, res: Response) {
   const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
 
-  const where: any = { empleado_id: empleadoId, deleted_at: null };
+  const where: any = { empleado_id: empleadoId, deleted_at: null, ...SOLO_RRHH };
   if (mes || anio) where.fecha = rangoPeriodo(mes ? Number(mes) : undefined, anio ? Number(anio) : new Date().getFullYear());
 
   const registros = await prisma.bitacoraViaje.findMany({ where, orderBy: { fecha: 'asc' } });
@@ -181,7 +187,7 @@ export async function updateBitacoraViaje(req: Request, res: Response) {
   const d = parsed.data;
 
   const existing = await prisma.bitacoraViaje.findFirst({
-    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    where:   { id, deleted_at: null, ...SOLO_RRHH, ...withTenant(req.empresaId!) },
     include: { liquidacion_admin: { select: { estado: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Registro no encontrado' }); return; }
@@ -189,13 +195,15 @@ export async function updateBitacoraViaje(req: Request, res: Response) {
     res.status(400).json({ error: 'No se puede editar: ya está incluido en una liquidación aprobada' }); return;
   }
 
-  const tipoFinal    = d.tipo_recorrido   ?? existing.tipo_recorrido;
+  // En origen RRHH empleado_id, tipo_recorrido y fecha siempre están cargados
+  // (los exige bitacoraCreateSchema); sólo son nullable en el schema por FLOTA.
+  const tipoFinal    = d.tipo_recorrido   ?? existing.tipo_recorrido!;
   const vueltasFinal = d.cantidad_vueltas ?? existing.cantidad_vueltas;
-  const acuerdo = await prisma.acuerdoSueldo.findFirst({ where: { empleado_id: existing.empleado_id, activo: true, deleted_at: null } });
+  const acuerdo = await prisma.acuerdoSueldo.findFirst({ where: { empleado_id: existing.empleado_id!, activo: true, deleted_at: null } });
   const valorPorVuelta   = resolverValorPorVuelta(acuerdo, tipoFinal);
   const viaticoCalculado = valorPorVuelta !== null ? round2(valorPorVuelta * vueltasFinal) : null;
 
-  const fecha           = d.fecha        !== undefined ? parseFechaUTC(d.fecha) : existing.fecha;
+  const fecha           = d.fecha        !== undefined ? parseFechaUTC(d.fecha) : existing.fecha!;
   const horaInicioFinal  = d.hora_inicio  !== undefined ? d.hora_inicio  : existing.hora_inicio;
   const horaFinFinal     = d.hora_fin     !== undefined ? d.hora_fin     : existing.hora_fin;
 
@@ -237,7 +245,7 @@ export async function updateBitacoraViaje(req: Request, res: Response) {
 export async function deleteBitacoraViaje(req: Request, res: Response) {
   const id = Number(req.params.id);
   const existing = await prisma.bitacoraViaje.findFirst({
-    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    where:   { id, deleted_at: null, ...SOLO_RRHH, ...withTenant(req.empresaId!) },
     include: { liquidacion_admin: { select: { estado: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Registro no encontrado' }); return; }
@@ -283,7 +291,7 @@ const TIPO_KEY: Record<TipoRecorrido, 'provincial' | 'nacional' | 'nacional_1000
 // bitacora_resumen en la respuesta de generar.
 export async function calcularResumenBitacora(empleadoId: number, mes: number, anio: number): Promise<ResumenBitacora> {
   const registros = await prisma.bitacoraViaje.findMany({
-    where:   { empleado_id: empleadoId, deleted_at: null, fecha: rangoPeriodo(mes, anio) },
+    where:   { empleado_id: empleadoId, deleted_at: null, ...SOLO_RRHH, fecha: rangoPeriodo(mes, anio) },
     orderBy: { fecha: 'asc' },
   });
 
@@ -291,7 +299,7 @@ export async function calcularResumenBitacora(empleadoId: number, mes: number, a
   let totalHoras   = 0;
   let totalViatico = 0;
   for (const r of registros) {
-    totalVueltas[TIPO_KEY[r.tipo_recorrido]] += r.cantidad_vueltas;
+    if (r.tipo_recorrido) totalVueltas[TIPO_KEY[r.tipo_recorrido]] += r.cantidad_vueltas;
     totalHoras   += r.horas_trabajadas  !== null ? Number(r.horas_trabajadas)  : 0;
     totalViatico += r.viatico_calculado !== null ? Number(r.viatico_calculado) : 0;
   }

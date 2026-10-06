@@ -483,7 +483,7 @@ export async function importarBitacoraViajes(req: Request, res: Response) {
   let actualizados = 0;
   for (const item of aProcesar) {
     const existing = await prisma.bitacoraViaje.findFirst({
-      where:   { empleado_id: empleado.id, fecha: item.fecha, tipo_recorrido: item.tipo_recorrido, deleted_at: null },
+      where:   { empleado_id: empleado.id, fecha: item.fecha, tipo_recorrido: item.tipo_recorrido, origen: 'RRHH', deleted_at: null },
       include: { liquidacion_admin: { select: { estado: true } } },
     });
     if (existing?.liquidacion_admin && ESTADOS_BLOQUEAN_EDICION.includes(existing.liquidacion_admin.estado)) {

@@ -2627,3 +2627,63 @@ export interface ConsumoTCPayload {
   empresa_imputa?:     string | null;
   descontado?:         boolean;
 }
+
+// ── Bitácora de viajes de camiones (Flota, planillas de Flor) ─────────────────
+// Misma tabla que BitacoraViaje (RRHH) pero origen FLOTA: no entra en sueldos.
+
+export interface ViajeFlota {
+  id:                   number;
+  fecha:                string | null; // null = la planilla no traía fecha
+  dia_semana:           string | null;
+  convocatoria:         string | null; // evento
+  recorrido:            string | null; // tramo
+  camion_id:            number | null;
+  camion:               { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_camion:       string | null;
+  alias_camion:         string | null; // C1, C2… = n° de carga del evento
+  empleado_id:          number | null;
+  empleado:             { id: number; nombre: string; apellido: string } | null;
+  chofer_nombre:        string | null;
+  km_iniciales:         number | null;
+  km_finales:           number | null;
+  km_recorridos:        number | null;
+  monto_combustible:    number | null;
+  litros_cargados_ruta: number | null;
+  litros_consumidos:    number | null;
+  km_por_litro:         number | null;
+  litros_iniciales_tanque: number | null; // saldo de tanque al arrancar la gira (fila COMB.INICIAL), sólo en el 1er viaje
+  monto_caja_entregada: number | null;
+  horario_salida:       string | null;
+  horario_llegada:      string | null;
+  observaciones:        string | null;
+}
+
+export interface OpcionesBitacoraFlota {
+  eventos:  string[];
+  camiones: { value: string; label: string }[];
+  choferes: { value: string; label: string }[];
+}
+
+export interface ImportarBitacoraFlotaResultado {
+  preview:              boolean;
+  bloques:              { hoja: string; titulo: string | null; tipo: 'A' | 'B' | 'C'; fila_encabezado: number; viajes: number }[];
+  hojas_no_reconocidas: string[];
+  filas_leidas:         number;
+  viajes:               number;
+  creados:              number;
+  actualizados:         number;
+  fusionados:           { tramo: string; fecha: string | null; fuentes: { hoja: string; fila: number }[] }[];
+  sin_fecha:            number;
+  camiones: {
+    resueltos:      { valor: string; viajes: number; camion: { id: number; codigo: string; patente: string | null } }[];
+    no_encontrados: { valor: string; patente: string | null; alias: string | null; viajes: number; motivo: string }[];
+  };
+  choferes: {
+    encontrados:    { nombre: string; viajes: number; empleado: { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado } }[];
+    no_encontrados: { nombre: string; viajes: number }[];
+  };
+  saldos_iniciales: { hoja: string; fila: number; litros: number | null; km_inicial: number | null; chofer: string | null }[];
+  ignoradas:    { hoja: string; fila: number; motivo: string }[];
+  advertencias: { hoja: string; fila: number; mensaje: string }[];
+  totales:      { km: number; litros: number; litros_consumidos: number; combustible: number; caja: number };
+}

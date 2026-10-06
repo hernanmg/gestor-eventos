@@ -12,6 +12,9 @@ import {
   listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
   alertasFlota, importarPizarra,
 } from '../controllers/flota.controller';
+import {
+  listBitacoraFlota, opcionesBitacoraFlota, createViajeFlota, updateViajeFlota, deleteViajeFlota,
+} from '../controllers/bitacoraFlota.controller';
 
 function docMiddleware(field: string) {
   return (req: any, res: any, next: any) => {
@@ -33,6 +36,13 @@ router.get('/vehiculos/:id',       asyncHandler(detalleVehiculo));
 router.post('/vehiculos',          requireRole('ADMIN'), asyncHandler(createVehiculo));
 router.put('/vehiculos/:id',       requireRole('ADMIN'), asyncHandler(updateVehiculo));
 router.delete('/vehiculos/:id',    requireRole('ADMIN'), asyncHandler(darDeBajaVehiculo));
+
+// ── Bitácora de viajes de camiones (planillas de Flor) — import en /api/importar/bitacora-viajes
+router.get('/bitacora-viajes/opciones', asyncHandler(opcionesBitacoraFlota));
+router.get('/bitacora-viajes',          asyncHandler(listBitacoraFlota));
+router.post('/bitacora-viajes',         requireRole('ADMIN'), asyncHandler(createViajeFlota));
+router.put('/bitacora-viajes/:id',      requireRole('ADMIN'), asyncHandler(updateViajeFlota));
+router.delete('/bitacora-viajes/:id',   requireRole('ADMIN'), asyncHandler(deleteViajeFlota));
 
 // ── Seguros ───────────────────────────────────────────────────────────────────
 router.get('/seguros',                 asyncHandler(listSegurosEmpresa));

@@ -37,6 +37,7 @@ import CierreContablePage from '@/pages/CierreContable';
 import CierreContableDetallePage from '@/pages/CierreContable/Detalle';
 import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
+import BitacoraViajesPage   from '@/pages/BitacoraViajes';
 import GastosOperativosPage from '@/pages/GastosOperativos';
 import SiniestrosPage       from '@/pages/Siniestros';
 import UniformesPage        from '@/pages/Uniformes';
@@ -101,6 +102,7 @@ export default function App() {
             <Route path="/cuentas-corrientes/:id"  element={<CuentaCorrienteDetalle />} />
             <Route path="/flota"                   element={<FlotaPage />} />
             <Route path="/combustible"             element={<CombustiblePage />} />
+            <Route path="/bitacora-viajes"         element={<BitacoraViajesPage />} />
             <Route path="/gastos-operativos"       element={<GastosOperativosPage />} />
             <Route path="/siniestros"              element={<SiniestrosPage />} />
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />

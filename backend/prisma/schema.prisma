@@ -984,6 +984,7 @@ model Camion {
   servicios_taller     ServicioTaller[]
   cargas_combustible   CargaCombustible[]
   siniestros           SiniestroVehiculo[]
+  bitacora_viajes      BitacoraViaje[]
 
   @@unique([codigo, empresa_id])
 }
@@ -2123,28 +2124,62 @@ enum TipoRecorrido {
   NACIONAL_1000 // más de 1000km
 }
 
+// Origen del registro. RRHH = bitácora de viáticos de choferes (alta manual o
+// importador del Excel de sueldos de Mayra) — es la ÚNICA que alimenta el
+// viático de la liquidación (calcularResumenBitacora). FLOTA = viajes de
+// camiones de las planillas de campo de Flor (importador de Flota): traen km,
+// camión, caja entregada, pero NO cuentan para sueldos — si no, el chofer
+// cobraría el viático dos veces (el mismo viaje está en ambas planillas).
+enum OrigenBitacoraViaje {
+  RRHH
+  FLOTA
+}
+
 model BitacoraViaje {
-  id                   Int               @id @default(autoincrement())
-  empleado_id          Int
-  empleado             Empleado          @relation(fields: [empleado_id], references: [id])
-  empresa_id           Int
-  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
-  // Datos del viaje
-  fecha                DateTime
-  convocatoria         String? // nombre del evento/trabajo
-  dia_semana           String? // calculado automáticamente desde `fecha`
-  hora_inicio          String?
-  hora_fin             String?
-  horas_trabajadas     Decimal?          @db.Decimal(5, 2)
+  id                Int                 @id @default(autoincrement())
+  origen            OrigenBitacoraViaje @default(RRHH)
+  // null sólo en origen FLOTA: chofer de la planilla que no matcheó ningún
+  // Empleado (el nombre queda en chofer_nombre). RRHH siempre lo tiene.
+  empleado_id       Int?
+  empleado          Empleado?           @relation(fields: [empleado_id], references: [id])
+  empresa_id        Int
+  empresa           Empresa             @relation(fields: [empresa_id], references: [id])
+  // Datos del viaje — fecha null sólo en origen FLOTA (filas de la planilla
+  // de Flor sin fecha cargada; no se inventa una heredando la fila anterior)
+  fecha             DateTime?
+  convocatoria      String? // nombre del evento/trabajo (en FLOTA: columna EVENTO / nombre de hoja)
+  dia_semana        String? // calculado automáticamente desde `fecha`
+  hora_inicio       String?
+  hora_fin          String?
+  horas_trabajadas  Decimal?            @db.Decimal(5, 2)
   // Recorrido
-  ejido                String? // "Córdoba", "Buenos Aires", etc.
-  recorrido            String? // descripción del recorrido
-  tipo_recorrido       TipoRecorrido
-  cantidad_vueltas     Int               @default(1)
+  ejido             String? // "Córdoba", "Buenos Aires", etc.
+  recorrido         String? // descripción del recorrido (en FLOTA: TRAMO / VIAJE)
+  tipo_recorrido    TipoRecorrido? // obligatorio en RRHH (lo valida el controller); null en FLOTA
+  cantidad_vueltas  Int                 @default(1)
   // Viático calculado
-  valor_por_vuelta     Decimal?          @db.Decimal(10, 2) // snapshot del acuerdo al momento de cargar
-  viatico_calculado    Decimal?          @db.Decimal(10, 2) // cantidad_vueltas × valor_por_vuelta
-  observaciones        String?
+  valor_por_vuelta  Decimal?            @db.Decimal(10, 2) // snapshot del acuerdo al momento de cargar
+  viatico_calculado Decimal?            @db.Decimal(10, 2) // cantidad_vueltas × valor_por_vuelta
+  observaciones     String?
+
+  // ── Viajes de camiones (origen FLOTA, planillas de Flor) ─────────────────────
+  camion_id               Int?
+  camion                  Camion?   @relation(fields: [camion_id], references: [id])
+  patente_camion          String? // normalizada sin espacios ("HKQ258"), aunque no exista el Camion
+  alias_camion            String? // "C1", "C2"… de la planilla — n° de carga del evento, NO un vehículo
+  chofer_nombre           String? // nombre tal como vino en la planilla ("LUIS", "TATI")
+  km_iniciales            Int?
+  km_finales              Int?
+  km_recorridos           Int?
+  monto_combustible       Decimal?  @db.Decimal(14, 2) // $ de la carga en ruta (CARGA DE COMBUSTIBLE)
+  litros_cargados_ruta    Decimal?  @db.Decimal(10, 2) // litros cargados en el viaje (≠ CargaCombustible)
+  litros_consumidos       Decimal?  @db.Decimal(10, 2) // CANT. DE L. CONSUMIDOS (A) / CANTIDAD DE LITROS QUE CONSUMIO (B)
+  km_por_litro            Decimal?  @db.Decimal(6, 2) // CANT. DE KM x L de la planilla; si falta, km_recorridos / litros_consumidos
+  litros_iniciales_tanque Decimal?  @db.Decimal(10, 2) // fila COMB.INICIAL de la hoja por camión — sólo en el 1er viaje de la gira
+  monto_caja_entregada    Decimal?  @db.Decimal(14, 2) // plata que se le da al chofer para el viaje
+  horario_salida          DateTime?
+  horario_llegada         DateTime?
+
   // Vínculo con liquidación — null hasta que se genera la liquidación del mes
   liquidacion_admin_id Int?
   liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
@@ -2153,6 +2188,8 @@ model BitacoraViaje {
   updated_at           DateTime          @updatedAt
   deleted_at           DateTime?
   created_by           Int?
+
+  @@index([empresa_id, origen])
 }
 
 // ─── AFIP Y PRÉSTAMOS BANCARIOS ───────────────────────────────────────────────

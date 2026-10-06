@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import { upload as uploadXlsx } from '../controllers/importer.controller';
 import { importarProveedoresFormulario } from '../controllers/proveedoresFormulario.controller';
+import { importarBitacoraViajesFlota } from '../controllers/bitacoraFlota.controller';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ const xlsxMiddleware = (req: any, res: any, next: any) => {
 };
 
 router.post('/proveedores-formulario', requireRole('ADMIN'), xlsxMiddleware, asyncHandler(importarProveedoresFormulario));
+router.post('/bitacora-viajes',        requireRole('ADMIN'), xlsxMiddleware, asyncHandler(importarBitacoraViajesFlota));
 
 export default router;
