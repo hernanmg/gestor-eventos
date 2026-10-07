@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Truck, Pencil, Wrench, ShieldOff, Upload } from 'lucide-react';
-import { useImportarPizarraFlota, type ImportarPizarraResultado } from '@/hooks/useFlota';
+import { Plus, Truck, Pencil, Wrench, ShieldOff, Upload, Download } from 'lucide-react';
+import { useImportarPizarraFlota, descargarPlantillaPizarra, type ImportarPizarraResultado } from '@/hooks/useFlota';
 import {
   useVehiculosFlota, useVehiculoFlota, useCreateVehiculoFlota, useUpdateVehiculoFlota, useDarDeBajaVehiculo,
   useSegurosVehiculo, type VehiculoFiltros, type VehiculoPayload,
@@ -298,23 +298,34 @@ function SeguroCell({ v }: { v: VehiculoFlota }) {
 
 // ── Tab principal ─────────────────────────────────────────────────────────────
 
-// La pizarra física de DOS57 no se sube como archivo — los datos están
-// transcriptos en flotaPizarraImporter.ts (ver relevamiento de Lorena), así
-// que el diálogo sólo confirma y muestra el resultado.
+// La pizarra física de DOS57 se pasó a una planilla Excel: Lorena descarga la
+// plantilla (precargada con lo transcripto de la foto), la mantiene al día y
+// la reimporta acá.
 function ImportarPizarraDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const importar = useImportarPizarraFlota();
+  const [file, setFile] = useState<File | null>(null);
   const [resultado, setResultado] = useState<ImportarPizarraResultado | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [descargando, setDescargando] = useState(false);
 
-  useEffect(() => { if (open) { setResultado(null); setError(null); } }, [open]);
+  useEffect(() => { if (open) { setFile(null); setResultado(null); setError(null); } }, [open]);
 
   const handleImportar = async () => {
+    if (!file) return;
     setError(null);
     try {
-      setResultado(await importar.mutateAsync());
+      setResultado(await importar.mutateAsync(file));
     } catch (err) {
       setError(getApiErrorMessage(err));
     }
+  };
+
+  const handlePlantilla = async () => {
+    setError(null);
+    setDescargando(true);
+    try { await descargarPlantillaPizarra(); }
+    catch { setError('No se pudo descargar la plantilla'); }
+    finally { setDescargando(false); }
   };
 
   return (
@@ -325,13 +336,28 @@ function ImportarPizarraDialog({ open, onClose }: { open: boolean; onClose: () =
           {!resultado && (
             <>
               <p className="text-xs text-muted-foreground">
-                Crea/actualiza los vehículos y seguros con los datos transcriptos de la pizarra física de Lorena
-                (camionetas, camiones, trailers y autoelevadores).
+                Crea/actualiza los vehículos y seguros desde la planilla de la pizarra (camionetas, camiones,
+                trailers y autoelevadores). Las celdas vacías no borran datos ya cargados.
               </p>
+              <div className="rounded border bg-muted/30 px-3 py-2 text-xs flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">¿No tenés la planilla? Descargala con los datos actuales y mantenela al día.</span>
+                <Button type="button" variant="outline" size="sm" onClick={handlePlantilla} disabled={descargando}>
+                  <Download size={13} className="mr-1" /> {descargando ? 'Descargando…' : 'Descargar plantilla'}
+                </Button>
+              </div>
+              <div>
+                <label className={labelCls}>Planilla (.xlsx) *</label>
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={e => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+                  className="block w-full text-sm file:mr-3 file:rounded file:border file:border-input file:bg-white file:px-3 file:py-1 file:text-sm hover:file:bg-muted/50"
+                />
+              </div>
               {error && <p className="text-xs text-destructive">{error}</p>}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-                <Button size="sm" onClick={handleImportar} disabled={importar.isPending}>
+                <Button size="sm" onClick={handleImportar} disabled={!file || importar.isPending}>
                   {importar.isPending ? 'Importando…' : 'Importar'}
                 </Button>
               </div>

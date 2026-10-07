@@ -10,8 +10,9 @@ import {
   listPatentesVehiculo, listPatentesEmpresa, createPatenteVehiculo, updatePatenteVehiculo,
   listPeajes, listPeajesVehiculo, createPeaje, deletePeaje,
   listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
-  alertasFlota, importarPizarra,
+  alertasFlota, importarPizarra, plantillaPizarra,
 } from '../controllers/flota.controller';
+import { upload as uploadXlsx } from '../controllers/importer.controller';
 import {
   listBitacoraFlota, opcionesBitacoraFlota, createViajeFlota, updateViajeFlota, deleteViajeFlota,
 } from '../controllers/bitacoraFlota.controller';
@@ -23,6 +24,14 @@ function docMiddleware(field: string) {
       next();
     });
   };
+}
+
+// Planilla de la pizarra (.xlsx, campo `file`)
+function xlsxMiddleware(req: any, res: any, next: any) {
+  uploadXlsx.single('file')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
 }
 
 const router = Router();
@@ -74,7 +83,8 @@ router.delete('/taller/:id',           requireRole('ADMIN'), asyncHandler(delete
 // ── Alertas ───────────────────────────────────────────────────────────────────
 router.get('/alertas', asyncHandler(alertasFlota));
 
-// ── Importador de pizarra (Lorena) ───────────────────────────────────────────
-router.post('/importar-pizarra', asyncHandler(importarPizarra));
+// ── Importador de pizarra (Lorena) — plantilla Excel + import del archivo ─────
+router.get('/pizarra-plantilla',  asyncHandler(plantillaPizarra));
+router.post('/importar-pizarra', xlsxMiddleware, asyncHandler(importarPizarra));
 
 export default router;

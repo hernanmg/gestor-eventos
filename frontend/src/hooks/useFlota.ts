@@ -368,10 +368,28 @@ export interface ImportarPizarraResultado {
   errores:                string[];
 }
 
+// Plantilla Excel de la pizarra, precargada con los datos actuales (Lorena la
+// descarga, la mantiene y la reimporta).
+export async function descargarPlantillaPizarra() {
+  const response = await api.get('/flota/pizarra-plantilla', { responseType: 'blob' });
+  const url = URL.createObjectURL(new Blob([response.data as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Pizarra_Flota_DOS57.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function useImportarPizarraFlota() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<ImportarPizarraResultado>('/flota/importar-pizarra').then(r => r.data),
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return api.post<ImportarPizarraResultado>('/flota/importar-pizarra', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...KEY, 'vehiculos'] });
       qc.invalidateQueries({ queryKey: [...KEY, 'seguros'] });

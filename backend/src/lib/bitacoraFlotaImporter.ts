@@ -151,7 +151,7 @@ function parseFecha(v: unknown, anterior: Date | null): { fecha: Date | null; av
       const f = new Date(Date.UTC(anterior.getUTCFullYear(), anterior.getUTCMonth(), v));
       return { fecha: f, aviso: `FECHA "${v}" interpretada como ${fmtFecha(f)} (día del mes de la fila anterior)` };
     }
-    return { fecha: null, aviso: `FECHA "${v}" no reconocida — viaje sin fecha` };
+    return { fecha: null, aviso: `FECHA "${v}" no reconocida` };
   }
   const s = String(v).trim();
   const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
@@ -159,7 +159,7 @@ function parseFecha(v: unknown, anterior: Date | null): { fecha: Date | null; av
     const anio = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
     return { fecha: new Date(Date.UTC(anio, Number(m[2]) - 1, Number(m[1]))) };
   }
-  return { fecha: null, aviso: `FECHA "${s}" no reconocida — viaje sin fecha` };
+  return { fecha: null, aviso: `FECHA "${s}" no reconocida` };
 }
 
 // Odómetro: siempre entero. "898.919" (texto) y 899.912 (número) son miles.
@@ -384,8 +384,17 @@ function procesarFila(out: ParseoFlota, hoja: string, fila: number, r: unknown[]
   if (choferRaw) b.prevChofer = choferRaw;
   const { patente, alias } = camionRaw ? parseCamion(camionRaw) : { patente: null, alias: null };
 
-  // Fecha
+  // Fecha — columna FECHA (bloques A/B) o FECHA DE VIAJE (C). Sin fecha
+  // válida el viaje NO se importa (antes quedaba con fecha NULL): no se hereda
+  // la de la fila anterior porque en las giras las filas sin fecha son viajes
+  // de días posteriores (ej. CAMIONES TUCUMAN ROCK, 16 filas con la celda
+  // vacía en la planilla real). Se avisa para que Flor complete la planilla.
   const pf = parseFecha(get('fecha'), b.prevFecha);
+  if (!pf.fecha) {
+    const detalle = [camionRaw, choferRaw, tramo].filter(Boolean).join(' · ');
+    avisar(`${pf.aviso ?? 'FECHA vacía'} — viaje NO importado (${detalle}). Completá la fecha en la planilla y volvé a importar.`);
+    return;
+  }
   if (pf.aviso) avisar(pf.aviso);
   if (pf.fecha && b.prevFecha && Math.abs(pf.fecha.getTime() - b.prevFecha.getTime()) > 20 * DIA_MS) {
     avisar(`FECHA ${fmtFecha(pf.fecha)} fuera de secuencia (fila anterior: ${fmtFecha(b.prevFecha)}) — revisar si es un error de tipeo`);

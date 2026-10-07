@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { recalcularSaldoCCC } from '../lib/recalcularSaldoCCC';
-import { importarPizarraFlota } from '../lib/flotaPizarraImporter';
+import { importarPizarraFlota, generarPlantillaPizarra, parsePlanillaPizarra } from '../lib/flotaPizarraImporter';
 import { normalizarPatente } from '../lib/normalizarPatente';
 
 // ── Multer (póliza / comprobante) ────────────────────────────────────────────
@@ -884,14 +884,35 @@ export async function alertasFlota(req: Request, res: Response) {
   res.json({ items });
 }
 
-// ── Importador de la pizarra física (Lorena) ─────────────────────────────────
+// ── Importador de la pizarra (Lorena) ────────────────────────────────────────
+// La pizarra física se pasó a una planilla Excel: Lorena descarga la plantilla
+// (precargada con la transcripción de la foto), la mantiene y la reimporta.
 
+// GET /api/flota/pizarra-plantilla
+export async function plantillaPizarra(_req: Request, res: Response) {
+  const buffer = await generarPlantillaPizarra();
+  res.set({
+    'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': 'attachment; filename="Pizarra_Flota_DOS57.xlsx"',
+    'Content-Length':      String(buffer.length),
+  });
+  res.end(buffer);
+}
+
+// POST /api/flota/importar-pizarra (multipart, campo `file`)
 export async function importarPizarra(req: Request, res: Response) {
-  const resultado = await importarPizarraFlota(req.empresaId!, req.user!.id);
+  if (!req.file) { res.status(400).json({ error: 'Elegí la planilla de la pizarra (.xlsx)' }); return; }
+  const parseo = parsePlanillaPizarra(req.file.buffer);
+  if (parseo.vehiculos.length === 0) {
+    res.status(400).json({ error: parseo.errores[0] ?? 'La planilla no tiene vehículos', detail: parseo.errores }); return;
+  }
+
+  const resultado = await importarPizarraFlota(req.empresaId!, req.user!.id, parseo.vehiculos);
+  resultado.errores.unshift(...parseo.errores);
 
   await registrarAuditoria({
     usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Camion',
-    descripcion: `Importó pizarra de flota — ${resultado.vehiculos_creados.length} vehículo(s) creados, ${resultado.vehiculos_actualizados.length} actualizados, ${resultado.seguros_creados.length} seguro(s) cargados`,
+    descripcion: `Importó planilla de pizarra de flota (${req.file.originalname}) — ${resultado.vehiculos_creados.length} vehículo(s) creados, ${resultado.vehiculos_actualizados.length} actualizados, ${resultado.seguros_creados.length} seguro(s) cargados`,
     datosDespues: resultado, ip: req.ip, tx: prisma,
   });
 
