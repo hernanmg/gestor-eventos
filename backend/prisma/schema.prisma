@@ -285,6 +285,7 @@ model Empresa {
   tarjetasCorporativas   TarjetaCorporativa[]
   materialesRental       MaterialRental[]
   presupuestosEvento     PresupuestoEvento[]
+  remitosEvento          RemitoEvento[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -418,6 +419,7 @@ model Evento {
   cargas_combustible     CargaCombustible[]
   viajes_flota           BitacoraViaje[]
   presupuestos           PresupuestoEvento[]
+  remitos                RemitoEvento[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
 }
@@ -3301,8 +3303,8 @@ model PresupuestoLinea {
   tipo_cambio_snap    Decimal? @db.Decimal(10, 2) // sólo IMP
   porcentaje_snap     Decimal  @db.Decimal(5, 2) // % aplicado (NAC: el del presupuesto, FULL = 100; IMP: 4)
 
-  costo_total_material Decimal @db.Decimal(16, 2) // cantidad × costo_unitario_snap
-  valor_rental         Decimal @db.Decimal(16, 2) // costo_total_material × porcentaje_snap / 100
+  costo_total_material Decimal  @db.Decimal(16, 2) // cantidad × costo_unitario_snap
+  valor_rental         Decimal  @db.Decimal(16, 2) // costo_total_material × porcentaje_snap / 100
   // ALQUILER FULL negociado a mano (no hay regla fija: varía por evento/cliente).
   // Sólo NAC con material.porc_full; null si no aplica o no se cargó.
   valor_rental_full    Decimal? @db.Decimal(16, 2)
@@ -3334,4 +3336,55 @@ model IndicadorEconomico {
   created_at   DateTime      @default(now())
 
   @@index([tipo, created_at])
+}
+
+// ── Remitos digitales (DOS57) ─────────────────────────────────────────────────
+// Reemplazan los 5 remitos físicos en Excel que acompañan cada viaje al evento.
+// El catálogo de ítems de cada tipo está hardcodeado en
+// src/data/remitosItemsCatalog.ts; acá sólo se guardan los ítems con cantidad > 0.
+
+enum TipoRemito {
+  LAYHER
+  NACIONAL
+  TECHOS
+  PANOL
+  LONAS_AFORO
+}
+
+enum EstadoRemito {
+  BORRADOR
+  EMITIDO // no editable — para corregir, clonar
+}
+
+model RemitoEvento {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  evento_id  Int
+  evento     Evento  @relation(fields: [evento_id], references: [id])
+
+  tipo   TipoRemito
+  numero Int // correlativo por evento + tipo (1, 2, 3...)
+  fecha  DateTime   @default(now())
+
+  // Encabezado
+  cliente           String?
+  domicilio         String?
+  localidad         String?
+  telefono          String?
+  chofer            String?
+  chasis_acoplado   String?
+  responsable_carga String?
+
+  // [{ codigo?, descripcion, cantidad }] — sólo ítems con cantidad > 0
+  items Json @default("[]")
+
+  estado EstadoRemito @default(BORRADOR)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  @@unique([evento_id, tipo, numero])
+  @@index([empresa_id, evento_id])
 }

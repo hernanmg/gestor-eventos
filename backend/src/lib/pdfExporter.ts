@@ -63,6 +63,34 @@ export async function renderPDF(html: string, eventoNombre: string, seccionNombr
   }
 }
 
+// Documentos de formato propio (remitos): tamaño y márgenes los define el
+// @page del template; Puppeteer sólo agrega un pie con `pie` + nº de página
+// (el remito de Pañol ocupa 2 hojas y la segunda tiene que identificarse).
+export async function renderRemitoPDF(html: string, pie: string): Promise<Buffer> {
+  const browser = await puppeteer.launch({
+    executablePath: getExecutablePath(),
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load' });
+    const pdf = await page.pdf({
+      preferCSSPageSize:   true,
+      printBackground:     true,
+      displayHeaderFooter: true,
+      headerTemplate:      '<div></div>',
+      footerTemplate: `
+        <div style="font-size:7px;font-family:Arial,sans-serif;color:#6b7280;width:100%;padding:0 9mm;display:flex;justify-content:space-between;">
+          <span>${pie.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+          <span>P&aacute;gina <span class="pageNumber"></span> de <span class="totalPages"></span></span>
+        </div>`,
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
+}
+
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
 async function buildExportData(eventoId: number): Promise<EventoExportData> {

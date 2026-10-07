@@ -5,10 +5,12 @@ import { formatDate, formatCurrency, formatLitros, formatearPatente } from '@/li
 import { CombustibleEstadoBadge } from '@/components/ui/badge';
 import BaseTable from '@/components/ui/BaseTable';
 import type { ViajeFlota } from '@/types';
+import EventoRemitosSection from './EventoRemitosSection';
 
 // Tab Logística de la ficha de evento: viajes de la bitácora de Flota (planillas
 // de Flor) y cargas de combustible de estación (Santi) vinculadas a este evento.
 // Juntas sirven para detectar la misma carga registrada en los dos lados.
+// En DOS57 abajo van los remitos del evento (EventoRemitosSection).
 
 const thCls = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground';
 const tdNum = 'px-3 py-2.5 text-right tabular-nums';
@@ -44,16 +46,28 @@ function choferLabel(v: ViajeFlota) {
   return v.chofer_nombre ?? DASH;
 }
 
-export default function EventoLogisticaTab({ eventoId }: { eventoId: number }) {
+export default function EventoLogisticaTab({ eventoId, eventoNombre, conRemitos }: { eventoId: number; eventoNombre: string; conRemitos: boolean }) {
   const { data, isLoading, isError } = useLogisticaEvento(eventoId);
-
-  if (isLoading) return <p className="p-6 text-sm text-muted-foreground">Cargando...</p>;
-  if (isError || !data) return <p className="p-6 text-sm text-destructive">No se pudo cargar la logística del evento.</p>;
-
-  const { viajes, cargas, resumen: r } = data;
 
   return (
     <div className="p-6 space-y-6">
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Cargando...</p>
+      ) : isError || !data ? (
+        <p className="text-sm text-destructive">No se pudo cargar la logística del evento.</p>
+      ) : (
+        <LogisticaViajesYCargas data={data} />
+      )}
+      {conRemitos && <EventoRemitosSection eventoId={eventoId} eventoNombre={eventoNombre} />}
+    </div>
+  );
+}
+
+function LogisticaViajesYCargas({ data }: { data: NonNullable<ReturnType<typeof useLogisticaEvento>['data']> }) {
+  const { viajes, cargas, resumen: r } = data;
+
+  return (
+    <>
       <div className="space-y-2">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Tarjeta label="Total KM" valor={fmtKm(r.total_km)} />
@@ -191,6 +205,6 @@ export default function EventoLogisticaTab({ eventoId }: { eventoId: number }) {
           </div>
         )}
       </section>
-    </div>
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Route as RouteIcon, Upload, AlertTriangle, CheckCircle2, Plus, Pencil, Trash2, Link2 } from 'lucide-react';
 import {
   useBitacoraFlota, useOpcionesBitacoraFlota, useImportarBitacoraFlota, useEliminarViajeFlota, type BitacoraFlotaFiltros,
@@ -334,7 +334,16 @@ function Tarjeta({ label, valor }: { label: string; valor: string }) {
 export default function BitacoraViajesPage() {
   const { user } = useAuth();
   const isAdmin = user?.rol === 'ADMIN';
-  const [filtros, setFiltros] = useState<BitacoraFlotaFiltros>({});
+  // ?desde=&hasta= (YYYY-MM-DD) llega desde Movimiento Diario ("Ver en Bitácora")
+  const [searchParams] = useSearchParams();
+  const [filtros, setFiltros] = useState<BitacoraFlotaFiltros>(() => {
+    const f: BitacoraFlotaFiltros = {};
+    for (const k of ['desde', 'hasta'] as const) {
+      const v = searchParams.get(k);
+      if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) f[k] = v;
+    }
+    return f;
+  });
   const { data: viajes = [], isLoading } = useBitacoraFlota(filtros);
   const { data: opciones } = useOpcionesBitacoraFlota();
   const eliminar = useEliminarViajeFlota();

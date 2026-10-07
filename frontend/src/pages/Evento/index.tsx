@@ -581,7 +581,7 @@ export default function EventoPage() {
         )}
 
         {mainTab === 'LOGISTICA' && canEdit && (
-          <EventoLogisticaTab eventoId={eventoId} />
+          <EventoLogisticaTab eventoId={eventoId} eventoNombre={evento.nombre} conRemitos={user?.empresaId === EMPRESAS.DOS57} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

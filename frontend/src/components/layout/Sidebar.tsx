@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon, Boxes, Calculator } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon, Boxes, Calculator, CalendarClock } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -345,6 +345,10 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
                 <RouteIcon size={18} className="shrink-0" />
                 {isOpen && <span>Bitácora</span>}
               </NavLink>
+              <NavLink to="/movimiento-diario" title={!isOpen ? 'Movimiento Diario' : undefined} className={navItem}>
+                <CalendarClock size={18} className="shrink-0" />
+                {isOpen && <span>Movimiento Diario</span>}
+              </NavLink>
               <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
                 <CalendarDays size={18} className="shrink-0" />
                 {isOpen && <span>Calendario</span>}
@@ -606,6 +610,15 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
             <NavLink to="/bitacora-viajes" title={!isOpen ? 'Bitácora' : undefined} className={navItem}>
               <RouteIcon size={18} className="shrink-0" />
               {isOpen && <span>Bitácora</span>}
+            </NavLink>
+          )}
+
+          {/* Movimiento Diario (Flor, DOS57) — resumen del día de camiones y
+              camionetas, debajo de Bitácora. Sólo con DOS57 activa. */}
+          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
+            <NavLink to="/movimiento-diario" title={!isOpen ? 'Movimiento Diario' : undefined} className={navItem}>
+              <CalendarClock size={18} className="shrink-0" />
+              {isOpen && <span>Movimiento Diario</span>}
             </NavLink>
           )}
 

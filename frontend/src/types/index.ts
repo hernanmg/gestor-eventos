@@ -2827,3 +2827,75 @@ export interface IndicadoresActuales {
   ipc:            { valor: number; periodo: string | null; fecha: string | null; guardado_en: string } | null;
   actualizado_en: string | null;
 }
+
+// ── Remitos digitales (DOS57) ─────────────────────────────────────────────────
+
+export type TipoRemito   = 'LAYHER' | 'NACIONAL' | 'TECHOS' | 'PANOL' | 'LONAS_AFORO';
+export type EstadoRemito = 'BORRADOR' | 'EMITIDO';
+
+export interface ItemCatalogoRemito { codigo?: string; descripcion: string }
+
+export interface TipoRemitoInfo {
+  tipo:       TipoRemito;
+  nombre:     string;
+  titulo:     string;
+  conCodigo:  boolean;
+  categorias: { categoria: string; items: ItemCatalogoRemito[] }[];
+}
+
+export interface ItemRemito { codigo?: string; descripcion: string; cantidad: number }
+
+export interface EncabezadoRemito {
+  cliente:           string | null;
+  domicilio:         string | null;
+  localidad:         string | null;
+  telefono:          string | null;
+  chofer:            string | null;
+  chasis_acoplado:   string | null;
+  responsable_carga: string | null;
+}
+
+export interface Remito extends EncabezadoRemito {
+  id:         number;
+  empresa_id: number;
+  evento_id:  number;
+  evento:     { id: number; nombre: string };
+  tipo:       TipoRemito;
+  numero:     number;
+  fecha:      string;
+  items:      ItemRemito[];
+  estado:     EstadoRemito;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SugerenciasRemito extends EncabezadoRemito { evento: string }
+
+export interface RemitoPayload extends Partial<EncabezadoRemito> {
+  fecha: string; // YYYY-MM-DD
+  items: ItemRemito[];
+}
+
+// ── Movimiento Diario (DOS57, Flor) ───────────────────────────────────────────
+
+export interface MovimientoDiarioFila {
+  id:              number;
+  vehiculo:        string | null;
+  patente:         string | null;
+  carga:           string | null; // "C1"… — n° de carga del evento, no un vehículo
+  chofer:          string | null;
+  evento:          string;
+  evento_id:       number | null;
+  tramo:           string | null;
+  km_recorridos:   number | null;
+  horario_salida:  string | null;
+  horario_llegada: string | null;
+  observaciones:   string | null;
+  origen:          'RRHH' | 'FLOTA';
+}
+
+export interface MovimientoDiario {
+  fecha:      string;
+  camiones:   MovimientoDiarioFila[];
+  camionetas: MovimientoDiarioFila[];
+}
