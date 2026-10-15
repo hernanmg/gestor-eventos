@@ -18,6 +18,8 @@ import CamionesTab from './CamionesTab';
 import PanolTab from './PanolTab';
 import ActivosTab from './ActivosTab';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip, { TabCount } from '@/components/ui/TabStrip';
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -206,7 +208,7 @@ function ProductoDialog({
               {activeCats.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   No hay categorías activas.{' '}
-                  <a href="/configuracion" className="text-primary underline">Crear categoría</a>
+                  <a href="/configuracion" className="text-link underline">Crear categoría</a>
                 </p>
               )}
             </div>
@@ -615,7 +617,7 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
         <div className="ml-7">
           <button
             onClick={() => setShowSug(p => !p)}
-            className="text-xs text-primary underline-offset-2 hover:underline"
+            className="text-xs text-link underline-offset-2 hover:underline"
           >
             {showSug ? 'Ocultar sugerencias' : 'Ver fuentes alternativas'}
           </button>
@@ -691,10 +693,7 @@ export default function StockPage() {
   if (user?.rol === 'PANOLERO') {
     return (
       <div className="p-6 space-y-4 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Package size={22} />
-          Pañol
-        </h1>
+        <PageHeader title="Pañol" />
         <PanolTab />
       </div>
     );
@@ -702,34 +701,20 @@ export default function StockPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Package size={22} />
-        Gestión de Stock
-      </h1>
+      <PageHeader title="Gestión de Stock" />
 
-      <div className="flex border-b border-border overflow-x-auto">
-        {([
+      <TabStrip<StockTab>
+        value={tab}
+        onChange={setTab}
+        items={[
           { key: 'productos', label: 'Productos' },
           { key: 'cunas',     label: 'Cunas' },
           { key: 'camiones',  label: 'Camiones' },
-          ...(vePanol ? [{ key: 'panol' as StockTab, label: `Pañol${alertasPanolCount > 0 ? ` (${alertasPanolCount})` : ''}` }] : []),
+          ...(vePanol ? [{ key: 'panol' as StockTab, label: 'Pañol', badge: <TabCount count={alertasPanolCount} /> }] : []),
           { key: 'activos',   label: 'Activos' },
-          { key: 'alertas',   label: `Alertas de stock${quiebresCount > 0 ? ` (${quiebresCount})` : ''}` },
-        ] as { key: StockTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
-              tab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+          { key: 'alertas',   label: 'Alertas de stock', badge: <TabCount count={quiebresCount} /> },
+        ]}
+      />
 
       {tab === 'productos' && <ProductosTab />}
       {tab === 'cunas'     && <CunasTab />}

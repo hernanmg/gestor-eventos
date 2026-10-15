@@ -10,8 +10,12 @@
     --card-foreground:       222.2 84% 4.9%;
     --popover:               0 0% 100%;
     --popover-foreground:    222.2 84% 4.9%;
-    --primary:               221.2 83.2% 53.3%;
-    --primary-foreground:    210 40% 98%;
+    /* Neutro (casi negro): estados seleccionados — toggles, pastillas,
+       switches, paso activo. El color de la empresa queda sólo para la
+       acción principal (Button default = bg-empresa) y la navegación activa;
+       antes estos seleccionados eran azules y competían con él. */
+    --primary:               222 22% 14%;
+    --primary-foreground:    0 0% 100%;
     --secondary:             210 40% 96.1%;
     --secondary-foreground:  222.2 47.4% 11.2%;
     --muted:                 210 40% 96.1%;
@@ -22,14 +26,16 @@
     --destructive-foreground: 210 40% 98%;
     --border:                214.3 31.8% 91.4%;
     --input:                 214.3 31.8% 91.4%;
-    --ring:                  221.2 83.2% 53.3%;
+    --ring:                  222 22% 14%;
+    /* Links: el único azul que queda — es la señal de "esto se puede tocar"
+       en texto. 4.5:1 sobre blanco y sobre el gris del fondo. */
+    --link:                  221 83% 45%;
     --radius:                0.5rem;
   }
 
   /* Oscuro neutro (negros, no azul pizarra) — misma escala que las
-     variables --bg-* de más abajo. --primary queda azul: lo usan links y
-     resaltados de texto (text-primary), que en el color de marca no se
-     leerían (amarillo-verde sobre blanco). */
+     variables --bg-* de más abajo. --primary se invierte (casi blanco con
+     texto negro), igual que el seleccionado en claro. */
   .dark {
     --background:            0 0% 3.9%;    /* #0A0A0A */
     --foreground:            210 20% 98%;  /* #F9FAFB */
@@ -37,8 +43,8 @@
     --card-foreground:       210 20% 98%;
     --popover:               0 0% 10.2%;
     --popover-foreground:    210 20% 98%;
-    --primary:               217.2 91.2% 59.8%;
-    --primary-foreground:    222.2 47.4% 11.2%;
+    --primary:               210 20% 96%;
+    --primary-foreground:    0 0% 4%;
     --secondary:             0 0% 13%;
     --secondary-foreground:  210 20% 98%;
     --muted:                 0 0% 13%;
@@ -49,7 +55,8 @@
     --destructive-foreground: 210 40% 98%;
     --border:                0 0% 17.6%;   /* #2D2D2D */
     --input:                 0 0% 22%;
-    --ring:                  224.3 76.3% 48%;
+    --ring:                  210 20% 90%;
+    --link:                  213 94% 70%;
   }
 }
 
@@ -153,6 +160,36 @@ html:not(.dark) .app-main [class~='bg-white']:not(input, select, textarea, [role
 
 .app-sidebar {
   background-color: var(--bg-secondary);
+}
+
+/* Alto del shell: dvh descuenta las barras del navegador en mobile (100vh las
+   incluye y deja la barra inferior de navegación tapada). */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Título de página (PageHeader y encabezados de detalle): una sola escala en
+   toda la app — antes convivían text-xl/2xl con bold/semibold según la página. */
+.page-title {
+  font-size: 1.375rem;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+@media (min-width: 768px) {
+  .page-title { font-size: 1.5rem; }
+}
+
+/* Ítem de navegación activo (sidebar, barra inferior, hoja): tinte del color de
+   marca. bg-empresa/20 no sirve — --color-empresa es un hex, no un triplete HSL,
+   y el modificador de opacidad de Tailwind no aplica. */
+.nav-active {
+  background-color: color-mix(in srgb, var(--color-empresa) 20%, transparent);
+}
+.dark .nav-active {
+  background-color: color-mix(in srgb, var(--color-empresa) 26%, transparent);
 }
 
 /* ── Desplegables con estilo card ─────────────────────────────────────────────
@@ -368,6 +405,92 @@ details:where(.border)[open] {
   .card-table > :where(tbody) > :where(tr:hover) {
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     transform: translateY(-1px);
+  }
+
+  /* ── Mobile: cada fila se apila como una card ─────────────────────────────
+     Debajo de 768px la tabla deja de ser grilla: el header se oculta y cada
+     <td> muestra arriba el nombre de su columna (data-label, lo copia
+     BaseTable desde el <thead>). La primera celda va a lo ancho como título;
+     las demás fluyen en dos columnas. Celdas sin nombre de columna (acciones,
+     chevron, arrastre) quedan a su tamaño, y las de colSpan (estados vacíos,
+     subtotales) a lo ancho.
+     Sin :where() a propósito: tiene que ganarle al padding/ancho que cada
+     página puso con utilidades (px-4, min-w-[1100px]…). Los fondos de estado
+     de cada fila (bg-red-50…) no se tocan.
+     Opt-out por tabla: className="card-table-scroll" mantiene el scroll lateral. */
+  @media (max-width: 767px) {
+    .card-table:not(.card-table-scroll) {
+      display: block;
+      min-width: 0 !important;
+      width: 100% !important;
+    }
+    .card-table:not(.card-table-scroll) > thead {
+      display: none;
+    }
+    .card-table:not(.card-table-scroll) > tbody,
+    .card-table:not(.card-table-scroll) > tfoot {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-table:not(.card-table-scroll) > tfoot { margin-top: 8px; }
+    .card-table:not(.card-table-scroll) > tbody > tr,
+    .card-table:not(.card-table-scroll) > tfoot > tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 8px 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      transform: none !important;
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td,
+    .card-table:not(.card-table-scroll) > tfoot > tr > td {
+      display: block;
+      flex: 1 1 calc(50% - 6px);
+      min-width: 0;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      /* La card es el <tr>; un fondo traslúcido heredado en cada celda se
+         superpone al de la fila y se ve como cajitas. */
+      background-color: transparent;
+      text-align: left !important;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td:first-child {
+      flex-basis: 100%;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td[data-label=""],
+    .card-table:not(.card-table-scroll) > tfoot > tr > td[data-label=""] {
+      flex: 0 0 auto;
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td:not([data-label=""]):not(:first-child)::before,
+    .card-table:not(.card-table-scroll) > tfoot > tr > td:not([data-label=""]):not(:first-child)::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: 2px;
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: hsl(var(--muted-foreground));
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td[colspan]:not([colspan="1"]),
+    .card-table:not(.card-table-scroll) > tfoot > tr > td[colspan]:not([colspan="1"]) {
+      flex-basis: 100%;
+    }
+    .card-table:not(.card-table-scroll) > tbody > tr > td:empty {
+      display: none;
+    }
+    /* El contenido interno de las celdas (flex justify-end, etc.) se alinea a la izquierda */
+    .card-table:not(.card-table-scroll) > tbody > tr > td > :where(div.justify-end, .justify-end) {
+      justify-content: flex-start;
+    }
   }
 
   /* En papel no hay sombras ni levantado: filas planas y sin separación */

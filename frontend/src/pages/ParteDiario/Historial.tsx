@@ -4,6 +4,7 @@ import { ArrowLeft, Lock, Unlock } from 'lucide-react';
 import { useListaPartes } from '@/hooks/useParteDiario';
 import { Badge } from '@/components/ui/badge';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function ParteDiarioHistorialPage() {
   const navigate = useNavigate();
@@ -16,10 +17,10 @@ export default function ParteDiarioHistorialPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Link to="/parte-diario" className="text-muted-foreground hover:text-foreground"><ArrowLeft size={18} /></Link>
-        <h1 className="text-2xl font-bold">Historial de Partes Diarios</h1>
-      </div>
+      <PageHeader
+        title="Historial de Partes Diarios"
+        back={<Link to="/parte-diario" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={15} /> Parte Diario</Link>}
+      />
 
       <div className="flex items-center gap-2">
         <div>

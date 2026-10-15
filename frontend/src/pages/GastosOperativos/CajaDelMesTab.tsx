@@ -9,6 +9,7 @@ import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { CategoriaAndrea, MovimientoCaja } from '@/types';
+import TabStrip from '@/components/ui/TabStrip';
 
 // Orden de tabs preferido, calcado del Excel real (CAJAS_JULIO-2026.xlsx) —
 // cualquier otra cuenta de empresa que exista (o se cree más adelante) se
@@ -238,10 +239,10 @@ function MovimientoDrawer({
           {row('Responsable', movimiento.responsable_nombre ?? '—')}
           {row('Comprobante', movimiento.referencia ?? '—')}
           {row('Comprobante', movimiento.tiene_comprobante
-            ? <a href={comprobanteMovCajaUrl(movimiento.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline"><Download size={12} /> Descargar</a>
+            ? <a href={comprobanteMovCajaUrl(movimiento.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-link hover:underline"><Download size={12} /> Descargar</a>
             : '—')}
           {movimiento.movimiento_origen && row('Movimiento vinculado', `${movimiento.movimiento_origen.concepto ?? ''} (rubro ${movimiento.movimiento_origen.rubro_nombre ?? '—'})`)}
-          {movimiento.liquidacion_admin_id && row('Liquidación vinculada', <a href="/rrhh?tab=sueldos-admin" className="text-primary hover:underline">Ver en Sueldos Admin</a>)}
+          {movimiento.liquidacion_admin_id && row('Liquidación vinculada', <a href="/rrhh?tab=sueldos-admin" className="text-link hover:underline">Ver en Sueldos Admin</a>)}
         </div>
         {canEdit && (
           <div className="flex justify-end gap-2 pt-2 border-t mt-2">
@@ -350,7 +351,7 @@ export default function CajaDelMesTab() {
             {[hoy.getFullYear() - 1, hoy.getFullYear(), hoy.getFullYear() + 1].map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canEdit && (
             <>
               <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Upload size={13} className="mr-1.5" /> Importar desde Excel</Button>
@@ -366,22 +367,18 @@ export default function CajaDelMesTab() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 print:hidden">
-        {cuentasEmpresa.map(c => (
-          <button
-            key={c.id}
-            onClick={() => setCuentaId(c.id)}
-            className={cn(
-              'px-3 py-1.5 text-xs font-medium rounded-t border border-b-0',
-              cuentaId === c.id ? 'bg-white border-border text-foreground' : 'bg-muted/40 border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {c.nombre}
-          </button>
-        ))}
+      <div className="print:hidden">
+        {cuentasEmpresa.length > 0 && (
+          <TabStrip
+            variant="pill"
+            value={cuentaId == null ? '' : String(cuentaId)}
+            onChange={k => setCuentaId(Number(k))}
+            items={cuentasEmpresa.map(c => ({ key: String(c.id), label: c.nombre }))}
+          />
+        )}
         {cuentasEmpresa.length === 0 && (
           <p className="text-sm text-muted-foreground py-2">
-            No hay cajas de empresa todavía. Importá el Excel o creá una desde <a href="/caja" className="text-primary hover:underline">Caja Global</a>.
+            No hay cajas de empresa todavía. Importá el Excel o creá una desde <a href="/caja" className="text-link hover:underline">Caja Global</a>.
           </p>
         )}
       </div>

@@ -1,39 +1,15 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText, ChevronDown, Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt, Building, UserCheck, Fuel, Banknote, Ambulance, Home, FileSpreadsheet, Shirt, CreditCard, Sun, Moon, Route as RouteIcon, Boxes, Calculator, CalendarClock } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
-import { useAlertasDashboard } from '@/hooks/useDashboard';
-import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
-import { useAlertasFacturas } from '@/hooks/useFacturas';
-import { useAlertasFlota } from '@/hooks/useFlota';
-import { useResumenFacturasEmitidas } from '@/hooks/useFacturasEmitidas';
+import { Menu, X, LogOut, ChevronDown, ChevronRight, Sun, Moon, Search } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
 import NotificacionesBell from './NotificacionesBell';
+import NavSearch from './NavSearch';
+import { EmpresaBrand, HomeMark, NavBadge, ROL_LABEL, groupTone } from './NavParts';
+import { groupNav, isNavActive, useNavModel, type NavItem, type NavGroupId } from './navConfig';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoBlobUrl } from '@/hooks/useEmpresas';
-import { FEATURES } from '@/lib/features';
-import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/theme';
 import type { MeResponse } from '@/types';
-
-// Logo si existe, si no un badge con nombre_corto coloreado con color_primario.
-function EmpresaBrand({ empresaId, hasLogo, nombre, colorPrimario, size = 'header' }: {
-  empresaId:     number | undefined;
-  hasLogo:       boolean;
-  nombre:        string;
-  colorPrimario: string | null | undefined;
-  size?: 'header' | 'sm';
-}) {
-  const logoUrl = useLogoBlobUrl(empresaId ?? null, hasLogo);
-  if (logoUrl) {
-    return <img src={logoUrl} alt={nombre} className={cn('object-contain shrink-0', size === 'header' ? 'h-6 w-6' : 'h-4 w-4')} />;
-  }
-  return (
-    <span
-      className="h-2 w-2 shrink-0 rounded-full"
-      style={{ backgroundColor: colorPrimario ?? '#94a3b8' }}
-    />
-  );
-}
 
 // Logo al tope del sidebar (sobre la navegación), de borde a borde: sin
 // padding, a todo el ancho de los 256px. Alto natural de la imagen con tope
@@ -74,12 +50,11 @@ function SidebarLogos({ user }: { user: MeResponse }) {
   );
 }
 
-// Ícono de "casa" junto al ítem que coincide con el home_route del usuario
-// (PARTE 5 del pedido de dashboards personalizados) — sólo con el sidebar
-// expandido, no hay lugar cuando está colapsado.
-function HomeMark({ show }: { show: boolean }) {
-  if (!show) return null;
-  return <Home size={11} className="shrink-0 text-muted-foreground/40" aria-label="Tu pantalla de inicio" />;
+// Grupos plegados — por navegador, como el tema. El grupo de la pantalla
+// actual se muestra siempre abierto.
+const COLLAPSED_KEY = 'erp-nav-collapsed';
+function readCollapsed(): NavGroupId[] {
+  try { return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]'); } catch { return []; }
 }
 
 interface SidebarProps {
@@ -89,736 +64,239 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-const ROL_LABEL: Record<MeResponse['rol'], string> = {
-  ADMIN:     'Administrador',
-  OPERADOR:  'Operador',
-  VIEWER:    'Visualizador',
-  JORNALERO: 'Jornalero',
-  PANOLERO:  'Pañolero',
-};
-
 export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarProps) {
   const { switchEmpresa, isSwitchingEmpresa } = useAuth();
   const [theme, toggleTheme] = useTheme();
   const [empresaMenuOpen, setEmpresaMenuOpen] = useState(false);
-  const { data: alertasData }        = useAlertasDashboard();
-  const { data: stockAlertasData }   = useAlertasStock();
-  const { data: facturasAlertas }    = useAlertasFacturas();
-  const { data: facturasEmitidasResumen } = useResumenFacturasEmitidas();
-  const { data: flotaAlertas }       = useAlertasFlota();
-  const { data: pendSalida }         = usePendientesFirma('salida');
-  const { data: pendLlegada }        = usePendientesFirma('llegada');
-  const { data: pendRetorno }        = usePendientesFirma('retorno');
-  const errorCount      = (alertasData?.alertas ?? []).filter(a => a.severidad === 'ERROR').length;
-  const stockQuiebres   = (stockAlertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
-  const facturasAlerts  = (facturasAlertas?.vencidas ?? 0) + (facturasAlertas?.vencen_pronto ?? 0);
-  const facturasEmitidasVencidas = facturasEmitidasResumen?.vencidas_sin_cobrar ?? 0;
-  const flotaAlertCount = (flotaAlertas?.items ?? []).filter(a => a.urgencia === 'critical').length;
-  const pendientesFirma = (pendSalida?.asignaciones.length ?? 0) + (pendLlegada?.asignaciones.length ?? 0) + (pendRetorno?.asignaciones.length ?? 0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<NavGroupId[]>(readCollapsed);
+  const { pathname } = useLocation();
+  const nav = useNavModel(user);
 
-  // Menús acotados por home_route (Módulo de dashboards personalizados) —
-  // reemplaza el criterio viejo de matchear por nombre de usuario (regex
-  // "andrea"/"loren"/"santi|nico"), frágil ante altas/bajas o cambios de
-  // nombre. Ahora es el campo Usuario.home_route, configurable desde
-  // Configuración → Usuarios (ver resolveHomeRoute en lib/homeRoute.ts,
-  // fuente única para esto y para el redirect post-login).
-  const esAndrea       = user.homeRoute === '/gastos-operativos';
-  const esLorena       = user.homeRoute === '/presentismo';
-  const esCombustible  = user.homeRoute === '/combustible';
-  const esParteDiario  = user.homeRoute === '/parte-diario';
-  // Operador de Enjoy sin dashboard propio (ej. Daniel): menú acotado a lo que usa
-  // — Eventos (con su Ficha, Caja y Comidas adentro de cada evento), Stock y
-  // Calendario. Sin Caja Global, Flota, Proveedores, Facturas, etc.
-  const esOperadorEnjoy = user.rol === 'OPERADOR' && user.empresaId === EMPRESAS.ENJOY && !user.homeRoute;
+  const toggleGroup = (id: NavGroupId) => {
+    setCollapsed(prev => {
+      const next = prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id];
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch { /* sin persistencia */ }
+      return next;
+    });
+  };
 
   const navItem = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'flex items-center gap-3 mx-2 px-2 py-2 rounded-md text-sm transition-colors',
+      'flex items-center gap-3 mx-2 px-2 py-1.5 min-h-[34px] rounded-lg text-sm transition-colors',
       'hover:bg-accent text-foreground',
-      isActive ? 'bg-accent font-medium' : '',
+      isActive && 'nav-active font-semibold',
       !isOpen && 'justify-center',
     );
 
-  return (
-    <>
+  const renderItem = (it: NavItem) => (
+    <NavLink key={it.to} to={it.to} title={!isOpen ? it.label : undefined} className={navItem}>
+      <div className="relative shrink-0">
+        <it.icon size={18} />
+        {!isOpen && <NavBadge count={it.badge} tone={it.tone} dot />}
+      </div>
       {isOpen && (
-        <div
-          className="no-print fixed inset-0 z-20 bg-black/50 md:hidden"
-          onClick={onToggle}
-          aria-hidden="true"
-        />
+        it.sublabel ? (
+          <div className="flex flex-1 flex-col leading-tight min-w-0">
+            <span>{it.label}</span>
+            <span className="text-[11px] font-normal text-muted-foreground">{it.sublabel}</span>
+          </div>
+        ) : (
+          <>
+            <span className="flex-1 truncate">{it.label}</span>
+            <NavBadge count={it.badge} tone={it.tone} />
+            <HomeMark show={it.home} />
+          </>
+        )
       )}
+    </NavLink>
+  );
 
-      <aside
-        className={cn(
-          'app-sidebar no-print flex flex-col h-full border-r border-border',
-          'transition-all duration-200 ease-in-out overflow-hidden',
-          'fixed inset-y-0 left-0 z-30',
-          isOpen ? 'translate-x-0' : '-translate-x-full',
-          'md:relative md:translate-x-0 md:z-auto',
-          isOpen ? 'w-64' : 'w-64 md:w-14',
+  return (
+    <aside
+      className={cn(
+        // Sólo desktop: en mobile la navegación es MobileTabBar + NavSheet.
+        'app-sidebar no-print hidden md:flex flex-col h-full border-r border-border shrink-0',
+        'transition-[width] duration-200 ease-in-out overflow-hidden',
+        isOpen ? 'w-64' : 'w-14',
+      )}
+    >
+      {/* Header */}
+      <div className="relative flex h-14 items-center border-b border-border shrink-0 px-3">
+        {isOpen && (
+          user.puedeCambiarEmpresa ? (
+            <button
+              onClick={() => setEmpresaMenuOpen(v => !v)}
+              disabled={isSwitchingEmpresa}
+              className="flex-1 flex items-center gap-1.5 mr-2 min-w-0 rounded-lg px-1.5 py-1 hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              <EmpresaBrand
+                empresaId={user.empresa?.id}
+                hasLogo={false}
+                nombre={user.empresa?.nombre ?? 'Admin Portal'}
+                colorPrimario={user.empresa?.color_primario}
+              />
+              <span className="text-sm font-semibold truncate">
+                {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
+              </span>
+              <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+            </button>
+          ) : (
+            <div className="flex-1 flex items-center gap-1.5 mr-2 min-w-0">
+              <EmpresaBrand
+                empresaId={user.empresa?.id}
+                hasLogo={false}
+                nombre={user.empresa?.nombre ?? 'Admin Portal'}
+                colorPrimario={user.empresa?.color_primario}
+              />
+              <span className="text-sm font-semibold truncate">
+                {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
+              </span>
+            </div>
+          )
         )}
-      >
-        {/* Header */}
-        <div className="relative flex h-14 items-center border-b border-border shrink-0 px-3">
-          {isOpen && (
-            user.puedeCambiarEmpresa ? (
+        <div className="flex items-center gap-1 ml-auto">
+          {isOpen && <NotificacionesBell />}
+          <button
+            onClick={onToggle}
+            className="rounded-lg p-1.5 hover:bg-accent transition-colors"
+            aria-label={isOpen ? 'Colapsar menú' : 'Expandir menú'}
+          >
+            {isOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
+
+        {isOpen && empresaMenuOpen && user.puedeCambiarEmpresa && (
+          <div className="absolute left-3 top-14 z-10 w-56 rounded-xl border border-border bg-popover p-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+            {(user.empresasDisponibles ?? []).map((empresa) => (
               <button
-                onClick={() => setEmpresaMenuOpen(v => !v)}
-                disabled={isSwitchingEmpresa}
-                className="flex-1 flex items-center gap-1.5 mr-2 min-w-0 rounded px-1 py-1 hover:bg-accent transition-colors disabled:opacity-50"
+                key={empresa.id}
+                onClick={() => {
+                  setEmpresaMenuOpen(false);
+                  if (empresa.id !== user.empresaId) switchEmpresa(empresa.id);
+                }}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-4 py-2.5 my-0.5 text-sm text-left hover:bg-accent transition-colors',
+                  empresa.id === user.empresaId && 'font-medium bg-accent/50',
+                )}
               >
                 <EmpresaBrand
-                  empresaId={user.empresa?.id}
-                  hasLogo={false}
-                  nombre={user.empresa?.nombre ?? 'Admin Portal'}
-                  colorPrimario={user.empresa?.color_primario}
+                  empresaId={empresa.id}
+                  hasLogo={empresa.tiene_logo}
+                  nombre={empresa.nombre}
+                  colorPrimario={empresa.color_primario}
+                  size="sm"
                 />
-                <span
-                  className="text-sm font-semibold truncate"
-                >
-                  {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
-                </span>
-                <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+                {empresa.nombre_corto ?? empresa.nombre}
               </button>
-            ) : (
-              <div className="flex-1 flex items-center gap-1.5 mr-2 min-w-0">
-                <EmpresaBrand
-                  empresaId={user.empresa?.id}
-                  hasLogo={false}
-                  nombre={user.empresa?.nombre ?? 'Admin Portal'}
-                  colorPrimario={user.empresa?.color_primario}
-                />
-                <span
-                  className="text-sm font-semibold truncate"
-                >
-                  {user.empresa?.nombre_corto ?? user.empresa?.nombre ?? 'Admin Portal'}
-                </span>
-              </div>
-            )
-          )}
-          <div className="flex items-center gap-1 ml-auto">
-            {isOpen && <NotificacionesBell />}
-            <button
-              onClick={onToggle}
-              className="rounded p-1.5 hover:bg-accent transition-colors"
-              aria-label={isOpen ? 'Colapsar menú' : 'Expandir menú'}
-            >
-              {isOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
+            ))}
           </div>
+        )}
+      </div>
 
-          {isOpen && empresaMenuOpen && user.puedeCambiarEmpresa && (
-            <div className="absolute left-3 top-14 z-10 w-56 rounded-xl border border-border bg-popover p-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
-              {(user.empresasDisponibles ?? []).map((empresa) => (
+      {isOpen && <SidebarLogos user={user} />}
+
+      {/* Buscador de módulos */}
+      {nav.items.length > 5 && (
+        <div className="px-2 pt-2 shrink-0">
+          <button
+            onClick={() => setSearchOpen(true)}
+            title={!isOpen ? 'Buscar módulo (Ctrl K)' : undefined}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-lg bg-secondary px-2.5 h-9 text-sm text-muted-foreground hover:text-foreground transition-colors',
+              !isOpen && 'justify-center px-0',
+            )}
+          >
+            <Search size={16} className="shrink-0" />
+            {isOpen && (
+              <>
+                <span className="flex-1 text-left">Buscar…</span>
+                <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
+              </>
+            )}
+          </button>
+          <NavSearch items={nav.items} open={searchOpen} onOpenChange={setSearchOpen} />
+        </div>
+      )}
+
+      {/* Navegación */}
+      <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
+        {nav.flat ? (
+          <div className="flex flex-col gap-0.5">{nav.items.map(renderItem)}</div>
+        ) : (
+          groupNav(nav.items).map((g, idx) => {
+            const activo = g.items.some(it => isNavActive(it.to, pathname));
+            const abierto = activo || !collapsed.includes(g.id);
+            if (!isOpen) {
+              return (
+                <div key={g.id} className={cn('flex flex-col gap-0.5', idx > 0 && 'mt-2 pt-2 border-t border-border mx-2 [&>a]:mx-0')}>
+                  {g.items.map(renderItem)}
+                </div>
+              );
+            }
+            return (
+              <div key={g.id} className="mb-1">
                 <button
-                  key={empresa.id}
-                  onClick={() => {
-                    setEmpresaMenuOpen(false);
-                    if (empresa.id !== user.empresaId) switchEmpresa(empresa.id);
-                  }}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-4 py-2.5 my-0.5 text-sm text-left hover:bg-accent transition-colors',
-                    empresa.id === user.empresaId && 'font-medium bg-accent/50',
-                  )}
+                  onClick={() => toggleGroup(g.id)}
+                  disabled={activo}
+                  aria-expanded={abierto}
+                  className="flex w-full items-center gap-1 px-4 pt-3 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground transition-colors"
                 >
-                  <EmpresaBrand
-                    empresaId={empresa.id}
-                    hasLogo={empresa.tiene_logo}
-                    nombre={empresa.nombre}
-                    colorPrimario={empresa.color_primario}
-                    size="sm"
-                  />
-                  {empresa.nombre_corto ?? empresa.nombre}
+                  <span className="flex-1 text-left">{g.label}</span>
+                  {!abierto && <NavBadge count={g.badge} tone={groupTone(g.items)} className="h-4 min-w-[16px] text-[9px]" />}
+                  {!activo && (abierto ? <ChevronDown size={13} /> : <ChevronRight size={13} />)}
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {isOpen && <SidebarLogos user={user} />}
-
-        {/* Navegación */}
-        <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación principal">
-          {user.rol === 'JORNALERO' ? (
-            <>
-              <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
-                <Users size={18} className="shrink-0" />
-                {isOpen && <span>RRHH</span>}
-              </NavLink>
-              {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (
-                <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
-                  <ClipboardCheck size={18} className="shrink-0" />
-                  {isOpen && <span>Parte Diario</span>}
-                </NavLink>
-              )}
-            </>
-          ) : user.rol === 'PANOLERO' ? (
-            <NavLink to="/stock?tab=panol" title={!isOpen ? 'Stock' : undefined} className={navItem}>
-              <Package size={18} className="shrink-0" />
-              {isOpen && <span>Stock</span>}
-            </NavLink>
-          ) : esAndrea ? (
-            <>
-              <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
-                <Banknote size={18} className="shrink-0" />
-                {isOpen && <span className="flex-1">Gastos del mes</span>}
-                {isOpen && <HomeMark show />}
-              </NavLink>
-              <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
-                <Users size={18} className="shrink-0" />
-                {isOpen && <span>RRHH</span>}
-              </NavLink>
-              <NavLink to="/caja" title={!isOpen ? 'Caja Global' : undefined} className={navItem}>
-                <Wallet size={18} className="shrink-0" />
-                {isOpen && <span>Caja Global</span>}
-              </NavLink>
-              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-                <CalendarDays size={18} className="shrink-0" />
-                {isOpen && <span>Calendario</span>}
-              </NavLink>
-            </>
-          ) : esLorena ? (
-            <>
-              <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
-                <UserCheck size={18} className="shrink-0" />
-                {isOpen && <span className="flex-1">Presentismo</span>}
-                {isOpen && <HomeMark show />}
-              </NavLink>
-              <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
-                <Ambulance size={18} className="shrink-0" />
-                {isOpen && <span>Siniestros</span>}
-              </NavLink>
-              <NavLink to="/uniformes" title={!isOpen ? 'Uniformes' : undefined} className={navItem}>
-                <Shirt size={18} className="shrink-0" />
-                {isOpen && <span>Uniformes</span>}
-              </NavLink>
-              <NavLink to="/flota" title={!isOpen ? 'Flota y Seguros' : undefined} className={navItem}>
-                <div className="relative shrink-0">
-                  <Truck size={18} />
-                  {!isOpen && flotaAlertCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                  )}
-                </div>
-                {isOpen && (
-                  <>
-                    <span className="flex-1">Flota y Seguros</span>
-                    {flotaAlertCount > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                        {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-                <CalendarDays size={18} className="shrink-0" />
-                {isOpen && <span>Calendario</span>}
-              </NavLink>
-            </>
-          ) : esCombustible ? (
-            <>
-              <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
-                <Fuel size={18} className="shrink-0" />
-                {isOpen && <span className="flex-1">Combustible</span>}
-                {isOpen && <HomeMark show />}
-              </NavLink>
-              <NavLink to="/flota" title={!isOpen ? 'Flota' : undefined} className={navItem}>
-                <div className="relative shrink-0">
-                  <Truck size={18} />
-                  {!isOpen && flotaAlertCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                  )}
-                </div>
-                {isOpen && (
-                  <>
-                    <span className="flex-1">Flota</span>
-                    {flotaAlertCount > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                        {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-              <NavLink to="/bitacora-viajes" title={!isOpen ? 'Bitácora' : undefined} className={navItem}>
-                <RouteIcon size={18} className="shrink-0" />
-                {isOpen && <span>Bitácora</span>}
-              </NavLink>
-              <NavLink to="/movimiento-diario" title={!isOpen ? 'Movimiento Diario' : undefined} className={navItem}>
-                <CalendarClock size={18} className="shrink-0" />
-                {isOpen && <span>Movimiento Diario</span>}
-              </NavLink>
-              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-                <CalendarDays size={18} className="shrink-0" />
-                {isOpen && <span>Calendario</span>}
-              </NavLink>
-            </>
-          ) : esParteDiario ? (
-            <>
-              <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
-                <ClipboardCheck size={18} className="shrink-0" />
-                {isOpen && <span className="flex-1">Parte Diario</span>}
-                {isOpen && <HomeMark show />}
-              </NavLink>
-              {FEATURES.STOCK && (
-                <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
-                  <div className="relative shrink-0">
-                    <Package size={18} />
-                    {!isOpen && stockQuiebres > 0 && (
-                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                    )}
-                  </div>
-                  {isOpen && (
-                    <>
-                      <span className="flex-1">Stock</span>
-                      {stockQuiebres > 0 && (
-                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                          {stockQuiebres > 99 ? '99+' : stockQuiebres}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              )}
-              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-                <CalendarDays size={18} className="shrink-0" />
-                {isOpen && <span>Calendario</span>}
-              </NavLink>
-            </>
-          ) : esOperadorEnjoy ? (
-            <>
-              <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
-                <Calendar size={18} className="shrink-0" />
-                {isOpen && <span className="flex-1">Eventos</span>}
-                {isOpen && <HomeMark show />}
-              </NavLink>
-              {FEATURES.STOCK && (
-                <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
-                  <div className="relative shrink-0">
-                    <Package size={18} />
-                    {!isOpen && stockQuiebres > 0 && (
-                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                    )}
-                  </div>
-                  {isOpen && (
-                    <>
-                      <span className="flex-1">Stock</span>
-                      {stockQuiebres > 0 && (
-                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                          {stockQuiebres > 99 ? '99+' : stockQuiebres}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              )}
-              {FEATURES.STOCK && pendientesFirma > 0 && (
-                <NavLink to="/stock/firmar" title={!isOpen ? 'Firmar movimiento' : undefined} className={navItem}>
-                  <div className="relative shrink-0">
-                    <FileSignature size={18} />
-                    {!isOpen && (
-                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" />
-                    )}
-                  </div>
-                  {isOpen && (
-                    <>
-                      <span className="flex-1">Firmar movimiento</span>
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                        {pendientesFirma > 99 ? '99+' : pendientesFirma}
-                      </span>
-                    </>
-                  )}
-                </NavLink>
-              )}
-              <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-                <CalendarDays size={18} className="shrink-0" />
-                {isOpen && <span>Calendario</span>}
-              </NavLink>
-            </>
-          ) : (
-          <>
-          {/* Macro — vista cross-evento + KPIs globales (admin global) o vista
-              restringida por área cross-empresa (usuarios con puede_ver_macro,
-              ej. Mayra) */}
-          {user.rol === 'ADMIN' && (user.puedeCambiarEmpresa || user.puedeVerMacro) && (
-            <NavLink to="/macro" title={!isOpen ? 'Macro' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <LayoutGrid size={18} />
-                {!isOpen && errorCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                )}
+                {abierto && <div className="flex flex-col gap-0.5">{g.items.map(renderItem)}</div>}
               </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Macro</span>
-                  {errorCount > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {errorCount > 99 ? '99+' : errorCount}
-                    </span>
-                  )}
-                  <HomeMark show={user.homeRoute === '/macro'} />
-                </>
-              )}
-            </NavLink>
-          )}
+            );
+          })
+        )}
+      </nav>
 
-          {/* Calendario — agrega fechas de todos los módulos, visible para todos los roles */}
-          <NavLink to="/calendario" title={!isOpen ? 'Calendario' : undefined} className={navItem}>
-            <CalendarDays size={18} className="shrink-0" />
-            {isOpen && <span>Calendario</span>}
-          </NavLink>
-
-          {/* Presentismo (Lorena/Matías, DOS57) — home de Lorena, va arriba de
-              todo para que sea lo primero que vea al entrar. Visible para
-              ADMIN/OPERADOR fijos a DOS57, y también para el admin global
-              (Matías) sea cual sea la empresa activa de su sesión — él aprueba
-              tardanzas sin necesidad de tener DOS57 seleccionado. */}
-          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
-            <NavLink to="/presentismo" title={!isOpen ? 'Presentismo' : undefined} className={navItem}>
-              <UserCheck size={18} className="shrink-0" />
-              {isOpen && <span className="flex-1">Presentismo</span>}
-              {isOpen && <HomeMark show={user.homeRoute === '/presentismo'} />}
-            </NavLink>
-          )}
-
-          <NavLink to="/eventos" title={!isOpen ? 'Eventos' : undefined} className={navItem}>
-            <Calendar size={18} className="shrink-0" />
-            {isOpen && <span className="flex-1">Eventos</span>}
-            {isOpen && <HomeMark show={user.homeRoute === '/eventos'} />}
-          </NavLink>
-
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
-            <NavLink to="/caja" title={!isOpen ? 'Caja Global' : undefined} className={navItem}>
-              <Wallet size={18} className="shrink-0" />
-              {isOpen && <span>Caja Global</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/proveedores" title={!isOpen ? 'Proveedores' : undefined} className={navItem}>
-              <Building2 size={18} className="shrink-0" />
-              {isOpen && <span>Proveedores</span>}
-            </NavLink>
-          )}
-
-          {FEATURES.STOCK && (user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
-            <NavLink to="/stock" title={!isOpen ? 'Stock' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <Package size={18} />
-                {!isOpen && stockQuiebres > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                )}
-              </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Stock</span>
-                  {stockQuiebres > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {stockQuiebres > 99 ? '99+' : stockQuiebres}
-                    </span>
-                  )}
-                  <HomeMark show={user.homeRoute === '/stock'} />
-                </>
-              )}
-            </NavLink>
-          )}
-
-          {FEATURES.STOCK && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && pendientesFirma > 0 && (
-            <NavLink to="/stock/firmar" title={!isOpen ? 'Firmar movimiento' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <FileSignature size={18} />
-                {!isOpen && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" />
-                )}
-              </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Firmar movimiento</span>
-                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                    {pendientesFirma > 99 ? '99+' : pendientesFirma}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          )}
-
-          {/* Combustible (Santi/Nico, DOS57) — dentro de la sección de Flota,
-              mismo criterio de visibilidad que Presentismo: DOS57 fija +
-              ADMIN/OPERADOR, más el admin global sea cual sea su empresa
-              activa (ver [[combustible_flota_dos57]]). */}
-          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
-            <NavLink to="/combustible" title={!isOpen ? 'Combustible' : undefined} className={navItem}>
-              <Fuel size={18} className="shrink-0" />
-              {isOpen && <span className="flex-1">Combustible</span>}
-              {isOpen && <HomeMark show={user.homeRoute === '/combustible'} />}
-            </NavLink>
-          )}
-
-          {/* Gastos del mes (Andrea, DOS57) — Caja del mes, siniestros de
-              empleados y excedente de horas de Fofi/Nestoras. */}
-          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
-            <NavLink to="/gastos-operativos" title={!isOpen ? 'Gastos del mes' : undefined} className={navItem}>
-              <Banknote size={18} className="shrink-0" />
-              {isOpen && <span className="flex-1">Gastos del mes</span>}
-              {isOpen && <HomeMark show={user.homeRoute === '/gastos-operativos'} />}
-            </NavLink>
-          )}
-
-          {/* Siniestros de personal (Lorena, DOS57) — acá para el admin fijo
-              de DOS57; Lorena tiene su propio menú acotado (esLorena) más
-              arriba, y Andrea lo ve embebido en Gastos del mes. */}
-          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
-            <NavLink to="/siniestros" title={!isOpen ? 'Siniestros' : undefined} className={navItem}>
-              <Ambulance size={18} className="shrink-0" />
-              {isOpen && <span>Siniestros</span>}
-            </NavLink>
-          )}
-
-          {/* Entrega de uniformes (Lorena, DOS57) — Lorena lo tiene en su menú acotado. */}
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/uniformes" title={!isOpen ? 'Uniformes' : undefined} className={navItem}>
-              <Shirt size={18} className="shrink-0" />
-              {isOpen && <span>Uniformes</span>}
-            </NavLink>
-          )}
-
-          {(user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
-            <NavLink to="/flota" title={!isOpen ? 'Flota' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <Truck size={18} />
-                {!isOpen && flotaAlertCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                )}
-              </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Flota</span>
-                  {flotaAlertCount > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {flotaAlertCount > 99 ? '99+' : flotaAlertCount}
-                    </span>
-                  )}
-                </>
-              )}
-            </NavLink>
-          )}
-
-          {/* Bitácora de viajes de camiones (planillas de Flor, DOS57) — debajo
-              de Flota, mismo criterio de visibilidad que Combustible. */}
-          {((user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR')) || (user.rol === 'ADMIN' && user.puedeCambiarEmpresa)) && (
-            <NavLink to="/bitacora-viajes" title={!isOpen ? 'Bitácora' : undefined} className={navItem}>
-              <RouteIcon size={18} className="shrink-0" />
-              {isOpen && <span>Bitácora</span>}
-            </NavLink>
-          )}
-
-          {/* Movimiento Diario (Flor, DOS57) — resumen del día de camiones y
-              camionetas, debajo de Bitácora. Sólo con DOS57 activa. */}
-          {user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR') && (
-            <NavLink to="/movimiento-diario" title={!isOpen ? 'Movimiento Diario' : undefined} className={navItem}>
-              <CalendarClock size={18} className="shrink-0" />
-              {isOpen && <span>Movimiento Diario</span>}
-            </NavLink>
-          )}
-
-          {/* Presupuestación (Costo Real, DOS57) — sólo ADMIN: con DOS57 activa
-              o admin global, mismo criterio que el resto de los módulos DOS57 */}
-          {user.rol === 'ADMIN' && (user.empresaId === EMPRESAS.DOS57 || user.puedeCambiarEmpresa) && (
-            <>
-              {isOpen && <p className="mx-4 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Presupuestación</p>}
-              <NavLink to="/materiales-rental" title={!isOpen ? 'Ítems de Rental' : undefined} className={navItem}>
-                <Boxes size={18} className="shrink-0" />
-                {isOpen && <span>Ítems de Rental</span>}
-              </NavLink>
-              <NavLink to="/presupuestos" title={!isOpen ? 'Presupuestos' : undefined} className={navItem}>
-                <Calculator size={18} className="shrink-0" />
-                {isOpen && <span>Presupuestos</span>}
-              </NavLink>
-              {isOpen && <div className="mx-4 my-2 border-t" />}
-            </>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/facturas" title={!isOpen ? 'Facturas a Pagar' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <FileText size={18} />
-                {!isOpen && facturasAlerts > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
-                )}
-              </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Facturas a Pagar</span>
-                  {facturasAlerts > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
-                      {facturasAlerts > 99 ? '99+' : facturasAlerts}
-                    </span>
-                  )}
-                </>
-              )}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/facturas-emitidas" title={!isOpen ? 'Facturas a Cobrar' : undefined} className={navItem}>
-              <div className="relative shrink-0">
-                <Receipt size={18} />
-                {!isOpen && facturasEmitidasVencidas > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                )}
-              </div>
-              {isOpen && (
-                <>
-                  <span className="flex-1">Facturas a Cobrar</span>
-                  {facturasEmitidasVencidas > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {facturasEmitidasVencidas > 99 ? '99+' : facturasEmitidasVencidas}
-                    </span>
-                  )}
-                </>
-              )}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/cuentas-corrientes" title={!isOpen ? 'Cuentas Corrientes' : undefined} className={navItem}>
-              <ArrowLeftRight size={18} className="shrink-0" />
-              {isOpen && <span>Cuentas Corrientes</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/afip-prestamos" title={!isOpen ? 'AFIP / Créditos' : undefined} className={navItem}>
-              <Landmark size={18} className="shrink-0" />
-              {isOpen && <span>AFIP / Créditos</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/tarjeta-corporativa" title={!isOpen ? 'Tarjeta Corp.' : undefined} className={navItem}>
-              <CreditCard size={18} className="shrink-0" />
-              {isOpen && <span>Tarjeta Corp.</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/espacios-compartidos" title={!isOpen ? 'Espacios Compartidos' : undefined} className={navItem}>
-              <Building size={18} className="shrink-0" />
-              {isOpen && <span>Espacios Compartidos</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/cierre-contable" title={!isOpen ? 'Cierre Contable' : undefined} className={navItem}>
-              <FileSpreadsheet size={18} className="shrink-0" />
-              {isOpen && <span>Cierre Contable</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink
-              to="/importer"
-              title={!isOpen ? 'Importar eventos históricos' : undefined}
-              className={navItem}
-            >
-              <FileUp size={18} className="shrink-0" />
-              {isOpen && (
-                <div className="flex flex-col leading-tight">
-                  <span>Importar eventos históricos</span>
-                  <span className="text-[11px] font-normal text-muted-foreground">
-                    Migrar eventos desde el Excel original
-                  </span>
-                </div>
-              )}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/rrhh" title={!isOpen ? 'RRHH' : undefined} className={navItem}>
-              <Users size={18} className="shrink-0" />
-              {isOpen && <span className="flex-1">RRHH</span>}
-              {isOpen && <HomeMark show={user.homeRoute === '/rrhh'} />}
-            </NavLink>
-          )}
-
-          {FEATURES.PARTE_DIARIO && user.empresaId === EMPRESAS.DOS57 && (user.rol === 'ADMIN' || user.rol === 'OPERADOR' || user.rol === 'VIEWER') && (
-            <NavLink to="/parte-diario" title={!isOpen ? 'Parte Diario' : undefined} className={navItem}>
-              <ClipboardCheck size={18} className="shrink-0" />
-              {isOpen && <span className="flex-1">Parte Diario</span>}
-              {isOpen && <HomeMark show={user.homeRoute === '/parte-diario'} />}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/auditoria" title={!isOpen ? 'Auditoría' : undefined} className={navItem}>
-              <ClipboardList size={18} className="shrink-0" />
-              {isOpen && <span>Auditoría</span>}
-            </NavLink>
-          )}
-
-          {user.rol === 'ADMIN' && (
-            <NavLink to="/configuracion" title={!isOpen ? 'Configuración' : undefined} className={navItem}>
-              <Settings size={18} className="shrink-0" />
-              {isOpen && <span>Configuración</span>}
-            </NavLink>
-          )}
-
-          {user.puedeCambiarEmpresa && (
-            <NavLink to="/configuracion/empresa" title={!isOpen ? 'Config. de empresa' : undefined} className={navItem}>
-              <Palette size={18} className="shrink-0" />
-              {isOpen && <span>Config. de empresa</span>}
-            </NavLink>
-          )}
-          </>
-          )}
-        </nav>
-
-        {/* Footer */}
-        <div className="border-t border-border p-3 shrink-0">
-          {isOpen && (
-            <div className="mb-2 px-1">
-              <p className="text-sm font-medium truncate">{user.nombre}</p>
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              <div className="mt-1 flex flex-wrap gap-1">
-                <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-                  {ROL_LABEL[user.rol]}
+      {/* Footer */}
+      <div className="border-t border-border p-3 shrink-0">
+        {isOpen && (
+          <div className="mb-2 px-1">
+            <p className="text-sm font-medium truncate">{user.nombre}</p>
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                {ROL_LABEL[user.rol]}
+              </span>
+              {user.empresa && (
+                <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-empresa text-empresa-text">
+                  {user.empresa.nombre_corto ?? user.empresa.nombre}
                 </span>
-                {user.empresa && (
-                  <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-empresa text-empresa-text">
-                    {user.empresa.nombre_corto ?? user.empresa.nombre}
-                  </span>
-                )}
-              </div>
+              )}
             </div>
+          </div>
+        )}
+        <button
+          onClick={toggleTheme}
+          className={cn(
+            'flex items-center gap-2 w-full rounded-lg px-2 py-1.5 text-sm mb-1',
+            'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+            !isOpen && 'justify-center',
           )}
-          <button
-            onClick={toggleTheme}
-            className={cn(
-              'flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm mb-1',
-              'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
-              !isOpen && 'justify-center',
-            )}
-            title={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-            aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-          >
-            {theme === 'dark' ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
-            {isOpen && <span>{theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}</span>}
-          </button>
-          <button
-            onClick={onLogout}
-            className={cn(
-              'flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm',
-              'text-destructive hover:bg-destructive/10 transition-colors',
-              !isOpen && 'justify-center',
-            )}
-            title={!isOpen ? 'Cerrar sesión' : undefined}
-          >
-            <LogOut size={16} className="shrink-0" />
-            {isOpen && <span>Cerrar sesión</span>}
-          </button>
-        </div>
-      </aside>
-    </>
+          title={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+        >
+          {theme === 'dark' ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
+          {isOpen && <span>{theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}</span>}
+        </button>
+        <button
+          onClick={onLogout}
+          className={cn(
+            'flex items-center gap-2 w-full rounded-lg px-2 py-1.5 text-sm',
+            'text-destructive hover:bg-destructive/10 transition-colors',
+            !isOpen && 'justify-center',
+          )}
+          title={!isOpen ? 'Cerrar sesión' : undefined}
+        >
+          <LogOut size={16} className="shrink-0" />
+          {isOpen && <span>Cerrar sesión</span>}
+        </button>
+      </div>
+    </aside>
   );
 }

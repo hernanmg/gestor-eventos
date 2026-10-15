@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip, { type TabItem } from '@/components/ui/TabStrip';
+import { BarChart3, ClipboardList } from 'lucide-react';
 import { useAuth, ME_QUERY_KEY } from '@/hooks/useAuth';
 import KpisSection from './KpisSection';
 import MovimientosSection from './MovimientosSection';
@@ -8,9 +10,9 @@ import MacroMayra from './MacroMayra';
 
 type Tab = 'kpis' | 'movimientos';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'kpis',        label: '📊 KPIs y Alertas' },
-  { key: 'movimientos', label: '📋 Movimientos' },
+const TABS: TabItem<Tab>[] = [
+  { key: 'kpis',        label: 'KPIs y Alertas', icon: BarChart3 },
+  { key: 'movimientos', label: 'Movimientos',    icon: ClipboardList },
 ];
 
 // Macro clásica — cross-evento + KPIs globales, exclusiva del admin global.
@@ -19,22 +21,7 @@ function MacroAdminGlobal() {
 
   return (
     <>
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === t.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabStrip<Tab> items={TABS} value={tab} onChange={setTab} />
 
       {tab === 'kpis' ? <KpisSection /> : <MovimientosSection />}
     </>
@@ -63,12 +50,11 @@ export default function MacroPage() {
 
   return (
     <div className="p-4 max-w-[1600px] mx-auto space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Macro</h1>
-        <p className="text-sm text-muted-foreground">
-          {esAdminGlobal ? 'Visibilidad global del negocio' : 'Finanzas, Admin, RRHH y Stock de tus empresas'}
-        </p>
-      </div>
+      <PageHeader
+        title="Macro"
+        subtitle={`${esAdminGlobal ? 'Visibilidad global del negocio' : 'Finanzas, Admin, RRHH y Stock de tus empresas'} · ${
+          new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}`}
+      />
 
       {esAdminGlobal ? <MacroAdminGlobal /> : <MacroMayra />}
     </div>

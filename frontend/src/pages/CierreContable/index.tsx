@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/formatters';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import type { CierreContable, EstadoCierreContable } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -136,18 +137,15 @@ export default function CierreContablePage() {
 
   return (
     <div className="p-6 space-y-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FileSpreadsheet size={22} />
-          Cierre Contable
-        </h1>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus size={14} className="mr-1.5" /> Generar cierre
-        </Button>
-      </div>
-      <p className="text-sm text-muted-foreground -mt-2">
-        Foto financiera a una fecha de corte fija, en el formato que el estudio contable pide todos los años.
-      </p>
+      <PageHeader
+        title="Cierre Contable"
+        subtitle="Foto financiera a una fecha de corte fija, en el formato que el estudio contable pide todos los años."
+        actions={
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus size={14} className="mr-1.5" /> Generar cierre
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando…</p>

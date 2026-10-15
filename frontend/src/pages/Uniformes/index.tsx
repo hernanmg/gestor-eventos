@@ -10,6 +10,7 @@ import HistorialUniformes, { EntregaUniformeDialog } from '@/components/uniforme
 import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { ImportarUniformesResultado, ModoImportUniformes, ResumenUniformesFila } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
 
 // Entregas de uniformes (Lorena, DOS57) — resumen anual por empleado, estilo
 // hoja DOS57_ENTREGA_AAAA del Excel, + importador del libro completo.
@@ -209,13 +210,11 @@ export default function UniformesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2"><Shirt size={20} /> Entrega de uniformes</h1>
-          <p className="text-xs text-muted-foreground">Totales por empleado del año — hacé click en una fila para ver, cargar o corregir su historial de entregas.</p>
-        </div>
-        {puedeGestionar && (
-          <div className="flex items-center gap-2">
+      <PageHeader
+        title="Entrega de uniformes"
+        subtitle="Totales por empleado del año — hacé click en una fila para ver, cargar o corregir su historial de entregas."
+        actions={puedeGestionar && (
+          <>
             <Button size="sm" variant="outline" onClick={handleExportar} disabled={isExporting || !data || data.filas.length === 0}
               title={!data || data.filas.length === 0 ? `No hay entregas en ${anio} para exportar` : 'Resumen del año + detalle de cada entrega'}>
               <Download size={14} className="mr-1.5" /> {isExporting ? 'Exportando…' : 'Exportar a Excel'}
@@ -226,9 +225,9 @@ export default function UniformesPage() {
             <Button size="sm" onClick={() => setNuevaOpen(true)}>
               <Plus size={14} className="mr-1.5" /> Nueva entrega
             </Button>
-          </div>
+          </>
         )}
-      </div>
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <select value={anio} onChange={e => setAnio(Number(e.target.value))} className={selCls}>

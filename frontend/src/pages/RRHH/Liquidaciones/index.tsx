@@ -242,7 +242,7 @@ export default function LiquidacionesTab({ empleadoIdInicial }: { empleadoIdInic
                         </>
                       )}
                       {l.estado === 'APROBADA' && l.movimiento_id && (
-                        <Link to={`/eventos/${l.evento_id}`} className="text-xs text-primary hover:underline flex items-center gap-1">
+                        <Link to={`/eventos/${l.evento_id}`} className="text-xs text-link hover:underline flex items-center gap-1">
                           <FileText size={12} /> Ver egreso
                         </Link>
                       )}

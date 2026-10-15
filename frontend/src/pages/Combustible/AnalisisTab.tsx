@@ -6,8 +6,9 @@ import {
 import { useAnalisisAnualCombustible } from '@/hooks/useCombustible';
 import { formatCurrency, formatLitros } from '@/lib/formatters';
 import { PrintButton, PrintHeader } from '@/components/ui/PrintSection';
-import { cn } from '@/lib/utils';
 import type { AnalisisAnualCombustible } from '@/types';
+import TabStrip from '@/components/ui/TabStrip';
+import { Banknote, Droplet } from 'lucide-react';
 
 const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
 const AZUL = '#2563eb';
@@ -380,23 +381,15 @@ export default function AnalisisTab() {
       <PrintHeader titulo={`Combustible — Análisis anual (${metrica === 'litros' ? 'Litros' : 'Pesos'})`} periodo={String(anio)} />
 
       <div className="no-print flex items-center justify-between gap-2">
-        <div className="flex border-b border-border">
-          {([
-            { key: 'litros', label: '📊 Litros' },
-            { key: 'monto',  label: '💰 Pesos' },
-          ] as { key: Metrica; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setMetrica(key)}
-              className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                metrica === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <TabStrip<Metrica>
+          variant="pill"
+          value={metrica}
+          onChange={setMetrica}
+          items={[
+            { key: 'litros', label: 'Litros', icon: Droplet },
+            { key: 'monto',  label: 'Pesos',  icon: Banknote },
+          ]}
+        />
         <div className="flex items-center gap-2">
           <select value={anio} onChange={e => setAnio(Number(e.target.value))} className={selectCls}>
             {opciones.map(a => <option key={a} value={a}>{a}</option>)}

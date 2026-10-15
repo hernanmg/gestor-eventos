@@ -13,6 +13,9 @@ import { formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoSiniestro, SiniestroEmpleado } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
+import { Car, HardHat } from 'lucide-react';
 
 const inputCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 
@@ -100,29 +103,22 @@ export default function SiniestrosPage() {
   const setVista = (v: 'empleados' | 'vehiculos') => setSearchParams(v === 'vehiculos' ? { vista: 'vehiculos' } : {}, { replace: true });
 
   const toggle = (
-    <div className="inline-flex rounded-md border border-border p-0.5 bg-muted/30">
-      {([['empleados', '👷 Empleados'], ['vehiculos', '🚗 Vehículos']] as const).map(([k, label]) => (
-        <button
-          key={k}
-          onClick={() => setVista(k)}
-          className={cn('px-3 py-1 text-sm rounded', vista === k ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <TabStrip<'empleados' | 'vehiculos'>
+      variant="pill"
+      value={vista}
+      onChange={setVista}
+      items={[{ key: 'empleados', label: 'Empleados', icon: HardHat }, { key: 'vehiculos', label: 'Vehículos', icon: Car }]}
+    />
   );
 
   if (vista === 'vehiculos') {
     return (
       <div className="p-4 md:p-6 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-semibold">🚗 Siniestros de vehículos</h1>
-            <p className="text-xs text-muted-foreground">Informe de siniestros de la flota — seguro, tercero involucrado y resolución.</p>
-          </div>
-          {toggle}
-        </div>
+        <PageHeader
+          title="Siniestros de vehículos"
+          subtitle="Informe de siniestros de la flota — seguro, tercero involucrado y resolución."
+          actions={toggle}
+        />
         <SiniestrosVehiculoPanel canEdit={canEdit} />
       </div>
     );
@@ -195,12 +191,10 @@ function SiniestrosEmpleadosView({ toggle }: { toggle: React.ReactNode }) {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">🚑 Siniestros de empleados</h1>
-          <p className="text-xs text-muted-foreground">Informe de siniestros de personal (ART) — carga y seguimiento.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Siniestros de empleados"
+        subtitle="Informe de siniestros de personal (ART) — carga y seguimiento."
+        actions={<>
           {toggle}
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
@@ -212,8 +206,8 @@ function SiniestrosEmpleadosView({ toggle }: { toggle: React.ReactNode }) {
               <Plus size={14} className="mr-1.5" /> Nuevo siniestro
             </Button>
           )}
-        </div>
-      </div>
+        </>}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="rounded-lg border bg-white p-3">
@@ -302,7 +296,7 @@ function SiniestrosEmpleadosView({ toggle }: { toggle: React.ReactNode }) {
                   <td className={td}>{s.fecha_alta_medica ? formatDate(s.fecha_alta_medica) : '—'}</td>
                   <td className={td}><SiniestroEstadoBadge estado={s.estado} /></td>
                   <td className={td}>
-                    <button className="text-xs text-primary hover:underline" onClick={e => { e.stopPropagation(); navigate(`/siniestros/${s.id}`); }}>Ver detalle</button>
+                    <button className="text-xs text-link hover:underline" onClick={e => { e.stopPropagation(); navigate(`/siniestros/${s.id}`); }}>Ver detalle</button>
                   </td>
                 </tr>
               ))}

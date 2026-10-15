@@ -137,7 +137,7 @@ export default function MovimientoDiarioPage() {
       <PrintHeader titulo="Movimiento Diario" periodo={fechaLarga(fecha)} />
 
       <div className="no-print flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Truck size={22} /> Movimiento Diario</h1>
+        <h1 className="page-title">Movimiento Diario</h1>
         <div className="flex items-center gap-1 ml-auto">
           <Button size="icon" variant="outline" onClick={() => setFecha(f => moverDia(f, -1))} title="Día anterior"><ChevronLeft size={16} /></Button>
           <input

@@ -12,6 +12,7 @@ import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency, formatLitros, formatearPatente } from '@/lib/formatters';
 import type { ViajeFlota, ImportarBitacoraFlotaResultado } from '@/types';
 import ViajeDrawer from './ViajeDrawer';
+import PageHeader from '@/components/ui/PageHeader';
 
 const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
 const thCls     = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground';
@@ -382,23 +383,20 @@ export default function BitacoraViajesPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1600px] mx-auto">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <RouteIcon size={22} />
-          Bitácora de viajes
-          <span className="text-sm font-normal text-muted-foreground">({viajes.length} viaje{viajes.length !== 1 ? 's' : ''})</span>
-        </h1>
-        {isAdmin && (
-          <div className="flex gap-2">
+      <PageHeader
+        title="Bitácora de viajes"
+        meta={<span className="text-sm text-muted-foreground">{viajes.length} viaje{viajes.length !== 1 ? 's' : ''}</span>}
+        actions={isAdmin && (
+          <>
             <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
               <Upload size={14} className="mr-1.5" /> Importar planilla
             </Button>
             <Button size="sm" onClick={() => setEditando(null)}>
               <Plus size={14} className="mr-1.5" /> Agregar viaje
             </Button>
-          </div>
+          </>
         )}
-      </div>
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <select value={eventoSel} onChange={setEvento} className={selectCls}>

@@ -12,8 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import CuitInput from '@/components/ui/CuitInput';
-import { cn, getApiErrorMessage } from '@/lib/utils';
+import { getApiErrorMessage } from '@/lib/utils';
 import type { Empresa, Moneda } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
@@ -31,22 +33,13 @@ function EmpresaSelector({ empresas, selectedId, onSelect }: {
   onSelect:   (id: number) => void;
 }) {
   return (
-    <div className="flex border-b border-border mb-6">
-      {empresas.map(e => (
-        <button
-          key={e.id}
-          onClick={() => onSelect(e.id)}
-          className={cn(
-            'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-            selectedId === e.id
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {e.nombre_corto ?? e.nombre}
-        </button>
-      ))}
-    </div>
+    <TabStrip
+      variant="pill"
+      className="mb-4"
+      value={selectedId == null ? '' : String(selectedId)}
+      onChange={k => onSelect(Number(k))}
+      items={empresas.map(e => ({ key: String(e.id), label: e.nombre_corto ?? e.nombre }))}
+    />
   );
 }
 
@@ -351,10 +344,11 @@ export default function ConfiguracionEmpresaPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold text-foreground mb-1">Configuración de empresa</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        Configurá la identidad visual y los datos de cada empresa, sin necesidad de cambiar tu empresa activa.
-      </p>
+      <PageHeader
+        title="Configuración de empresa"
+        subtitle="Configurá la identidad visual y los datos de cada empresa, sin necesidad de cambiar tu empresa activa."
+        className="mb-6"
+      />
 
       {loadingEmpresas ? (
         <p className="text-sm text-muted-foreground">Cargando empresas...</p>
@@ -366,26 +360,16 @@ export default function ConfiguracionEmpresaPage() {
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
         <>
-          <div className="flex border-b border-border mb-6">
-            {([
+          <TabStrip<SeccionActiva>
+            value={seccion}
+            onChange={setSeccion}
+            className="mb-6"
+            items={[
               { key: 'visual',     label: 'Identidad visual' },
               { key: 'datos',      label: 'Datos de la empresa' },
               { key: 'operativa',  label: 'Configuración operativa' },
-            ] as { key: SeccionActiva; label: string }[]).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setSeccion(key)}
-                className={cn(
-                  'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                  seccion === key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+            ]}
+          />
 
           {seccion === 'visual'    && <IdentidadVisualSection empresa={empresa} />}
           {seccion === 'datos'     && <DatosEmpresaSection empresa={empresa} />}

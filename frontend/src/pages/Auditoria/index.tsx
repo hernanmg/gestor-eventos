@@ -5,6 +5,7 @@ import type { AuditoriaLog } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 const ACCIONES = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT'];
 const ENTIDADES = ['Movimiento', 'Evento', 'CuentaBancaria', 'MovimientoCaja', 'Echeq', 'Usuario', 'EventoAcceso'];
@@ -94,7 +95,7 @@ export default function AuditoriaPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold">Auditoría</h1>
+      <PageHeader title="Auditoría" />
 
       {/* Filtros */}
       <div className="bg-white rounded-lg border p-4 space-y-3">

@@ -125,7 +125,7 @@ export default function NotificacionesBell() {
           <Link
             to="/calendario"
             onClick={() => setOpen(false)}
-            className="block text-center text-xs font-medium text-primary py-2 border-t border-border hover:bg-accent transition-colors"
+            className="block text-center text-xs font-medium text-link py-2 border-t border-border hover:bg-accent transition-colors"
           >
             Ver todas
           </Link>

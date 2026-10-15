@@ -47,7 +47,7 @@ export default function ProveedorCombobox({ value, onChange, className }: Props)
       <div className={cn('flex items-center gap-1 min-w-0', className)}>
         <Link
           to={`/proveedores/${value.id}`}
-          className="text-xs text-primary hover:underline truncate max-w-[120px]"
+          className="text-xs text-link hover:underline truncate max-w-[120px]"
           title={value.nombre}
           onClick={e => e.stopPropagation()}
         >

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Landmark } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import PlanesAfipTab from './PlanesAfipTab';
 import PrestamosTab from './PrestamosTab';
 import SGRTab from './SGRTab';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 type AfipPrestamosTab = 'afip' | 'prestamos' | 'sgr';
 
@@ -15,31 +15,17 @@ export default function AFIPPrestamosPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Landmark size={22} />
-        AFIP / Créditos
-      </h1>
+      <PageHeader title="AFIP / Créditos" />
 
-      <div className="flex border-b border-border overflow-x-auto">
-        {([
+      <TabStrip<AfipPrestamosTab>
+        value={tab}
+        onChange={setTab}
+        items={[
           { key: 'afip',      label: 'Planes AFIP' },
           { key: 'prestamos', label: 'Créditos Bancarios' },
           { key: 'sgr',       label: 'SGR' },
-        ] as { key: AfipPrestamosTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
-              tab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {tab === 'afip'      && <PlanesAfipTab />}
       {tab === 'prestamos' && <PrestamosTab />}

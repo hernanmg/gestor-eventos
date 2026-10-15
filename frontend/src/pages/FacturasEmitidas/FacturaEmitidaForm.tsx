@@ -218,7 +218,7 @@ function Paso2({
           <div className="flex gap-1 mt-1">
             {PORCENTAJES_IVA.map(pct => (
               <button key={pct} type="button" onClick={() => aplicarPorcentajeIva(pct)}
-                className="text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                className="text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:border-primary hover:text-link transition-colors">
                 {pct}%
               </button>
             ))}
@@ -294,7 +294,7 @@ function Paso2({
                 );
               })}
               <div className="flex items-center justify-between">
-                <button type="button" onClick={addReparto} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                <button type="button" onClick={addReparto} className="flex items-center gap-1 text-xs text-link hover:underline">
                   <Plus size={12} /> Agregar razón social
                 </button>
                 <span className={cn('text-xs font-medium', Math.abs(sumaPorcentajes - 100) < 0.01 ? 'text-green-700' : 'text-destructive')}>

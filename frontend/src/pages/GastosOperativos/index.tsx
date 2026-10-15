@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ClipboardList, Clock } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Ambulance, ClipboardList, Clock } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 import CajaDelMesTab from './CajaDelMesTab';
 import SiniestrosTab from './SiniestrosTab';
 import ExcedenteHorasTab from './ExcedenteHorasTab';
@@ -16,11 +17,11 @@ const SECCION_QUERY: Record<string, Seccion> = {
 
 // "Siniestros" son de EMPLEADOS acá (accidentes de trabajo/ART, modelo
 // SiniestroEmpleado) — distinto de los siniestros de VEHÍCULOS (Lorena/Santi,
-// choques/robos/daños), que no tienen módulo todavía. Ícono 🚑 (no un ícono
-// de auto) para no confundir los dos dominios.
-const NAV: { key: Seccion; label: string; icon?: typeof ClipboardList; emoji?: string }[] = [
+// choques/robos/daños), que no tienen módulo todavía. Ícono de ambulancia (no
+// uno de auto) para no confundir los dos dominios.
+const NAV: { key: Seccion; label: string; icon: typeof ClipboardList }[] = [
   { key: 'caja',             label: 'Caja del mes',     icon: ClipboardList },
-  { key: 'siniestros',       label: 'Siniestros',       emoji: '🚑' },
+  { key: 'siniestros',       label: 'Siniestros',       icon: Ambulance },
   { key: 'excedente-horas',  label: 'Excedente horas',  icon: Clock },
 ];
 
@@ -31,28 +32,12 @@ export default function GastosOperativosPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Gastos del mes</h1>
-        <p className="text-sm text-muted-foreground">Caja general de DOS57, siniestros de empleados y excedente de horas de Fofi/Nestoras.</p>
-      </div>
+      <PageHeader
+        title="Gastos del mes"
+        subtitle="Caja general de DOS57, siniestros de empleados y excedente de horas de Fofi/Nestoras."
+      />
 
-      <div className="flex gap-1 border-b">
-        {NAV.map(n => (
-          <button
-            key={n.key}
-            onClick={() => setSeccion(n.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              seccion === n.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {n.icon ? <n.icon size={15} /> : <span className="text-sm leading-none">{n.emoji}</span>}
-            {n.label}
-          </button>
-        ))}
-      </div>
+      <TabStrip<Seccion> items={NAV} value={seccion} onChange={setSeccion} />
 
       {seccion === 'caja' && <CajaDelMesTab />}
       {seccion === 'siniestros' && <SiniestrosTab />}

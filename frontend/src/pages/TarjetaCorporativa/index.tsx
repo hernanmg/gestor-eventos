@@ -14,6 +14,8 @@ import { EMPRESAS } from '@/lib/empresasConstants';
 import { fmtMoney, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { ConsumoTC, ImportarTCResultado, ResponsableTC, TarjetaCorporativa, TipoResponsableTC, TotalResponsableTC } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 // Tarjeta Corporativa Galicia (DOS57 / Enjoy) — Santi. Replica la hoja mensual
 // del Excel: bloque resumen por responsable arriba, detalle abajo. Los totales
@@ -548,12 +550,10 @@ export default function TarjetaCorporativaPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1400px] mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><CreditCard size={22} /> Tarjeta Corporativa</h1>
-          <p className="text-xs text-muted-foreground">Consumos mensuales por responsable (TC Galicia) — totales calculados del detalle.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Tarjeta Corporativa"
+        subtitle="Consumos mensuales por responsable (TC Galicia) — totales calculados del detalle."
+        actions={<>
           {tarjeta && (
             <Button size="sm" variant="outline" disabled={!pdf || pdf.isExporting || pdf.vacio} onClick={() => pdf?.exportar()}
               title={pdf?.vacio ? 'No hay consumos en el mes para exportar' : 'PDF del mes seleccionado'}>
@@ -563,21 +563,15 @@ export default function TarjetaCorporativaPage() {
           <Button size="sm" variant="outline" disabled={!empresas.length} onClick={() => setImportarOpen(true)}>
             <Upload size={14} className="mr-1.5" /> Importar desde Excel
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {empresas.length > 1 && (
-        <div className="flex border-b border-border overflow-x-auto">
-          {empresas.map(e => (
-            <button key={e.id} onClick={() => setEmpresaTab(e.id)}
-              className={cn(
-                'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
-                empresaTab === e.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}>
-              {etiquetaEmpresa(e)}
-            </button>
-          ))}
-        </div>
+        <TabStrip
+          value={empresaTab == null ? '' : String(empresaTab)}
+          onChange={k => setEmpresaTab(Number(k))}
+          items={empresas.map(e => ({ key: String(e.id), label: etiquetaEmpresa(e) }))}
+        />
       )}
 
       {isLoading ? (

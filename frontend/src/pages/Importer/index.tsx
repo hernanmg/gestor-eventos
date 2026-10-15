@@ -394,7 +394,7 @@ function PreviewStep({
             <button
               type="button"
               onClick={addSocio}
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
+              className="flex items-center gap-1 text-xs text-link hover:underline"
             >
               <Plus size={12} />
               Agregar socio
@@ -556,7 +556,7 @@ export default function ImporterPage() {
     <div className="flex flex-col h-full">
       <div className="flex flex-col gap-1 px-6 py-4 border-b border-border bg-white shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold">Importar Excel</h1>
+          <h1 className="page-title">Importar Excel</h1>
           {step !== 'upload' && (
             <span className="text-sm text-muted-foreground">{filename}</span>
           )}
@@ -574,7 +574,7 @@ export default function ImporterPage() {
             key={s}
             className={cn(
               'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px',
-              step === s ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
+              step === s ? 'border-foreground font-semibold text-foreground' : 'border-transparent text-muted-foreground',
             )}
           >
             {idx + 1}. {s === 'upload' ? 'Subir archivo' : s === 'preview' ? 'Revisar y confirmar' : 'Listo'}

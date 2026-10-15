@@ -260,7 +260,7 @@ export default function FacturaEmitidaDetalle({ facturaId, onClose }: Props) {
                 <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
                   {factura.cliente_nombre}
                   {factura.evento && (
-                    <Link to={`/eventos/${factura.evento_id}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <Link to={`/eventos/${factura.evento_id}`} className="inline-flex items-center gap-1 text-xs text-link hover:underline">
                       <ExternalLink size={11} /> {factura.evento.nombre}
                     </Link>
                   )}

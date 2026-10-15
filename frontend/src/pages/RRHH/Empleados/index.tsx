@@ -22,6 +22,8 @@ import HistorialUniformes from '@/components/uniformes/HistorialUniformes';
 import { cn, getApiErrorMessage, getApiFieldErrors } from '@/lib/utils';
 import type { Empleado, CategoriaEmpleado, EstadoEmpleado, TipoLiquidacion } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import FilterBar from '@/components/ui/FilterBar';
+import TabStrip from '@/components/ui/TabStrip';
 
 const CATEGORIA_LABEL: Record<CategoriaEmpleado, string> = {
   CAPITAN: 'Capitán', ARMADOR: 'Armador', CHOFER: 'Chofer',
@@ -700,16 +702,15 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
               </div>
             </div>
 
-            <div className="flex border-b border-border overflow-x-auto">
-              {(['personal', 'bancarios', 'historial', 'asistencia', 'uniformes'] as const).map(t => (
-                <button key={t} onClick={() => setTab(t)} className={cn(
-                  'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px whitespace-nowrap',
-                  tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
-                )}>
-                  {t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : t === 'historial' ? 'Historial de convocatorias' : t === 'asistencia' ? 'Asistencia' : 'Uniformes'}
-                </button>
-              ))}
-            </div>
+            <TabStrip
+              variant="pill"
+              value={tab}
+              onChange={setTab}
+              items={(['personal', 'bancarios', 'historial', 'asistencia', 'uniformes'] as const).map(t => ({
+                key: t,
+                label: t === 'personal' ? 'Datos personales' : t === 'bancarios' ? 'Datos bancarios' : t === 'historial' ? 'Historial de convocatorias' : t === 'asistencia' ? 'Asistencia' : 'Uniformes',
+              }))}
+            />
 
             {tab === 'personal' ? (
               <dl className="text-sm space-y-1.5">
@@ -754,10 +755,10 @@ function EmpleadoDrawer({ empleadoId, onClose, onVerJornadas, onVerLiquidaciones
             <PrestamosSection empleadoId={empleado.id} />
 
             <div className="flex flex-col gap-2 pt-2 border-t border-border">
-              <button onClick={() => onVerJornadas(empleado.id)} className="text-sm text-primary text-left hover:underline">
+              <button onClick={() => onVerJornadas(empleado.id)} className="text-sm text-link text-left hover:underline">
                 Ver jornadas →
               </button>
-              <button onClick={() => onVerLiquidaciones(empleado.id)} className="text-sm text-primary text-left hover:underline">
+              <button onClick={() => onVerLiquidaciones(empleado.id)} className="text-sm text-link text-left hover:underline">
                 Ver liquidaciones →
               </button>
             </div>
@@ -795,32 +796,32 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 justify-between mb-4">
-        <div className="flex flex-wrap gap-2">
-          <select value={filtros.categoria ?? ''} onChange={e => setFiltros(p => ({ ...p, categoria: (e.target.value || undefined) as CategoriaEmpleado | undefined }))} className={inputCls}>
-            <option value="">Todas las categorías</option>
-            {Object.entries(CATEGORIA_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select value={filtros.estado ?? ''} onChange={e => setFiltros(p => ({ ...p, estado: (e.target.value || undefined) as EstadoEmpleado | undefined }))} className={inputCls}>
-            <option value="">Todos los estados</option>
-            {Object.entries(ESTADO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <input
-            placeholder="Buscar por nombre o DNI..."
-            value={filtros.q ?? ''}
-            onChange={e => setFiltros(p => ({ ...p, q: e.target.value || undefined }))}
-            className={cn(inputCls, 'w-56')}
-          />
-        </div>
-        <div className="flex items-center gap-2">
+      <FilterBar
+        className="mb-4"
+        actions={<>
           {user?.rol === 'ADMIN' && (
             <Button size="sm" variant="outline" onClick={() => setImportarFormOpen(true)}>
               <Upload size={14} className="mr-1.5" /> Importar desde formulario
             </Button>
           )}
           <Button size="sm" onClick={openNew}><Plus size={14} className="mr-1.5" /> Nuevo empleado</Button>
-        </div>
-      </div>
+        </>}
+      >
+        <select value={filtros.categoria ?? ''} onChange={e => setFiltros(p => ({ ...p, categoria: (e.target.value || undefined) as CategoriaEmpleado | undefined }))} className={inputCls}>
+          <option value="">Todas las categorías</option>
+          {Object.entries(CATEGORIA_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={filtros.estado ?? ''} onChange={e => setFiltros(p => ({ ...p, estado: (e.target.value || undefined) as EstadoEmpleado | undefined }))} className={inputCls}>
+          <option value="">Todos los estados</option>
+          {Object.entries(ESTADO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input
+          placeholder="Buscar por nombre o DNI..."
+          value={filtros.q ?? ''}
+          onChange={e => setFiltros(p => ({ ...p, q: e.target.value || undefined }))}
+          className={cn(inputCls, 'w-56')}
+        />
+      </FilterBar>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>

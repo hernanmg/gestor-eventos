@@ -9,6 +9,7 @@ import { useResumenFinancieroMacro, type ResumenFinancieroEmpresa } from '@/hook
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { AreaMacro } from '@/types';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Config de tabs ────────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ function RRHHTab({ data, empresaId }: { data: ResumenFinancieroEmpresa; empresaI
       <Card title="Liquidaciones pendientes de aprobación">
         <span className="text-2xl font-bold tabular-nums">{data.liquidaciones_pendientes}</span>
         {data.liquidaciones_pendientes > 0 && (
-          <Link to="/rrhh?tab=liquidaciones" className="block text-xs text-primary hover:underline mt-2">
+          <Link to="/rrhh?tab=liquidaciones" className="block text-xs text-link hover:underline mt-2">
             Ver en RRHH →
           </Link>
         )}
@@ -192,7 +193,7 @@ function StockTab({ data }: { data: ResumenFinancieroEmpresa }) {
             </span>
           )}
         </div>
-        <Link to="/stock" className="block text-xs text-primary hover:underline mt-2">Ver en Stock →</Link>
+        <Link to="/stock" className="block text-xs text-link hover:underline mt-2">Ver en Stock →</Link>
       </Card>
       <p className="text-xs text-muted-foreground">
         Asignaciones activas fuera del depósito y material en tránsito con retorno próximo quedan para una siguiente iteración.
@@ -266,20 +267,9 @@ export default function MacroMayra() {
       )}
 
       {/* Tabs de área */}
-      <div className="flex gap-1 border-b border-border">
-        {areasDisponibles.map(a => (
-          <button
-            key={a}
-            onClick={() => setTab(a)}
-            className={cn(
-              'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === a ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {TAB_LABEL[a]}
-          </button>
-        ))}
-      </div>
+      {areasDisponibles.length > 0 && tab && (
+        <TabStrip<AreaMacro> items={areasDisponibles.map(a => ({ key: a, label: TAB_LABEL[a] }))} value={tab} onChange={setTab} />
+      )}
 
       {areasDisponibles.length === 0 && (
         <p className="text-sm text-muted-foreground py-8 text-center">No tenés áreas habilitadas en la Macro. Pedile a un admin que te las configure.</p>

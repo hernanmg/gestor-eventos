@@ -20,6 +20,8 @@ import type { CuentaCorriente, TipoTercero, MonedaCCC, ProveedorBusqueda } from 
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 const TIPO_TERCERO_LABEL: Record<TipoTercero, string> = {
   PROVEEDOR: 'Proveedor',
@@ -79,7 +81,7 @@ function FilaCuenta({ c, onEdit }: { c: CuentaCorriente; onEdit: (id: number) =>
   return (
     <tr className="border-b border-border last:border-0 hover:bg-muted/30 text-sm transition-colors">
       <td className="py-2.5 px-3">
-        <Link to={`/cuentas-corrientes/${c.id}`} className="font-medium hover:underline text-primary">
+        <Link to={`/cuentas-corrientes/${c.id}`} className="font-medium hover:underline text-link">
           {c.nombre}
         </Link>
       </td>
@@ -269,7 +271,7 @@ function CuentaFormDialog({ cuentaId, onClose }: { cuentaId: number | null; onCl
               ))}
               <button
                 onClick={() => setField('partes', [...form.partes, PARTE_VACIA])}
-                className="text-xs text-primary hover:underline"
+                className="text-xs text-link hover:underline"
               >
                 + Agregar parte
               </button>
@@ -317,29 +319,22 @@ export default function CuentasCorrientesPage() {
 
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Cuentas Corrientes</h1>
-          <p className="text-sm text-muted-foreground">Saldos con terceros — clubes, proveedores especiales, socios</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={14} className="mr-1.5" /> Nueva cuenta corriente
-        </Button>
-      </div>
+      <PageHeader
+        title="Cuentas Corrientes"
+        subtitle="Saldos con terceros — clubes, proveedores especiales, socios"
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} className="mr-1.5" /> Nueva cuenta corriente
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-1">
-        {([['todas', 'Todas'], ['empresas', 'Empresas'], ['personales', 'Personales']] as const).map(([v, l]) => (
-          <button
-            key={v} type="button" onClick={() => setVista(v)}
-            className={cn(
-              'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-              vista === v ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent',
-            )}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
+      <TabStrip<Vista>
+        variant="pill"
+        value={vista}
+        onChange={setVista}
+        items={[{ key: 'todas', label: 'Todas' }, { key: 'empresas', label: 'Empresas' }, { key: 'personales', label: 'Personales' }]}
+      />
 
       <div className="flex flex-wrap gap-2 items-center">
         <select value={filtros.tipo_tercero ?? ''} onChange={e => setFiltros(f => ({ ...f, tipo_tercero: e.target.value as TipoTercero || undefined }))} className={selectCls}>

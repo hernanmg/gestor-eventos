@@ -32,6 +32,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -1339,29 +1341,19 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold text-foreground mb-6">Configuración</h1>
+      <PageHeader title="Configuración" className="mb-4" />
 
-      <div className="flex border-b border-border mb-6">
-        {([
+      <TabStrip<ActiveTab>
+        value={activeTab}
+        onChange={setActiveTab}
+        className="mb-6"
+        items={[
           { key: 'rubros',     label: 'Rubros' },
           { key: 'tabs',       label: 'Pestañas del sistema' },
           { key: 'usuarios',   label: 'Usuarios' },
           { key: 'categorias', label: 'Categorías de Stock' },
-        ] as { key: ActiveTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              activeTab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {activeTab === 'rubros'     && <RubrosSection />}
       {activeTab === 'tabs'       && <TabsSection />}

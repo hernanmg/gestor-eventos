@@ -18,6 +18,8 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Moneda } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import ParaHoy from './ParaHoy';
+import ProximosDias from './ProximosDias';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -118,7 +120,7 @@ function AlertsPanel({ alertas }: { alertas: Alerta[] }) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
         <CheckCircle2 size={16} className="shrink-0" />
-        <span className="font-medium">Sin alertas activas</span>
+        <span className="font-medium">Sin alertas en los eventos</span>
       </div>
     );
   }
@@ -128,7 +130,7 @@ function AlertsPanel({ alertas }: { alertas: Alerta[] }) {
   return (
     <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-border bg-gray-50 flex items-center justify-between">
-        <span className="text-sm font-semibold">Alertas ({alertas.length})</span>
+        <span className="text-sm font-semibold">Alertas de eventos ({alertas.length})</span>
       </div>
       <ul className="divide-y divide-border">
         {visible.map((a, i) => {
@@ -469,8 +471,13 @@ export default function KpisSection() {
   if (!resumen || !alertas) return null;
 
   return (
-    <div className="space-y-5">
+    // flex + gap (no space-y): en mobile "Para hoy" sube arriba de los KPIs con order.
+    <div className="flex flex-col gap-5">
       <MetricsRow data={resumen} />
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] max-md:order-first">
+        <ParaHoy />
+        <ProximosDias />
+      </div>
       <AlertsPanel alertas={alertas.alertas} />
       <RecentEventsTable data={resumen} />
       <EventKPISection eventosActivos={eventosActivos} />

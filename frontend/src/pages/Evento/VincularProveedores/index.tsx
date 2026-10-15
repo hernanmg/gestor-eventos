@@ -105,7 +105,7 @@ function GrupoCard({
             <button
               type="button"
               onClick={() => onUpdateEstado({ crearMode: true, proveedorSeleccionado: null })}
-              className="text-xs text-primary hover:underline"
+              className="text-xs text-link hover:underline"
             >
               + Crear proveedor con este nombre
             </button>
@@ -237,7 +237,7 @@ export default function VincularProveedoresPage() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-semibold truncate">
+          <h1 className="page-title truncate">
             Vincular proveedores
             {evento && <span className="text-muted-foreground font-normal"> — {evento.nombre}</span>}
           </h1>

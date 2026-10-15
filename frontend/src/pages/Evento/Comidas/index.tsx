@@ -428,7 +428,7 @@ export default function ComidasPage({ eventoId, canEdit }: { eventoId: number; c
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-bold">Control de Comidas</h1>
+        <h1 className="page-title">Control de Comidas</h1>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
             <button

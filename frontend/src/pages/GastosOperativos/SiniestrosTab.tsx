@@ -95,7 +95,7 @@ export default function SiniestrosTab() {
                   <td className={cn(td, 'text-right tabular-nums')}>{formatCurrency(s.total_cubierto_art)}</td>
                   <td className={cn(td, 'text-right tabular-nums font-medium')}>{formatCurrency(s.total_gastos)}</td>
                   <td className={td}>
-                    <button className="text-xs text-primary hover:underline" onClick={e => { e.stopPropagation(); navigate(`/siniestros/${s.id}`); }}>
+                    <button className="text-xs text-link hover:underline" onClick={e => { e.stopPropagation(); navigate(`/siniestros/${s.id}`); }}>
                       Ver detalle completo
                     </button>
                   </td>

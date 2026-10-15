@@ -13,6 +13,7 @@ import type { EstadoFactura, Factura, TipoComprobanteEmitido } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ function FilaFactura({ f }: { f: Factura }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-muted/30 text-sm transition-colors">
       <td className="py-2.5 px-3">
-        <Link to={`/facturas/${f.id}`} className="font-medium hover:underline text-primary">
+        <Link to={`/facturas/${f.id}`} className="font-medium hover:underline text-link">
           {f.tipo_factura} {f.numero_factura}
         </Link>
         {f.tipo_comprobante && TAG_COMPROBANTE[f.tipo_comprobante] && (
@@ -145,20 +146,18 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Facturas a Pagar</h1>
-          <p className="text-sm text-muted-foreground">Facturas de todos los eventos</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Facturas a Pagar"
+        subtitle="Facturas de todos los eventos"
+        actions={<>
           <Button size="sm" variant="outline" onClick={() => setShowImportar(true)}>
             <Upload size={14} className="mr-1.5" /> Importar libro de compras AFIP
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus size={14} className="mr-1.5" /> Nueva factura
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* KPIs */}
       {(vencidasCount > 0 || pendienteTotal > 0) && (

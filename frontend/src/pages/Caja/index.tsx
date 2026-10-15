@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wallet, Plus, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useCuentasEmpresa, useCreateCuentaEmpresa } from '@/hooks/useCaja';
 import { useEventos } from '@/hooks/useEvento';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Moneda, TipoCuenta } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── Nueva cuenta de empresa (sin evento) ──────────────────────────────────────
 
@@ -150,21 +151,18 @@ export default function CajaGlobalPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Wallet size={22} />
-          Caja Global
-        </h1>
-        {canEdit && (
+      <PageHeader
+        title="Caja Global"
+        subtitle={<>
+          Todas las cuentas de la empresa: las cajas propias de cada evento y las cajas de empresa
+          (caja chica por persona, caja de reserva, etc.) sin evento asociado.
+        </>}
+        actions={canEdit && (
           <Button size="sm" onClick={() => setNuevaOpen(true)}>
             <Plus size={14} className="mr-1.5" /> Nueva cuenta
           </Button>
         )}
-      </div>
-      <p className="text-sm text-muted-foreground -mt-2">
-        Todas las cuentas de la empresa: las cajas propias de cada evento y las cajas de empresa
-        (caja chica por persona, caja de reserva, etc.) sin evento asociado.
-      </p>
+      />
 
       {/* Vista consolidada */}
       <div className="flex flex-wrap gap-3">

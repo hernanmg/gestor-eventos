@@ -80,7 +80,7 @@ export default function EventoFacturas({ eventoId }: Props) {
                 return (
                   <tr key={f.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                     <td className="py-2 px-3">
-                      <Link to={`/facturas/${f.id}`} className="text-primary hover:underline font-medium">
+                      <Link to={`/facturas/${f.id}`} className="text-link hover:underline font-medium">
                         {f.tipo_factura} {f.numero_factura}
                       </Link>
                     </td>

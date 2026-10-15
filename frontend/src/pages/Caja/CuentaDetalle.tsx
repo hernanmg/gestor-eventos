@@ -247,7 +247,7 @@ export default function CuentaDetallePage() {
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold">{cuenta.nombre}</h1>
+            <h1 className="page-title">{cuenta.nombre}</h1>
             <EstadoBadge estado={cuenta.estado} />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">

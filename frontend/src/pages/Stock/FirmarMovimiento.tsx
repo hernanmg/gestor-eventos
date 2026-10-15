@@ -61,7 +61,7 @@ export default function FirmarMovimientoPage() {
         <button onClick={() => (step === 1 ? navigate('/stock') : reset())} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-lg font-bold">Firmar movimiento</h1>
+        <h1 className="page-title">Firmar movimiento</h1>
       </div>
 
       {confirmado ? (

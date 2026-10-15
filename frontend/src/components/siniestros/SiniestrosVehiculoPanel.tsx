@@ -418,7 +418,7 @@ export default function SiniestrosVehiculoPanel({ canEdit }: { canEdit: boolean 
                   <td className={cn(td, 'max-w-[220px] truncate')} title={terceroLabel(s)}>{terceroLabel(s)}</td>
                   <td className={td}><SiniestroVehiculoEstadoBadge estado={s.estado} /></td>
                   <td className={td}>
-                    <button className="text-xs text-primary hover:underline" onClick={e => { e.stopPropagation(); setViewingId(s.id); }}>Ver detalle</button>
+                    <button className="text-xs text-link hover:underline" onClick={e => { e.stopPropagation(); setViewingId(s.id); }}>Ver detalle</button>
                   </td>
                 </tr>
               ))}

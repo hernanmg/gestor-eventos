@@ -196,7 +196,7 @@ export default function CierreContableDetallePage() {
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             {cierre.empresa?.nombre_corto ?? cierre.empresa?.nombre} — Corte {formatDate(cierre.fecha_corte)}
           </h1>
           <div className="mt-1"><Badge variant={ESTADO_VARIANT[cierre.estado]}>{ESTADO_LABEL[cierre.estado]}</Badge></div>

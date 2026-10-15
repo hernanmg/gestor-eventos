@@ -285,7 +285,7 @@ function FilaMovimiento({ m, showEmpresa, onUpdate }: {
     <tr className="border-b border-border last:border-0 hover:bg-muted/30 text-sm transition-colors">
       {showEmpresa && <td className="py-2.5 px-3 text-xs text-muted-foreground">{m.empresa_nombre ?? '—'}</td>}
       <td className="py-2.5 px-3">
-        <Link to={`/eventos/${m.evento_id}`} className="hover:underline text-primary font-medium">{m.evento_nombre ?? '—'}</Link>
+        <Link to={`/eventos/${m.evento_id}`} className="hover:underline text-link font-medium">{m.evento_nombre ?? '—'}</Link>
       </td>
       <td className="py-2.5 px-3 text-muted-foreground">{m.rubro_nombre ?? '—'}</td>
       <td className="py-2.5 px-3"><TipoBadge tipo={m.tipo} /></td>
@@ -313,7 +313,7 @@ function FilaMovimiento({ m, showEmpresa, onUpdate }: {
       </td>
       <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(m.fecha_pago)}</td>
       <td className="py-2.5 px-3">
-        <Link to={`/eventos/${m.evento_id}`} className="text-primary hover:underline inline-flex items-center gap-1 text-xs">
+        <Link to={`/eventos/${m.evento_id}`} className="text-link hover:underline inline-flex items-center gap-1 text-xs">
           <Eye size={12} /> Ver
         </Link>
       </td>
@@ -331,7 +331,7 @@ function CardMovimiento({ m, onUpdate }: {
     <div className="border border-border rounded-lg bg-card p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <Link to={`/eventos/${m.evento_id}`} className="font-medium text-primary hover:underline text-sm block truncate">
+          <Link to={`/eventos/${m.evento_id}`} className="font-medium text-link hover:underline text-sm block truncate">
             {m.evento_nombre ?? '—'}
           </Link>
           <p className="text-xs text-muted-foreground truncate">{m.rubro_nombre ?? '—'}</p>

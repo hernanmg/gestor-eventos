@@ -201,8 +201,8 @@ function FilaMovimiento({ m, onDelete, deleting }: { m: MovimientoCCC; onDelete:
         <div>{m.concepto}</div>
         {m.descripcion && <div className="text-xs text-muted-foreground">{m.descripcion}</div>}
         <div className="flex gap-2 mt-0.5">
-          {m.factura && <Link to={`/facturas/${m.factura.id}`} className="text-xs text-primary hover:underline">Fact. {m.factura.numero_factura}</Link>}
-          {m.evento  && <Link to={`/eventos/${m.evento.id}`} className="text-xs text-primary hover:underline">{m.evento.nombre}</Link>}
+          {m.factura && <Link to={`/facturas/${m.factura.id}`} className="text-xs text-link hover:underline">Fact. {m.factura.numero_factura}</Link>}
+          {m.evento  && <Link to={`/eventos/${m.evento.id}`} className="text-xs text-link hover:underline">{m.evento.nombre}</Link>}
         </div>
       </td>
       <td className="py-2 px-3 text-right font-medium text-green-700">{esDebe ? formatCurrency(Math.abs(m.monto), m.moneda) : ''}</td>
@@ -212,7 +212,7 @@ function FilaMovimiento({ m, onDelete, deleting }: { m: MovimientoCCC; onDelete:
       <td className="py-2 px-3 text-xs text-muted-foreground">{m.tasa_cambio ?? '—'}</td>
       <td className="py-2 px-3">
         {m.documento_nombre ? (
-          <a href={getDocumentoUrl(m.id)} target="_blank" rel="noreferrer" title={m.documento_nombre} className="text-muted-foreground hover:text-primary">
+          <a href={getDocumentoUrl(m.id)} target="_blank" rel="noreferrer" title={m.documento_nombre} className="text-muted-foreground hover:text-link">
             <Paperclip size={14} />
           </a>
         ) : '—'}
@@ -293,7 +293,7 @@ export default function CuentaCorrienteDetalle() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold">{cuenta.nombre}</h1>
+          <h1 className="page-title">{cuenta.nombre}</h1>
           <p className="text-sm text-muted-foreground">
             {terceroNombre}{terceroCuit ? ` — CUIT ${terceroCuit}` : ''}
           </p>

@@ -8,6 +8,7 @@ import { PresupuestoEstadoBadge, PRESUPUESTO_LABEL } from '@/components/ui/badge
 import BaseTable from '@/components/ui/BaseTable';
 import { formatCurrency } from '@/lib/formatters';
 import type { EstadoPresupuesto } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
 
 // Presupuestos de rental por evento (DOS57) — Nivel 1, sólo ADMIN
 
@@ -26,16 +27,16 @@ export default function PresupuestosPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1300px] mx-auto">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Calculator size={22} /> Presupuestos</h1>
-        <div className="flex gap-2">
+      <PageHeader
+        title="Presupuestos"
+        actions={<>
           <select value={estado} onChange={e => setEstado(e.target.value as EstadoPresupuesto | '')} className="border border-input rounded px-2 py-1.5 text-sm bg-white">
             <option value="">Todos los estados</option>
             {(Object.keys(PRESUPUESTO_LABEL) as EstadoPresupuesto[]).map(e => <option key={e} value={e}>{PRESUPUESTO_LABEL[e]}</option>)}
           </select>
           <Button size="sm" onClick={() => navigate('/presupuestos/nuevo')}><Plus size={14} className="mr-1.5" /> Nuevo presupuesto</Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : presupuestos.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">

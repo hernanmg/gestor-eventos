@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Evento } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function EventosPage() {
   const navigate = useNavigate();
@@ -109,10 +110,11 @@ export default function EventosPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Eventos</h1>
-        {canEdit && (
-          <div className="flex items-center gap-2">
+      <PageHeader
+        title="Eventos"
+        className="mb-6"
+        actions={canEdit && (
+          <>
             <Button onClick={handleNew} size="sm" disabled={createPreMacro.isPending}>
               <Plus size={16} className="mr-1.5" />
               Nuevo evento
@@ -121,9 +123,9 @@ export default function EventosPage() {
               <Zap size={16} className="mr-1.5" />
               Carga rápida
             </Button>
-          </div>
+          </>
         )}
-      </div>
+      />
 
       {/* Filtros rápidos */}
       <div className="flex items-center gap-2 mb-4">

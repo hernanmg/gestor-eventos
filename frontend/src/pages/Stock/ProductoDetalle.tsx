@@ -64,7 +64,7 @@ export default function ProductoDetallePage() {
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             {!fotoUrl && <Package size={20} className="text-muted-foreground" />}
-            <h1 className="text-2xl font-bold">{producto.nombre}</h1>
+            <h1 className="page-title">{producto.nombre}</h1>
             {producto.es_critico && (
               <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>
             )}

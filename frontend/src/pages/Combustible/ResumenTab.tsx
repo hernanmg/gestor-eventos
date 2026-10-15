@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { Truck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useResumenMensualCombustible, useResumenSemanalCombustible } from '@/hooks/useCombustible';
 import { formatCurrency, formatLitros } from '@/lib/formatters';
-import { cn } from '@/lib/utils';
 import { PrintButton, PrintHeader } from '@/components/ui/PrintSection';
 import BaseTable from '@/components/ui/BaseTable';
+import TabStrip from '@/components/ui/TabStrip';
 
 const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
 
@@ -229,24 +229,16 @@ export default function ResumenTab() {
   return (
     <div className="space-y-4">
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
-        <div className="flex border-b border-border">
-          {([
+        <TabStrip<SubTab>
+          variant="pill"
+          value={subTab}
+          onChange={setSubTab}
+          items={[
             { key: 'semana',   label: 'Por semana' },
             { key: 'mes',      label: 'Por mes' },
             { key: 'vehiculo', label: 'Por vehículo' },
-          ] as { key: SubTab; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setSubTab(key)}
-              className={cn(
-                'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                subTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
         {subTab !== 'semana' && (
           <input
             type="month"

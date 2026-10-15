@@ -32,7 +32,7 @@ function ContenidoSection({ contenido, pathname, onNavigate }: {
           key={i}
           to={resolveRuta(t.ruta, pathname)}
           onClick={onNavigate}
-          className="text-primary font-medium hover:underline"
+          className="text-link font-medium hover:underline"
         >
           {t.texto}
         </Link>
@@ -48,7 +48,7 @@ function VerTambien({ links, pathname, onNavigate }: { links: HelpInlineLink[]; 
       Ver también:{' '}
       {links.map((l, i) => (
         <span key={i}>
-          <Link to={resolveRuta(l.ruta, pathname)} onClick={onNavigate} className="text-primary hover:underline">
+          <Link to={resolveRuta(l.ruta, pathname)} onClick={onNavigate} className="text-link hover:underline">
             {l.texto}
           </Link>
           {i < links.length - 1 && ' · '}
@@ -225,7 +225,7 @@ export default function HelpPanel() {
                         key={i}
                         onClick={() => handleLink(link)}
                         disabled={isLoading}
-                        className="flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50 disabled:cursor-wait"
+                        className="flex items-center gap-1.5 text-sm text-link hover:underline disabled:opacity-50 disabled:cursor-wait"
                       >
                         {isLoading
                           ? <Loader2 size={12} className="animate-spin shrink-0" />
@@ -252,7 +252,7 @@ export default function HelpPanel() {
                   <li key={l.ruta}>
                     <button
                       onClick={() => handleLink(l)}
-                      className="flex items-center gap-1 text-primary hover:underline"
+                      className="flex items-center gap-1 text-link hover:underline"
                     >
                       <ChevronRight size={12} />
                       {l.label}
@@ -269,7 +269,8 @@ export default function HelpPanel() {
       <button
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'no-print fixed bottom-5 right-5 z-50 flex items-center justify-center',
+          // En mobile, por encima de la barra inferior de navegación (MobileTabBar)
+          'no-print fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 md:bottom-5 md:right-5 z-50 flex items-center justify-center',
           'h-10 w-10 rounded-full shadow-lg transition-colors',
           open
             ? 'bg-primary text-primary-foreground'

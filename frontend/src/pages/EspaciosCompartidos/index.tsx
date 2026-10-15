@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/formatters';
 import { getApiErrorMessage } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import PageHeader from '@/components/ui/PageHeader';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -114,7 +115,7 @@ function NuevoEspacioDialog({ open, onClose }: { open: boolean; onClose: () => v
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => setPartes([...partes, PARTE_VACIA])} className="text-xs text-primary hover:underline mt-2">
+            <button type="button" onClick={() => setPartes([...partes, PARTE_VACIA])} className="text-xs text-link hover:underline mt-2">
               + Agregar parte
             </button>
             <p className={cn('text-xs mt-1', sumaInfo.clase)}>{sumaInfo.texto}</p>
@@ -168,15 +169,14 @@ export default function EspaciosCompartidosPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Building2 size={22} />
-          Espacios Compartidos
-        </h1>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus size={14} className="mr-1.5" /> Nuevo espacio
-        </Button>
-      </div>
+      <PageHeader
+        title="Espacios Compartidos"
+        actions={
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus size={14} className="mr-1.5" /> Nuevo espacio
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando…</p>

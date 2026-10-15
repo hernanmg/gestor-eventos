@@ -69,10 +69,18 @@ const config: Config = {
       screens: { '2xl': '1400px' },
     },
     extend: {
+      // Geist para la interfaz, Geist Mono para montos/patentes/CUIT (index.html
+      // carga las dos de Google Fonts). Si no cargan, queda la del sistema.
+      fontFamily: {
+        sans: ['Geist', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
+        mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
+      },
       colors: {
         border:      'hsl(var(--border))',
         input:       'hsl(var(--input))',
         ring:        'hsl(var(--ring))',
+        // Links en texto (index.css --link). text-primary ya no es azul.
+        link:        'hsl(var(--link))',
         background:  'hsl(var(--background))',
         foreground:  'hsl(var(--foreground))',
         primary: {

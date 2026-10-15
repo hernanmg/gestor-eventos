@@ -291,7 +291,7 @@ export function SiniestroDrawer({ id, canEdit, onClose }: { id: number; canEdit:
             {(siniestro.documentos ?? []).map(d => (
               <div key={d.id} className="flex items-center justify-between text-sm bg-muted/20 rounded px-2 py-1.5">
                 <span>{d.nombre}</span>
-                <a href={documentoSiniestroUrl(id, d.id)} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1 text-xs"><Download size={12} /> Descargar</a>
+                <a href={documentoSiniestroUrl(id, d.id)} target="_blank" rel="noreferrer" className="text-link hover:underline inline-flex items-center gap-1 text-xs"><Download size={12} /> Descargar</a>
               </div>
             ))}
             {(siniestro.documentos ?? []).length === 0 && <p className="text-sm text-muted-foreground">Sin documentos.</p>}

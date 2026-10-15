@@ -14,6 +14,7 @@ import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { EstadoAsistencia, RegistroAsistencia, PresentismoHoyItem } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -449,7 +450,7 @@ export default function PresentismoPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <h1 className="text-xl font-semibold mb-4">Control de Presentismo</h1>
+      <PageHeader title="Control de Presentismo" className="mb-4" />
       {necesitaCambiarADos57 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <span>Presentismo es de DOS57 — tu empresa activa es {user?.empresa?.nombre_corto ?? user?.empresa?.nombre ?? 'otra'}.</span>

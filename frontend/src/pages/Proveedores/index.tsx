@@ -15,6 +15,7 @@ import ImportarFormularioDialog from '@/components/domain/ImportarFormularioDial
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── CUIT formatter ────────────────────────────────────────────────────────────
 
@@ -187,19 +188,20 @@ export default function ProveedoresPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Proveedores</h1>
-        {user?.rol === 'ADMIN' && (
-          <div className="flex items-center gap-2">
+      <PageHeader
+        title="Proveedores"
+        className="mb-6"
+        actions={user?.rol === 'ADMIN' && (
+          <>
             <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
               <Upload size={14} className="mr-1.5" /> Importar desde formulario
             </Button>
             <Button size="sm" onClick={openNew}>
               <Plus size={14} className="mr-1.5" /> Nuevo proveedor
             </Button>
-          </div>
+          </>
         )}
-      </div>
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">

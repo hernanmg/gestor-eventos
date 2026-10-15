@@ -30,6 +30,7 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { AsignacionDiaria, EstadoAsignacionDiaria } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -451,12 +452,14 @@ export default function ParteDiarioPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">Parte Diario de Personal</h1>
-        <Link to="/parte-diario/historial" className="text-sm text-primary hover:underline flex items-center gap-1.5">
-          <History size={14} /> Ver historial
-        </Link>
-      </div>
+      <PageHeader
+        title="Parte Diario de Personal"
+        actions={
+          <Link to="/parte-diario/historial" className="text-sm text-link hover:underline flex items-center gap-1.5">
+            <History size={14} /> Ver historial
+          </Link>
+        }
+      />
 
       {/* Selector de fecha */}
       <div className="flex items-center gap-2">

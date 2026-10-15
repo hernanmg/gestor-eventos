@@ -17,6 +17,7 @@ import type { EstadoFacturaEmitida, FacturaEmitida, TipoComprobanteEmitido, Mone
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 const ESTADOS: EstadoFacturaEmitida[] = ['EMITIDA', 'COBRADA_PARCIAL', 'COBRADA', 'INCOBRABLE', 'ANULADA'];
 const MS_DIA = 86_400_000;
@@ -166,15 +167,15 @@ export default function FacturasEmitidasPage() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Facturas a Cobrar</h1>
-          <p className="text-sm text-muted-foreground">Facturas emitidas a clientes</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={14} className="mr-1.5" /> Nueva factura
-        </Button>
-      </div>
+      <PageHeader
+        title="Facturas a Cobrar"
+        subtitle="Facturas emitidas a clientes"
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} className="mr-1.5" /> Nueva factura
+          </Button>
+        }
+      />
 
       <ResumenCards />
 

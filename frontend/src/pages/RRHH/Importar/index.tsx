@@ -4,6 +4,8 @@ import { useImportarEmpleados, useImportarJornadas } from '@/hooks/useRRHH';
 import { Button } from '@/components/ui/button';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Dropzone genérico ─────────────────────────────────────────────────────────
 
@@ -224,21 +226,13 @@ export default function RRHHImportarPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold text-foreground mb-6">Importar RRHH</h1>
-      <div className="flex border-b border-border mb-6">
-        {([{ key: 'empleados', label: 'Importar empleados' }, { key: 'jornadas', label: 'Importar jornadas' }] as const).map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageHeader title="Importar RRHH" className="mb-4" />
+      <TabStrip<'empleados' | 'jornadas'>
+        value={tab}
+        onChange={setTab}
+        className="mb-6"
+        items={[{ key: 'empleados', label: 'Importar empleados' }, { key: 'jornadas', label: 'Importar jornadas' }]}
+      />
       {tab === 'empleados' ? <ImportarEmpleados /> : <ImportarJornadas />}
     </div>
   );

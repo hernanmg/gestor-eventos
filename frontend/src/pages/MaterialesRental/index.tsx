@@ -13,6 +13,8 @@ import BaseTable from '@/components/ui/BaseTable';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
 import type { MaterialRental, ImportarMaterialesResultado, OrigenMaterialRental } from '@/types';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 // Catálogo de materiales de rental (DOS57) — planilla DOS57_BASE MATRICES_RENTAL COST,
 // hojas RENTAL COSTS (NAC.) e (IMP.). Sólo ADMIN.
@@ -233,24 +235,28 @@ export default function MaterialesRentalPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1500px] mx-auto">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Boxes size={22} /> Ítems de rental</h1>
-        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}><Upload size={14} className="mr-1.5" /> Importar Excel</Button>
-      </div>
+      <PageHeader
+        title="Ítems de rental"
+        actions={<Button size="sm" variant="outline" onClick={() => setImportOpen(true)}><Upload size={14} className="mr-1.5" /> Importar Excel</Button>}
+      />
 
       <IndicadoresWidget />
 
-      <div className="flex flex-wrap items-center gap-3 border-b">
-        {(['NAC', 'IMP'] as const).map(o => (
-          <button key={o} onClick={() => setTab(o)}
-            className={cn('px-3 py-2 text-sm -mb-px border-b-2', tab === o ? 'border-primary font-medium' : 'border-transparent text-muted-foreground hover:text-foreground')}>
-            {o === 'NAC' ? 'Nacionales' : 'Importados Layher'} <span className="text-xs text-muted-foreground">({cantidades[o]})</span>
-          </button>
-        ))}
+      <div className="flex flex-wrap items-end gap-3">
+        <TabStrip
+          className="flex-1"
+          value={tab}
+          onChange={setTab}
+          items={(['NAC', 'IMP'] as const).map(o => ({
+            key: o,
+            label: o === 'NAC' ? 'Nacionales' : 'Importados Layher',
+            badge: <span className="text-xs font-normal text-muted-foreground">({cantidades[o]})</span>,
+          }))}
+        />
         <input
           value={buscar} onChange={e => setBuscar(e.target.value)}
           placeholder={tab === 'NAC' ? 'Buscar por detalle…' : 'Buscar por detalle o código…'}
-          className="ml-auto mb-1 border border-input rounded px-2 py-1.5 text-sm w-72 bg-white"
+          className="border border-input rounded px-2 py-1.5 text-sm w-full sm:w-72 bg-white"
         />
       </div>
 

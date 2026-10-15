@@ -33,6 +33,7 @@ import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
 import type { Rubro } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import TabStrip, { TabCount } from '@/components/ui/TabStrip';
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ export default function EventoPage() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{evento.nombre}</h1>
+          <h1 className="page-title truncate">{evento.nombre}</h1>
         </div>
         <EstadoBadge estado={evento.estado} />
         {evento.es_informal && <InformalBadge />}
@@ -480,27 +481,16 @@ export default function EventoPage() {
       )}
 
       {/* Main tab navigation */}
-      <div className="flex border-b border-border bg-white shrink-0 px-6">
-        {MAIN_TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => handleMainTab(key)}
-            className={cn(
-              'relative px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              mainTab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-            {key === 'ECHEQS' && alertasCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full bg-red-500 text-white">
-                {alertasCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <TabStrip<MainTab>
+        className="bg-white shrink-0 px-4 md:px-6"
+        value={mainTab}
+        onChange={handleMainTab}
+        items={MAIN_TABS.map(({ key, label }) => ({
+          key,
+          label,
+          badge: key === 'ECHEQS' ? <TabCount count={alertasCount} /> : undefined,
+        }))}
+      />
 
       {/* Sub-selector de rubro (Egresos / Ingresos) */}
       {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subRubros.length > 0 && (

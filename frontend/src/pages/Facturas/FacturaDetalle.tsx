@@ -335,7 +335,7 @@ export default function FacturaDetalle() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold">
+          <h1 className="page-title">
             Factura {factura.tipo_factura} {factura.numero_factura}
           </h1>
           <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">

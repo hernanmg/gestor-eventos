@@ -251,7 +251,7 @@ export default function PresupuestoEditorPage() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <Link to="/presupuestos" className="text-muted-foreground hover:text-foreground"><ArrowLeft size={18} /></Link>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             <Calculator size={22} />
             {presupuesto ? presupuesto.nombre : 'Nuevo presupuesto'}
             {presupuesto && presupuesto.version > 1 && <span className="text-sm font-normal text-muted-foreground">v{presupuesto.version}</span>}

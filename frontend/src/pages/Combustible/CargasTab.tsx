@@ -18,6 +18,7 @@ import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency, formatLitros } from '@/lib/formatters';
 import type { CargaCombustible, TipoCombustible } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import FilterBar from '@/components/ui/FilterBar';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -396,33 +397,9 @@ export default function CargasTab() {
     <div className="space-y-4">
       <PrintHeader titulo="Combustible — Cargas del mes" periodo={`${String(mesFiltro).padStart(2, '0')}/${anioFiltro}`} />
 
-      <div className="no-print flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          <select value={filtros.camion_id ?? ''} onChange={e => setFiltros(f => ({ ...f, camion_id: e.target.value ? Number(e.target.value) : undefined }))} className={selectCls}>
-            <option value="">Todos los vehículos</option>
-            {vehiculos.map(v => <option key={v.id} value={v.id}>{v.codigo}</option>)}
-          </select>
-          <input
-            type="month"
-            value={`${filtros.anio}-${String(filtros.mes).padStart(2, '0')}`}
-            onChange={e => {
-              const [anio, mes] = e.target.value.split('-').map(Number);
-              setFiltros(f => ({ ...f, anio, mes }));
-            }}
-            className={selectCls}
-          />
-          <select value={filtros.evento_id ?? ''} onChange={e => setFiltros(f => ({ ...f, evento_id: e.target.value ? Number(e.target.value) : undefined }))} className={selectCls}>
-            <option value="">Todos los eventos</option>
-            {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
-          </select>
-          <select value={filtros.estado ?? ''} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value || undefined }))} className={selectCls}>
-            <option value="">Todos los estados</option>
-            <option value="AUTORIZADA">Autorizada</option>
-            <option value="PENDIENTE_AUTORIZACION">Pendiente</option>
-            <option value="RECHAZADA">Rechazada</option>
-          </select>
-        </div>
-        <div className="flex gap-2">
+      <FilterBar
+        className="no-print"
+        actions={<>
           <PrintButton />
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <Upload size={14} className="mr-1.5" /> Importar Excel
@@ -430,8 +407,32 @@ export default function CargasTab() {
           <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
             <Plus size={14} className="mr-1.5" /> Nueva carga
           </Button>
-        </div>
-      </div>
+        </>}
+      >
+        <select value={filtros.camion_id ?? ''} onChange={e => setFiltros(f => ({ ...f, camion_id: e.target.value ? Number(e.target.value) : undefined }))} className={selectCls}>
+          <option value="">Todos los vehículos</option>
+          {vehiculos.map(v => <option key={v.id} value={v.id}>{v.codigo}</option>)}
+        </select>
+        <input
+          type="month"
+          value={`${filtros.anio}-${String(filtros.mes).padStart(2, '0')}`}
+          onChange={e => {
+            const [anio, mes] = e.target.value.split('-').map(Number);
+            setFiltros(f => ({ ...f, anio, mes }));
+          }}
+          className={selectCls}
+        />
+        <select value={filtros.evento_id ?? ''} onChange={e => setFiltros(f => ({ ...f, evento_id: e.target.value ? Number(e.target.value) : undefined }))} className={selectCls}>
+          <option value="">Todos los eventos</option>
+          {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
+        </select>
+        <select value={filtros.estado ?? ''} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value || undefined }))} className={selectCls}>
+          <option value="">Todos los estados</option>
+          <option value="AUTORIZADA">Autorizada</option>
+          <option value="PENDIENTE_AUTORIZACION">Pendiente</option>
+          <option value="RECHAZADA">Rechazada</option>
+        </select>
+      </FilterBar>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>

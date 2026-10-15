@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export default function ProveedorDetallePage() {
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-semibold">
+            <h1 className="page-title">
               {proveedor.nombre}
               {proveedor.alias && (
                 <span className="text-muted-foreground font-normal text-lg ml-2">({proveedor.alias})</span>
@@ -233,25 +234,15 @@ export default function ProveedorDetallePage() {
 
       {/* Historial tabs */}
       <div>
-        <div className="flex border-b border-border mb-4">
-          {([
+        <TabStrip<HistorialTab>
+          className="mb-4"
+          value={histTab}
+          onChange={setHistTab}
+          items={[
             { key: 'movimientos', label: 'Movimientos' },
             { key: 'echeqs',      label: 'Echeqs' },
-          ] as { key: HistorialTab; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setHistTab(key)}
-              className={cn(
-                'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-                histTab === key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
 
         {histTab === 'movimientos' && (
           <div className="overflow-x-auto">

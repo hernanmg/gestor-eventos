@@ -19,6 +19,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 import type { LineaGastoEspacio, ParteEspacio, GastoTipoEspacio, EspacioCompartido } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import TabStrip from '@/components/ui/TabStrip';
 
 const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -611,7 +612,7 @@ function TabConfiguracion({ espacio, partes, gastosTipo }: { espacio: EspacioCom
                   {p.cuenta_corriente ? (
                     <>
                       Cuenta corriente: {p.cuenta_corriente.nombre}{' '}
-                      <Link to={`/cuentas-corrientes/${p.cuenta_corriente.id}`} className="text-primary hover:underline inline-flex items-center gap-0.5">
+                      <Link to={`/cuentas-corrientes/${p.cuenta_corriente.id}`} className="text-link hover:underline inline-flex items-center gap-0.5">
                         Ver <ExternalLink size={10} />
                       </Link>
                     </>
@@ -711,30 +712,21 @@ export default function EspacioCompartidoDetallePage() {
       </button>
 
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Building2 size={22} /> {espacio.nombre}</h1>
+        <h1 className="page-title flex items-center gap-2"><Building2 size={22} /> {espacio.nombre}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {espacio.partes.map(p => `${p.nombre} ${Number(p.porcentaje)}%`).join(' · ')}
         </p>
       </div>
 
-      <div className="flex border-b border-border overflow-x-auto">
-        {([
+      <TabStrip<Tab>
+        value={tab}
+        onChange={key => { setTab(key); if (key === 'mes') setMesSeleccionado(hoyMesAnio()); }}
+        items={[
           { key: 'mes',           label: 'Mes actual' },
           { key: 'historial',     label: 'Historial' },
           { key: 'configuracion', label: 'Configuración' },
-        ] as { key: Tab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => { setTab(key); if (key === 'mes') setMesSeleccionado(hoyMesAnio()); }}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
-              tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {tab === 'mes' && <TabMes espacioId={espacioId} espacioNombre={espacio.nombre} mes={mes} anio={anio} />}
       {tab === 'historial' && (
