@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import type {
   VehiculoFlota, VehiculoFlotaDetalle, SeguroVehiculo, PatenteVehiculo,
   GastoPeaje, ServicioTaller, AlertaFlotaItem, Moneda,
+  CarnetEmpleado, ControlSalidaVehiculo, SugerenciaControlSalida, OpcionesControlSalida, EstadoControlSalida,
 } from '@/types';
 
 const KEY = ['flota'] as const;
@@ -47,6 +48,8 @@ export interface VehiculoPayload {
   color?:          string | null;
   titular?:        string | null;
   numero_telepase?: string | null;
+  tipo_tecnica?:        'RTO' | 'ITV' | 'VTV' | 'ITU' | null;
+  vencimiento_tecnica?: string | null; // YYYY-MM-DD
 }
 
 export function useCreateVehiculoFlota() {
@@ -73,6 +76,21 @@ export function useDarDeBajaVehiculo() {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: [...KEY, 'vehiculos'] });
       qc.invalidateQueries({ queryKey: [...KEY, 'seguros'] });
+      invalidateCalendario(qc);
+    },
+  });
+}
+
+// RTO/ITV — endpoint propio que también puede usar OPERADOR (Lorena)
+export function useUpdateTecnicaVehiculo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number; tipo_tecnica: 'RTO' | 'ITV' | 'VTV' | 'ITU' | null; vencimiento_tecnica: string | null }) =>
+      api.put<VehiculoFlota>(`/flota/vehiculos/${id}/tecnica`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...KEY, 'vehiculos'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'alertas'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'controles-salida'] });
       invalidateCalendario(qc);
     },
   });
@@ -395,6 +413,115 @@ export function useImportarPizarraFlota() {
       qc.invalidateQueries({ queryKey: [...KEY, 'seguros'] });
       invalidateCalendario(qc);
     },
+  });
+}
+
+// ── Carnets de conducir (Lorena) ─────────────────────────────────────────────
+
+export function useCarnets() {
+  return useQuery({
+    queryKey: [...KEY, 'carnets'],
+    queryFn:  () => api.get<CarnetEmpleado[]>('/flota/carnets').then(r => r.data),
+  });
+}
+
+export interface CarnetPayload {
+  licencia_conducir:    boolean;
+  licencia_categoria:   string | null;
+  licencia_numero:      string | null;
+  licencia_vencimiento: string | null; // YYYY-MM-DD
+}
+
+export function useUpdateCarnet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ empleadoId, ...data }: CarnetPayload & { empleadoId: number }) =>
+      api.put<CarnetEmpleado>(`/flota/carnets/${empleadoId}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...KEY, 'carnets'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'alertas'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'controles-salida'] });
+      invalidateCalendario(qc);
+    },
+  });
+}
+
+// ── Control de salida de vehículos ────────────────────────────────────────────
+
+export interface ControlSalidaFiltros {
+  desde?:  string;
+  hasta?:  string;
+  estado?: EstadoControlSalida;
+}
+
+export function useControlesSalida(filtros: ControlSalidaFiltros) {
+  return useQuery({
+    queryKey: [...KEY, 'controles-salida', filtros],
+    queryFn:  () => api.get<ControlSalidaVehiculo[]>('/flota/controles-salida', { params: filtros }).then(r => r.data),
+  });
+}
+
+export function useSugeridosControlSalida(fecha: string) {
+  return useQuery({
+    queryKey: [...KEY, 'controles-salida', 'sugeridos', fecha],
+    queryFn:  () => api.get<{ fecha: string; items: SugerenciaControlSalida[] }>('/flota/controles-salida/sugeridos', { params: { fecha } }).then(r => r.data),
+    enabled:  !!fecha,
+  });
+}
+
+export function useOpcionesControlSalida(enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, 'controles-salida', 'opciones'],
+    queryFn:  () => api.get<OpcionesControlSalida>('/flota/controles-salida/opciones').then(r => r.data),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface ControlSalidaPayload {
+  camion_id?:           number;
+  fecha_salida?:        string;
+  chofer_id?:           number | null;
+  chofer_nombre?:       string | null;
+  evento_id?:           number | null;
+  destino?:             string | null;
+  check_tarjeta_verde?: boolean;
+  check_seguro?:        boolean;
+  check_tecnica?:       boolean;
+  check_carnet?:        boolean;
+  estado?:              EstadoControlSalida;
+  revisado_por?:        string | null;
+  observaciones?:       string | null;
+}
+
+function invalidarControles(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: [...KEY, 'controles-salida'] });
+  qc.invalidateQueries({ queryKey: ['notificaciones'] });
+  invalidateCalendario(qc);
+}
+
+export function useCreateControlSalida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ControlSalidaPayload) => api.post<ControlSalidaVehiculo>('/flota/controles-salida', data).then(r => r.data),
+    onSuccess:  () => invalidarControles(qc),
+  });
+}
+
+export function useUpdateControlSalida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: ControlSalidaPayload & { id: number }) =>
+      api.put<ControlSalidaVehiculo>(`/flota/controles-salida/${id}`, data).then(r => r.data),
+    onSuccess:  () => invalidarControles(qc),
+  });
+}
+
+export function useDeleteControlSalida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/flota/controles-salida/${id}`).then(r => r.data),
+    onSuccess:  () => invalidarControles(qc),
   });
 }
 

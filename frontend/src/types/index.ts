@@ -915,7 +915,15 @@ export interface Camion {
   capacidad_combustible?: string | null;
   tipo_vehiculo?:         string | null;
   notas?:                 string | null;
+  // ── Revisión técnica (RTO/ITV) ────────────────────────────────────────────
+  tipo_tecnica?:          'RTO' | 'ITV' | 'VTV' | 'ITU' | null;
+  vencimiento_tecnica?:   string | null;
+  // Calculados por el backend en /flota/vehiculos
+  requiere_tecnica?:      boolean;
+  estado_tecnica?:        EstadoVencimiento | null;
 }
+
+export type EstadoVencimiento = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO';
 
 // ── Flota — seguros, patentes, peajes, taller ─────────────────────────────────
 
@@ -1004,12 +1012,106 @@ export interface ServicioTaller {
 
 export interface AlertaFlotaItem {
   id:       string;
-  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO';
+  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO' | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE';
   titulo:   string;
   fecha:    string;
   color:    string;
   urgencia: UrgenciaCalendario;
   metadata: Record<string, unknown>;
+}
+
+// ── Documentación de flota (Lorena) — carnets, control de salida, multas ──────
+
+export type EstadoCarnet = EstadoVencimiento | 'SIN_VENCIMIENTO' | 'SIN_CARNET';
+
+export interface CarnetEmpleado {
+  id: number; nombre: string; apellido: string; apodo: string | null; categoria: CategoriaEmpleado;
+  licencia_conducir:    boolean;
+  licencia_categoria:   string | null;
+  licencia_numero:      string | null;
+  licencia_vencimiento: string | null;
+  estado_carnet:        EstadoCarnet;
+}
+
+export type EstadoControlSalida = 'PENDIENTE' | 'REVISADO' | 'OBSERVADO';
+
+export interface AlertaDocumental {
+  tipo:    'BAJA' | 'SEGURO' | 'TECNICA' | 'CARNET' | 'CHOFER';
+  nivel:   'rojo' | 'amarillo';
+  mensaje: string;
+}
+
+export interface ControlSalidaVehiculo {
+  id:                  number;
+  camion_id:           number;
+  camion:              { id: number; codigo: string; patente: string | null; descripcion: string | null; tipo_vehiculo: string | null; en_servicio: boolean };
+  fecha_salida:        string;
+  chofer_id:           number | null;
+  chofer:              { id: number; nombre: string; apellido: string; apodo: string | null } | null;
+  chofer_nombre:       string | null;
+  evento_id:           number | null;
+  evento:              { id: number; nombre: string } | null;
+  destino:             string | null;
+  check_tarjeta_verde: boolean;
+  check_seguro:        boolean;
+  check_tecnica:       boolean;
+  check_carnet:        boolean;
+  estado:              EstadoControlSalida;
+  revisado_por:        string | null;
+  revisado_at:         string | null;
+  observaciones:       string | null;
+  alertas:             AlertaDocumental[];
+  semaforo:            'verde' | 'amarillo' | 'rojo';
+}
+
+export interface SugerenciaControlSalida {
+  camion_id:     number;
+  camion:        { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  chofer_id:     number | null;
+  chofer_nombre: string | null;
+  evento:        { id: number; nombre: string } | null;
+  destino:       string | null;
+  origen:        string;
+}
+
+export interface OpcionesControlSalida {
+  vehiculos: { id: number; codigo: string; patente: string | null; descripcion: string | null; en_servicio: boolean }[];
+  empleados: { id: number; nombre: string; apellido: string; apodo: string | null; licencia_conducir: boolean }[];
+  eventos:   { id: number; nombre: string; fecha_inicio: string | null }[];
+}
+
+export type TipoMulta   = 'TRANSITO' | 'INTERNA';
+export type EstadoMulta = 'PENDIENTE' | 'PAGADA' | 'ANULADA';
+
+export interface Multa {
+  id:                     number;
+  tipo:                   TipoMulta;
+  fecha:                  string;
+  camion_id:              number | null;
+  camion:                 { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_texto:          string | null;
+  empleado_id:            number | null;
+  empleado:               { id: number; nombre: string; apellido: string; apodo: string | null } | null;
+  empleado_nombre_manual: string | null;
+  lugar:                  string | null;
+  motivo:                 string;
+  numero_acta:            string | null;
+  fecha_vencimiento:      string | null;
+  monto:                  number;
+  estado:                 EstadoMulta;
+  fecha_pago:             string | null;
+  medio_pago:             string | null;
+  descontar_empleado:     boolean;
+  anticipo:               { id: number; descontado: boolean } | null;
+  observaciones:          string | null;
+  estado_vencimiento:     EstadoVencimiento | null;
+  descontada:             boolean;
+}
+
+export interface ResumenMultas {
+  por_empleado: { empleado_id: number | null; nombre: string; cantidad: number; monto_total: number; monto_descontado: number; pendientes_pago: number }[];
+  por_vehiculo: { camion_id: number | null; vehiculo: string; cantidad: number; monto_total: number; pendientes_pago: number }[];
+  total:        { cantidad: number; monto: number };
 }
 
 // ── Combustible (flota — pantalla de Santi/Nico) ──────────────────────────────
@@ -1694,6 +1796,9 @@ export interface Empleado {
   art:                        string | null;
   tipo_contratacion:          string | null;
   licencia_conducir:          boolean;
+  licencia_categoria?:        string | null;
+  licencia_numero?:           string | null;
+  licencia_vencimiento?:      string | null;
   equipamiento_asignado:      string | null;
   talle_pantalon:             string | null;
   talle_remera:               string | null;
@@ -2102,10 +2207,13 @@ export interface PedidoComidaSugerido {
 // ─── PRESENTISMO (Control de Presentismo — Lorena, DOS57) ─────────────────────
 
 export type EstadoAsistencia =
-  | 'PRESENTE' | 'TARDE' | 'MEDIA_JORNADA' | 'AUSENTE' | 'JUSTIFICADO' | 'LIBRE' | 'VACACIONES' | 'LICENCIA';
+  | 'PRESENTE' | 'DEMORA' | 'TARDE' | 'MEDIA_JORNADA' | 'AUSENTE' | 'JUSTIFICADO' | 'LIBRE' | 'VACACIONES' | 'LICENCIA' | 'FRANCO';
+
+export type SemaforoPresentismo = 'EXCELENTE' | 'SEGUIMIENTO' | 'ATENCION';
 
 export interface EmpleadoMiniPresentismo {
   id: number; nombre: string; apellido: string; apodo: string | null; categoria: CategoriaEmpleado;
+  hora_convocatoria_default?: string | null;
 }
 
 export interface RegistroAsistencia {
@@ -2115,6 +2223,7 @@ export interface RegistroAsistencia {
   estado:                EstadoAsistencia;
   hora_ingreso:          string | null;
   hora_egreso:           string | null;
+  hora_convocatoria:     string | null;
   horas_trabajadas:      number | null;
   minutos_tardanza:      number | null;
   motivo:                string | null;
@@ -2146,17 +2255,44 @@ export interface ResumenPresentismoItem {
   empleado:               EmpleadoMiniPresentismo;
   dias_habiles:           number;
   dias_presente:          number;
+  dias_demora:            number;
   dias_tarde:             number;
   dias_media_jornada:     number;
   dias_ausente:           number;
   dias_justificado:       number;
   dias_libre:             number;
   dias_vacaciones:        number;
+  dias_franco:            number;
+  francos_ganados:        number;
+  saldo_francos?:         number;
   total_horas:            number;
   total_tardanzas_min:    number;
+  semaforo:               SemaforoPresentismo;
   cobra_presentismo:      boolean;
   motivo_sin_presentismo: string | null;
   cerrado:                boolean;
+}
+
+export interface FrancosEmpleado {
+  empleado: EmpleadoMiniPresentismo;
+  inicial:  number;
+  ganados:  number;
+  tomados:  number;
+  saldo:    number;
+}
+
+export interface ImportPlanillaPresentismoResultado {
+  preview: boolean;
+  hojas: {
+    hoja: string; nombre: string;
+    empleado: { id: number; label: string } | null;
+    dias: number; nuevos: number; cambian: number; por_horario: number;
+    por_estado: Partial<Record<EstadoAsistencia, number>>;
+  }[];
+  creados:      number;
+  actualizados: number;
+  sin_cambios:  number;
+  advertencias: string[];
 }
 
 export interface ResumenMesResponse {
@@ -2264,7 +2400,8 @@ export type TipoCalendario =
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO'
-  | 'SINIESTRO_VEHICULO_PENDIENTE';
+  | 'SINIESTRO_VEHICULO_PENDIENTE'
+  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

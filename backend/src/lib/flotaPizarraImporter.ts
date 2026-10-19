@@ -80,6 +80,18 @@ function parseFechaPizarra(s: string | null): Date | null {
 
 const MS_DIA = 86_400_000;
 
+// Columna ITU/RTO: "RTO 27/9/2026", "ITV 16/07/27" → tipo + fecha. Sin
+// etiqueta se asume RTO (ya casi no hay ITV). null si la celda está vacía o
+// no se pudo leer la fecha.
+export function parseTecnicaPizarra(s: string | null): { tipo: string; vencimiento: Date } | null {
+  if (!s) return null;
+  const m = s.trim().match(/^(RTO|ITV|ITU|VTV)?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})$/i);
+  if (!m) return null;
+  const vencimiento = parseFechaPizarra(m[2]);
+  if (!vencimiento) return null;
+  return { tipo: (m[1] ?? 'RTO').toUpperCase(), vencimiento };
+}
+
 function computeEstadoSeguro(fechaVencimiento: Date): EstadoSeguro {
   const hoy = new Date();
   if (fechaVencimiento < hoy) return EstadoSeguro.VENCIDO;
@@ -110,7 +122,10 @@ export async function importarPizarraFlota(
   const existentes = await prisma.camion.findMany({ where: { empresa_id: empresaId, deleted_at: null } });
 
   for (const v of vehiculos) {
-    const notaTecnica = v.vencimiento_tecnica; // ya viene con su propia etiqueta ("RTO 27/9/2026", "ITV 16/07/27")
+    const tecnica = parseTecnicaPizarra(v.vencimiento_tecnica);
+    if (v.vencimiento_tecnica && !tecnica) {
+      resultado.errores.push(`${v.codigo}: no se pudo leer la revisión técnica "${v.vencimiento_tecnica}" — se dejó como estaba`);
+    }
     const patenteNorm = normalizarPatente(v.patente);
 
     // Los trailers/acoplados comparten dominio con su tractor a propósito
@@ -132,7 +147,9 @@ export async function importarPizarraFlota(
       // pisa lo existente; las celdas vacías no borran nada. `notas` sólo se
       // pisa si estaba vacía o era la nota técnica anterior ("RTO …", "ITV …")
       // — así no se pierde una nota cargada a mano desde Flota.
-      const notaEsTecnica = !existente.notas || /^(RTO|ITV|ITU|VTV)\b/i.test(existente.notas.trim());
+      // La revisión técnica ahora va a tipo_tecnica/vencimiento_tecnica: si
+      // `notas` todavía tenía el texto viejo "RTO …" se limpia.
+      const notaEsTecnica = !!existente.notas && /^(RTO|ITV|ITU|VTV)\b/i.test(existente.notas.trim());
       await prisma.camion.update({
         where: { id: existente.id },
         data: {
@@ -142,7 +159,9 @@ export async function importarPizarraFlota(
           titular:                v.titular || existente.titular,
           tipo_vehiculo:          v.tipo_vehiculo ?? existente.tipo_vehiculo,
           capacidad_combustible:  v.capacidad_combustible ?? existente.capacidad_combustible,
-          notas:                  notaTecnica && notaEsTecnica ? notaTecnica : existente.notas,
+          tipo_tecnica:           tecnica?.tipo ?? existente.tipo_tecnica,
+          vencimiento_tecnica:    tecnica?.vencimiento ?? existente.vencimiento_tecnica,
+          notas:                  tecnica && notaEsTecnica ? null : existente.notas,
         },
       });
       resultado.vehiculos_actualizados.push(existente.codigo);
@@ -160,7 +179,8 @@ export async function importarPizarraFlota(
         tipo_vehiculo:          v.tipo_vehiculo,
         titular:                v.titular,
         capacidad_combustible:  v.capacidad_combustible,
-        notas:                  notaTecnica,
+        tipo_tecnica:           tecnica?.tipo ?? null,
+        vencimiento_tecnica:    tecnica?.vencimiento ?? null,
         en_servicio:            true,
       },
     });
@@ -232,7 +252,38 @@ const COLUMNAS_PIZARRA = [
 
 const TIPOS_VEHICULO = ['CAMIONETA', 'CAMION', 'TRAILER', 'AUTOELEVADOR'] as const;
 
-export async function generarPlantillaPizarra(): Promise<Buffer> {
+function fechaPizarra(d: Date | null): string | null {
+  return d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : null;
+}
+
+// Filas de la plantilla: lo que hoy está cargado en el sistema (así una
+// revisión técnica o un seguro actualizado desde Flota no se pisa al
+// reimportar una plantilla vieja). Sin vehículos cargados → la transcripción
+// de la foto de la pizarra.
+async function filasPlantilla(empresaId: number): Promise<VehiculoPizarra[]> {
+  const camiones = await prisma.camion.findMany({
+    where:   { empresa_id: empresaId, deleted_at: null, en_servicio: true },
+    include: { seguros: { where: { deleted_at: null, estado: { not: EstadoSeguro.CANCELADO } }, orderBy: { fecha_vencimiento: 'desc' }, take: 1 } },
+    orderBy: { codigo: 'asc' },
+  });
+  if (camiones.length === 0) return PIZARRA_DOS57;
+  const orden = ['CAMIONETA', 'TRAILER', 'CAMION', 'AUTOELEVADOR'];
+  return camiones
+    .map(c => ({
+      codigo:                c.codigo,
+      patente:               c.patente,
+      descripcion:           c.descripcion ?? '',
+      titular:               c.titular ?? '',
+      tipo_vehiculo:         (c.tipo_vehiculo ?? 'CAMIONETA') as VehiculoPizarra['tipo_vehiculo'],
+      vencimiento_tecnica:   c.vencimiento_tecnica ? `${c.tipo_tecnica ?? 'RTO'} ${fechaPizarra(c.vencimiento_tecnica)}` : null,
+      aseguradora:           c.seguros[0]?.aseguradora ?? null,
+      vencimiento_seguro:    fechaPizarra(c.seguros[0]?.fecha_vencimiento ?? null),
+      capacidad_combustible: c.capacidad_combustible,
+    }))
+    .sort((a, b) => (orden.indexOf(a.tipo_vehiculo) - orden.indexOf(b.tipo_vehiculo)) || a.codigo.localeCompare(b.codigo));
+}
+
+export async function generarPlantillaPizarra(empresaId: number): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('PIZARRA FLOTA', { views: [{ state: 'frozen', ySplit: 1 }] });
   ws.columns = COLUMNAS_PIZARRA.map(c => ({ key: c.key, header: c.header, width: c.width }));
@@ -241,11 +292,12 @@ export async function generarPlantillaPizarra(): Promise<Buffer> {
   head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
   head.alignment = { vertical: 'middle' };
 
-  for (const v of PIZARRA_DOS57) {
+  for (const v of await filasPlantilla(empresaId)) {
     ws.addRow({ ...v, patente: v.patente ?? '' });
   }
   // Fechas como texto (dd/mm/aaaa, igual que la pizarra) para que Excel no las reinterprete
   ws.getColumn('vencimiento_seguro').numFmt = '@';
+  ws.getColumn('vencimiento_tecnica').numFmt = '@';
   const ultima = Math.max(ws.rowCount, 2) + 200;
   for (let r = 2; r <= ultima; r++) {
     ws.getCell(`D${r}`).dataValidation = {
@@ -263,7 +315,8 @@ export async function generarPlantillaPizarra(): Promise<Buffer> {
     '• Seguro: ASEGURADORA + VENC. SEGURO (dd/mm/aaaa). Un vencimiento nuevo carga una póliza nueva; la anterior queda en el historial.',
     '• TIPO: CAMIONETA, CAMION, TRAILER o AUTOELEVADOR.',
     '• CÓDIGO: sólo necesario para autoelevadores (sin dominio) y acoplados (comparten dominio con su tractor, ej. HLW156-ACOPLADO).',
-    '• "X" o vacío en ASEGURADORA / VENC. SEGURO = sin dato.',
+    '• ITU / RTO: tipo y vencimiento, ej. "RTO 27/09/2026" o "ITV 16/07/2027" (sin tipo se toma RTO). Alimenta el calendario y el control de salida.',
+    '• "X" o vacío en ITU / RTO, ASEGURADORA o VENC. SEGURO = sin dato.',
     '• No borrar filas de vehículos dados de baja: la baja se hace desde Flota.',
   ].forEach((t, i) => { const c = ins.getCell(`A${i + 1}`); c.value = t; if (i === 0) c.font = { bold: true }; });
 
@@ -346,7 +399,7 @@ export function parsePlanillaPizarra(buffer: Buffer): ParseoPizarra {
         descripcion:           descripcion ?? '',
         titular:               textoCelda(get('titular')) ?? '',
         tipo_vehiculo:         tipo,
-        vencimiento_tecnica:   textoCelda(get('tecnica')),
+        vencimiento_tecnica:   vencimientoCelda(get('tecnica')), // "RTO 27/9/2026" o una fecha real de Excel (se toma RTO)
         aseguradora:           textoCelda(get('aseguradora')),
         vencimiento_seguro:    vencimientoCelda(get('venc')),
         capacidad_combustible: textoCelda(get('capacidad')),

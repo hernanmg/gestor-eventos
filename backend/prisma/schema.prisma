@@ -131,13 +131,21 @@ enum EstadoJornada {
 // diaria de tarjetas de marcación física que alimenta el premio presentismo.
 enum EstadoAsistencia {
   PRESENTE
-  TARDE // llegó pero después de la hora acordada
+  DEMORA // llegó hasta 15 min después de la citación (columna DEMORA de la planilla de Lorena)
+  TARDE // llegó más de 15 min después de la citación (LLEGADA TARDE)
   MEDIA_JORNADA // solo estuvo medio día
   AUSENTE // no vino sin justificación
   JUSTIFICADO // falta justificada (médico, trámite, etc.)
-  LIBRE // día libre acordado
+  LIBRE // día libre acordado / no convocado
   VACACIONES
   LICENCIA
+  FRANCO // franco compensatorio por domingo trabajado (FRANCO POR DOMINGO)
+}
+
+enum SemaforoPresentismo {
+  EXCELENTE
+  SEGUIMIENTO
+  ATENCION
 }
 
 enum EstadoLiquidacion {
@@ -286,6 +294,8 @@ model Empresa {
   materialesRental       MaterialRental[]
   presupuestosEvento     PresupuestoEvento[]
   remitosEvento          RemitoEvento[]
+  multas                 Multa[]
+  controlesSalida        ControlSalidaVehiculo[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -403,7 +413,7 @@ model Evento {
   echeqs                 Echeq[]
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
-  asignaciones_prestadas AsignacionStock[]   @relation("StockPrestado")
+  asignaciones_prestadas AsignacionStock[]       @relation("StockPrestado")
   facturas               Factura[]
   jornadas               Jornada[]
   liquidaciones          Liquidacion[]
@@ -422,6 +432,7 @@ model Evento {
   remitos                RemitoEvento[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
+  controles_salida       ControlSalidaVehiculo[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -974,7 +985,12 @@ model Camion {
   // ── Importador de pizarra (Lorena, DOS57) ────────────────────────────────────
   capacidad_combustible String? // texto libre de la pizarra: "75 lts", "315 lts + 35 UREA", "60/65 lts"
   tipo_vehiculo         String? // "CAMIONETA" | "CAMION" | "TRAILER" | "AUTOELEVADOR"
-  notas                 String? // ITU/RTO de la pizarra ("RTO 27/9/2026") y otras observaciones libres
+  notas                 String? // observaciones libres (antes también guardaba el texto "RTO 27/9/2026" de la pizarra)
+  // Revisión técnica obligatoria — columna ITU/RTO de la pizarra. tipo = "RTO"
+  // | "ITV" | "VTV" | "ITU"; el vencimiento alimenta calendario, notificaciones
+  // y el control de salida.
+  tipo_tecnica          String?
+  vencimiento_tecnica   DateTime?
 
   // ── Módulo Combustible — odómetro actualizado en cada carga; tope mensual de
   // la hoja "CARGAS AUTORIZADAS" de la planilla real (null = sin límite) ──────
@@ -991,6 +1007,8 @@ model Camion {
   cargas_combustible   CargaCombustible[]
   siniestros           SiniestroVehiculo[]
   bitacora_viajes      BitacoraViaje[]
+  multas               Multa[]
+  controles_salida     ControlSalidaVehiculo[]
 
   @@unique([codigo, empresa_id])
 }
@@ -1594,6 +1612,15 @@ model Empleado {
   art                        String? // aseguradora ART
   tipo_contratacion          String? // "SANCOR", "ART", "FEDERAL PATRONAL (AP)", etc. — texto libre
   licencia_conducir          Boolean   @default(false)
+  // Carnet de conducir — lo lleva Lorena desde Flota → Carnets (no desde RRHH,
+  // que es sólo ADMIN). El vencimiento alimenta el calendario y el control de
+  // salida de vehículos.
+  licencia_categoria         String? // "B1", "C", "E1"… texto libre
+  licencia_numero            String?
+  licencia_vencimiento       DateTime?
+  // Saldo de francos compensatorios previo a empezar a cargarlos en el sistema
+  // — el saldo actual = inicial + domingos trabajados − francos tomados.
+  francos_saldo_inicial      Int       @default(0)
   equipamiento_asignado      String? // celular/notebook/etc.
   talle_pantalon             String?
   talle_remera               String?
@@ -1606,11 +1633,11 @@ model Empleado {
   hora_convocatoria_default  String?
 
   // Usuario del sistema (opcional — si el empleado carga sus propias jornadas)
-  usuario_id            Int?                   @unique
-  usuario               Usuario?               @relation(fields: [usuario_id], references: [id])
+  usuario_id            Int?                    @unique
+  usuario               Usuario?                @relation(fields: [usuario_id], references: [id])
   // audit
-  created_at            DateTime               @default(now())
-  updated_at            DateTime               @updatedAt
+  created_at            DateTime                @default(now())
+  updated_at            DateTime                @updatedAt
   deleted_at            DateTime?
   created_by            Int?
   // relations
@@ -1631,6 +1658,8 @@ model Empleado {
   eventos_empleado_mes  EventoEmpleadoMes[]
   entregas_uniforme     EntregaUniforme[]
   siniestros_vehiculo   SiniestroVehiculo[]
+  multas                Multa[]
+  controles_salida      ControlSalidaVehiculo[]
 }
 
 model Jornada {
@@ -1702,6 +1731,10 @@ model RegistroAsistencia {
   jornada               Jornada?         @relation(fields: [jornada_id], references: [id])
   // Importado del reloj biométrico (cuando se instale)
   origen                String? // "MANUAL" | "RELOJ_ET7" | "IMPORTACION"
+  // Hora de citación de ESE día (columna CONVOCATORIA de la planilla) — varía
+  // día a día (8:00, 9:00, viaje a medianoche). Null ⇒ se usa
+  // Empleado.hora_convocatoria_default para calcular minutos_tardanza.
+  hora_convocatoria     String?
 
   // ── Flujo de aprobación de tardanzas (Matías) ────────────────────────────────
   tardanza_requiere_aprobacion Boolean   @default(false)
@@ -1723,32 +1756,37 @@ model RegistroAsistencia {
 // (POST /presentismo/cerrar-mes) y es lo que consume SueldosAdmin para
 // pre-cargar el premio_presentismo del período.
 model ResumenPresentismo {
-  id                     Int      @id @default(autoincrement())
+  id                     Int                 @id @default(autoincrement())
   empresa_id             Int
-  empresa                Empresa  @relation(fields: [empresa_id], references: [id])
+  empresa                Empresa             @relation(fields: [empresa_id], references: [id])
   empleado_id            Int
-  empleado               Empleado @relation(fields: [empleado_id], references: [id])
+  empleado               Empleado            @relation(fields: [empleado_id], references: [id])
   periodo_mes            Int
   periodo_anio           Int
   // Conteos del mes
-  dias_habiles           Int      @default(0)
-  dias_presente          Int      @default(0)
-  dias_tarde             Int      @default(0)
-  dias_media_jornada     Int      @default(0)
-  dias_ausente           Int      @default(0)
-  dias_justificado       Int      @default(0)
-  dias_libre             Int      @default(0)
-  dias_vacaciones        Int      @default(0)
-  total_horas            Decimal  @default(0) @db.Decimal(8, 2)
-  total_tardanzas_min    Int      @default(0)
+  dias_habiles           Int                 @default(0)
+  dias_presente          Int                 @default(0)
+  dias_tarde             Int                 @default(0)
+  dias_media_jornada     Int                 @default(0)
+  dias_ausente           Int                 @default(0)
+  dias_justificado       Int                 @default(0)
+  dias_libre             Int                 @default(0)
+  dias_vacaciones        Int                 @default(0)
+  dias_demora            Int                 @default(0)
+  dias_franco            Int                 @default(0) // francos compensatorios tomados en el mes
+  francos_ganados        Int                 @default(0) // domingos trabajados en el mes
+  total_horas            Decimal             @default(0) @db.Decimal(8, 2)
+  total_tardanzas_min    Int                 @default(0)
+  // Semáforo del informe mensual de Lorena (demoras / llegadas tarde / faltas)
+  semaforo               SemaforoPresentismo @default(EXCELENTE)
   // Premio presentismo: true si corresponde cobrarlo
-  cobra_presentismo      Boolean  @default(true)
+  cobra_presentismo      Boolean             @default(true)
   // Criterio: cobra si ausentes < X días (configurable) — ver
   // calcularResumenPresentismo() en presentismo.controller.ts.
   motivo_sin_presentismo String?
   // audit
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
 
   @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
 }
@@ -1771,6 +1809,8 @@ model Anticipo {
   // Un Anticipo se vincula a lo sumo a una de las dos, nunca ambas.
   liquidacion_admin_id Int?
   liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  // Multa que originó este descuento (Multa.anticipo_id), si la cargó Lorena
+  multa                Multa?
   // audit
   created_at           DateTime          @default(now())
   created_by           Int?
@@ -3387,4 +3427,93 @@ model RemitoEvento {
 
   @@unique([evento_id, tipo, numero])
   @@index([empresa_id, evento_id])
+}
+
+// ── Multas (Lorena, DOS57) ───────────────────────────────────────────────────
+// De tránsito (con vehículo/patente) e internas (ej. vehículos sucios). Si se
+// descuenta al empleado, se crea un Anticipo tipo MULTA vinculado: así entra
+// solo a la próxima liquidación por el circuito de vales/descuentos existente.
+enum TipoMulta {
+  TRANSITO
+  INTERNA
+}
+
+enum EstadoMulta {
+  PENDIENTE
+  PAGADA
+  ANULADA
+}
+
+model Multa {
+  id                     Int         @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa     @relation(fields: [empresa_id], references: [id])
+  tipo                   TipoMulta   @default(TRANSITO)
+  fecha                  DateTime // fecha de la infracción
+  camion_id              Int?
+  camion                 Camion?     @relation(fields: [camion_id], references: [id])
+  patente_texto          String? // si el vehículo no está en el sistema
+  empleado_id            Int?
+  empleado               Empleado?   @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String?
+  lugar                  String?
+  motivo                 String
+  numero_acta            String?
+  fecha_vencimiento      DateTime? // vencimiento del pago de la multa
+  monto                  Decimal     @db.Decimal(12, 2)
+  estado                 EstadoMulta @default(PENDIENTE)
+  fecha_pago             DateTime?
+  medio_pago             String? // "Transferencia", "Tarjeta corporativa", "Efectivo"…
+  // Descuento al empleado → Anticipo MULTA (se crea/actualiza/borra junto con la multa)
+  descontar_empleado     Boolean     @default(false)
+  anticipo_id            Int?        @unique
+  anticipo               Anticipo?   @relation(fields: [anticipo_id], references: [id])
+  observaciones          String?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime    @updatedAt
+  deleted_at             DateTime?
+  created_by             Int?
+
+  @@index([empresa_id, fecha])
+}
+
+// ── Control de salida de vehículos (Lorena + David) ──────────────────────────
+// Antes de cada viaje se revisa la papelería del vehículo. El estado documental
+// (seguro / RTO / carnet del chofer / vehículo de baja) se calcula en vivo; al
+// marcarlo REVISADO u OBSERVADO se guarda la foto en `alertas_al_cerrar`.
+enum EstadoControlSalida {
+  PENDIENTE
+  REVISADO
+  OBSERVADO
+}
+
+model ControlSalidaVehiculo {
+  id                  Int                 @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa             @relation(fields: [empresa_id], references: [id])
+  camion_id           Int
+  camion              Camion              @relation(fields: [camion_id], references: [id])
+  fecha_salida        DateTime // fecha calendario (UTC 00:00)
+  chofer_id           Int?
+  chofer              Empleado?           @relation(fields: [chofer_id], references: [id])
+  chofer_nombre       String? // si el chofer no está como Empleado
+  evento_id           Int?
+  evento              Evento?             @relation(fields: [evento_id], references: [id])
+  destino             String?
+  // Lo que se vio físicamente en la carpeta del vehículo
+  check_tarjeta_verde Boolean             @default(false) // cédula / tarjeta verde
+  check_seguro        Boolean             @default(false) // póliza o certificado de cobertura
+  check_tecnica       Boolean             @default(false) // oblea / certificado RTO-ITV
+  check_carnet        Boolean             @default(false) // carnet del chofer
+  estado              EstadoControlSalida @default(PENDIENTE)
+  revisado_por        String? // texto libre: "Lore", "David"
+  revisado_at         DateTime?
+  alertas_al_cerrar   Json? // snapshot de alertas documentales al revisar
+  observaciones       String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+
+  @@index([empresa_id, fecha_salida])
 }

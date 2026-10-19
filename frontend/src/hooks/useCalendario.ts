@@ -23,6 +23,10 @@ export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   FACTURA_EMITIDA_VENCE: 'facturas_emitidas',
   ACTIVO_STOCK_BAJO:    'stock_bajo',
   SINIESTRO_VEHICULO_PENDIENTE: 'siniestros_vehiculo',
+  TECNICA_VENCE:        'tecnica',
+  CARNET_VENCE:         'carnets',
+  MULTA_VENCE:          'multas',
+  CONTROL_SALIDA:       'controles_salida',
 };
 
 export const TODOS_LOS_TIPOS: TipoCalendario[] = Object.keys(TIPO_QUERY_MAP) as TipoCalendario[];

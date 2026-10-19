@@ -76,6 +76,7 @@ const EMPTY: EmpleadoPayload = {
   apodo: '', fecha_nacimiento: '', grupo_sanguineo: '',
   contacto_emergencia_nombre: '', contacto_emergencia_tel: '', contacto_emergencia_tel2: '',
   escalafon: null, art: '', tipo_contratacion: '', licencia_conducir: false, equipamiento_asignado: '',
+  licencia_categoria: '', licencia_numero: '', licencia_vencimiento: '',
   talle_pantalon: '', talle_remera: '', talle_buzo: '', talle_calzado: '',
 };
 
@@ -113,6 +114,9 @@ function empleadoToForm(empleado: Empleado): EmpleadoPayload {
     art:                        empleado.art ?? '',
     tipo_contratacion:          empleado.tipo_contratacion ?? '',
     licencia_conducir:          empleado.licencia_conducir,
+    licencia_categoria:         empleado.licencia_categoria ?? '',
+    licencia_numero:            empleado.licencia_numero ?? '',
+    licencia_vencimiento:       empleado.licencia_vencimiento ? empleado.licencia_vencimiento.slice(0, 10) : '',
     equipamiento_asignado:      empleado.equipamiento_asignado ?? '',
     talle_pantalon:             empleado.talle_pantalon ?? '',
     talle_remera:               empleado.talle_remera ?? '',
@@ -185,6 +189,9 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
       valor_viaje:              numOrNull(form.valor_viaje),
       escalafon:                numOrNull(form.escalafon),
       fecha_nacimiento:         form.fecha_nacimiento || null,
+      licencia_categoria:       form.licencia_categoria || null,
+      licencia_numero:          form.licencia_numero || null,
+      licencia_vencimiento:     form.licencia_vencimiento || null,
     };
     try {
       if (isEdit) await updateMut.mutateAsync({ id: empleado!.id, data: payload });
@@ -291,6 +298,13 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
                   Licencia de conducir
                 </label>
               </div>
+              {(form.licencia_conducir || form.licencia_vencimiento) && (
+                <>
+                  <div><label className={labelCls}>Carnet — categoría</label><input {...f('licencia_categoria')} className={inputCls} placeholder="B1, C, E1…" />{fieldError('licencia_categoria')}</div>
+                  <div><label className={labelCls}>Carnet — N°</label><input {...f('licencia_numero')} className={inputCls} />{fieldError('licencia_numero')}</div>
+                  <div><label className={labelCls}>Carnet — vence</label><input type="date" {...f('licencia_vencimiento')} className={inputCls} />{fieldError('licencia_vencimiento')}</div>
+                </>
+              )}
             </div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 mt-4">Uniforme</p>
             <div className="grid grid-cols-4 gap-3">

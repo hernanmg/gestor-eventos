@@ -4,11 +4,16 @@ import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { generatePresentismoExcel } from '../lib/presentismoExporter';
+import {
+  ESTADOS_ASISTENCIA, DESCUENTA_POR_DEFECTO, calcularHorasTrabajadas, calcularMinutosTardanza,
+  calcularConteo, esDomingoTrabajado,
+} from '../lib/presentismoCalculo';
+import { parsePlanillaPresentismo, aplicarPlanillaPresentismo } from '../lib/presentismoPlanillaImporter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const EMPLEADO_MINI_SELECT = {
-  id: true, nombre: true, apellido: true, apodo: true, categoria: true,
+  id: true, nombre: true, apellido: true, apodo: true, categoria: true, hora_convocatoria_default: true,
 } as const;
 
 const REGISTRO_INCLUDE = {
@@ -16,18 +21,9 @@ const REGISTRO_INCLUDE = {
   jornada:  { select: { id: true, estado: true, horas_normales: true, horas_extras: true } },
 } as const;
 
-const ESTADOS_ASISTENCIA = [
-  'PRESENTE', 'TARDE', 'MEDIA_JORNADA', 'AUSENTE', 'JUSTIFICADO', 'LIBRE', 'VACACIONES', 'LICENCIA',
-] as const;
-
-// Estados que, por defecto (si no se manda descuenta_presentismo explícito),
-// impactan el premio del mes. AUSENTE siempre lo pierde; TARDE queda pendiente
-// de la decisión de Matías (ver flujo de aprobación) y arranca contando en
-// contra hasta que se apruebe. El resto no descuenta por defecto.
-const DESCUENTA_POR_DEFECTO: Record<(typeof ESTADOS_ASISTENCIA)[number], boolean> = {
-  PRESENTE: false, MEDIA_JORNADA: false, JUSTIFICADO: false, LIBRE: false, VACACIONES: false, LICENCIA: false,
-  AUSENTE: true, TARDE: true,
-};
+// DEMORA y TARDE miden minutos contra la citación del día (o la default del
+// empleado); el resto de los estados no tiene tardanza.
+const CON_TARDANZA = new Set(['DEMORA', 'TARDE']);
 
 function parseFechaParam(raw: string): Date | null {
   const d = new Date(raw);
@@ -36,31 +32,6 @@ function parseFechaParam(raw: string): Date | null {
 
 function soloFecha(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function minutosDesdeMedianoche(hhmm: string): number | null {
-  const match = hhmm.trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  const h = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10);
-  if (h > 23 || m > 59) return null;
-  return h * 60 + m;
-}
-
-function calcularHorasTrabajadas(ingreso?: string | null, egreso?: string | null): number | null {
-  if (!ingreso || !egreso) return null;
-  const mIn  = minutosDesdeMedianoche(ingreso);
-  const mOut = minutosDesdeMedianoche(egreso);
-  if (mIn === null || mOut === null || mOut <= mIn) return null;
-  return Math.round(((mOut - mIn) / 60) * 100) / 100;
-}
-
-function calcularMinutosTardanza(convocatoriaDefault?: string | null, ingreso?: string | null): number | null {
-  if (!convocatoriaDefault || !ingreso) return null;
-  const mConv = minutosDesdeMedianoche(convocatoriaDefault);
-  const mIn   = minutosDesdeMedianoche(ingreso);
-  if (mConv === null || mIn === null) return null;
-  return Math.max(0, mIn - mConv);
 }
 
 function toNumberRegistro(r: any) {
@@ -150,6 +121,7 @@ const registroSchema = z.object({
   estado:                z.enum(ESTADOS_ASISTENCIA).default('PRESENTE'),
   hora_ingreso:          z.string().nullable().optional(),
   hora_egreso:           z.string().nullable().optional(),
+  hora_convocatoria:     z.string().nullable().optional(),
   motivo:                z.string().nullable().optional(),
   descuenta_presentismo: z.boolean().optional(),
 });
@@ -167,7 +139,8 @@ export async function upsertRegistro(req: Request, res: Response) {
   if (!empleado) { res.status(400).json({ error: 'Empleado no encontrado' }); return; }
 
   const horasTrabajadas   = calcularHorasTrabajadas(d.hora_ingreso, d.hora_egreso);
-  const minutosTardanza   = d.estado === 'TARDE' ? calcularMinutosTardanza(empleado.hora_convocatoria_default, d.hora_ingreso) : null;
+  const convocatoria      = d.hora_convocatoria || empleado.hora_convocatoria_default;
+  const minutosTardanza   = CON_TARDANZA.has(d.estado) ? calcularMinutosTardanza(convocatoria, d.hora_ingreso) : null;
   const esTarde           = d.estado === 'TARDE';
   const descuentaDefault  = DESCUENTA_POR_DEFECTO[d.estado];
 
@@ -180,6 +153,7 @@ export async function upsertRegistro(req: Request, res: Response) {
     estado:                 d.estado,
     hora_ingreso:           d.hora_ingreso ?? null,
     hora_egreso:            d.hora_egreso ?? null,
+    hora_convocatoria:      d.hora_convocatoria ?? null,
     horas_trabajadas:       horasTrabajadas,
     minutos_tardanza:       minutosTardanza,
     motivo:                 d.motivo ?? null,
@@ -223,6 +197,7 @@ export async function updateRegistro(req: Request, res: Response) {
   const estadoFinal = d.estado ?? existing.estado;
   const ingresoFinal = d.hora_ingreso !== undefined ? d.hora_ingreso : existing.hora_ingreso;
   const egresoFinal  = d.hora_egreso  !== undefined ? d.hora_egreso  : existing.hora_egreso;
+  const convFinal    = d.hora_convocatoria !== undefined ? d.hora_convocatoria : existing.hora_convocatoria;
   const esTarde      = estadoFinal === 'TARDE';
 
   const updated = await prisma.registroAsistencia.update({
@@ -231,9 +206,12 @@ export async function updateRegistro(req: Request, res: Response) {
       ...(d.estado       !== undefined && { estado: d.estado }),
       ...(d.hora_ingreso  !== undefined && { hora_ingreso: d.hora_ingreso }),
       ...(d.hora_egreso   !== undefined && { hora_egreso: d.hora_egreso }),
+      ...(d.hora_convocatoria !== undefined && { hora_convocatoria: d.hora_convocatoria }),
       ...(d.motivo        !== undefined && { motivo: d.motivo }),
       horas_trabajadas: calcularHorasTrabajadas(ingresoFinal, egresoFinal),
-      minutos_tardanza: esTarde ? calcularMinutosTardanza(existing.empleado.hora_convocatoria_default, ingresoFinal) : null,
+      minutos_tardanza: CON_TARDANZA.has(estadoFinal)
+        ? calcularMinutosTardanza(convFinal || existing.empleado.hora_convocatoria_default, ingresoFinal)
+        : null,
       descuenta_presentismo: d.descuenta_presentismo ?? (d.estado !== undefined ? DESCUENTA_POR_DEFECTO[d.estado] : existing.descuenta_presentismo),
       tardanza_requiere_aprobacion: esTarde,
       ...(!esTarde && { tardanza_aprobada: null, tardanza_aprobada_por: null, tardanza_aprobada_at: null, tardanza_nota: null }),
@@ -295,47 +273,33 @@ export async function marcarTodosPresentes(req: Request, res: Response) {
 // RESUMEN MENSUAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Criterio de corte para perder el premio presentismo — placeholder simple
-// (0 ausencias en el mes). Configurable a futuro; queda pendiente confirmar
-// el umbral real con Lorena/Mayra.
-const UMBRAL_AUSENCIAS_PRESENTISMO = 0;
+// El conteo del mes (incluido el semáforo y los francos ganados/tomados) está
+// en lib/presentismoCalculo.ts — lo comparten el exportador y el importador.
 
-interface ConteoResumen {
-  dias_presente: number; dias_tarde: number; dias_media_jornada: number; dias_ausente: number;
-  dias_justificado: number; dias_libre: number; dias_vacaciones: number;
-  total_horas: number; total_tardanzas_min: number;
-  cobra_presentismo: boolean; motivo_sin_presentismo: string | null;
-}
-
-function calcularConteo(registros: { estado: string; horas_trabajadas: any; minutos_tardanza: number | null; descuenta_presentismo: boolean; fecha: Date }[]): ConteoResumen {
-  const c: ConteoResumen = {
-    dias_presente: 0, dias_tarde: 0, dias_media_jornada: 0, dias_ausente: 0,
-    dias_justificado: 0, dias_libre: 0, dias_vacaciones: 0,
-    total_horas: 0, total_tardanzas_min: 0, cobra_presentismo: true, motivo_sin_presentismo: null,
-  };
-  const descuentos: string[] = [];
+// Saldo histórico de francos por empleado: saldo inicial cargado a mano +
+// domingos trabajados − francos tomados, sobre todos los registros (no sólo
+// los del mes). `hasta` permite el saldo al cierre de un período.
+async function saldosFrancos(empresaId: number, empleadoIds: number[], hasta?: Date) {
+  if (empleadoIds.length === 0) return new Map<number, { inicial: number; ganados: number; tomados: number; saldo: number }>();
+  const [empleados, registros] = await Promise.all([
+    prisma.empleado.findMany({ where: { id: { in: empleadoIds } }, select: { id: true, francos_saldo_inicial: true } }),
+    prisma.registroAsistencia.findMany({
+      where: {
+        empresa_id: empresaId, deleted_at: null, empleado_id: { in: empleadoIds },
+        ...(hasta && { fecha: { lte: hasta } }),
+      },
+      select: { empleado_id: true, estado: true, fecha: true },
+    }),
+  ]);
+  const out = new Map(empleados.map(e => [e.id, { inicial: e.francos_saldo_inicial, ganados: 0, tomados: 0, saldo: 0 }]));
   for (const r of registros) {
-    if (r.estado === 'PRESENTE')       c.dias_presente++;
-    if (r.estado === 'TARDE')          c.dias_tarde++;
-    if (r.estado === 'MEDIA_JORNADA')  c.dias_media_jornada++;
-    if (r.estado === 'AUSENTE')        c.dias_ausente++;
-    if (r.estado === 'JUSTIFICADO')    c.dias_justificado++;
-    if (r.estado === 'LIBRE')          c.dias_libre++;
-    if (r.estado === 'VACACIONES' || r.estado === 'LICENCIA') c.dias_vacaciones++;
-    if (r.horas_trabajadas != null)    c.total_horas += Number(r.horas_trabajadas);
-    if (r.minutos_tardanza != null)    c.total_tardanzas_min += r.minutos_tardanza;
-    if (r.descuenta_presentismo) descuentos.push(`${r.estado} el ${r.fecha.toISOString().slice(0, 10)}`);
+    const s = out.get(r.empleado_id);
+    if (!s) continue;
+    if (esDomingoTrabajado(r)) s.ganados++;
+    if (r.estado === 'FRANCO') s.tomados++;
   }
-  c.total_horas = Math.round(c.total_horas * 100) / 100;
-
-  if (c.dias_ausente > UMBRAL_AUSENCIAS_PRESENTISMO) {
-    c.cobra_presentismo = false;
-    c.motivo_sin_presentismo = `${c.dias_ausente} día${c.dias_ausente !== 1 ? 's' : ''} ausente`;
-  } else if (descuentos.length > 0) {
-    c.cobra_presentismo = false;
-    c.motivo_sin_presentismo = descuentos.join(', ');
-  }
-  return c;
+  for (const s of out.values()) s.saldo = s.inicial + s.ganados - s.tomados;
+  return out;
 }
 
 async function empleadosYRegistrosDelMes(empresaId: number, mes: number, anio: number) {
@@ -369,10 +333,16 @@ export async function getResumenMes(req: Request, res: Response) {
   });
   const cerradoSet = new Set(cerrados.map(c => c.empleado_id));
   const diasHabiles = diasHabilesDelMes(anio, mes);
+  const finDeMes = new Date(Date.UTC(anio, mes - 1, diasEnMes(anio, mes), 23, 59, 59));
+  const francos = await saldosFrancos(req.empresaId!, empleados.map(e => e.id), finDeMes);
 
   const items = empleados.map(empleado => {
     const conteo = calcularConteo(porEmpleado.get(empleado.id) ?? []);
-    return { empleado, dias_habiles: diasHabiles, ...conteo, cerrado: cerradoSet.has(empleado.id) };
+    return {
+      empleado, dias_habiles: diasHabiles, ...conteo,
+      saldo_francos: francos.get(empleado.id)?.saldo ?? 0,
+      cerrado: cerradoSet.has(empleado.id),
+    };
   });
 
   res.json({
@@ -525,6 +495,77 @@ async function resolverTardanza(req: Request, res: Response, aprobada: boolean) 
 
 export const aprobarTardanza  = (req: Request, res: Response) => resolverTardanza(req, res, true);
 export const rechazarTardanza = (req: Request, res: Response) => resolverTardanza(req, res, false);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FRANCOS COMPENSATORIOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/presentismo/francos — saldo actual por empleado activo
+export async function getFrancos(req: Request, res: Response) {
+  const empleados = await prisma.empleado.findMany({
+    where: { deleted_at: null, estado: 'ACTIVO', ...withTenant(req.empresaId!) },
+    select: EMPLEADO_MINI_SELECT,
+    orderBy: { apellido: 'asc' },
+  });
+  const saldos = await saldosFrancos(req.empresaId!, empleados.map(e => e.id));
+  res.json(empleados.map(empleado => ({ empleado, ...(saldos.get(empleado.id) ?? { inicial: 0, ganados: 0, tomados: 0, saldo: 0 }) })));
+}
+
+const saldoInicialSchema = z.object({ francos_saldo_inicial: z.number().int().min(-365).max(365) });
+
+// PUT /api/presentismo/francos/:empleadoId — saldo con el que arranca (lo que
+// Lorena traía en su planilla antes de cargar en el sistema)
+export async function updateSaldoInicialFrancos(req: Request, res: Response) {
+  const empleadoId = Number(req.params.empleadoId);
+  const parsed = saldoInicialSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  await prisma.empleado.update({ where: { id: empleadoId }, data: { francos_saldo_inicial: parsed.data.francos_saldo_inicial } });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Empleado', entidadId: empleadoId,
+    descripcion: `Cambió el saldo inicial de francos de ${empleado.apellido}, ${empleado.nombre} a ${parsed.data.francos_saldo_inicial}`,
+    datosAntes: { francos_saldo_inicial: empleado.francos_saldo_inicial }, datosDespues: parsed.data, ip: req.ip, tx: prisma as any,
+  });
+
+  const saldos = await saldosFrancos(req.empresaId!, [empleadoId]);
+  res.json(saldos.get(empleadoId));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTADOR DE LA PLANILLA MENSUAL DE LORENA
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /api/presentismo/importar-planilla?preview=true|false (multipart, campo `archivo`)
+// preview=true (default): parsea y matchea sin escribir. preview=false: aplica.
+export async function importarPlanilla(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Elegí la planilla de presentismo (.xlsx)' }); return; }
+  const dryRun = req.query.preview !== 'false';
+
+  let parseo;
+  try {
+    parseo = parsePlanillaPresentismo(req.file.buffer);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message ?? 'No se pudo leer la planilla' }); return;
+  }
+  if (parseo.hojas.length === 0) {
+    res.status(400).json({ error: 'La planilla no tiene hojas por persona (con NOMBRE y la tabla ITEM / CONVOCATORIA / FECHA…)', detail: parseo.advertencias }); return;
+  }
+
+  const resultado = await aplicarPlanillaPresentismo(req.empresaId!, req.user!.id, parseo, dryRun);
+
+  if (!dryRun) {
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'RegistroAsistencia',
+      descripcion: `Importó planilla de presentismo (${req.file.originalname}) — ${resultado.creados} registros nuevos, ${resultado.actualizados} actualizados`,
+      ip: req.ip, tx: prisma as any,
+    });
+  }
+
+  res.json(resultado);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // IMPORTADOR (reloj biométrico ET-F7) — placeholder

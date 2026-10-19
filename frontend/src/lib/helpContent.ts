@@ -402,7 +402,7 @@ const help: Record<string, HelpContent> = {
   // ── Flota ────────────────────────────────────────────────────────────────────
   '/flota': {
     titulo: 'Flota',
-    descripcion: 'Gestioná la flota de vehículos con seguros, patentes, peajes y servicios de taller.',
+    descripcion: 'Gestioná la flota de vehículos con seguros, revisión técnica, patentes, peajes, taller, carnets, multas y el control de salida.',
     secciones: [
       {
         titulo: '¿Para qué sirve?',
@@ -413,6 +413,64 @@ const help: Record<string, HelpContent> = {
         ],
         veTambien: [{ texto: 'Calendario', ruta: '/calendario' }],
       },
+      {
+        titulo: 'Semáforo de vencimientos',
+        contenido: 'Seguros, RTO/ITV, carnets y multas usan el mismo semáforo: verde = vigente, amarillo = vence dentro de los próximos 30 días, rojo = vencido. Los vencimientos de RTO, carnets, multas y los controles de salida sin revisar llegan a la campanita sólo de quien tiene la documentación de flota a cargo (y de administración); el resto los ve en Flota y en el Calendario.',
+      },
+      {
+        titulo: 'RTO / ITV',
+        contenido: 'En la pestaña Vehículos, la columna "RTO / ITV" muestra el tipo y el vencimiento de la revisión técnica. Hacé click en la celda para actualizarla. Trailers y autoelevadores figuran como "No lleva". La pizarra (Importar pizarra) también la carga desde la columna ITU / RTO, con el formato "RTO 27/09/2026"; la plantilla que descargás sale con los datos actuales del sistema, así no se pisa nada al reimportarla.',
+      },
+      {
+        titulo: 'Carnets de conducir',
+        contenido: 'En la pestaña Carnets cargás categoría, número y vencimiento del carnet de cada empleado. Por defecto se ven sólo los que tienen carnet; destildá el filtro para cargar uno nuevo. El vencimiento aparece en el Calendario y se usa en el control de salida para avisar si el chofer tiene el carnet vencido.',
+      },
+      {
+        titulo: 'Control de salida',
+        contenido: [
+          'Antes de cada viaje se revisa la papelería del vehículo. Arriba de la pestaña aparecen los vehículos que salen ese día según la ',
+          { texto: 'Bitácora de viajes', ruta: '/bitacora-viajes' },
+          ' y el ',
+          { texto: 'Parte diario', ruta: '/parte-diario' },
+          ' y todavía no tienen control: un click lo crea con el chofer y el destino precargados. El sistema muestra en rojo lo que impide salir (vehículo de baja, sin seguro vigente, RTO o carnet vencidos) y en amarillo lo que hay que mirar (vence pronto, dato sin cargar). Tildá lo que viste en la carpeta (tarjeta verde, seguro, RTO/ITV, carnet) y "Dar por revisado". Con alertas en rojo no se puede dar por revisado: marcalo como observado y contá qué pasó.',
+        ],
+      },
+      {
+        titulo: 'Multas',
+        contenido: 'Cargá multas de tránsito (con vehículo o patente) e internas (ej. vehículo sucio) con fecha, lugar, motivo, vencimiento, monto, pago y medio de pago. Si tildás "Descontarla al empleado", se crea un vale tipo MULTA que entra solo en la próxima liquidación de sueldos; una vez descontada ya no se puede cambiar el monto ni borrarla (sí anularla). En "Informe por empleado / vehículo" tenés el resumen para pasarle a Mati.',
+      },
+    ],
+  },
+
+  // ── Presentismo (Lorena, DOS57) ──────────────────────────────────────────────
+  '/presentismo': {
+    titulo: 'Control de Presentismo',
+    descripcion: 'Asistencia diaria del personal de DOS57: citación, llegada, demoras, llegadas tarde, faltas y francos. Alimenta el premio presentismo de Sueldos Admin.',
+    secciones: [
+      {
+        titulo: 'Día: cargar la asistencia',
+        contenido: 'Elegí la fecha y cargá para cada persona la hora de citación de ese día y la hora en que llegó. Si dejás la citación vacía se usa la habitual del empleado. Al cargar la llegada el estado se pone solo: hasta 6 minutos tarde es Presente, de 7 a 15 es Demora y desde 16 es Llegada tarde. Podés cambiarlo a mano (Faltó, Justificado / médica, Libre / no convocado, Vacaciones, Licencia, Franco). "Marcar todos presentes" precarga a los que todavía no tienen registro.',
+      },
+      {
+        titulo: 'Llegadas tarde y Matías',
+        contenido: 'Cada Llegada tarde queda pendiente de que Matías la apruebe o la rechace (desde acá o desde la campanita). Aprobada no afecta el premio; rechazada lo hace perder. Las Demoras no piden aprobación: cuentan para el semáforo.',
+      },
+      {
+        titulo: 'Mes: resumen y semáforo',
+        contenido: 'La vista Mes muestra la grilla día por día (click en una celda para corregirla) y, por persona, presentes, demoras, llegadas tarde, faltas, saldo de francos y el semáforo:\n• Excelente: hasta 2 demoras, 1 llegada tarde y ninguna falta.\n• Seguimiento: 3-4 demoras, 2-3 llegadas tarde o 1 falta.\n• Atención: 5 o más demoras, 4 o más llegadas tarde o 2 o más faltas.\nVale el peor de los tres. "Exportar Excel" baja la grilla con el mismo informe; "Cerrar mes" guarda el resumen que usa Sueldos Admin para el premio presentismo.',
+        veTambien: [{ texto: 'Sueldos Administrativos', ruta: '/rrhh/sueldos-admin' }],
+      },
+      {
+        titulo: 'Francos',
+        contenido: 'Cada domingo trabajado suma un franco; cada día marcado como "Franco (por domingo)" lo descuenta. En la vista Francos ves cuántos le corresponden a cada uno. El saldo inicial es lo que traían de antes de cargar en el sistema y lo podés corregir ahí mismo.',
+      },
+      {
+        titulo: 'Importar la planilla del mes',
+        contenido: 'Desde la vista Día, "Importar planilla del mes" lee tu Excel con una hoja por persona (MES y NOMBRE arriba, y la tabla CONVOCATORIA · FECHA · HORARIO · SI · DEMORA · LLEGADA TARDE · NO CONVOCADO · FALTO · MÉDICA · VACACIONES · FRANCO POR DOMINGO · OBSERVACIÓN). Manda tu marca de cada día; si un día no tiene marca, se usa lo que dice CONVOCATORIA (LIBRE, FRANCO, LICENCIA…) y, si tampoco, se clasifica la hora de llegada contra la citación. Antes de importar ves una vista previa por hoja: las personas que no están cargadas en RRHH aparecen en amarillo y no se importan. Reimportar el mismo archivo no duplica.',
+      },
+    ],
+    links: [
+      { label: 'Ver Calendario', ruta: '/calendario' },
     ],
   },
 
@@ -478,7 +536,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: '¿Qué muestra?',
-        contenido: 'Vista centralizada de todos los vencimientos y eventos del sistema: seguros, patentes, cuotas AFIP, créditos, facturas y más. Filtrá por tipo con los badges de colores.',
+        contenido: 'Vista centralizada de todos los vencimientos y eventos del sistema: seguros, RTO/ITV, carnets de conducir, multas, controles de salida pendientes, patentes, cuotas AFIP, créditos, facturas y más. Filtrá por tipo con los badges de colores. Lo vencido aparece en rojo y lo que vence pronto en amarillo.',
       },
     ],
   },

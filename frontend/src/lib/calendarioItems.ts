@@ -25,6 +25,10 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   FACTURA_EMITIDA_VENCE: 'Facturas a Cobrar',
   ACTIVO_STOCK_BAJO:    'Quiebre de stock uniformes',
   SINIESTRO_VEHICULO_PENDIENTE: 'Siniestros vehículos',
+  TECNICA_VENCE:        'RTO / ITV',
+  CARNET_VENCE:         'Carnets',
+  MULTA_VENCE:          'Multas',
+  CONTROL_SALIDA:       'Control de salida',
 };
 
 export const COLORES: Record<TipoCalendario, string> = {
@@ -46,6 +50,10 @@ export const COLORES: Record<TipoCalendario, string> = {
   FACTURA_EMITIDA_VENCE: '#065F46',
   ACTIVO_STOCK_BAJO:    '#DC2626',
   SINIESTRO_VEHICULO_PENDIENTE: '#B91C1C',
+  TECNICA_VENCE:        '#F59E0B',
+  CARNET_VENCE:         '#F59E0B',
+  MULTA_VENCE:          '#F59E0B',
+  CONTROL_SALIDA:       '#0E7490',
 };
 
 // ── Links de navegación por tipo ──────────────────────────────────────────────
@@ -72,6 +80,10 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'CUOTA_PRESTAMO': return '/afip-prestamos?tab=prestamos';
     case 'FACTURA_EMITIDA_VENCE': return `/facturas-emitidas?abrir=${m.factura_id}`;
     case 'SINIESTRO_VEHICULO_PENDIENTE': return '/flota?tab=siniestros';
+    case 'TECNICA_VENCE':  return `/flota?tab=vehiculos&vehiculo=${m.camion_id}`;
+    case 'CARNET_VENCE':   return '/flota?tab=carnets';
+    case 'MULTA_VENCE':    return '/flota?tab=multas';
+    case 'CONTROL_SALIDA': return '/flota?tab=salidas';
     default:               return '/calendario';
   }
 }
@@ -95,6 +107,7 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'CUOTA_PRESTAMO': return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
     case 'SINIESTRO_VEHICULO_PENDIENTE': return [`N° ${m.numero_siniestro ?? '—'}`, `${m.dias_sin_actividad} días sin actualizar`];
+    case 'MULTA_VENCE':    return [`Monto: ${Number(m.monto).toLocaleString('es-AR')}`];
     default:               return [];
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Truck, Pencil, Wrench, ShieldOff, Upload, Download } from 'lucide-react';
-import { useImportarPizarraFlota, descargarPlantillaPizarra, type ImportarPizarraResultado } from '@/hooks/useFlota';
+import { useImportarPizarraFlota, descargarPlantillaPizarra, useUpdateTecnicaVehiculo, type ImportarPizarraResultado } from '@/hooks/useFlota';
+import VencimientoBadge from '@/components/flota/VencimientoBadge';
 import {
   useVehiculosFlota, useVehiculoFlota, useCreateVehiculoFlota, useUpdateVehiculoFlota, useDarDeBajaVehiculo,
   useSegurosVehiculo, type VehiculoFiltros, type VehiculoPayload,
@@ -31,11 +32,16 @@ interface VehiculoFormData {
   color:           string;
   titular:         string;
   numero_telepase: string;
+  tipo_tecnica:        '' | 'RTO' | 'ITV' | 'VTV' | 'ITU';
+  vencimiento_tecnica: string;
 }
 
 const EMPTY: VehiculoFormData = {
   codigo: '', descripcion: '', patente: '', tipo: '', marca: '', modelo: '', anio: '', color: '', titular: '', numero_telepase: '',
+  tipo_tecnica: '', vencimiento_tecnica: '',
 };
+
+const TIPOS_TECNICA = ['RTO', 'ITV', 'VTV', 'ITU'] as const;
 
 function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: VehiculoFlota | null; onClose: () => void }) {
   const isEdit = !!vehiculo;
@@ -49,6 +55,7 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
       codigo: vehiculo.codigo, descripcion: vehiculo.descripcion ?? '', patente: formatearPatente(vehiculo.patente), tipo: vehiculo.tipo ?? '',
       marca: vehiculo.marca ?? '', modelo: vehiculo.modelo ?? '', anio: vehiculo.anio ? String(vehiculo.anio) : '',
       color: vehiculo.color ?? '', titular: vehiculo.titular ?? '', numero_telepase: vehiculo.numero_telepase ?? '',
+      tipo_tecnica: vehiculo.tipo_tecnica ?? '', vencimiento_tecnica: vehiculo.vencimiento_tecnica?.slice(0, 10) ?? '',
     } : EMPTY);
     setError(null);
   }, [vehiculo, open]);
@@ -67,6 +74,8 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
       color:           form.color || null,
       titular:         form.titular || null,
       numero_telepase: form.numero_telepase || null,
+      tipo_tecnica:        form.vencimiento_tecnica ? (form.tipo_tecnica || 'RTO') : (form.tipo_tecnica || null),
+      vencimiento_tecnica: form.vencimiento_tecnica || null,
     };
     try {
       if (isEdit) await updateVehiculo.mutateAsync(payload);
@@ -133,6 +142,17 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
               <label className={labelCls}>Descripción</label>
               <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} className={inputCls} placeholder="Mercedes Sprinter blanca" />
             </div>
+            <div>
+              <label className={labelCls}>Revisión técnica</label>
+              <select value={form.tipo_tecnica} onChange={e => setForm(p => ({ ...p, tipo_tecnica: e.target.value as VehiculoFormData['tipo_tecnica'] }))} className={cn(selectCls, 'w-full')}>
+                <option value="">—</option>
+                {TIPOS_TECNICA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Vence</label>
+              <input type="date" value={form.vencimiento_tecnica} onChange={e => setForm(p => ({ ...p, vencimiento_tecnica: e.target.value }))} className={inputCls} />
+            </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
@@ -143,6 +163,68 @@ function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: 
       </DialogContent>
     </Dialog>
   );
+}
+
+// ── RTO / ITV (OPERADOR) ──────────────────────────────────────────────────────
+// Editar el vehículo completo es sólo ADMIN; la revisión técnica la mantiene
+// Lorena (OPERADOR) junto con los seguros.
+
+function TecnicaDialog({ vehiculo, onClose }: { vehiculo: VehiculoFlota | null; onClose: () => void }) {
+  const mut = useUpdateTecnicaVehiculo();
+  const [tipo, setTipo] = useState<'RTO' | 'ITV' | 'VTV' | 'ITU'>('RTO');
+  const [vence, setVence] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTipo(vehiculo?.tipo_tecnica ?? 'RTO');
+    setVence(vehiculo?.vencimiento_tecnica?.slice(0, 10) ?? '');
+    setError(null);
+  }, [vehiculo]);
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vehiculo) return;
+    setError(null);
+    try {
+      await mut.mutateAsync({ id: vehiculo.id, tipo_tecnica: vence ? tipo : null, vencimiento_tecnica: vence || null });
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open={!!vehiculo} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader><DialogTitle>Revisión técnica — {vehiculo?.codigo}</DialogTitle></DialogHeader>
+        <form onSubmit={guardar} className="space-y-3 mt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <select value={tipo} onChange={e => setTipo(e.target.value as typeof tipo)} className={cn(selectCls, 'w-full')}>
+                {TIPOS_TECNICA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Vence</label>
+              <input type="date" value={vence} onChange={e => setVence(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Dejá la fecha vacía si el vehículo no tiene revisión cargada. El vencimiento aparece en el Calendario y en el control de salida.</p>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={mut.isPending}>{mut.isPending ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TecnicaCell({ v }: { v: VehiculoFlota }) {
+  if (v.requiere_tecnica === false && !v.vencimiento_tecnica) return <span className="text-xs text-muted-foreground">No lleva</span>;
+  return <VencimientoBadge estado={v.estado_tecnica} fecha={v.vencimiento_tecnica} prefijo={v.vencimiento_tecnica ? (v.tipo_tecnica ?? 'RTO') : undefined} />;
 }
 
 // ── Dar de baja ───────────────────────────────────────────────────────────────
@@ -219,6 +301,9 @@ function DetalleVehiculo({ id, onClose }: { id: number | null; onClose: () => vo
               <p><span className="text-muted-foreground">Patente:</span> {v.patente ? formatearPatente(v.patente) : '—'}</p>
               <p><span className="text-muted-foreground">Titular:</span> {v.titular ?? '—'}</p>
               <p><span className="text-muted-foreground">Telepase:</span> {v.numero_telepase ?? '—'}</p>
+              <p className="col-span-2"><span className="text-muted-foreground">Revisión técnica:</span>{' '}
+                {v.vencimiento_tecnica ? <VencimientoBadge estado={v.estado_tecnica} fecha={v.vencimiento_tecnica} prefijo={v.tipo_tecnica ?? 'RTO'} /> : '—'}
+              </p>
             </section>
 
             <section>
@@ -390,6 +475,8 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
   const { user } = useAuth();
   const isAdmin = user?.rol === 'ADMIN';
   const canImportar = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const canEditarTecnica = canImportar;
+  const [tecnica, setTecnica] = useState<VehiculoFlota | null>(null);
   const [filtros, setFiltros] = useState<VehiculoFiltros>({ en_servicio: 'true' });
   const { data: vehiculos = [], isLoading } = useVehiculosFlota(filtros);
 
@@ -443,6 +530,7 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Patente</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Seguro</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">RTO / ITV</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">En taller</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
@@ -456,6 +544,11 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
                   <td className="px-3 py-2.5 text-muted-foreground">{v.patente ? formatearPatente(v.patente) : '-'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{v.tipo ?? '-'}</td>
                   <td className="px-3 py-2.5"><SeguroCell v={v} /></td>
+                  <td className="px-3 py-2.5" onClick={e => { if (canEditarTecnica) { e.stopPropagation(); setTecnica(v); } }}>
+                    <span className={cn(canEditarTecnica && 'cursor-pointer hover:opacity-80')} title={canEditarTecnica ? 'Actualizar revisión técnica' : undefined}>
+                      <TecnicaCell v={v} />
+                    </span>
+                  </td>
                   <td className="px-3 py-2.5">
                     {v.en_taller ? <Wrench size={14} className="text-blue-600" /> : <span className="text-muted-foreground text-xs">—</span>}
                   </td>
@@ -483,6 +576,7 @@ export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: num
 
       <VehiculoDialog open={dialogOpen} vehiculo={editing} onClose={() => { setDialogOpen(false); setEditing(null); }} />
       <BajaDialog vehiculo={baja} onClose={() => setBaja(null)} />
+      <TecnicaDialog vehiculo={tecnica} onClose={() => setTecnica(null)} />
       <DetalleVehiculo id={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   RegistroAsistencia, EstadoAsistencia, PresentismoHoyResponse, ResumenMesResponse,
-  ResumenMesEmpleadoResponse, CerrarMesPresentismoResultado,
+  ResumenMesEmpleadoResponse, CerrarMesPresentismoResultado, FrancosEmpleado, ImportPlanillaPresentismoResultado,
 } from '@/types';
 
 const KEY = ['presentismo'] as const;
@@ -14,6 +14,7 @@ export interface RegistroAsistenciaPayload {
   estado?:                EstadoAsistencia;
   hora_ingreso?:          string | null;
   hora_egreso?:           string | null;
+  hora_convocatoria?:     string | null;
   motivo?:                string | null;
   descuenta_presentismo?: boolean;
 }
@@ -142,6 +143,38 @@ export function useExportarPresentismo() {
   }, []);
 
   return { exportar, isExporting };
+}
+
+// ── Francos compensatorios ────────────────────────────────────────────────────
+
+export function useFrancos() {
+  return useQuery<FrancosEmpleado[]>({
+    queryKey: [...KEY, 'francos'],
+    queryFn:  () => api.get('/presentismo/francos').then(r => r.data),
+  });
+}
+
+export function useUpdateSaldoInicialFrancos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ empleadoId, francos_saldo_inicial }: { empleadoId: number; francos_saldo_inicial: number }) =>
+      api.put(`/presentismo/francos/${empleadoId}`, { francos_saldo_inicial }).then(r => r.data),
+    onSuccess: () => invalidarPresentismo(qc),
+  });
+}
+
+// ── Importador de la planilla mensual (una hoja por persona) ──────────────────
+
+export function useImportarPlanillaPresentismo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, preview }: { file: File; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<ImportPlanillaPresentismoResultado>('/presentismo/importar-planilla', fd, { params: { preview } }).then(r => r.data);
+    },
+    onSuccess: (data) => { if (!data.preview) invalidarPresentismo(qc); },
+  });
 }
 
 export function useRechazarTardanza() {

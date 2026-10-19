@@ -10,8 +10,13 @@ import {
   listPatentesVehiculo, listPatentesEmpresa, createPatenteVehiculo, updatePatenteVehiculo,
   listPeajes, listPeajesVehiculo, createPeaje, deletePeaje,
   listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
-  alertasFlota, importarPizarra, plantillaPizarra,
+  alertasFlota, importarPizarra, plantillaPizarra, updateTecnicaVehiculo,
 } from '../controllers/flota.controller';
+import {
+  listCarnets, updateCarnet,
+  listControlesSalida, sugeridosControlSalida, opcionesControlSalida,
+  createControlSalida, updateControlSalida, deleteControlSalida,
+} from '../controllers/flotaDocumentacion.controller';
 import { upload as uploadXlsx } from '../controllers/importer.controller';
 import {
   listBitacoraFlota, opcionesBitacoraFlota, createViajeFlota, updateViajeFlota, deleteViajeFlota,
@@ -45,6 +50,20 @@ router.get('/vehiculos/:id',       asyncHandler(detalleVehiculo));
 router.post('/vehiculos',          requireRole('ADMIN'), asyncHandler(createVehiculo));
 router.put('/vehiculos/:id',       requireRole('ADMIN'), asyncHandler(updateVehiculo));
 router.delete('/vehiculos/:id',    requireRole('ADMIN'), asyncHandler(darDeBajaVehiculo));
+// RTO/ITV — OPERADOR (Lorena la mantiene junto con los seguros)
+router.put('/vehiculos/:id/tecnica', asyncHandler(updateTecnicaVehiculo));
+
+// ── Carnets de conducir (Lorena — RRHH es sólo ADMIN) ─────────────────────────
+router.get('/carnets',              asyncHandler(listCarnets));
+router.put('/carnets/:empleadoId',  asyncHandler(updateCarnet));
+
+// ── Control de salida de vehículos ────────────────────────────────────────────
+router.get('/controles-salida/sugeridos', asyncHandler(sugeridosControlSalida));
+router.get('/controles-salida/opciones',  asyncHandler(opcionesControlSalida));
+router.get('/controles-salida',           asyncHandler(listControlesSalida));
+router.post('/controles-salida',          asyncHandler(createControlSalida));
+router.put('/controles-salida/:id',       asyncHandler(updateControlSalida));
+router.delete('/controles-salida/:id',    asyncHandler(deleteControlSalida));
 
 // ── Bitácora de viajes de camiones (planillas de Flor) — import en /api/importar/bitacora-viajes
 router.get('/bitacora-viajes/opciones', asyncHandler(opcionesBitacoraFlota));

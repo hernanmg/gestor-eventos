@@ -4,6 +4,7 @@ import { updateEstadoSeguros } from './flota.controller';
 import { ubicarPeriodo, periodoAnterior, rangoSemanaFija } from './combustible.controller';
 import { EMPRESAS } from '../lib/empresasConstants';
 import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
+import { DIAS_AVISO_VENCIMIENTO, hoyUTC } from '../lib/vencimientos';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -632,6 +633,89 @@ async function resolveFacturasSinPdf(req: Request): Promise<NotificacionItem[]> 
   }));
 }
 
+// ── Documentación de flota (Lorena) ───────────────────────────────────────────
+// RTO/ITV, carnets, multas y controles de salida avisan sólo a quien tiene la
+// documentación de flota a cargo: ADMIN y el usuario cuya pantalla principal
+// es la de Lorena (/presentismo, ver navConfig.ts). Santi/Nico (combustible) o
+// Jazmín (parte diario) no los ven en la campanita — sí en Flota y Calendario.
+const HOME_RESPONSABLE_FLOTA = ['/presentismo'];
+
+async function esResponsableDocumentacionFlota(req: Request): Promise<boolean> {
+  if (req.user!.rol === 'ADMIN') return true;
+  if (req.user!.rol !== 'OPERADOR') return false;
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null }, select: { home_route: true } });
+  return !!usuario?.home_route && HOME_RESPONSABLE_FLOTA.includes(usuario.home_route);
+}
+
+const fmtUTC = (d: Date) => d.toLocaleDateString('es-AR', { timeZone: 'UTC' });
+
+async function resolveDocumentacionFlota(req: Request): Promise<NotificacionItem[]> {
+  if (!(await esResponsableDocumentacionFlota(req))) return [];
+  const empresaId = req.empresaId!;
+  const hoy = hoyUTC();
+  const aviso = new Date(hoy.getTime() + DIAS_AVISO_VENCIMIENTO * MS_DIA);
+  const manana = new Date(hoy.getTime() + MS_DIA);
+
+  const [tecnicas, carnets, multas, controles] = await Promise.all([
+    prisma.camion.findMany({
+      where: { deleted_at: null, en_servicio: true, empresa_id: empresaId, vencimiento_tecnica: { lt: aviso } },
+      select: { id: true, codigo: true, tipo_tecnica: true, vencimiento_tecnica: true },
+    }),
+    prisma.empleado.findMany({
+      where: { deleted_at: null, estado: 'ACTIVO', empresa_id: empresaId, licencia_vencimiento: { lt: aviso } },
+      select: { id: true, nombre: true, apellido: true, licencia_vencimiento: true },
+    }),
+    prisma.multa.findMany({
+      where: { deleted_at: null, empresa_id: empresaId, estado: 'PENDIENTE', fecha_vencimiento: { lt: aviso } },
+      include: { camion: { select: { codigo: true } } },
+    }),
+    prisma.controlSalidaVehiculo.findMany({
+      where: { deleted_at: null, empresa_id: empresaId, estado: 'PENDIENTE', fecha_salida: { lte: manana } },
+      include: { camion: { select: { codigo: true } } },
+    }),
+  ]);
+
+  return [
+    ...tecnicas.map(v => {
+      const vencida = v.vencimiento_tecnica! < hoy;
+      return {
+        id: `tecnica-${v.id}`, tipo: 'TECNICA_VENCE',
+        titulo: `${v.tipo_tecnica ?? 'RTO'} de ${v.codigo}`,
+        descripcion: `${vencida ? 'Venció' : 'Vence'} el ${fmtUTC(v.vencimiento_tecnica!)}`,
+        urgencia: (vencida ? 'critical' : 'warning') as Urgencia,
+        link: '/flota?tab=vehiculos', fecha: v.vencimiento_tecnica!,
+      };
+    }),
+    ...carnets.map(e => {
+      const vencido = e.licencia_vencimiento! < hoy;
+      return {
+        id: `carnet-${e.id}`, tipo: 'CARNET_VENCE',
+        titulo: `Carnet de ${e.apellido}, ${e.nombre}`,
+        descripcion: `${vencido ? 'Venció' : 'Vence'} el ${fmtUTC(e.licencia_vencimiento!)}`,
+        urgencia: (vencido ? 'critical' : 'warning') as Urgencia,
+        link: '/flota?tab=carnets', fecha: e.licencia_vencimiento!,
+      };
+    }),
+    ...multas.map(m => {
+      const vencida = m.fecha_vencimiento! < hoy;
+      return {
+        id: `multa-${m.id}`, tipo: 'MULTA_VENCE',
+        titulo: `Multa ${m.camion?.codigo ?? m.patente_texto ?? ''} sin pagar`.replace('  ', ' '),
+        descripcion: `${m.motivo} — ${Number(m.monto).toLocaleString('es-AR')} · ${vencida ? 'venció' : 'vence'} el ${fmtUTC(m.fecha_vencimiento!)}`,
+        urgencia: (vencida ? 'critical' : 'warning') as Urgencia,
+        link: '/flota?tab=multas', fecha: m.fecha_vencimiento!,
+      };
+    }),
+    ...controles.map(c => ({
+      id: `control-salida-${c.id}`, tipo: 'CONTROL_SALIDA_PENDIENTE',
+      titulo: `Revisar papeles de ${c.camion.codigo}`,
+      descripcion: `Sale el ${fmtUTC(c.fecha_salida)}${c.destino ? ` → ${c.destino}` : ''} — control sin revisar`,
+      urgencia: (c.fecha_salida < hoy ? 'critical' : 'warning') as Urgencia,
+      link: '/flota?tab=salidas', fecha: c.fecha_salida,
+    })),
+  ];
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -667,6 +751,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveSiniestrosVehiculoSinNovedad(empresaId, hace30Dias),
     resolveExcedentesAtrasados(empresaId, hace60Dias),
     resolveFacturasSinPdf(req),
+    resolveDocumentacionFlota(req),
   ]);
 
   const items = resultados

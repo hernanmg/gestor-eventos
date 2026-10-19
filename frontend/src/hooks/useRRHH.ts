@@ -69,6 +69,9 @@ export interface EmpleadoPayload {
   art?:                        string | null;
   tipo_contratacion?:          string | null;
   licencia_conducir?:          boolean;
+  licencia_categoria?:         string | null;
+  licencia_numero?:            string | null;
+  licencia_vencimiento?:       string | null;
   equipamiento_asignado?:      string | null;
   talle_pantalon?:             string | null;
   talle_remera?:               string | null;

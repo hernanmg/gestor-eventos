@@ -14,7 +14,8 @@ export type TipoCalendario =
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
-  | 'SINIESTRO_VEHICULO_PENDIENTE';
+  | 'SINIESTRO_VEHICULO_PENDIENTE'
+  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -56,6 +57,11 @@ const COLORES: Record<TipoCalendario, string> = {
   ACTIVO_STOCK_BAJO:    '#DC2626',
   SGR_VENCE:            '#F59E0B',
   SINIESTRO_VEHICULO_PENDIENTE: '#B91C1C',
+  // Semáforo real por item (rojo vencido / amarillo por vencer) — default acá.
+  TECNICA_VENCE:        '#F59E0B',
+  CARNET_VENCE:         '#F59E0B',
+  MULTA_VENCE:          '#F59E0B',
+  CONTROL_SALIDA:       '#0E7490',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -82,6 +88,10 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   stock_bajo:      'ACTIVO_STOCK_BAJO',
   sgr:             'SGR_VENCE',
   siniestros_vehiculo: 'SINIESTRO_VEHICULO_PENDIENTE',
+  tecnica:         'TECNICA_VENCE',
+  carnets:         'CARNET_VENCE',
+  multas:          'MULTA_VENCE',
+  controles_salida: 'CONTROL_SALIDA',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -817,6 +827,109 @@ async function resolveSGRVence(empresaFiltro: number | undefined, desde: Date, h
 
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
+// ── Documentación de flota (Lorena) ───────────────────────────────────────────
+// Rojo si ya venció, amarillo si vence dentro del rango — mismo semáforo que
+// los seguros.
+
+async function resolveTecnicaVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const vehiculos = await prisma.camion.findMany({
+    where: {
+      deleted_at: null, en_servicio: true,
+      vencimiento_tecnica: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+  return vehiculos.map(v => {
+    const vencido = v.vencimiento_tecnica! < hoy;
+    return {
+      id:             `tecnica-${v.id}`,
+      tipo:           'TECNICA_VENCE' as const,
+      titulo:         `${v.tipo_tecnica ?? 'RTO'} de ${v.codigo}${v.descripcion ? ` (${v.descripcion})` : ''}`,
+      fecha:          v.vencimiento_tecnica!,
+      empresa_id:     v.empresa_id,
+      empresa_nombre: v.empresa.nombre,
+      color:          vencido ? '#DC2626' : '#F59E0B',
+      urgencia:       vencido ? 'critical' as const : computeUrgencia(v.vencimiento_tecnica!, hoy),
+      metadata:       { camion_id: v.id },
+    };
+  });
+}
+
+async function resolveCarnetsVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const empleados = await prisma.empleado.findMany({
+    where: {
+      deleted_at: null, estado: 'ACTIVO',
+      licencia_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+  return empleados.map(e => {
+    const vencido = e.licencia_vencimiento! < hoy;
+    return {
+      id:             `carnet-${e.id}`,
+      tipo:           'CARNET_VENCE' as const,
+      titulo:         `Carnet de ${e.apellido}, ${e.nombre}${e.licencia_categoria ? ` (${e.licencia_categoria})` : ''}`,
+      fecha:          e.licencia_vencimiento!,
+      empresa_id:     e.empresa_id,
+      empresa_nombre: e.empresa.nombre,
+      color:          vencido ? '#DC2626' : '#F59E0B',
+      urgencia:       vencido ? 'critical' as const : computeUrgencia(e.licencia_vencimiento!, hoy),
+      metadata:       { empleado_id: e.id },
+    };
+  });
+}
+
+async function resolveMultasVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const multas = await prisma.multa.findMany({
+    where: {
+      deleted_at: null, estado: 'PENDIENTE',
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true } }, empresa: { select: { nombre: true } } },
+  });
+  return multas.map(m => {
+    const vencida = m.fecha_vencimiento! < hoy;
+    const vehiculo = m.camion?.codigo ?? m.patente_texto;
+    return {
+      id:             `multa-${m.id}`,
+      tipo:           'MULTA_VENCE' as const,
+      titulo:         `Multa${vehiculo ? ` ${vehiculo}` : ''} — ${m.motivo}`,
+      fecha:          m.fecha_vencimiento!,
+      empresa_id:     m.empresa_id,
+      empresa_nombre: m.empresa.nombre,
+      color:          vencida ? '#DC2626' : '#F59E0B',
+      urgencia:       vencida ? 'critical' as const : computeUrgencia(m.fecha_vencimiento!, hoy),
+      metadata:       { multa_id: m.id, monto: Number(m.monto) },
+    };
+  });
+}
+
+// Controles de salida todavía sin revisar (Lorena + David antes de cada viaje)
+async function resolveControlesSalida(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const controles = await prisma.controlSalidaVehiculo.findMany({
+    where: {
+      deleted_at: null, estado: 'PENDIENTE',
+      fecha_salida: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { camion: { select: { codigo: true } }, empresa: { select: { nombre: true } } },
+  });
+  return controles.map(c => ({
+    id:             `control-salida-${c.id}`,
+    tipo:           'CONTROL_SALIDA' as const,
+    titulo:         `Revisar papeles de ${c.camion.codigo}${c.destino ? ` → ${c.destino}` : ''}`,
+    fecha:          c.fecha_salida,
+    empresa_id:     c.empresa_id,
+    empresa_nombre: c.empresa.nombre,
+    color:          c.fecha_salida < hoy ? '#DC2626' : '#0E7490',
+    urgencia:       computeUrgencia(c.fecha_salida, hoy),
+    metadata:       { control_id: c.id, camion_id: c.camion_id },
+  }));
+}
+
 const calendarioQuerySchema = z.object({
   desde:      z.string().regex(FECHA_REGEX, "Formato de fecha inválido, usar YYYY-MM-DD"),
   hasta:      z.string().regex(FECHA_REGEX, "Formato de fecha inválido, usar YYYY-MM-DD"),
@@ -899,6 +1012,11 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('ACTIVO_STOCK_BAJO'))   tareas.push(resolveActivosStockBajo(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SGR_VENCE'))           tareas.push(resolveSGRVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SINIESTRO_VEHICULO_PENDIENTE')) tareas.push(resolveSiniestrosVehiculoPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  // Documentación de flota — enlazan a /flota (ADMIN y OPERADOR)
+  if (tiposActivos.has('TECNICA_VENCE'))  tareas.push(resolveTecnicaVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('CARNET_VENCE'))   tareas.push(resolveCarnetsVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('MULTA_VENCE'))    tareas.push(resolveMultasVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('CONTROL_SALIDA')) tareas.push(resolveControlesSalida(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

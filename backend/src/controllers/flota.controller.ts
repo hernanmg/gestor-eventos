@@ -8,6 +8,7 @@ import { withTenant } from '../lib/tenant';
 import { recalcularSaldoCCC } from '../lib/recalcularSaldoCCC';
 import { importarPizarraFlota, generarPlantillaPizarra, parsePlanillaPizarra } from '../lib/flotaPizarraImporter';
 import { normalizarPatente } from '../lib/normalizarPatente';
+import { estadoVencimiento, hoyUTC, parseFechaCalendario, requiereTecnica, DIAS_AVISO_VENCIMIENTO } from '../lib/vencimientos';
 
 // ── Multer (póliza / comprobante) ────────────────────────────────────────────
 
@@ -56,7 +57,18 @@ const vehiculoSchema = z.object({
   color:           z.string().nullable().optional(),
   titular:         z.string().nullable().optional(),
   numero_telepase: z.string().nullable().optional(),
+  tipo_tecnica:        z.enum(['RTO', 'ITV', 'VTV', 'ITU']).nullable().optional(),
+  vencimiento_tecnica: z.string().nullable().optional(), // YYYY-MM-DD
 });
+
+// RTO/ITV con su semáforo (null si el vehículo no la lleva o no está cargada)
+function conEstadoTecnica<T extends { vencimiento_tecnica: Date | null; tipo_vehiculo: string | null; tipo: string | null; codigo: string }>(v: T) {
+  return {
+    ...v,
+    requiere_tecnica: requiereTecnica(v),
+    estado_tecnica:   estadoVencimiento(v.vencimiento_tecnica),
+  };
+}
 
 export async function listVehiculos(req: Request, res: Response) {
   await updateEstadoSeguros(req.empresaId!);
@@ -79,7 +91,7 @@ export async function listVehiculos(req: Request, res: Response) {
   });
 
   res.json(vehiculos.map(v => ({
-    ...v,
+    ...conEstadoTecnica(v),
     seguro_vigente:        v.seguros[0] ?? null,
     proxima_patente:       v.patentes[0] ?? null,
     en_taller:             v.servicios_taller[0] ?? null,
@@ -101,7 +113,7 @@ export async function detalleVehiculo(req: Request, res: Response) {
     },
   });
   if (!vehiculo) { res.status(404).json({ error: 'Vehículo no encontrado' }); return; }
-  res.json(vehiculo);
+  res.json(conEstadoTecnica(vehiculo));
 }
 
 export async function createVehiculo(req: Request, res: Response) {
@@ -109,7 +121,9 @@ export async function createVehiculo(req: Request, res: Response) {
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
-  const d = parsed.data;
+  const { vencimiento_tecnica, ...d } = parsed.data;
+  const vtoTecnica = parseFechaCalendario(vencimiento_tecnica);
+  if (vtoTecnica === undefined) { res.status(400).json({ error: 'Vencimiento de RTO/ITV inválido' }); return; }
   const patenteNorm = normalizarPatente(d.patente);
 
   const dupe = await prisma.camion.findFirst({ where: { codigo: d.codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
@@ -133,6 +147,8 @@ export async function createVehiculo(req: Request, res: Response) {
       color:           d.color           ?? null,
       titular:         d.titular         ?? null,
       numero_telepase: d.numero_telepase ?? null,
+      tipo_tecnica:    d.tipo_tecnica    ?? null,
+      vencimiento_tecnica: vtoTecnica,
     },
   });
 
@@ -153,7 +169,9 @@ export async function updateVehiculo(req: Request, res: Response) {
   const existing = await prisma.camion.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Vehículo no encontrado' }); return; }
 
-  const d = parsed.data;
+  const { vencimiento_tecnica, ...d } = parsed.data;
+  const vtoTecnica = vencimiento_tecnica !== undefined ? parseFechaCalendario(vencimiento_tecnica) : null;
+  if (vtoTecnica === undefined) { res.status(400).json({ error: 'Vencimiento de RTO/ITV inválido' }); return; }
   if (d.codigo && d.codigo !== existing.codigo) {
     const dupe = await prisma.camion.findFirst({ where: { codigo: d.codigo, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (dupe) { res.status(400).json({ error: 'Ya existe un vehículo con ese código' }); return; }
@@ -167,7 +185,11 @@ export async function updateVehiculo(req: Request, res: Response) {
 
   const vehiculo = await prisma.camion.update({
     where: { id },
-    data: { ...d, ...(patenteNorm !== undefined && { patente: patenteNorm }) },
+    data: {
+      ...d,
+      ...(patenteNorm !== undefined && { patente: patenteNorm }),
+      ...(vencimiento_tecnica !== undefined && { vencimiento_tecnica: vtoTecnica }),
+    },
   });
 
   await registrarAuditoria({
@@ -231,6 +253,42 @@ export async function darDeBajaVehiculo(req: Request, res: Response) {
   });
 
   res.json(vehiculo);
+}
+
+// ── RTO / ITV ─────────────────────────────────────────────────────────────────
+// Endpoint propio (OPERADOR) — editar el vehículo completo es sólo ADMIN, pero
+// la revisión técnica la mantiene Lorena junto con los seguros de la pizarra.
+
+const tecnicaSchema = z.object({
+  tipo_tecnica:        z.enum(['RTO', 'ITV', 'VTV', 'ITU']).nullable(),
+  vencimiento_tecnica: z.string().nullable(), // YYYY-MM-DD
+});
+
+export async function updateTecnicaVehiculo(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const parsed = tecnicaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+  const vto = parseFechaCalendario(parsed.data.vencimiento_tecnica);
+  if (vto === undefined) { res.status(400).json({ error: 'Vencimiento inválido' }); return; }
+
+  const existing = await prisma.camion.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Vehículo no encontrado' }); return; }
+
+  const vehiculo = await prisma.camion.update({
+    where: { id },
+    data:  { tipo_tecnica: parsed.data.tipo_tecnica, vencimiento_tecnica: vto },
+  });
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Camion', entidadId: id,
+    descripcion: `Actualizó la revisión técnica de "${existing.codigo}" (${parsed.data.tipo_tecnica ?? '—'} ${parsed.data.vencimiento_tecnica ?? 'sin fecha'})`,
+    datosAntes: { tipo_tecnica: existing.tipo_tecnica, vencimiento_tecnica: existing.vencimiento_tecnica },
+    datosDespues: parsed.data, ip: req.ip, tx: prisma,
+  });
+
+  res.json(conEstadoTecnica(vehiculo));
 }
 
 // ── Seguros ───────────────────────────────────────────────────────────────────
@@ -831,7 +889,10 @@ export async function alertasFlota(req: Request, res: Response) {
   const hoy = new Date();
   const en30Dias = new Date(hoy.getTime() + 30 * MS_DIA);
 
-  const [segurosCriticos, patentesPendientes, tallerLargo] = await Promise.all([
+  const hoyCal = hoyUTC();
+  const avisoCal = new Date(hoyCal.getTime() + DIAS_AVISO_VENCIMIENTO * MS_DIA);
+
+  const [segurosCriticos, patentesPendientes, tallerLargo, tecnicas, carnets, multas] = await Promise.all([
     prisma.seguroVehiculo.findMany({
       where: { deleted_at: null, ...withTenant(req.empresaId!), estado: { in: [EstadoSeguro.VENCIDO, EstadoSeguro.POR_VENCER] } },
       include: { camion: { select: { id: true, codigo: true } } },
@@ -845,6 +906,21 @@ export async function alertasFlota(req: Request, res: Response) {
     prisma.servicioTaller.findMany({
       where: { deleted_at: null, ...withTenant(req.empresaId!), estado: EstadoServicioTaller.EN_PROCESO },
       include: { camion: { select: { id: true, codigo: true } } },
+    }),
+    prisma.camion.findMany({
+      where:  { deleted_at: null, en_servicio: true, ...withTenant(req.empresaId!), vencimiento_tecnica: { lt: avisoCal } },
+      select: { id: true, codigo: true, tipo_tecnica: true, vencimiento_tecnica: true },
+      orderBy: { vencimiento_tecnica: 'asc' },
+    }),
+    prisma.empleado.findMany({
+      where:  { deleted_at: null, estado: 'ACTIVO', ...withTenant(req.empresaId!), licencia_vencimiento: { lt: avisoCal } },
+      select: { id: true, nombre: true, apellido: true, licencia_vencimiento: true },
+      orderBy: { licencia_vencimiento: 'asc' },
+    }),
+    prisma.multa.findMany({
+      where:  { deleted_at: null, ...withTenant(req.empresaId!), estado: 'PENDIENTE', fecha_vencimiento: { lt: avisoCal } },
+      include: { camion: { select: { codigo: true } } },
+      orderBy: { fecha_vencimiento: 'asc' },
     }),
   ]);
 
@@ -879,6 +955,42 @@ export async function alertasFlota(req: Request, res: Response) {
         urgencia: 'warning' as const,
         metadata: { camion_id: t.camion_id, servicio_id: t.id, dias: t.dias },
       })),
+    ...tecnicas.map(v => {
+      const vencido = estadoVencimiento(v.vencimiento_tecnica, hoyCal) === 'VENCIDO';
+      return {
+        id:       `tecnica-${v.id}`,
+        tipo:     'TECNICA_VENCE' as const,
+        titulo:   `${v.tipo_tecnica ?? 'RTO'} de ${v.codigo}`,
+        fecha:    v.vencimiento_tecnica!,
+        color:    vencido ? '#DC2626' : '#F59E0B',
+        urgencia: vencido ? 'critical' as const : 'warning' as const,
+        metadata: { camion_id: v.id },
+      };
+    }),
+    ...carnets.map(e => {
+      const vencido = estadoVencimiento(e.licencia_vencimiento, hoyCal) === 'VENCIDO';
+      return {
+        id:       `carnet-${e.id}`,
+        tipo:     'CARNET_VENCE' as const,
+        titulo:   `Carnet de ${e.apellido}, ${e.nombre}`,
+        fecha:    e.licencia_vencimiento!,
+        color:    vencido ? '#DC2626' : '#F59E0B',
+        urgencia: vencido ? 'critical' as const : 'warning' as const,
+        metadata: { empleado_id: e.id },
+      };
+    }),
+    ...multas.map(m => {
+      const vencida = estadoVencimiento(m.fecha_vencimiento, hoyCal) === 'VENCIDO';
+      return {
+        id:       `multa-${m.id}`,
+        tipo:     'MULTA_VENCE' as const,
+        titulo:   `Multa ${m.camion?.codigo ?? m.patente_texto ?? ''} — ${m.motivo}`.replace('  ', ' '),
+        fecha:    m.fecha_vencimiento!,
+        color:    vencida ? '#DC2626' : '#F59E0B',
+        urgencia: vencida ? 'critical' as const : 'warning' as const,
+        metadata: { multa_id: m.id, camion_id: m.camion_id },
+      };
+    }),
   ];
 
   res.json({ items });
@@ -889,8 +1001,8 @@ export async function alertasFlota(req: Request, res: Response) {
 // (precargada con la transcripción de la foto), la mantiene y la reimporta.
 
 // GET /api/flota/pizarra-plantilla
-export async function plantillaPizarra(_req: Request, res: Response) {
-  const buffer = await generarPlantillaPizarra();
+export async function plantillaPizarra(req: Request, res: Response) {
+  const buffer = await generarPlantillaPizarra(req.empresaId!);
   res.set({
     'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'Content-Disposition': 'attachment; filename="Pizarra_Flota_DOS57.xlsx"',
