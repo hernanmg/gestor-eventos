@@ -93,12 +93,26 @@ function crearResolverChofer(empleados: EmpleadoRef[]) {
 // sistema): case-insensitive, sin tildes, match parcial. El puntaje es el
 // mayor entre (a) proporción de palabras del nombre más corto presentes en el
 // otro y (b) coeficiente de Dice sobre bigramas de letras (tolera abreviaturas
-// tipo "SGO" vs "SANTIAGO"). Se sugiere sólo si llega al 60%.
+// tipo "SGO" vs "SANTIAGO"). Se sugiere sólo si llega al 60% — o al 45% si
+// las fechas del evento coinciden con las de los viajes.
+//
+// Orden de prioridad del candidato de cada grupo:
+//   1. alias recordado (AliasEventoPlanilla, confirmado en una importación anterior)
+//   2. el evento al que ya están vinculados todos los viajes del grupo
+//   3. nombre + fechas: primero los eventos cuya ventana (montaje → desmontaje,
+//      ± MARGEN_VIAJE_DIAS) se superpone con los viajes; entre el resto, a igual
+//      nombre gana el que no tiene fechas cargadas sobre el que las tiene lejos
+//      (así "La Renga Jujuy 2025" no le gana a la edición nueva todavía sin fecha).
 
 const UMBRAL_SIMILITUD = 0.6;
+const UMBRAL_SIMILITUD_CON_FECHA = 0.45;
+const MARGEN_VIAJE_DIAS = 5;
+const DIA_MS = 86_400_000;
 const PALABRAS_VACIAS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'y', 'en']);
 
-const normNombre = (s: string) => sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Clave de agrupado y de alias: "Jujuy - La Renga " y "JUJUY LA RENGA" son la misma
+export const normNombreEvento = (s: string) => sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normNombre = normNombreEvento;
 
 function bigramas(s: string): string[] {
   const t = s.replace(/ /g, '');
@@ -138,7 +152,13 @@ export function similitudNombres(a: string, b: string): number {
   return Math.max(porPalabras, dice);
 }
 
-type EventoRef = { id: number; nombre: string };
+type EventoRef = {
+  id: number; nombre: string;
+  fecha_inicio: Date | null; fecha_fin: Date | null; dias_montaje: number; dias_desmontaje: number;
+};
+type Rango = { desde: number; hasta: number };
+export type CoincidenciaFechas = 'coincide' | 'no_coincide' | 'sin_datos';
+export type MotivoCandidato = 'recordado' | 'vinculado' | 'nombre';
 
 // Proporción de palabras compartidas sobre el total (simétrica) — sólo para
 // desempatar: "RESCOLDO/KEMPES" da 100% contra "Rescoldo" y contra "Kempes
@@ -150,36 +170,74 @@ function jaccardPalabras(a: string, b: string): number {
   return comunes / (pa.size + pb.size - comunes || 1);
 }
 
-function sugerirEvento(nombre: string, eventos: EventoRef[]): { evento: EventoRef; similitud: number } | null {
-  let mejor: { evento: EventoRef; similitud: number; desempate: number } | null = null;
+function ventanaEvento(ev: EventoRef): Rango | null {
+  const ini = ev.fecha_inicio ?? ev.fecha_fin;
+  const fin = ev.fecha_fin ?? ev.fecha_inicio;
+  if (!ini || !fin) return null;
+  return {
+    desde: ini.getTime() - (ev.dias_montaje + MARGEN_VIAJE_DIAS) * DIA_MS,
+    hasta: fin.getTime() + (ev.dias_desmontaje + MARGEN_VIAJE_DIAS) * DIA_MS,
+  };
+}
+
+// Días entre los viajes del grupo y la ventana del evento (0 = se superponen);
+// null si falta alguno de los dos lados.
+function distanciaDias(viajes: Rango | null, ev: Rango | null): number | null {
+  if (!viajes || !ev) return null;
+  if (viajes.hasta < ev.desde) return Math.ceil((ev.desde - viajes.hasta) / DIA_MS);
+  if (viajes.desde > ev.hasta) return Math.ceil((viajes.desde - ev.hasta) / DIA_MS);
+  return 0;
+}
+
+export function coincidenciaFechas(viajes: Rango | null, ev: EventoRef): CoincidenciaFechas {
+  const d = distanciaDias(viajes, ventanaEvento(ev));
+  return d === null ? 'sin_datos' : d === 0 ? 'coincide' : 'no_coincide';
+}
+
+function mayorLexico(a: number[], b: number[]): boolean {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return false;
+}
+
+export function sugerirEvento(nombre: string, viajes: Rango | null, eventos: EventoRef[]): { evento: EventoRef; similitud: number } | null {
+  let mejor: { evento: EventoRef; similitud: number; orden: number[] } | null = null;
   for (const ev of eventos) {
     const sim = similitudNombres(nombre, ev.nombre);
-    if (sim < UMBRAL_SIMILITUD) continue;
-    const desempate = jaccardPalabras(nombre, ev.nombre);
-    if (!mejor || sim > mejor.similitud || (sim === mejor.similitud && desempate > mejor.desempate)) {
-      mejor = { evento: ev, similitud: sim, desempate };
-    }
+    const dist = distanciaDias(viajes, ventanaEvento(ev));
+    const enFecha = dist === 0;
+    if (sim < (enFecha ? UMBRAL_SIMILITUD_CON_FECHA : UMBRAL_SIMILITUD)) continue;
+    // Sin fechas para comparar (0) va antes que fechas lejanas (-1)
+    const orden = [enFecha ? 1 : 0, sim, dist === null ? 0 : dist === 0 ? 1 : -1, -(dist ?? 0), jaccardPalabras(nombre, ev.nombre)];
+    if (!mejor || mayorLexico(orden, mejor.orden)) mejor = { evento: ev, similitud: sim, orden };
   }
   return mejor && { evento: mejor.evento, similitud: Math.round(mejor.similitud * 100) / 100 };
 }
 
-// Campo multipart `vinculos` del importador: {"JUJUY - LA RENGA": 12, ...} —
-// sólo los grupos que el usuario confirmó en el preview.
-function parseVinculos(raw: unknown): Map<string, number> | { error: string } {
-  if (raw === undefined || raw === null || raw === '') return new Map();
-  try {
-    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error();
-    const m = new Map<string, number>();
-    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-      if (v === null || v === undefined) continue;
-      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) throw new Error();
-      m.set(k, v);
+// Campo multipart `vinculos` del importador: {"jujuy la renga": 12, "sgo": null}.
+// Clave = nombre de la planilla (se normaliza acá, así que también sirve el
+// texto tal cual). Número = vincular a ese evento y recordarlo para la próxima;
+// null = el usuario respondió No → se olvida el alias si había uno.
+type Vinculos = { vincular: Map<string, number>; rechazados: Set<string> };
+function parseVinculos(raw: unknown): Vinculos | { error: string } {
+  const out: Vinculos = { vincular: new Map(), rechazados: new Set() };
+  if (raw === undefined || raw === null || raw === '') return out;
+  const invalido = { error: 'El campo vinculos no es válido (se espera {"nombre del evento en la planilla": evento_id | null})' };
+  let obj: unknown;
+  try { obj = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return invalido; }
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return invalido;
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const clave = normNombreEvento(k);
+    if (!clave) continue;
+    if (v === null) { out.rechazados.add(clave); continue; }
+    if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) return invalido;
+    const previo = out.vincular.get(clave);
+    if (previo !== undefined && previo !== v) {
+      return { error: `"${k}" figura vinculado a dos eventos distintos (#${previo} y #${v})` };
     }
-    return m;
-  } catch {
-    return { error: 'El campo vinculos no es válido (se espera {"nombre del evento en la planilla": evento_id})' };
+    out.vincular.set(clave, v);
   }
+  for (const c of out.vincular.keys()) out.rechazados.delete(c);
+  return out;
 }
 
 // ── Importador ────────────────────────────────────────────────────────────────
@@ -203,11 +261,11 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
   }
 
   const vinculos = parseVinculos(req.body?.vinculos);
-  if (!(vinculos instanceof Map)) { res.status(400).json({ error: vinculos.error }); return; }
+  if ('error' in vinculos) { res.status(400).json({ error: vinculos.error }); return; }
 
   const viajes = consolidarViajes(parseo.viajes, parseo.advertencias);
 
-  const [camiones, empleados, existentes, eventos] = await Promise.all([
+  const [camiones, empleados, existentes, eventos, aliases] = await Promise.all([
     prisma.camion.findMany({
       where:  { ...withTenant(empresaId), deleted_at: null },
       select: { id: true, codigo: true, patente: true, tipo_vehiculo: true, descripcion: true },
@@ -225,14 +283,19 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     }),
     prisma.evento.findMany({
       where:   { ...withTenant(empresaId), deleted_at: null },
-      select:  EVENTO_SELECT,
+      select:  { ...EVENTO_SELECT, fecha_inicio: true, fecha_fin: true, dias_montaje: true, dias_desmontaje: true },
       orderBy: { id: 'desc' },
+    }),
+    prisma.aliasEventoPlanilla.findMany({
+      where:  withTenant(empresaId),
+      select: { nombre_normalizado: true, evento_id: true },
     }),
   ]);
   const eventoPorId = new Map(eventos.map(e => [e.id, e]));
-  for (const [grupo, eventoId] of vinculos) {
+  for (const [grupo, eventoId] of vinculos.vincular) {
     if (!eventoPorId.has(eventoId)) { res.status(400).json({ error: `Evento #${eventoId} (para "${grupo}") no encontrado` }); return; }
   }
+  const aliasPorClave = new Map(aliases.map(a => [a.nombre_normalizado, a.evento_id]));
   const resolverCamion = crearResolverCamion(camiones);
   const resolverChofer = crearResolverChofer(empleados);
   const existentePorClave = new Map(existentes.map(e => [
@@ -267,7 +330,7 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     // Vínculo con un Evento real: sólo si el usuario confirmó la sugerencia
     // para este grupo. Si no, se conserva el que ya tenía (vinculado a mano o
     // en una importación anterior) — reimportar no desvincula.
-    const eventoConfirmado = v.convocatoria ? vinculos.get(v.convocatoria) : undefined;
+    const eventoConfirmado = v.convocatoria ? vinculos.vincular.get(normNombreEvento(v.convocatoria)) : undefined;
     const data: Prisma.BitacoraViajeUncheckedCreateInput = {
       origen:               OrigenBitacoraViaje.FLOTA,
       empresa_id:           empresaId,
@@ -304,6 +367,22 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
   const creados      = filas.filter(f => f.existenteId === null).length;
   const actualizados = filas.length - creados;
 
+  // Un grupo por nombre de evento de la planilla (hoja / columna EVENTO),
+  // agrupando variantes de escritura ("JUJUY - LA RENGA" = "Jujuy La Renga")
+  const grupos = new Map<string, { variantes: Map<string, number>; filas: Fila[] }>();
+  for (const f of filas) {
+    if (!f.viaje.convocatoria) continue;
+    const clave = normNombreEvento(f.viaje.convocatoria);
+    if (!clave) continue;
+    const g = grupos.get(clave) ?? { variantes: new Map<string, number>(), filas: [] as Fila[] };
+    g.variantes.set(f.viaje.convocatoria, (g.variantes.get(f.viaje.convocatoria) ?? 0) + 1);
+    g.filas.push(f);
+    grupos.set(clave, g);
+  }
+  // La variante más usada es la que se muestra
+  const nombreGrupo = (g: { variantes: Map<string, number> }) =>
+    [...g.variantes.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))[0][0];
+
   if (!dryRun) {
     try {
       await prisma.$transaction(async tx => {
@@ -314,6 +393,21 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
             const { created_by: _cb, origen: _o, empresa_id: _e, ...upd } = f.data;
             await tx.bitacoraViaje.update({ where: { id: f.existenteId }, data: upd });
           }
+        }
+        // Recordar lo confirmado para la próxima importación (y olvidar lo rechazado)
+        for (const [clave, eventoId] of vinculos.vincular) {
+          const g = grupos.get(clave);
+          const nombre_planilla = g ? nombreGrupo(g) : clave;
+          await tx.aliasEventoPlanilla.upsert({
+            where:  { empresa_id_nombre_normalizado: { empresa_id: empresaId, nombre_normalizado: clave } },
+            create: { empresa_id: empresaId, nombre_normalizado: clave, nombre_planilla, evento_id: eventoId, created_by: userId },
+            update: { nombre_planilla, evento_id: eventoId },
+          });
+        }
+        if (vinculos.rechazados.size) {
+          await tx.aliasEventoPlanilla.deleteMany({
+            where: { ...withTenant(empresaId), nombre_normalizado: { in: [...vinculos.rechazados] } },
+          });
         }
         await registrarAuditoria({
           usuarioId: userId, empresaId, accion: 'CREATE', entidad: 'BitacoraViaje',
@@ -326,24 +420,56 @@ export async function importarBitacoraViajesFlota(req: Request, res: Response) {
     }
   }
 
-  // Un grupo por nombre de evento de la planilla (hoja / columna EVENTO)
-  const grupos = new Map<string, Fila[]>();
-  for (const f of filas) {
-    if (!f.viaje.convocatoria) continue;
-    grupos.set(f.viaje.convocatoria, [...(grupos.get(f.viaje.convocatoria) ?? []), f]);
+  if (!dryRun) {
+    for (const [clave, eventoId] of vinculos.vincular) aliasPorClave.set(clave, eventoId);
+    for (const clave of vinculos.rechazados) aliasPorClave.delete(clave);
   }
-  const vinculaciones = [...grupos.entries()].map(([convocatoria, fs]) => {
+
+  const fechaISO = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const eventoDTO = (e: EventoRef) => ({
+    id: e.id, nombre: e.nombre,
+    fecha_inicio: e.fecha_inicio?.toISOString() ?? null, fecha_fin: e.fecha_fin?.toISOString() ?? null,
+  });
+
+  const vinculaciones = [...grupos.entries()].map(([clave, g]) => {
+    const fs = g.filas;
+    const convocatoria = nombreGrupo(g);
     // Evento con el que ya quedaron vinculados (el más frecuente), si alguno
     const conteo = new Map<number, number>();
     for (const f of fs) if (f.data.evento_id) conteo.set(f.data.evento_id, (conteo.get(f.data.evento_id) ?? 0) + 1);
     const [actualId, vinculados] = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
-    const sugerencia = sugerirEvento(convocatoria, eventos);
+
+    const tiempos = fs.map(f => f.viaje.fecha?.getTime()).filter((t): t is number => t !== undefined);
+    const rango = tiempos.length ? { desde: Math.min(...tiempos), hasta: Math.max(...tiempos) } : null;
+
+    const aliasId = aliasPorClave.get(clave);
+    const recordado = aliasId !== undefined ? eventoPorId.get(aliasId) : undefined;
+    const actual = actualId ? eventoPorId.get(actualId) : undefined;
+    let candidato: { evento: EventoRef; similitud: number; motivo: MotivoCandidato } | null = null;
+    if (recordado) {
+      candidato = { evento: recordado, similitud: 1, motivo: 'recordado' };
+    } else if (actual && vinculados === fs.length) {
+      candidato = { evento: actual, similitud: 1, motivo: 'vinculado' };
+    } else {
+      const s = sugerirEvento(convocatoria, rango, eventos);
+      if (s) candidato = { ...s, motivo: 'nombre' };
+    }
+
     return {
+      clave,
       convocatoria,
+      variantes:     [...g.variantes.keys()].filter(v => v !== convocatoria),
       viajes:        fs.length,
       vinculados,
-      evento_actual: actualId ? eventoPorId.get(actualId) ?? null : null,
-      candidato:     sugerencia ? { ...sugerencia.evento, similitud: sugerencia.similitud } : null,
+      fecha_desde:   rango ? fechaISO(rango.desde) : null,
+      fecha_hasta:   rango ? fechaISO(rango.hasta) : null,
+      evento_actual: actual ? eventoDTO(actual) : null,
+      candidato:     candidato && {
+        ...eventoDTO(candidato.evento),
+        similitud: candidato.similitud,
+        motivo:    candidato.motivo,
+        fechas:    coincidenciaFechas(rango, candidato.evento),
+      },
     };
   }).sort((a, b) => a.convocatoria.localeCompare(b.convocatoria, 'es'));
 

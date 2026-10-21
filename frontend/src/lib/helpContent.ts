@@ -474,6 +474,28 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  '/bitacora-viajes': {
+    titulo: 'Bitácora de viajes de camiones',
+    descripcion: 'Los viajes de los camiones de DOS57 (planillas de Flor): tramo, chofer, km, litros, combustible y caja entregada. Vinculados a un evento, aparecen en el tab Logística de ese evento.',
+    secciones: [
+      {
+        titulo: 'Importar la planilla',
+        contenido: '"Importar planilla" lee el Excel de Flor: las hojas por evento, la de logística diaria (con sus bloques) y las de viajes con horario. Primero ves una vista previa y no se guarda nada hasta confirmar. Reimportar el mismo archivo actualiza los viajes, no los duplica.',
+      },
+      {
+        titulo: 'Cómo encuentra el evento',
+        contenido: 'El nombre del evento sale de la columna EVENTO, del título del bloque ("PLANILLA DE VIAJES CAMIONES - …") o del nombre de la hoja. No hace falta escribirlo igual que en el sistema: se comparan sin tildes, mayúsculas ni signos, y por palabras ("JUJUY - LA RENGA" encuentra "La Renga Jujuy 2026"). Si el mismo evento aparece escrito de dos formas, se agrupa en uno solo.\nPara elegir el evento se usan también las fechas: si hay dos ediciones del mismo evento, se propone la que coincide con las fechas de los viajes (contando el montaje y el desmontaje). Si el evento propuesto tiene fechas que no coinciden, lo vas a ver en amarillo.',
+      },
+      {
+        titulo: 'Confirmar la vinculación',
+        contenido: 'Para cada evento de la planilla respondés Sí o No a la sugerencia, o elegís otro evento de la lista. Si no hay sugerencia, podés elegir uno o dejarlo como texto libre. Lo que confirmás queda recordado: la próxima vez que aparezca ese nombre se propone directo, aunque no se parezca al del sistema (por ejemplo "SGO" para "Aniversario Santiago del Estero"). Si respondés No, se olvida.\nResponder No nunca desvincula viajes que ya estaban vinculados. Un viaje suelto también se puede vincular a mano desde su ficha.',
+      },
+    ],
+    links: [
+      { label: 'Ver Eventos', ruta: '/eventos' },
+    ],
+  },
+
   // ── AFIP y Créditos Bancarios ────────────────────────────────────────────────
   '/afip-prestamos': {
     titulo: 'AFIP y Créditos Bancarios',

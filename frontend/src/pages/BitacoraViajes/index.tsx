@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import BaseTable from '@/components/ui/BaseTable';
 import { getApiErrorMessage } from '@/lib/utils';
 import { formatDate, formatCurrency, formatLitros, formatearPatente } from '@/lib/formatters';
-import type { ViajeFlota, ImportarBitacoraFlotaResultado } from '@/types';
+import type { ViajeFlota, ImportarBitacoraFlotaResultado, VinculacionEventoPlanilla } from '@/types';
+import { useEventos } from '@/hooks/useEvento';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import ViajeDrawer from './ViajeDrawer';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -70,54 +72,111 @@ function Seccion({ titulo, children, tono = 'normal' }: { titulo: string; childr
   );
 }
 
-// Respuesta del usuario a cada sugerencia de vinculación, por nombre de evento de la planilla
-type Respuestas = Record<string, boolean>;
+// Respuesta del usuario por grupo (clave normalizada del nombre en la planilla):
+// id del evento a vincular, o null = no vincular. Sin respuesta = undefined.
+type Respuestas = Record<string, number | null>;
+type OnResponder = (clave: string, eventoId: number | null) => void;
 
-function Vinculaciones({ r, respuestas, onResponder }: {
+const SIN_VINCULAR = '__sin_vincular';
+
+const rangoFechas = (desde: string | null, hasta: string | null) => {
+  if (!desde) return null;
+  const a = formatDate(desde);
+  const b = formatDate(hasta ?? desde);
+  return a === b ? a : `${a} – ${b}`;
+};
+
+function DetalleCandidato({ c }: { c: NonNullable<VinculacionEventoPlanilla['candidato']> }) {
+  const motivo =
+    c.motivo === 'recordado' ? 'recordado de una importación anterior' :
+    c.motivo === 'vinculado' ? 'ya estaban vinculados' :
+    `${Math.round(c.similitud * 100)}% de coincidencia en el nombre`;
+  const fechasEv = rangoFechas(c.fecha_inicio, c.fecha_fin);
+  return (
+    <span className="text-muted-foreground">
+      {' '}({motivo}
+      {c.fechas === 'coincide' && <span className="text-green-700"> · las fechas coinciden</span>}
+      {c.fechas === 'no_coincide' && <span className="text-amber-700"> · el evento es del {fechasEv} y no coincide con los viajes</span>}
+      {c.fechas === 'sin_datos' && c.motivo === 'nombre' && !fechasEv && <> · el evento no tiene fechas cargadas</>}
+      )
+    </span>
+  );
+}
+
+function Vinculaciones({ r, respuestas, onResponder, opcionesEventos, nombreEvento }: {
   r: ImportarBitacoraFlotaResultado;
   respuestas: Respuestas;
-  onResponder: (convocatoria: string, si: boolean) => void;
+  onResponder: OnResponder;
+  opcionesEventos: ComboboxOption[];
+  nombreEvento: (id: number) => string;
 }) {
   if (r.vinculaciones.length === 0) return null;
   return (
     <Seccion titulo="Vinculación con eventos del sistema">
       <ul className="text-xs space-y-1.5">
         {r.vinculaciones.map(g => {
-          const yaVinculado = g.evento_actual && g.vinculados === g.viajes && g.evento_actual.id === g.candidato?.id;
-          if (yaVinculado || (g.evento_actual && !g.candidato)) {
+          const encabezado = (
+            <>
+              <span className="font-medium">{g.convocatoria}</span>
+              <span className="text-muted-foreground"> · {g.viajes} viaje{g.viajes > 1 ? 's' : ''}{g.fecha_desde && ` · ${rangoFechas(g.fecha_desde, g.fecha_hasta)}`}</span>
+              {g.variantes.length > 0 && (
+                <span className="block text-muted-foreground">También escrito como: {g.variantes.join(' · ')}</span>
+              )}
+            </>
+          );
+
+          // Ya aplicado: cómo quedó
+          if (!r.preview) {
             return (
-              <li key={g.convocatoria} className="flex items-start gap-1">
-                <CheckCircle2 size={13} className="text-green-700 mt-0.5 shrink-0" />
-                <span><span className="font-medium">{g.convocatoria}</span> ({g.viajes} viajes) — {g.vinculados === g.viajes ? 'ya' : `${g.vinculados} ya`} vinculados a “{g.evento_actual!.nombre}”</span>
-              </li>
-            );
-          }
-          if (!g.candidato) {
-            return (
-              <li key={g.convocatoria} className="text-muted-foreground">
-                • <span className="font-medium text-foreground">{g.convocatoria}</span> ({g.viajes} viajes) — sin evento parecido en el sistema; se importa como texto libre
-              </li>
-            );
-          }
-          const resp = respuestas[g.convocatoria];
-          return (
-            <li key={g.convocatoria} className="rounded border p-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="flex-1 min-w-[200px]">
-                  <span className="font-medium">{g.convocatoria}</span>: ¿Vincular estos {g.viajes} viajes a “{g.candidato.nombre}”?
-                  <span className="text-muted-foreground"> ({Math.round(g.candidato.similitud * 100)}% de coincidencia)</span>
-                </span>
-                {r.preview ? (
-                  <span className="flex gap-1">
-                    <Button type="button" size="sm" variant={resp === true ? 'default' : 'outline'} className="h-7 px-3" onClick={() => onResponder(g.convocatoria, true)}>Sí</Button>
-                    <Button type="button" size="sm" variant={resp === false ? 'default' : 'outline'} className="h-7 px-3" onClick={() => onResponder(g.convocatoria, false)}>No</Button>
+              <li key={g.clave} className="flex items-start gap-1">
+                {g.evento_actual
+                  ? <CheckCircle2 size={13} className="text-green-700 mt-0.5 shrink-0" />
+                  : <span className="w-[13px] shrink-0 text-center text-muted-foreground">•</span>}
+                <span>
+                  {encabezado}
+                  <span className="block text-muted-foreground">
+                    {g.evento_actual
+                      ? `${g.vinculados === g.viajes ? 'Vinculados' : `${g.vinculados} vinculados`} a “${g.evento_actual.nombre}”`
+                      : 'Quedó como texto libre'}
                   </span>
-                ) : (
-                  <span className="text-muted-foreground">{g.evento_actual?.id === g.candidato.id ? 'Vinculados' : 'No vinculados'}</span>
-                )}
+                </span>
+              </li>
+            );
+          }
+
+          const resp = respuestas[g.clave];
+          const c = g.candidato;
+          const otroElegido = typeof resp === 'number' && resp !== c?.id ? resp : null;
+          return (
+            <li key={g.clave} className="rounded border p-2 space-y-1.5">
+              <div>{encabezado}</div>
+              {c ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-[200px]">
+                    ¿Vincular a “<span className="font-medium">{c.nombre}</span>”?
+                    <DetalleCandidato c={c} />
+                  </span>
+                  <span className="flex gap-1">
+                    <Button type="button" size="sm" variant={resp === c.id ? 'default' : 'outline'} className="h-7 px-3" onClick={() => onResponder(g.clave, c.id)}>Sí</Button>
+                    <Button type="button" size="sm" variant={resp === null ? 'default' : 'outline'} className="h-7 px-3" onClick={() => onResponder(g.clave, null)}>No</Button>
+                  </span>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Sin evento parecido en el sistema: se importa como texto libre, salvo que elijas uno.</p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Combobox
+                  options={[{ value: SIN_VINCULAR, label: 'No vincular (texto libre)' }, ...opcionesEventos]}
+                  value={otroElegido !== null ? String(otroElegido) : null}
+                  onChange={v => onResponder(g.clave, v === SIN_VINCULAR ? null : Number(v))}
+                  placeholder={c ? 'Elegir otro evento…' : 'Vincular a un evento…'}
+                  searchPlaceholder="Buscar evento…"
+                  className="h-7 text-xs sm:w-72"
+                />
+                {otroElegido !== null && <span className="text-blue-800">Se vinculan a “{nombreEvento(otroElegido)}”</span>}
               </div>
-              {g.evento_actual && g.evento_actual.id !== g.candidato.id && (
-                <p className="text-muted-foreground mt-1">{g.vinculados} de estos viajes ya están vinculados a “{g.evento_actual.nombre}” — si respondés No, se mantienen así.</p>
+              {g.evento_actual && g.evento_actual.id !== c?.id && (
+                <p className="text-muted-foreground">{g.vinculados} de estos viajes ya están vinculados a “{g.evento_actual.nombre}”. Si respondés No, se mantienen así.</p>
               )}
             </li>
           );
@@ -127,10 +186,12 @@ function Vinculaciones({ r, respuestas, onResponder }: {
   );
 }
 
-function ResultadoImport({ r, respuestas, onResponder }: {
+function ResultadoImport({ r, respuestas, onResponder, opcionesEventos, nombreEvento }: {
   r: ImportarBitacoraFlotaResultado;
   respuestas: Respuestas;
-  onResponder: (convocatoria: string, si: boolean) => void;
+  onResponder: OnResponder;
+  opcionesEventos: ComboboxOption[];
+  nombreEvento: (id: number) => string;
 }) {
   return (
     <div className="space-y-4 text-sm">
@@ -157,7 +218,7 @@ function ResultadoImport({ r, respuestas, onResponder }: {
         )}
       </Seccion>
 
-      <Vinculaciones r={r} respuestas={respuestas} onResponder={onResponder} />
+      <Vinculaciones r={r} respuestas={respuestas} onResponder={onResponder} opcionesEventos={opcionesEventos} nombreEvento={nombreEvento} />
 
       <Seccion titulo="Camiones" tono={r.camiones.no_encontrados.length ? 'warn' : 'normal'}>
         {r.camiones.resueltos.length > 0 && (
@@ -224,26 +285,35 @@ function ImportarDialog({ open, onClose }: { open: boolean; onClose: () => void 
   const [resultado, setResultado] = useState<ImportarBitacoraFlotaResultado | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [respuestas, setRespuestas] = useState<Respuestas>({});
+  const { data: eventos = [] } = useEventos();
+
+  // Más recientes primero; la fecha ayuda a distinguir ediciones del mismo evento
+  const opcionesEventos = useMemo<ComboboxOption[]>(() => [...eventos]
+    .sort((a, b) => (b.fecha_inicio ?? '').localeCompare(a.fecha_inicio ?? '') || b.id - a.id)
+    .map(e => ({ value: String(e.id), label: e.fecha_inicio ? `${e.nombre} · ${formatDate(e.fecha_inicio)}` : e.nombre })),
+  [eventos]);
+  const nombreEvento = (id: number) => eventos.find(e => e.id === id)?.nombre ?? `Evento #${id}`;
 
   useEffect(() => { if (open) { setFile(null); setResultado(null); setError(null); setRespuestas({}); } }, [open]);
 
   const ejecutar = async (f: File, preview: boolean) => {
     setError(null);
-    // Sólo viajan los grupos confirmados con "Sí"
-    const vinculos: Record<string, number> = {};
+    // Sólo viajan los grupos respondidos: id = vincular, null = No
+    const vinculos: Record<string, number | null> = {};
     if (!preview && resultado) {
       for (const g of resultado.vinculaciones) {
-        if (g.candidato && respuestas[g.convocatoria]) vinculos[g.convocatoria] = g.candidato.id;
+        if (respuestas[g.clave] !== undefined) vinculos[g.clave] = respuestas[g.clave];
       }
     }
     try {
       const r = await importar.mutateAsync({ file: f, preview, vinculos });
       setResultado(r);
-      // Grupos que ya estaban vinculados al candidato arrancan en "Sí"
+      // Arrancan en "Sí" los grupos recordados de una importación anterior y
+      // los que ya estaban todos vinculados al candidato
       if (preview) {
         setRespuestas(Object.fromEntries(r.vinculaciones
-          .filter(g => g.candidato && g.evento_actual?.id === g.candidato.id && g.vinculados === g.viajes)
-          .map(g => [g.convocatoria, true])));
+          .filter(g => g.candidato && (g.candidato.motivo !== 'nombre' || (g.evento_actual?.id === g.candidato.id && g.vinculados === g.viajes)))
+          .map(g => [g.clave, g.candidato!.id])));
       }
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -251,7 +321,7 @@ function ImportarDialog({ open, onClose }: { open: boolean; onClose: () => void 
   };
 
   const pendientes = resultado?.preview
-    ? resultado.vinculaciones.filter(g => g.candidato && respuestas[g.convocatoria] === undefined).length
+    ? resultado.vinculaciones.filter(g => g.candidato && respuestas[g.clave] === undefined).length
     : 0;
 
   return (
@@ -281,7 +351,10 @@ function ImportarDialog({ open, onClose }: { open: boolean; onClose: () => void 
               {resultado.preview
                 ? <p className="text-xs flex items-center gap-1 text-amber-700"><AlertTriangle size={13} /> Vista previa — todavía no se guardó nada.</p>
                 : <p className="text-xs flex items-center gap-1 text-green-700"><CheckCircle2 size={13} /> Importación aplicada.</p>}
-              <ResultadoImport r={resultado} respuestas={respuestas} onResponder={(c, si) => setRespuestas(p => ({ ...p, [c]: si }))} />
+              <ResultadoImport
+                r={resultado} respuestas={respuestas} opcionesEventos={opcionesEventos} nombreEvento={nombreEvento}
+                onResponder={(clave, id) => setRespuestas(p => ({ ...p, [clave]: id }))}
+              />
             </>
           )}
           <div className="flex justify-end gap-2 pt-1">
@@ -291,7 +364,7 @@ function ImportarDialog({ open, onClose }: { open: boolean; onClose: () => void 
             {resultado?.preview && file && (
               <Button
                 type="button" size="sm" disabled={importar.isPending || pendientes > 0} onClick={() => ejecutar(file, false)}
-                title={pendientes > 0 ? 'Respondé Sí o No en cada sugerencia de vinculación' : undefined}
+                title={pendientes > 0 ? 'Respondé Sí o No (o elegí otro evento) en cada sugerencia de vinculación' : undefined}
               >
                 Confirmar importación{pendientes > 0 && ` (${pendientes} vinculación${pendientes > 1 ? 'es' : ''} sin responder)`}
               </Button>

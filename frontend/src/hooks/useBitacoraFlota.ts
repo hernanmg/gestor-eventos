@@ -82,9 +82,9 @@ export function useEliminarViajeFlota() {
 export function useImportarBitacoraFlota() {
   const qc = useQueryClient();
   return useMutation({
-    // vinculos: {"nombre del evento en la planilla": evento_id} — sólo los
-    // grupos cuya sugerencia de vinculación confirmó el usuario
-    mutationFn: ({ file, preview, vinculos }: { file: File; preview: boolean; vinculos?: Record<string, number> }) => {
+    // vinculos: {clave del grupo: evento_id | null} — número = vincular (y
+    // recordar para la próxima), null = respondió No (olvida el alias)
+    mutationFn: ({ file, preview, vinculos }: { file: File; preview: boolean; vinculos?: Record<string, number | null> }) => {
       const fd = new FormData();
       fd.append('archivo', file);
       if (vinculos && Object.keys(vinculos).length) fd.append('vinculos', JSON.stringify(vinculos));

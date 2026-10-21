@@ -2810,6 +2810,27 @@ export interface OpcionesBitacoraFlota {
   choferes: { value: string; label: string }[];
 }
 
+type EventoVinculable = { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+
+// Un grupo por nombre de evento de la planilla (normalizado: sin tildes,
+// mayúsculas ni signos). candidato.motivo: recordado = alias confirmado en una
+// importación anterior; vinculado = ya estaban todos vinculados; nombre = parecido.
+export interface VinculacionEventoPlanilla {
+  clave:         string;
+  convocatoria:  string;
+  variantes:     string[]; // otras formas en que aparece escrito en la planilla
+  viajes:        number;
+  vinculados:    number; // cuántos quedan/quedarían vinculados a evento_actual
+  fecha_desde:   string | null;
+  fecha_hasta:   string | null;
+  evento_actual: EventoVinculable | null;
+  candidato:     (EventoVinculable & {
+    similitud: number;
+    motivo:    'recordado' | 'vinculado' | 'nombre';
+    fechas:    'coincide' | 'no_coincide' | 'sin_datos';
+  }) | null;
+}
+
 export interface ImportarBitacoraFlotaResultado {
   preview:              boolean;
   bloques:              { hoja: string; titulo: string | null; tipo: 'A' | 'B' | 'C'; fila_encabezado: number; viajes: number }[];
@@ -2830,13 +2851,7 @@ export interface ImportarBitacoraFlotaResultado {
   };
   saldos_iniciales: { hoja: string; fila: number; litros: number | null; km_inicial: number | null; chofer: string | null }[];
   // Un grupo por nombre de evento de la planilla, con el Evento real sugerido (≥ 60% de similitud)
-  vinculaciones: {
-    convocatoria:  string;
-    viajes:        number;
-    vinculados:    number; // cuántos quedan/quedarían vinculados a evento_actual
-    evento_actual: { id: number; nombre: string } | null;
-    candidato:     { id: number; nombre: string; similitud: number } | null;
-  }[];
+  vinculaciones: VinculacionEventoPlanilla[];
   ignoradas:    { hoja: string; fila: number; motivo: string }[];
   advertencias: { hoja: string; fila: number; mensaje: string }[];
   totales:      { km: number; litros: number; litros_consumidos: number; combustible: number; caja: number };
