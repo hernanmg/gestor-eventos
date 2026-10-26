@@ -5,7 +5,7 @@ import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import { uploadPlanillaSiniestros } from '../controllers/siniestros.controller';
 import {
-  importarUniformesExcel, historialUniformesEmpleado, historialUniformesPorNombre, resumenUniformes, exportarUniformes,
+  importarUniformesExcel, importarStockUniformesExcel, historialUniformesEmpleado, historialUniformesPorNombre, resumenUniformes, exportarUniformes,
   listEmpleadosUniformes, crearEntregaUniforme, editarEntregaUniforme, eliminarEntregaUniforme,
 } from '../controllers/uniformes.controller';
 
@@ -25,6 +25,7 @@ router.use(auth);
 router.use(tenantMiddleware);
 
 router.post('/importar',               requireAnyRole(ROLES.ADMIN_OPERADOR), excelMiddleware, asyncHandler(importarUniformesExcel));
+router.post('/importar-stock',         requireAnyRole(ROLES.ADMIN_OPERADOR), excelMiddleware, asyncHandler(importarStockUniformesExcel));
 router.get('/historial',               requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(historialUniformesPorNombre));
 router.get('/historial/:empleadoId',   requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(historialUniformesEmpleado));
 router.get('/exportar',                requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(exportarUniformes));

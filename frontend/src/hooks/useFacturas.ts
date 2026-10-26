@@ -92,8 +92,9 @@ export function useFactura(id: number) {
   });
 }
 
-export function useAlertasFacturas() {
+export function useAlertasFacturas(enabled = true) {
   return useQuery<{ vencidas: number; vencen_pronto: number }>({
+    enabled,
     queryKey:        [...KEY, 'alertas'],
     queryFn:         () => api.get('/facturas/alertas').then(r => r.data),
     staleTime:       10 * 60 * 1000,

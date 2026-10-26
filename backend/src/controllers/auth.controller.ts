@@ -15,6 +15,11 @@ const switchEmpresaSchema = z.object({
   empresaId: z.number().int().positive(),
 });
 
+const cambiarPasswordSchema = z.object({
+  actual: z.string().min(1, 'Ingresá tu contraseña actual'),
+  nueva:  z.string().min(8, 'La contraseña nueva debe tener al menos 8 caracteres'),
+});
+
 const COOKIE_NAME = 'token';
 
 function cookieOptions() {
@@ -172,6 +177,8 @@ export async function login(req: Request, res: Response, _next: NextFunction): P
     areasMacro:           usuario.areas_macro,
     homeRoute:            usuario.home_route,
     empleadoId,
+    debeCambiarPassword:  usuario.debe_cambiar_password,
+    permisos:             usuario.permisos,
   });
 }
 
@@ -196,6 +203,7 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     select: {
       id: true, nombre: true, email: true, rol: true, activo: true, empresa_id: true,
       puede_ver_macro: true, areas_macro: true, home_route: true,
+      debe_cambiar_password: true, permisos: true,
     },
   });
 
@@ -234,6 +242,8 @@ export async function me(req: Request, res: Response, _next: NextFunction): Prom
     areasMacro:          raw.areas_macro,
     homeRoute:           raw.home_route,
     empleadoId,
+    debeCambiarPassword: raw.debe_cambiar_password,
+    permisos:            raw.permisos,
   });
 }
 
@@ -304,5 +314,44 @@ export async function switchEmpresa(req: Request, res: Response): Promise<void> 
     areasMacro:          usuario.areas_macro,
     homeRoute:           usuario.home_route,
     empleadoId,
+    debeCambiarPassword: usuario.debe_cambiar_password,
+    permisos:            usuario.permisos,
   });
+}
+
+// POST /auth/cambiar-password — cada usuario cambia su propia contraseña
+// (pide la actual). Apaga debe_cambiar_password, que es lo que obliga a
+// cambiarla en el primer ingreso o después de que un admin la resetea.
+export async function cambiarPassword(req: Request, res: Response): Promise<void> {
+  const parsed = cambiarPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+  const { actual, nueva } = parsed.data;
+
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null } });
+  if (!usuario || !usuario.activo) { res.status(401).json({ error: 'Sesión inválida' }); return; }
+
+  if (!(await bcrypt.compare(actual, usuario.password_hash))) {
+    res.status(400).json({ error: 'La contraseña actual no es correcta', detail: { actual: ['La contraseña actual no es correcta'] } }); return;
+  }
+  if (actual === nueva) {
+    res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual', detail: { nueva: ['Tiene que ser distinta de la actual'] } }); return;
+  }
+
+  await prisma.usuario.update({
+    where: { id: usuario.id },
+    data:  { password_hash: await bcrypt.hash(nueva, 10), debe_cambiar_password: false },
+  });
+  await registrarAuditoria({
+    usuarioId:   usuario.id,
+    empresaId:   req.user!.empresaId,
+    accion:      'UPDATE',
+    entidad:     'Usuario',
+    entidadId:   usuario.id,
+    descripcion: 'Cambió su contraseña',
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+  res.json({ ok: true });
 }

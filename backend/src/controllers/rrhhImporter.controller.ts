@@ -3,6 +3,8 @@ import * as XLSX from 'xlsx';
 import { CategoriaEmpleado, TipoRecorrido, EstadoJornada } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
+import { registrarAuditoria } from '../lib/auditoria';
+import { importarPadronEmpleados } from '../lib/padronEmpleadosImporter';
 import { calcularHoras } from './rrhh.controller';
 import {
   round2, calcularDiaSemana, calcularHorasTrabajadas, resolverValorPorVuelta, ESTADOS_BLOQUEAN_EDICION,
@@ -726,4 +728,32 @@ export async function importarHistorialConvocatorias(req: Request, res: Response
     fuera_de_periodo: fueraDePeriodo,
     errores,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /rrhh/importar/padron?dry_run=true — padrón de empleados desde la
+// planilla de datos personales (Lorena, DOS57). ADMIN, o el responsable con
+// permiso PADRON_EMPLEADOS. Ver lib/padronEmpleadosImporter.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function importarPadron(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const dryRun = req.query.dry_run === 'true';
+
+  let resultado;
+  try {
+    resultado = await importarPadronEmpleados(req.file.buffer, req.empresaId!, dryRun);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+
+  if (!dryRun) {
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Empleado',
+      descripcion: `Importó el padrón de empleados (hoja "${resultado.hoja}") — ${resultado.creados} nuevos, ${resultado.actualizados} actualizados`,
+      datosDespues: { creados: resultado.creados, actualizados: resultado.actualizados, sin_cambios: resultado.sin_cambios },
+      ip: req.ip, tx: prisma,
+    });
+  }
+  res.json(resultado);
 }

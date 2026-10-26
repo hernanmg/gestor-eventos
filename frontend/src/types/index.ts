@@ -45,7 +45,12 @@ export interface Usuario {
   puede_ver_macro: boolean;
   areas_macro:     AreaMacro[];
   home_route:      string | null;
+  debe_cambiar_password: boolean;
+  permisos:        Permiso[];
 }
+
+// Espejo de backend/src/lib/permisos.ts
+export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES';
 
 export interface UsuarioEmpresaAcceso {
   id:         number;
@@ -1388,8 +1393,23 @@ export interface Activo {
   estado:        EstadoActivo;
   ubicacion:     string | null;
   observaciones: string | null;
+  // Activos contables por unidad (ej. uniformes del depósito por talle)
+  cantidad?:        number | null;
+  cantidad_minima?: number | null;
   created_at:    string;
   updated_at:    string;
+}
+
+// POST /uniformes/importar-stock — stock del depósito por talle
+export interface ImportarStockUniformesResultado {
+  hoja:           string;
+  hojas:          string[];
+  fecha_revision: string | null;
+  creados:        number;
+  actualizados:   number;
+  sin_cambios:    number;
+  con_stock_bajo: number;
+  filas: { nombre: string; ubicacion: string; cantidad: number; anterior: number | null }[];
 }
 
 export interface MovimientoStock {
@@ -1694,6 +1714,10 @@ export type MeResponse = {
   // Empleado de RRHH vinculado a este usuario (rol VIEWER + empleado ⇒
   // autoservicio: sólo ve/carga sus propias jornadas).
   empleadoId:           number | null;
+  // true ⇒ tiene que cambiar la contraseña antes de usar el sistema
+  debeCambiarPassword:  boolean;
+  // Permisos de carga por responsable, además del rol (ver lib/permisos.ts)
+  permisos:             Permiso[];
 };
 
 // ── Respuestas API ────────────────────────────────────────────────────────────

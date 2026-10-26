@@ -1,9 +1,22 @@
 import 'dotenv/config';
 import { PrismaClient, Tipo, TipoRubro, TipoCuenta, Moneda } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { RUBROS_SISTEMA } from '../src/lib/rubrosConstants';
 
 const prisma = new PrismaClient();
+
+// ── Producción ───────────────────────────────────────────────────────────────
+// El seed se corre una sola vez a mano (ya no está en build:render). Si se
+// vuelve a correr en producción, sólo crea lo que falta: no pisa lo que se
+// editó desde el sistema (rol/pantalla/permisos de usuarios, escalafones con
+// aumentos, nombres de tabs y rubros). En desarrollo sigue sincronizando todo.
+const PRODUCCION = process.env.NODE_ENV === 'production';
+const siNoEsProduccion = <T extends object>(data: T): T | Record<string, never> => (PRODUCCION ? {} : data);
+
+// Contraseña inicial por usuario en producción (se muestra una sola vez al
+// final del seed y el usuario la cambia en su primer ingreso).
+const passwordInicialAleatoria = () => crypto.randomBytes(9).toString('base64url');
 
 // ── Rubros base por empresa (Módulo Egresos/Ingresos configurables) ──────────
 // codigo se usa para lógica de negocio estable (subcategoría impuestos,
@@ -195,7 +208,7 @@ async function main() {
     for (const tab of TABS) {
       await prisma.tabConfig.upsert({
         where:  { codigo_empresa_id: { codigo: tab.codigo, empresa_id: empresa.id } },
-        update: { nombre: tab.nombre, orden: tab.orden, es_sistema: tab.es_sistema, activo: tab.activo },
+        update: siNoEsProduccion({ nombre: tab.nombre, orden: tab.orden, es_sistema: tab.es_sistema, activo: tab.activo }),
         create: { ...tab, empresa_id: empresa.id },
       });
     }
@@ -207,12 +220,12 @@ async function main() {
     for (const r of rubros) {
       await prisma.rubro.upsert({
         where: { empresa_id_tipo_nombre: { empresa_id: empresa.id, tipo: r.tipo, nombre: r.nombre } },
-        update: {
+        update: siNoEsProduccion({
           orden: r.orden, codigo: r.codigo ?? null, grupo: r.grupo ?? null, es_sistema: true, activo: true,
           // Sólo se pisa si el seed trae un valor — así no se borra una
           // descripción cargada a mano desde Configuración para otros rubros.
           ...(r.descripcion !== undefined && { descripcion: r.descripcion }),
-        },
+        }),
         create: {
           empresa_id:  empresa.id,
           tipo:        r.tipo,
@@ -359,20 +372,31 @@ async function main() {
   ];
 
   const passwordHashInicial = await bcrypt.hash(PASSWORD_INICIAL, 10);
+  // Producción: contraseña distinta por usuario, sólo para los que se crean ahora
+  const passwordsGeneradas: { email: string; nombre: string; password: string }[] = [];
 
   for (const u of USUARIOS_REALES) {
+    const yaExiste = await prisma.usuario.findUnique({ where: { email: u.email }, select: { id: true } });
+    let passwordHash = passwordHashInicial;
+    if (PRODUCCION && !yaExiste) {
+      const password = passwordInicialAleatoria();
+      passwordsGeneradas.push({ email: u.email, nombre: u.nombre, password });
+      passwordHash = await bcrypt.hash(password, 10);
+    }
+
     const usuario = await prisma.usuario.upsert({
       where:  { email: u.email },
-      update: {
+      update: siNoEsProduccion({
         nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true,
         puede_ver_macro: u.puedeVerMacro ?? false, areas_macro: u.areasMacro ?? [],
         home_route: u.homeRoute ?? null,
-      },
+      }),
       create: {
         email:         u.email,
         nombre:        u.nombre,
         telefono:      u.telefono ?? null,
-        password_hash: passwordHashInicial,
+        password_hash: passwordHash,
+        debe_cambiar_password: PRODUCCION,
         rol:           u.rol,
         empresa_id:    u.empresa_id,
         puede_ver_macro: u.puedeVerMacro ?? false,
@@ -468,13 +492,13 @@ async function main() {
   for (const esc of ESCALAFONES_DOS57) {
     await prisma.escalafonAdmin.upsert({
       where:  { empresa_id_nombre: { empresa_id: dos57.id, nombre: esc.nombre } },
-      update: {
+      update: siNoEsProduccion({
         orden: esc.orden, viatico: esc.viatico, premio_presentismo: esc.premio_presentismo,
         telefono: esc.telefono, premio_incentivo: esc.premio_incentivo,
         premio_viaje_provincial: esc.premio_viaje_provincial ?? null,
         premio_viaje_nacional: esc.premio_viaje_nacional ?? null,
         premio_viaje_nacional_1000: esc.premio_viaje_nacional_1000 ?? null,
-      },
+      }),
       create: {
         nombre: esc.nombre, orden: esc.orden, viatico: esc.viatico, premio_presentismo: esc.premio_presentismo,
         telefono: esc.telefono, premio_incentivo: esc.premio_incentivo,
@@ -594,6 +618,11 @@ async function main() {
       },
     });
     console.log('✓ Proveedor "Polaco" (comisionista) cargado — falta confirmar porcentaje_comision');
+  }
+
+  if (passwordsGeneradas.length > 0) {
+    console.log('\n── Contraseñas iniciales (se muestran una sola vez; cada uno la cambia al ingresar) ──');
+    for (const p of passwordsGeneradas) console.log(`  ${p.email.padEnd(40)} ${p.password}   ${p.nombre}`);
   }
 }
 

@@ -30,7 +30,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro } from '@/types';
+import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro, Permiso } from '@/types';
+import { PERMISOS } from '@/lib/permisos';
 import BaseTable from '@/components/ui/BaseTable';
 import PageHeader from '@/components/ui/PageHeader';
 import TabStrip from '@/components/ui/TabStrip';
@@ -670,7 +671,7 @@ function UsuarioDialog({
   esAdminGlobal: boolean;
   onClose:       () => void;
   onCreate:      (d: UsuarioFormData) => Promise<void>;
-  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null }) => Promise<void>;
+  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null; permisos?: Permiso[] }) => Promise<void>;
   isLoading:     boolean;
 }) {
   const isEdit = usuario !== null;
@@ -682,17 +683,26 @@ function UsuarioDialog({
   const [puedeVerMacro, setPuedeVerMacro] = useState(usuario?.puede_ver_macro ?? false);
   const [areasMacro, setAreasMacro]       = useState<AreaMacro[]>(usuario?.areas_macro ?? []);
   const [homeRoute, setHomeRoute]         = useState<string>(usuario?.home_route ?? '');
+  const [permisos, setPermisos]           = useState<Permiso[]>(usuario?.permisos ?? []);
 
   // Accesos adicionales (más allá de la empresa "hogar") — determina si el
   // usuario editado es candidato a la Macro restringida (ver MacroMayra.tsx).
   const { data: empresaAccesos = [] } = useUsuarioEmpresaAccesos(usuario?.id ?? null);
   const tieneAccesoMultiEmpresa = empresaAccesos.length >= 1;
 
+  // El diálogo queda montado entre aperturas: al cambiar de usuario hay que
+  // recargar también el formulario (si no, quedaba el del primer render —
+  // nombre/email vacíos y rol OPERADOR — y guardar degradaba a un ADMIN).
   useEffect(() => {
+    setForm(usuario
+      ? { nombre: usuario.nombre, apodo: usuario.apodo ?? '', telefono: usuario.telefono ?? '', email: usuario.email, password: '', rol: usuario.rol }
+      : EMPTY_FORM);
+    setError(null);
     setPuedeVerMacro(usuario?.puede_ver_macro ?? false);
     setAreasMacro(usuario?.areas_macro ?? []);
     setHomeRoute(usuario?.home_route ?? '');
-  }, [usuario?.id]);
+    setPermisos(usuario?.permisos ?? []);
+  }, [usuario?.id, open]);
 
   const toggleArea = (area: AreaMacro) =>
     setAreasMacro(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
@@ -708,7 +718,7 @@ function UsuarioDialog({
     setError(null);
     try {
       if (isEdit) {
-        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null } = {};
+        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null; permisos?: Permiso[] } = {};
         if (form.nombre   !== usuario!.nombre)          patch.nombre   = form.nombre;
         if (form.apodo    !== (usuario!.apodo ?? ''))   patch.apodo    = form.apodo;
         if (form.telefono !== (usuario!.telefono ?? '')) patch.telefono = form.telefono;
@@ -716,6 +726,8 @@ function UsuarioDialog({
         if (form.password)                              patch.password = form.password;
         if (!isSelf && form.rol !== usuario!.rol)        patch.rol      = form.rol;
         if (homeRoute !== (usuario!.home_route ?? ''))  patch.home_route = homeRoute || null;
+        const mismosPermisos = permisos.length === usuario!.permisos.length && permisos.every(p => usuario!.permisos.includes(p));
+        if (!mismosPermisos) patch.permisos = permisos;
         if (esAdminGlobal && tieneAccesoMultiEmpresa) {
           if (puedeVerMacro !== usuario!.puede_ver_macro) patch.puede_ver_macro = puedeVerMacro;
           const mismasAreas = areasMacro.length === usuario!.areas_macro.length
@@ -763,7 +775,7 @@ function UsuarioDialog({
             <input type="email" {...f('email')} className={inputCls} required />
           </div>
           <div>
-            <label className={labelCls}>{isEdit ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label>
+            <label className={labelCls}>{isEdit ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña inicial *'}</label>
             <input
               type="password"
               {...f('password')}
@@ -771,6 +783,11 @@ function UsuarioDialog({
               minLength={8}
               required={!isEdit}
             />
+            {!isSelf && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {isEdit ? 'Si la cambiás, el usuario va a tener que elegir una propia en su próximo ingreso.' : 'El usuario la cambia por una propia en su primer ingreso.'}
+              </p>
+            )}
           </div>
           {!isSelf && (
             <div>
@@ -797,6 +814,26 @@ function UsuarioDialog({
               <p className="text-xs text-muted-foreground mt-1">
                 Pantalla a la que entra este usuario al hacer login. Solo un admin puede cambiarla.
               </p>
+            </div>
+          )}
+          {isEdit && form.rol !== 'ADMIN' && (
+            <div className="border-t border-border pt-3">
+              <p className="text-sm font-medium">Permisos de carga</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Para el responsable de un archivo: le habilita ese módulo o importador aunque su rol no lo tenga.
+              </p>
+              <div className="space-y-1.5">
+                {PERMISOS.map(p => (
+                  <label key={p.key} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox" className="mt-0.5"
+                      checked={permisos.includes(p.key)}
+                      onChange={() => setPermisos(prev => prev.includes(p.key) ? prev.filter(x => x !== p.key) : [...prev, p.key])}
+                    />
+                    <span>{p.label} <span className="text-xs text-muted-foreground">— {p.detalle}</span></span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
           {isEdit && esAdminGlobal && (

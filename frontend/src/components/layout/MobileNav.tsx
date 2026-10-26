@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { LayoutGrid, LogOut, Moon, Search, Sun, Check } from 'lucide-react';
+import { LayoutGrid, LogOut, Moon, Search, Sun, Check, KeyRound } from 'lucide-react';
 import NotificacionesBell from './NotificacionesBell';
 import NavSearch from './NavSearch';
 import { EmpresaBrand, HomeMark, NavBadge, ROL_LABEL, groupTone } from './NavParts';
@@ -151,6 +151,10 @@ function NavSheet({ open, onOpenChange, title, groups, account, user, onLogout }
                 {theme === 'dark' ? <Sun size={19} className="shrink-0" /> : <Moon size={19} className="shrink-0" />}
                 {theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
               </button>
+              <NavLink to="/cambiar-password" onClick={close} className="flex items-center gap-3 rounded-xl px-3 min-h-[44px] text-[15px] text-left active:bg-accent">
+                <KeyRound size={19} className="shrink-0" />
+                Cambiar contraseña
+              </NavLink>
               <button onClick={() => { close(); onLogout(); }} className="flex items-center gap-3 rounded-xl px-3 min-h-[44px] text-[15px] text-left text-destructive active:bg-destructive/10">
                 <LogOut size={19} className="shrink-0" />
                 Cerrar sesión

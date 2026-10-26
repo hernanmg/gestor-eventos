@@ -468,6 +468,10 @@ const help: Record<string, HelpContent> = {
         titulo: 'Importar la planilla del mes',
         contenido: 'Desde la vista Día, "Importar planilla del mes" lee tu Excel con una hoja por persona (MES y NOMBRE arriba, y la tabla CONVOCATORIA · FECHA · HORARIO · SI · DEMORA · LLEGADA TARDE · NO CONVOCADO · FALTO · MÉDICA · VACACIONES · FRANCO POR DOMINGO · OBSERVACIÓN). Manda tu marca de cada día; si un día no tiene marca, se usa lo que dice CONVOCATORIA (LIBRE, FRANCO, LICENCIA…) y, si tampoco, se clasifica la hora de llegada contra la citación. Antes de importar ves una vista previa por hoja: las personas que no están cargadas en RRHH aparecen en amarillo y no se importan. Reimportar el mismo archivo no duplica.',
       },
+      {
+        titulo: 'Importar el padrón de empleados',
+        contenido: 'Quien lleva el padrón (con el permiso "Padrón de empleados") ve arriba "Importar padrón de empleados": lee la planilla de datos personales (hoja de fijos) y da de alta a los que faltan, con CUIL, contacto, escalafón, licencia y talles. Los que ya están se reconocen por CUIL (o por apellido y nombre) y se actualizan con lo que trae la planilla: una celda vacía no borra nada. Nadie se da de baja: la vista previa lista a los activos que no aparecen en la planilla para que los revises. Importá el padrón antes que la planilla del mes, así no quedan personas en amarillo.',
+      },
     ],
     links: [
       { label: 'Ver Calendario', ruta: '/calendario' },
@@ -480,7 +484,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Importar la planilla',
-        contenido: '"Importar planilla" lee el Excel de Flor: las hojas por evento, la de logística diaria (con sus bloques) y las de viajes con horario. Primero ves una vista previa y no se guarda nada hasta confirmar. Reimportar el mismo archivo actualiza los viajes, no los duplica.',
+        contenido: '"Importar planilla" lee el Excel de Flor (la puede importar quien la lleva, aunque sea Operador): las hojas por evento, la de logística diaria (con sus bloques) y las de viajes con horario. Primero ves una vista previa y no se guarda nada hasta confirmar. Reimportar el mismo archivo actualiza los viajes, no los duplica.',
       },
       {
         titulo: 'Cómo encuentra el evento',
@@ -493,6 +497,22 @@ const help: Record<string, HelpContent> = {
     ],
     links: [
       { label: 'Ver Eventos', ruta: '/eventos' },
+    ],
+  },
+
+  // ── Uniformes ───────────────────────────────────────────────────────────────
+  '/uniformes': {
+    titulo: 'Uniformes',
+    descripcion: 'Entregas de uniformes por empleado y stock del depósito por talle.',
+    secciones: [
+      {
+        titulo: 'Entregas',
+        contenido: 'Totales del año por empleado. Hacé click en una fila para ver su historial, cargar una entrega o corregirla. "Importar desde Excel" lee el libro de entregas (hoja PLANTA ESTABLE, hojas por empleado y resúmenes anuales); revisá la vista previa antes de confirmar, porque una hoja marcada en rojo da de baja al empleado.',
+      },
+      {
+        titulo: 'Stock del depósito',
+        contenido: 'Lo que hay por prenda y talle en cada depósito. "Importar stock" lee la planilla de stock de uniformes: cada hoja es un conteo en una fecha y se toma la última (podés elegir otra en la vista previa). Los talles en 0 también se guardan: en rojo los que no tienen stock y en ámbar los que tienen 5 o menos, que además avisan en la campanita.',
+      },
     ],
   },
 
@@ -620,9 +640,17 @@ const help: Record<string, HelpContent> = {
         contenido: 'Creá y gestioná usuarios. Cada usuario tiene un rol que define qué puede ver y hacer en el sistema — ver la sección "Roles y permisos" para el detalle de cada uno.',
       },
       {
+        titulo: 'Contraseñas',
+        contenido: 'Al crear un usuario le ponés una contraseña inicial y se la pasás. En su primer ingreso el sistema le pide elegir una propia antes de seguir. Si alguien se olvida la suya, editás el usuario y le cargás una nueva: también la va a tener que cambiar al entrar. Cada uno puede cambiar la suya cuando quiera desde "Cambiar contraseña", abajo en el menú.',
+      },
+      {
+        titulo: 'Permisos de carga',
+        contenido: 'Para que el responsable de un archivo lo cargue sin esperar a un admin, al editar un usuario que no es Admin podés tildarle permisos puntuales: Tarjeta corporativa (ver e importar los resúmenes), Facturas a pagar (incluye importar el libro de compras de AFIP), Padrón de empleados (importar la planilla de datos personales, sin ver sueldos) y Uniformes. El módulo le aparece en el menú y el cambio rige enseguida.',
+      },
+      {
         titulo: 'Roles y permisos',
         contenido: 'ADMIN — Acceso total. Puede crear eventos, gestionar usuarios, ver todas las áreas.\n\n'
-          + 'OPERADOR — Acceso operativo. Puede ver eventos y cargar datos en Caja, Ficha, Stock y Parte Diario. No puede crear eventos ni acceder a RRHH, Facturas o Proveedores.\n\n'
+          + 'OPERADOR — Acceso operativo. Puede ver eventos y cargar datos en Caja, Ficha, Stock y Parte Diario. No puede crear eventos ni acceder a RRHH, Facturas o Proveedores, salvo lo que le habiliten los permisos de carga.\n\n'
           + 'VIEWER — Solo lectura. Ve todo lo que ve el Operador pero no puede cargar ni modificar nada.\n\n'
           + 'JORNALERO — Acceso mínimo. Solo puede cargar sus propias jornadas y ver su asignación en el Parte Diario del día.\n\n'
           + 'PAÑOLERO — Acceso al pañol. Solo puede gestionar las salidas y devoluciones del pañol.',

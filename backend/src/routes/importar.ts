@@ -20,6 +20,7 @@ const xlsxMiddleware = (req: any, res: any, next: any) => {
 };
 
 router.post('/proveedores-formulario', requireRole('ADMIN'), xlsxMiddleware, asyncHandler(importarProveedoresFormulario));
-router.post('/bitacora-viajes',        requireRole('ADMIN'), xlsxMiddleware, asyncHandler(importarBitacoraViajesFlota));
+// Viajes de camiones: los importa quien lleva la planilla (Flor, OPERADOR)
+router.post('/bitacora-viajes',        requireRole('OPERADOR'), xlsxMiddleware, asyncHandler(importarBitacoraViajesFlota));
 
 export default router;

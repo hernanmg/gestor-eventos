@@ -11,6 +11,8 @@ import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { ImportarUniformesResultado, ModoImportUniformes, ResumenUniformesFila } from '@/types';
 import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
+import StockDeposito from '@/components/uniformes/StockDeposito';
 
 // Entregas de uniformes (Lorena, DOS57) — resumen anual por empleado, estilo
 // hoja DOS57_ENTREGA_AAAA del Excel, + importador del libro completo.
@@ -198,6 +200,7 @@ export default function UniformesPage() {
   const [importarOpen, setImportarOpen] = useState(false);
   const [nuevaOpen, setNuevaOpen] = useState(false);
   const [filaSel, setFilaSel] = useState<ResumenUniformesFila | null>(null);
+  const [vista, setVista] = useState<'entregas' | 'stock'>('entregas');
   const { data, isLoading, error } = useResumenUniformes(anio, empresaId);
 
   // No silenciar fallos de la query — se ven en pantalla y en la consola.
@@ -211,9 +214,11 @@ export default function UniformesPage() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader
-        title="Entrega de uniformes"
-        subtitle="Totales por empleado del año — hacé click en una fila para ver, cargar o corregir su historial de entregas."
-        actions={puedeGestionar && (
+        title={vista === 'entregas' ? 'Entrega de uniformes' : 'Stock de uniformes'}
+        subtitle={vista === 'entregas'
+          ? 'Totales por empleado del año — hacé click en una fila para ver, cargar o corregir su historial de entregas.'
+          : 'Lo que hay en el depósito por prenda y talle.'}
+        actions={puedeGestionar && vista === 'entregas' && (
           <>
             <Button size="sm" variant="outline" onClick={handleExportar} disabled={isExporting || !data || data.filas.length === 0}
               title={!data || data.filas.length === 0 ? `No hay entregas en ${anio} para exportar` : 'Resumen del año + detalle de cada entrega'}>
@@ -229,6 +234,13 @@ export default function UniformesPage() {
         )}
       />
 
+      <TabStrip<'entregas' | 'stock'>
+        value={vista}
+        onChange={setVista}
+        items={[{ key: 'entregas', label: 'Entregas' }, { key: 'stock', label: 'Stock del depósito' }]}
+      />
+
+      {vista === 'stock' ? <StockDeposito puedeGestionar={puedeGestionar} /> : <>
       <div className="flex flex-wrap items-center gap-2">
         <select value={anio} onChange={e => setAnio(Number(e.target.value))} className={selCls}>
           {anios.map(a => <option key={a} value={a}>{a}</option>)}
@@ -302,6 +314,7 @@ export default function UniformesPage() {
           </BaseTable>
         </div>
       )}
+      </>}
 
       {importarOpen && <ImportarDialog empresaDefault={empresaId} onClose={() => setImportarOpen(false)} />}
       {nuevaOpen && <EntregaUniformeDialog onClose={() => setNuevaOpen(false)} />}

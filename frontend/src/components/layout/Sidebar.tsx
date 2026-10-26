@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, ChevronDown, ChevronRight, Sun, Moon, Search } from 'lucide-react';
+import { Menu, X, LogOut, ChevronDown, ChevronRight, Sun, Moon, Search, KeyRound } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import NotificacionesBell from './NotificacionesBell';
 import NavSearch from './NavSearch';
@@ -284,6 +284,18 @@ export default function Sidebar({ isOpen, onToggle, user, onLogout }: SidebarPro
           {theme === 'dark' ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
           {isOpen && <span>{theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}</span>}
         </button>
+        <NavLink
+          to="/cambiar-password"
+          className={cn(
+            'flex items-center gap-2 w-full rounded-lg px-2 py-1.5 text-sm mb-1',
+            'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+            !isOpen && 'justify-center',
+          )}
+          title={!isOpen ? 'Cambiar contraseña' : undefined}
+        >
+          <KeyRound size={16} className="shrink-0" />
+          {isOpen && <span>Cambiar contraseña</span>}
+        </NavLink>
         <button
           onClick={onLogout}
           className={cn(

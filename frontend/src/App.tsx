@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ProtectedLayout      from '@/components/layout/ProtectedLayout';
 import LoginPage            from '@/pages/Login';
 import SeleccionarEmpresaPage from '@/pages/SeleccionarEmpresa';
+import CambiarPasswordPage  from '@/pages/CambiarPassword';
 import MacroPage            from '@/pages/Macro';
 import CajaGlobalPage       from '@/pages/Caja';
 import CuentaDetallePage    from '@/pages/Caja/CuentaDetalle';
@@ -74,6 +75,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/seleccionar-empresa" element={<SeleccionarEmpresaPage />} />
+          <Route path="/cambiar-password" element={<CambiarPasswordPage />} />
 
           <Route element={<ProtectedLayout />}>
             <Route path="/"               element={<HomeRedirect />} />

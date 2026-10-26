@@ -15,11 +15,12 @@ function excelMiddleware(req: any, res: any, next: any) {
   });
 }
 
-// Tarjeta Corporativa Galicia (DOS57 / Enjoy) — exclusivo ADMIN.
+// Tarjeta Corporativa Galicia (DOS57 / Enjoy) — ADMIN, o el responsable con
+// permiso TARJETA_CORPORATIVA (ej. Santi/Nico, OPERADOR).
 const router = Router();
 router.use(auth);
 router.use(tenantMiddleware);
-router.use(requireRole('ADMIN'));
+router.use(requireRole('ADMIN', { permiso: 'TARJETA_CORPORATIVA' }));
 
 router.get('/',                        asyncHandler(listTarjetas));
 router.post('/',                       asyncHandler(createTarjeta));

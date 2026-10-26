@@ -11,7 +11,7 @@ import {
   listLiquidaciones, getLiquidacion, previewLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
   exportarLiquidacionPDF,
 } from '../controllers/rrhh.controller';
-import { importarEmpleados, importarJornadas, importarHistorialConvocatorias } from '../controllers/rrhhImporter.controller';
+import { importarEmpleados, importarJornadas, importarHistorialConvocatorias, importarPadron } from '../controllers/rrhhImporter.controller';
 import {
   listEmpresasSueldos, listCuentasPorEmpresa,
   listAcuerdos, getAcuerdoEmpleado, createAcuerdo, updateAcuerdo, deleteAcuerdo, restaurarAcuerdo,
@@ -79,6 +79,9 @@ router.patch('/liquidaciones/:id/cancelar', requireRole('ADMIN'), asyncHandler(c
 
 // ── Importadores ──────────────────────────────────────────────────────────────
 router.post('/importar/empleados',       requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarEmpleados));
+// Padrón (planilla de datos personales): lo importa quien lo lleva (Lorena,
+// OPERADOR con permiso PADRON_EMPLEADOS), sin acceso al resto de RRHH.
+router.post('/importar/padron',          requireRole('ADMIN', { permiso: 'PADRON_EMPLEADOS' }), uploadExcel.single('file'), asyncHandler(importarPadron));
 router.post('/importar/jornadas',        requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarJornadas));
 
 // ── Sueldos administrativos (régimen mensual fijo, distinto de Jornada/Liquidacion) ──

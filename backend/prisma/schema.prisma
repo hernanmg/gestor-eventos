@@ -330,6 +330,15 @@ model Usuario {
   // puede_ver_macro van a /macro, el resto a /eventos).
   home_route String?
 
+  // true ⇒ al ingresar se lo manda a cambiar la contraseña antes de usar el
+  // sistema. Lo prende el seed en producción (contraseña inicial generada) y
+  // un admin cuando resetea la contraseña desde Configuración → Usuarios.
+  debe_cambiar_password Boolean @default(false)
+
+  // Permisos de carga por responsable, además de lo que da el rol (ver
+  // lib/permisos.ts). Ej. un OPERADOR que importa la tarjeta corporativa.
+  permisos String[] @default([])
+
   eventoAccesos          EventoAcceso[]
   auditoriaLogs          AuditoriaLog[]
   empresaAccesos         UsuarioEmpresaAcceso[]

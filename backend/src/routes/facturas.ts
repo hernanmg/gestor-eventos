@@ -44,7 +44,9 @@ function xlsxMiddleware(req: any, res: any, next: any) {
 export const facturasRouter = Router();
 facturasRouter.use(auth);
 facturasRouter.use(tenantMiddleware);
-facturasRouter.use(requireRole('ADMIN')); // Facturas es exclusivo de ADMIN (matriz de permisos)
+// Facturas es de ADMIN (matriz de permisos), o del responsable con permiso
+// FACTURAS — quien importa el libro de compras de AFIP.
+facturasRouter.use(requireRole('ADMIN', { permiso: 'FACTURAS' }));
 
 facturasRouter.post('/importar-libro-compras', xlsxMiddleware, asyncHandler(importarLibroCompras));
 facturasRouter.get('/alertas',          asyncHandler(alertas));

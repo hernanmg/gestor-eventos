@@ -18,6 +18,8 @@ import type {
 } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
 import PageHeader from '@/components/ui/PageHeader';
+import ImportarPadronDialog from '@/components/domain/ImportarPadronDialog';
+import { tienePermiso } from '@/lib/permisos';
 import TabStrip from '@/components/ui/TabStrip';
 
 const MESES = [
@@ -727,10 +729,20 @@ export default function PresentismoPage() {
   const [mes, setMes]   = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [importarOpen, setImportarOpen] = useState(false);
+  const [padronOpen, setPadronOpen] = useState(false);
 
   return (
     <div className="p-4 md:p-6">
-      <PageHeader title="Control de Presentismo" className="mb-4" />
+      <PageHeader
+        title="Control de Presentismo"
+        className="mb-4"
+        actions={tienePermiso(user, 'PADRON_EMPLEADOS') && (
+          // Quien lleva el padrón (Lorena) lo actualiza desde acá, sin entrar a RRHH
+          <Button size="sm" variant="outline" onClick={() => setPadronOpen(true)} title="Planilla de datos personales: altas y datos de contacto, licencia y talles">
+            <Upload size={14} className="mr-1.5" /> Importar padrón de empleados
+          </Button>
+        )}
+      />
       {necesitaCambiarADos57 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <span>Presentismo es de DOS57 — tu empresa activa es {user?.empresa?.nombre_corto ?? user?.empresa?.nombre ?? 'otra'}.</span>
@@ -753,6 +765,7 @@ export default function PresentismoPage() {
       {vista === 'mensual' && <VistaMensual mes={mes} anio={anio} setMes={setMes} setAnio={setAnio} esMatias={esMatias} />}
       {vista === 'francos' && <VistaFrancos />}
       <ImportarPlanillaDialog open={importarOpen} onClose={() => setImportarOpen(false)} />
+      {padronOpen && <ImportarPadronDialog onClose={() => setPadronOpen(false)} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { Usuario, UsuarioEmpresaAcceso, Rol, AreaMacro } from '@/types';
+import type { Usuario, UsuarioEmpresaAcceso, Rol, AreaMacro, Permiso } from '@/types';
 
 const KEY          = ['usuarios'];
 const EMPRESAS_KEY = ['usuarios', 'empresas'];
@@ -28,7 +28,7 @@ export function useUpdateUsuario() {
       id:   number;
       data: {
         nombre?: string; apodo?: string | null; telefono?: string | null; email?: string; password?: string; rol?: Rol; activo?: boolean;
-        puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null;
+        puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null; permisos?: Permiso[];
       };
     }) => api.put(`/usuarios/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),

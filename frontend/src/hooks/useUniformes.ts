@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   HistorialUniformesResponse, ResumenUniformesResponse, ImportarUniformesResultado, ModoImportUniformes, PrendaUniforme,
-  TotalesUniforme, EstadoEmpleado,
+  TotalesUniforme, EstadoEmpleado, ImportarStockUniformesResultado,
 } from '@/types';
 
 const KEY = ['uniformes'];
@@ -131,6 +131,26 @@ export function useImportarUniformes() {
       if (vars.dryRun) return;
       qc.invalidateQueries({ queryKey: KEY });
       qc.invalidateQueries({ queryKey: ['rrhh'] }); // estado de empleados dados de baja
+    },
+  });
+}
+
+// Stock de uniformes del depósito (planilla "STOCK Uniformes", por talle) —
+// queda como Activo categoria UNIFORME de la empresa activa.
+export function useImportarStockUniformes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, hoja, dryRun }: { file: File; hoja?: string | null; dryRun: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<ImportarStockUniformesResultado>('/uniformes/importar-stock', fd, {
+        params: { dry_run: String(dryRun), ...(hoja ? { hoja } : {}) },
+      }).then(r => r.data);
+    },
+    onSuccess: (_data, vars) => {
+      if (vars.dryRun) return;
+      qc.invalidateQueries({ queryKey: ['activos'] });
+      qc.invalidateQueries({ queryKey: ['notificaciones'] });
     },
   });
 }

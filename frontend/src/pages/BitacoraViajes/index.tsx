@@ -459,14 +459,17 @@ export default function BitacoraViajesPage() {
       <PageHeader
         title="Bitácora de viajes"
         meta={<span className="text-sm text-muted-foreground">{viajes.length} viaje{viajes.length !== 1 ? 's' : ''}</span>}
-        actions={isAdmin && (
+        actions={(isAdmin || user?.rol === 'OPERADOR') && (
           <>
+            {/* La planilla la importa quien la lleva (Flor, OPERADOR) */}
             <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
               <Upload size={14} className="mr-1.5" /> Importar planilla
             </Button>
-            <Button size="sm" onClick={() => setEditando(null)}>
-              <Plus size={14} className="mr-1.5" /> Agregar viaje
-            </Button>
+            {isAdmin && (
+              <Button size="sm" onClick={() => setEditando(null)}>
+                <Plus size={14} className="mr-1.5" /> Agregar viaje
+              </Button>
+            )}
           </>
         )}
       />

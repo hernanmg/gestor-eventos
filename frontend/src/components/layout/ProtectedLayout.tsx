@@ -24,6 +24,11 @@ export default function ProtectedLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  // Contraseña inicial o reseteada por un admin: se cambia antes de seguir
+  if (user.debeCambiarPassword) {
+    return <Navigate to="/cambiar-password" replace />;
+  }
+
   if (user.empresaId === null) {
     return <Navigate to="/seleccionar-empresa" replace />;
   }

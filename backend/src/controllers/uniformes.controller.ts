@@ -6,6 +6,7 @@ import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { importarUniformes, PRENDAS, type ModoImportUniformes } from '../lib/uniformesImporter';
 import { generarExcelUniformes } from '../lib/uniformesExporter';
+import { importarStockUniformes } from '../lib/stockUniformesImporter';
 
 // Entregas de uniformes por empleado (Lorena, DOS57) — ver EntregaUniforme en
 // schema.prisma y lib/uniformesImporter.ts.
@@ -84,6 +85,32 @@ export async function importarUniformesExcel(req: Request, res: Response) {
     });
   }
 
+  res.json(resultado);
+}
+
+// POST /uniformes/importar-stock?dry_run=true&hoja= — stock del depósito por
+// talle (planilla "STOCK Uniformes"), ver lib/stockUniformesImporter.ts.
+export async function importarStockUniformesExcel(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const empresaId = await resolverEmpresa(req, res);
+  if (empresaId === null) return;
+
+  const dryRun = req.query.dry_run === 'true';
+  const hoja = typeof req.query.hoja === 'string' && req.query.hoja.trim() ? req.query.hoja.trim() : null;
+  let resultado;
+  try {
+    resultado = await importarStockUniformes(req.file.buffer, empresaId, hoja, dryRun);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+
+  if (!dryRun) {
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId, accion: 'IMPORT', entidad: 'Activo',
+      descripcion: `Importó el stock de uniformes del depósito (hoja "${resultado.hoja}") — ${resultado.creados} talles nuevos, ${resultado.actualizados} actualizados`,
+      datosDespues: { hoja: resultado.hoja, creados: resultado.creados, actualizados: resultado.actualizados }, ip: req.ip, tx: prisma,
+    });
+  }
   res.json(resultado);
 }
 

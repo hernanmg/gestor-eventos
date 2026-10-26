@@ -43,10 +43,11 @@ export function useFacturaEmitida(id: number | null) {
   });
 }
 
-export function useResumenFacturasEmitidas() {
+export function useResumenFacturasEmitidas(enabled = true) {
   return useQuery({
     queryKey: [...KEY, 'resumen'],
     queryFn:  () => api.get<ResumenFacturasEmitidas>('/facturas-emitidas/resumen').then(r => r.data),
+    enabled,
   });
 }
 

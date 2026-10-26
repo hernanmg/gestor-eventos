@@ -5,6 +5,7 @@ import { Rol } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { PERMISO_KEYS } from '../lib/permisos';
 
 // Usuario no tiene empresa_id obligatorio (es la "empresa activa" de sesión,
 // nullable). El ABM de usuarios se escopea vía UsuarioEmpresaAcceso: solo
@@ -27,6 +28,7 @@ const SAFE_SELECT = {
   id: true, email: true, nombre: true, apodo: true, telefono: true, rol: true,
   activo: true, created_at: true, updated_at: true, deleted_at: true,
   puede_ver_macro: true, areas_macro: true, home_route: true,
+  debe_cambiar_password: true, permisos: true,
 };
 
 // Pantallas ofrecidas en el selector de Configuración (ver PARTE 4 del pedido)
@@ -66,6 +68,7 @@ const updateSchema = z.object({
   puede_ver_macro: z.boolean().optional(),
   areas_macro:     z.array(z.enum(AREAS_MACRO)).optional(),
   home_route:      z.enum(HOME_ROUTES).nullable().optional(),
+  permisos:        z.array(z.enum(PERMISO_KEYS)).optional(),
 });
 
 const accesoSchema = z.object({
@@ -111,7 +114,8 @@ export async function create(req: Request, res: Response) {
 
   const usuario = await prisma.$transaction(async tx => {
     const created = await tx.usuario.create({
-      data:   { nombre, apodo: apodo ?? null, telefono: telefono ?? null, email, password_hash, rol: rol as Rol, empresa_id: req.empresaId! },
+      // La contraseña la eligió el admin: el usuario la cambia en su primer ingreso
+      data:   { nombre, apodo: apodo ?? null, telefono: telefono ?? null, email, password_hash, rol: rol as Rol, empresa_id: req.empresaId!, debe_cambiar_password: true },
       select: SAFE_SELECT,
     });
     await tx.usuarioEmpresaAcceso.create({
@@ -160,7 +164,7 @@ export async function update(req: Request, res: Response) {
     if (dupe) { res.status(400).json({ error: 'Ya existe un usuario con ese email' }); return; }
   }
 
-  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro, home_route } = parsed.data;
+  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro, home_route, permisos } = parsed.data;
 
   const data: Record<string, unknown> = {
     ...(nombre   !== undefined && { nombre }),
@@ -172,8 +176,13 @@ export async function update(req: Request, res: Response) {
     ...(puede_ver_macro !== undefined && { puede_ver_macro }),
     ...(areas_macro     !== undefined && { areas_macro }),
     ...(home_route      !== undefined && { home_route }),
+    ...(permisos        !== undefined && { permisos: [...new Set(permisos)] }),
   };
-  if (password) data.password_hash = await bcrypt.hash(password, 10);
+  if (password) {
+    data.password_hash = await bcrypt.hash(password, 10);
+    // Reseteada por un admin ⇒ el usuario la cambia al ingresar
+    if (req.user!.id !== id) data.debe_cambiar_password = true;
+  }
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.usuario.update({ where: { id }, data, select: SAFE_SELECT });
@@ -185,7 +194,7 @@ export async function update(req: Request, res: Response) {
       entidadId:    id,
       descripcion:  `Actualizó el usuario "${existing.nombre}"`,
       datosAntes:   { nombre: existing.nombre, email: existing.email, rol: existing.rol, activo: existing.activo },
-      datosDespues: parsed.data,
+      datosDespues: { ...parsed.data, password: password ? '(cambiada)' : undefined },
       ip:           req.ip,
       tx:           tx as any,
     });

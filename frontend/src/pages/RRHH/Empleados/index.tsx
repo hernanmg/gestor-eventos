@@ -13,6 +13,7 @@ import PrestamosSection from '@/components/domain/PrestamosSection';
 import CuitInput from '@/components/ui/CuitInput';
 import MoneyInput from '@/components/ui/MoneyInput';
 import ImportarFormularioDialog from '@/components/domain/ImportarFormularioDialog';
+import ImportarPadronDialog from '@/components/domain/ImportarPadronDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -797,6 +798,7 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
   const [editing, setEditing]       = useState<Empleado | null>(null);
   const [drawerId, setDrawerId]     = useState<number | null>(null);
   const [importarFormOpen, setImportarFormOpen] = useState(false);
+  const [padronOpen, setPadronOpen] = useState(false);
   const { user } = useAuth();
 
   const openNew  = () => { setEditing(null); setDialogOpen(true); };
@@ -814,9 +816,14 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
         className="mb-4"
         actions={<>
           {user?.rol === 'ADMIN' && (
-            <Button size="sm" variant="outline" onClick={() => setImportarFormOpen(true)}>
-              <Upload size={14} className="mr-1.5" /> Importar desde formulario
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={() => setPadronOpen(true)} title="Planilla de datos personales (hoja de fijos)">
+                <Upload size={14} className="mr-1.5" /> Importar padrón
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setImportarFormOpen(true)}>
+                <Upload size={14} className="mr-1.5" /> Importar desde formulario
+              </Button>
+            </>
           )}
           <Button size="sm" onClick={openNew}><Plus size={14} className="mr-1.5" /> Nuevo empleado</Button>
         </>}
@@ -879,6 +886,7 @@ export default function EmpleadosTab({ onVerJornadas, onVerLiquidaciones }: {
 
       <EmpleadoDialog open={dialogOpen} empleado={editing} onClose={close} />
       {importarFormOpen && <ImportarFormularioDialog onClose={() => setImportarFormOpen(false)} />}
+      {padronOpen && <ImportarPadronDialog onClose={() => setPadronOpen(false)} />}
       {drawerId !== null && (
         <EmpleadoDrawer
           empleadoId={drawerId}

@@ -11,6 +11,7 @@ import { useAlertasFlota } from '@/hooks/useFlota';
 import { useResumenFacturasEmitidas } from '@/hooks/useFacturasEmitidas';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
+import { tienePermiso } from '@/lib/permisos';
 import type { MeResponse } from '@/types';
 
 // ── Navegación: fuente única para Sidebar (desktop), MobileTabBar y NavSheet ──
@@ -64,8 +65,9 @@ export function isNavActive(to: string, pathname: string): boolean {
 export function useNavModel(user: MeResponse): NavModel {
   const { data: alertasData }        = useAlertasDashboard();
   const { data: stockAlertasData }   = useAlertasStock();
-  const { data: facturasAlertas }    = useAlertasFacturas();
-  const { data: facturasEmitidasResumen } = useResumenFacturasEmitidas();
+  const { data: facturasAlertas }    = useAlertasFacturas(tienePermiso(user, 'FACTURAS'));
+  // Facturas a Cobrar es sólo ADMIN: sin esto, cada operador pedía el badge y recibía 403
+  const { data: facturasEmitidasResumen } = useResumenFacturasEmitidas(user.rol === 'ADMIN');
   const { data: flotaAlertas }       = useAlertasFlota();
   const { data: pendSalida }         = usePendientesFirma('salida');
   const { data: pendLlegada }        = usePendientesFirma('llegada');
@@ -112,8 +114,23 @@ export function useNavModel(user: MeResponse): NavModel {
 
   const withHome = (items: NavItem[]): NavItem[] =>
     items.map(it => (navPath(it.to) === user.homeRoute ? { ...it, home: true } : it));
-  const flat = (items: (NavItem | false)[]): NavModel =>
-    ({ items: withHome(items.filter((x): x is NavItem => !!x)), flat: true });
+
+  // Módulos habilitados por permiso de carga (Configuración → Usuarios) para
+  // quien su rol no los da — se suman también a los menús acotados.
+  const porPermiso: NavItem[] = user.rol === 'ADMIN' ? [] : ([
+    tienePermiso(user, 'TARJETA_CORPORATIVA') && I.tarjeta,
+    tienePermiso(user, 'FACTURAS') && I.facturas,
+    tienePermiso(user, 'UNIFORMES') && I.uniformes,
+  ] as (NavItem | false)[]).filter((x): x is NavItem => !!x);
+
+  const flat = (items: (NavItem | false)[]): NavModel => {
+    const base = items.filter((x): x is NavItem => !!x);
+    const extra = porPermiso.filter(p => !base.some(b => navPath(b.to) === navPath(p.to)));
+    // Calendario queda al final, después de los módulos por permiso
+    const cal = base.findIndex(b => b.to === I.calendario.to);
+    const ordenados = cal >= 0 ? [...base.slice(0, cal), ...extra, ...base.slice(cal)] : [...base, ...extra];
+    return { items: withHome(ordenados), flat: true };
+  };
 
   // ── Menús acotados ─────────────────────────────────────────────────────────
   if (user.rol === 'JORNALERO') {
@@ -175,9 +192,9 @@ export function useNavModel(user: MeResponse): NavModel {
     conLectura && I.caja,
     // Gastos del mes (Andrea, DOS57) — Caja del mes, siniestros de empleados y excedente de horas
     dos57 && adminOOper && I.gastos,
-    esAdmin && I.tarjeta,
+    (esAdmin || tienePermiso(user, 'TARJETA_CORPORATIVA')) && I.tarjeta,
     esAdmin && I.espacios,
-    esAdmin && I.facturas,
+    (esAdmin || tienePermiso(user, 'FACTURAS')) && I.facturas,
     esAdmin && I.emitidas,
     esAdmin && I.ctacte,
     esAdmin && I.proveedores,
@@ -194,7 +211,7 @@ export function useNavModel(user: MeResponse): NavModel {
     esAdmin && I.rrhh,
     dos57OGlobal && I.presentismo,
     FEATURES.PARTE_DIARIO && dos57 && conLectura && I.parte,
-    esAdmin && I.uniformes,
+    (esAdmin || tienePermiso(user, 'UNIFORMES')) && I.uniformes,
     // Siniestros de personal — Lorena tiene su menú acotado y Andrea lo ve embebido en Gastos del mes
     dos57 && adminOOper && I.siniestros,
     // Sistema
