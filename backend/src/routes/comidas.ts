@@ -7,8 +7,16 @@ import {
   listComidas, getPedidoComidaPorFecha, crearPedidoComida,
   resumenComidas, exportarComidas,
   updatePedidoComida, deletePedidoComida,
-  addLineaComida, updateLineaComida, deleteLineaComida,
+  addLineaComida, updateLineaComida, deleteLineaComida, importarComidas,
 } from '../controllers/comidas.controller';
+import { upload } from '../controllers/importer.controller';
+
+const uploadXlsx = (req: any, res: any, next: any) => {
+  upload.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+};
 
 // ── Nested bajo /api/eventos/:id/comidas ──────────────────────────────────────
 // Lectura: TODOS_MENOS_RESTRINGIDOS. Escritura: ADMIN_OPERADOR, por rol global
@@ -19,6 +27,7 @@ comidasEventoRouter.use(tenantMiddleware);
 comidasEventoRouter.get('/resumen',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(resumenComidas));
 comidasEventoRouter.get('/exportar', requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(exportarComidas));
 comidasEventoRouter.post('/',        requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(crearPedidoComida));
+comidasEventoRouter.post('/importar', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarComidas));
 comidasEventoRouter.get('/:fecha',   requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getPedidoComidaPorFecha));
 comidasEventoRouter.get('/',         requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(listComidas));
 

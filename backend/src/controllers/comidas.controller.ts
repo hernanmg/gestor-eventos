@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { generateComidasExcel } from '../lib/comidasExporter';
+import { parseComidas, unirLineas, type HojaComidas } from '../lib/comidasImporter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -380,4 +381,120 @@ export async function exportarComidas(req: Request, res: Response) {
     'Content-Length':      String(buffer.length),
   });
   res.end(buffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILLA DE CONTROL DE COMIDAS (Enjoy)
+//   docs/enjoy/dani/Fiesta Nacional de la Pelota _ Planilla Control de Viandas.xlsx
+//   docs/enjoy/dani/L'ETAPE - Planilla control de comidas.xlsx
+// ═══════════════════════════════════════════════════════════════════════════
+
+const fechaDia = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+
+// POST /api/eventos/:id/comidas/importar?preview=true|false
+// Body (multipart): archivo + hojas (JSON opcional: nombres de hoja a importar;
+// por defecto todas). Upsert por día y por (comida, área): reimportar actualiza
+// lo que ya estaba y no borra líneas cargadas a mano.
+export async function importarComidas(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const esPreview = req.query.preview !== 'false';
+
+  let hojas: HojaComidas[];
+  try {
+    hojas = await parseComidas(req.file.buffer, evento.fecha_inicio);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+
+  let elegidas: string[] | null = null;
+  try {
+    const raw = req.body?.hojas;
+    if (raw) elegidas = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    res.status(400).json({ error: 'hojas no es un JSON válido' }); return;
+  }
+  const aImportar = hojas.filter(h => h.lineas.length > 0 && (!elegidas || elegidas.includes(h.hoja)));
+  const lineas = unirLineas(aImportar.flatMap(h => h.lineas));
+
+  // Rango del evento con montaje y desmontaje: avisa si una hoja cae afuera
+  let rango: { desde: string; hasta: string } | null = null;
+  if (evento.fecha_inicio) {
+    const ini = new Date(evento.fecha_inicio.getTime() - evento.dias_montaje * 86400000);
+    const fin = new Date((evento.fecha_fin ?? evento.fecha_inicio).getTime() + evento.dias_desmontaje * 86400000);
+    rango = { desde: ymd(ini), hasta: ymd(fin) };
+  }
+
+  const existentes = await prisma.pedidoComida.findMany({
+    where: { evento_id: eventoId, ...withTenant(req.empresaId!) },
+    include: { lineas: { where: { deleted_at: null } } },
+  });
+  const pedidoPorFecha = new Map(existentes.filter(p => !p.deleted_at).map(p => [ymd(p.fecha), p]));
+  const claveLinea = (tipo: string, area: string) => `${tipo}|${area.trim().toLowerCase()}`;
+  const nuevas = lineas.filter(l => {
+    const p = pedidoPorFecha.get(l.fecha);
+    return !p || !p.lineas.some(x => claveLinea(x.tipo, x.area) === claveLinea(l.tipo, l.area));
+  }).length;
+
+  const resumen = {
+    rango_evento: rango,
+    hojas: hojas.map(h => ({
+      hoja: h.hoja, lugar: h.lugar, desde: h.desde, hasta: h.hasta, lineas: h.lineas.length, personas: h.personas,
+      total_calculado: h.total_calculado, total_planilla: h.total_planilla, diferencias: h.diferencias,
+      omitidas: h.omitidas, advertencias: h.advertencias,
+      seleccionada: aImportar.includes(h),
+      fuera_de_rango: !!rango && !!h.desde && !!h.hasta && (h.desde < rango.desde || h.hasta > rango.hasta),
+    })),
+    dias: new Set(lineas.map(l => l.fecha)).size,
+    dias_nuevos: new Set(lineas.filter(l => !pedidoPorFecha.has(l.fecha)).map(l => l.fecha)).size,
+    lineas: lineas.length,
+    lineas_nuevas: nuevas,
+    personas: lineas.reduce((a, l) => a + l.cantidad, 0),
+    total: Math.round(lineas.reduce((a, l) => a + l.total, 0) * 100) / 100,
+  };
+
+  if (esPreview) { res.json({ preview: true, ...resumen }); return; }
+
+  await prisma.$transaction(async tx => {
+    const porFecha = new Map<string, typeof lineas>();
+    for (const l of lineas) porFecha.set(l.fecha, [...(porFecha.get(l.fecha) ?? []), l]);
+
+    for (const [fecha, ls] of porFecha) {
+      // Proveedor / forma de pago del día sólo si es uno solo (L'ETAPE tiene varios)
+      const provs = [...new Set(ls.map(l => l.proveedor?.trim()).filter(Boolean))];
+      const formas = [...new Set(ls.map(l => l.forma_pago?.trim()).filter(Boolean))];
+      const datosDia = {
+        ...(provs.length === 1 ? { proveedor_texto: provs[0] } : {}),
+        ...(formas.length === 1 ? { forma_pago: formas[0] } : {}),
+      };
+      // @@unique([evento_id, fecha]) incluye los borrados: un día dado de baja se restaura
+      const pedido = await tx.pedidoComida.upsert({
+        where:  { evento_id_fecha: { evento_id: eventoId, fecha: fechaDia(fecha) } },
+        update: { ...datosDia, deleted_at: null, updated_by: req.user!.id },
+        create: {
+          evento_id: eventoId, ...withTenant(req.empresaId!), fecha: fechaDia(fecha), ...datosDia,
+          created_by: req.user!.id, updated_by: req.user!.id,
+        },
+      });
+      for (const l of ls) {
+        const data = { cantidad: l.cantidad, valor_unitario: l.valor_unitario, detalle: l.detalle, deleted_at: null };
+        await tx.lineaComida.upsert({
+          where:  { pedido_comida_id_tipo_area: { pedido_comida_id: pedido.id, tipo: l.tipo, area: l.area } },
+          update: data,
+          create: { pedido_comida_id: pedido.id, tipo: l.tipo, area: l.area, ...data },
+        });
+      }
+    }
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'PedidoComida', eventoId,
+      descripcion: `Importó la planilla de comidas (${aImportar.map(h => h.hoja).join(', ')}) — ${resumen.dias} días, ${resumen.lineas} líneas, ${resumen.personas} comidas`,
+      ip: req.ip, tx: tx as any,
+    });
+  });
+
+  res.json({ preview: false, ...resumen });
 }

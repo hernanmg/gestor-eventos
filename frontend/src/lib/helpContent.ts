@@ -181,6 +181,10 @@ const help: Record<string, HelpContent> = {
         titulo: 'Exportar',
         contenido: 'El botón "Exportar Excel" genera un archivo con una hoja resumen de todos los proveedores y una hoja adicional por cada rubro Confirmado con su pedido técnico completo.',
       },
+      {
+        titulo: 'Importar la planilla de pedidos',
+        contenido: '"Importar pedidos" lee la planilla de pedidos de material (hoja PROVEEDORES CONFIRMADOS + una hoja "PEDIDO DE MATERIAL" por rubro) o la ficha de evento con sus "FICHA DE PROVEEDOR". De cada servicio toma el estado, el proveedor, el contacto, quién coordina, las fechas de entrega y retiro y el pedido completo; las columnas propias de cada rubro (Piso, Uso, Medida, M2...) y las secciones como "ESCENARIO PRINCIPAL" quedan en las observaciones de cada ítem. Las grillas de limpieza o seguridad se cargan como turnos.\nEn la vista previa revisá el rubro de cada servicio: si no es el correcto elegí otro, o "No importar". Si dos servicios van al mismo rubro (Seguridad 1 y Seguridad 2) se suman en uno y el segundo proveedor queda en las notas. Un proveedor que no está dado de alta se importa igual con su nombre en las notas; si lo das de alta antes, queda vinculado.\nReimportar no duplica: actualiza lo que ya estaba y no borra ítems ni notas cargados a mano. Si una hoja dice otro evento (una hoja copiada de otro evento), la vista previa lo avisa.',
+      },
     ],
     links: [
       { label: 'Ver Resumen', ruta: '/eventos/:id/resumen' },
@@ -254,7 +258,15 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Resumen, Egresos (por rubro), Ingresos, Caja, Ficha, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+      },
+      {
+        titulo: 'Producción',
+        contenido: 'La pestaña Producción reúne lo que antes estaba en la planilla de producción: el cronograma de montaje, evento y desarme (por día y hora, con proveedor y responsable), los espacios del evento con lo que lleva cada uno y su estado, los puntos de internet, el branding (tipo, marca, cantidad y ubicación) y las compras del evento (quién pide, quién autoriza y cómo se paga).\nCada fila se edita en el lugar y se guarda al salir del campo; la última fila de cada tabla sirve para agregar. "Importar planilla de producción" lee esas hojas del Excel (se reconocen por sus columnas); reimportar actualiza lo que ya estaba y no borra lo cargado a mano.\nLas compras no generan movimientos: lo que se paga con tarjeta o en cuenta corriente entra por la tarjeta corporativa o las facturas. El total no cuenta las canceladas.',
+      },
+      {
+        titulo: 'Comidas',
+        contenido: 'Cada día del evento tiene sus almuerzos y cenas por área, con la cantidad, el valor por persona y el detalle (quiénes comieron). "Importar planilla" lee la planilla de control de viandas (valor por unidad y tipo de menú: el área es Plato o Vianda) o la de control de comidas (costo por línea y proveedor: el área es el proveedor y el valor por persona sale del costo).\nLa vista previa muestra, por hoja, el total que da el sistema contra el total de la planilla, y lista las filas que no cierran (por ejemplo una fórmula que apunta a una celda vacía). Si una hoja cae fuera de las fechas del evento queda destildada: revisala antes de importarla. Reimportar no duplica y no borra lo cargado a mano.',
       },
       {
         titulo: 'Egresos e ingresos',

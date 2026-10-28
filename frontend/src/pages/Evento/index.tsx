@@ -27,6 +27,7 @@ import FacturasACobrarTab from './FacturasACobrar';
 import ComidasPage from './Comidas';
 import CortesiasPage from './Cortesias';
 import EventoLogisticaTab from './EventoLogisticaTab';
+import ProduccionEventoPage from './Produccion';
 import ResumenRubros from './Rubros/ResumenRubros';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
@@ -236,7 +237,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -246,6 +247,8 @@ type MainTab = 'RESUMEN' | 'FICHA' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATO
 const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
   { key: 'FICHA',         label: 'Ficha'         },
+  // Cronograma, espacios, internet, branding y compras (planilla de producción de Dani)
+  { key: 'PRODUCCION',    label: 'Producción'    },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -560,6 +563,10 @@ export default function EventoPage() {
 
         {mainTab === 'A_COBRAR' && (
           <FacturasACobrarTab eventoId={eventoId} eventoNombre={evento.nombre} />
+        )}
+
+        {mainTab === 'PRODUCCION' && (
+          <ProduccionEventoPage eventoId={eventoId} canEdit={canEdit} />
         )}
 
         {mainTab === 'COMIDAS' && (

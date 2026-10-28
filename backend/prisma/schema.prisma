@@ -294,6 +294,11 @@ model Empresa {
   tarjetasCorporativas   TarjetaCorporativa[]
   materialesRental       MaterialRental[]
   presupuestosEvento     PresupuestoEvento[]
+  cronogramasEvento      CronogramaEvento[]
+  espaciosEvento         EspacioEvento[]
+  puntosInternetEvento   PuntoInternetEvento[]
+  brandingEvento         BrandingEvento[]
+  comprasEvento          CompraEvento[]
   remitosEvento          RemitoEvento[]
   multas                 Multa[]
   controlesSalida        ControlSalidaVehiculo[]
@@ -444,6 +449,12 @@ model Evento {
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
   controles_salida       ControlSalidaVehiculo[]
+  // Producción (planilla de producción de Dani)
+  cronograma             CronogramaEvento[]
+  espacios               EspacioEvento[]
+  puntos_internet        PuntoInternetEvento[]
+  branding               BrandingEvento[]
+  compras                CompraEvento[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -562,6 +573,141 @@ model PedidoItem {
   deleted_at        DateTime?
 
   @@index([rubro_evento_id, fecha_turno])
+}
+
+// ─── PRODUCCIÓN DEL EVENTO (Enjoy) ────────────────────────────────────────────
+// Las hojas de la planilla de producción de Dani que no son pedidos a
+// proveedores (docs/enjoy/dani/Planilla Produccion Expo Village.xlsx):
+// cronograma de montaje, espacios y lo que lleva cada uno, puntos de internet,
+// branding y compras del evento. Son listas de trabajo: los textos (proveedor,
+// responsable, estado) quedan como los escribe producción, sin vincular.
+
+model CronogramaEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha         DateTime // calendario puro (medianoche UTC, ver fecha_offset_utc_fix)
+  hora          String? // "08:00"
+  actividad     String
+  proveedor     String? // "Dos57", "Enjoy", "Stands"
+  responsable   String? // "Dani + Agus"
+  observaciones String?
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id, fecha])
+}
+
+model EspacioEvento {
+  id            Int                 @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento              @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa             @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  nombre        String // "PLAYON 1"
+  actividad     String? // "Premiación"
+  observaciones String?
+  orden         Int                 @default(0)
+  items         EspacioEventoItem[]
+  created_at    DateTime            @default(now())
+  updated_at    DateTime            @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+// Lo que lleva un espacio ("Escenario", "Generador 110KVA") y su estado.
+model EspacioEventoItem {
+  id            Int           @id @default(autoincrement())
+  espacio_id    Int
+  espacio       EspacioEvento @relation(fields: [espacio_id], references: [id])
+  elemento      String
+  estado        String? // "Confirmado"
+  responsable   String?
+  observaciones String?
+  orden         Int           @default(0)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  deleted_at    DateTime?
+
+  @@index([espacio_id])
+}
+
+model PuntoInternetEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  zona          String
+  uso           String?
+  tipo_conexion String? // "Exclusiva Cronómetro", "Punto wifi - Ethernet"
+  observaciones String?
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+model BrandingEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  tipo          String // "CUBRE VALLAS", "BANDERAS"
+  marca         String? // "LETAPE", "BANCOR"
+  cantidad      Decimal?  @db.Decimal(10, 2)
+  ubicacion     String?
+  estado        String?
+  observaciones String?
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+// Compras chicas del evento (hoja "Compras Letape"): quién pide, quién autoriza
+// y cómo se paga. No genera movimientos: lo que se paga con tarjeta o cuenta
+// corriente entra por la tarjeta corporativa o las facturas.
+model CompraEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  fecha         DateTime? // calendario puro
+  pedido        String
+  cantidad      Decimal?  @db.Decimal(10, 2)
+  valor         Decimal?  @db.Decimal(14, 2) // null = "PENDIENTE"
+  proveedor     String?
+  forma_pago    String? // "Cuenta Corriente", "Tarjeta Corpo Dani"
+  solicita      String?
+  autoriza      String?
+  observaciones String?
+  cancelada     Boolean   @default(false)
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────

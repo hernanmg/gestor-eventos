@@ -8,7 +8,7 @@ import {
   getFicha, resumenFicha, inicializarFicha, exportarFicha,
   updateRubroEvento, addPedidoItem, updatePedidoItem, deletePedidoItem,
   asignarStock, desasignarStock,
-  listarHojasFichaImport, importarFicha, importarEsquemaTurnos,
+  listarHojasFichaImport, importarFicha, importarEsquemaTurnos, importarPedidosMaterial,
 } from '../controllers/fichaEvento.controller';
 
 const uploadXlsx = (req: any, res: any, next: any) => {
@@ -29,6 +29,7 @@ fichaEventoRouter.get('/exportar',     requireAnyRole(ROLES.TODOS_MENOS_RESTRING
 fichaEventoRouter.post('/inicializar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(inicializarFicha));
 fichaEventoRouter.post('/importar/hojas', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(listarHojasFichaImport));
 fichaEventoRouter.post('/importar',       requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarFicha));
+fichaEventoRouter.post('/importar-pedidos', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarPedidosMaterial));
 fichaEventoRouter.get('/',             requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getFicha));
 
 // ── /api/rubros-evento ─────────────────────────────────────────────────────────

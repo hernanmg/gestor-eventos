@@ -1368,6 +1368,9 @@ async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Re
   let hojasProcesadas = 0;
   const porHoja: { hoja: string; creados: number; actualizados: number; codigos_generados: string[] }[] = [];
   const errores: { hoja: string; fila: number; motivo: string }[] = [];
+  // Un elemento repetido en la misma hoja (DEPO 1: "Tramos Truss 2m 30x30" dos
+  // veces) se suma: el segundo no pisa al primero.
+  const repetidos: { hoja: string; fila: number; elemento: string; total: number }[] = [];
 
   for (const hoja of ENJOY_HOJAS) {
     const sheet = workbook.Sheets[hoja];
@@ -1380,6 +1383,7 @@ async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Re
 
     const prefijo = ENJOY_PREFIJOS[hoja];
     let siguienteNumero = await siguienteNumeroDisponible(empresaId, prefijo);
+    const stockEnHoja = new Map<string, number>();
 
     // Fila 1: título del espacio. Fila 2: headers. Datos desde fila 3 (índice 2).
     for (let i = 2; i < rows.length; i++) {
@@ -1390,7 +1394,13 @@ async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Re
       if (!elemento) { omitidos++; continue; }
       if (esTituloDeSeccion(row, elemento)) { omitidos++; continue; }
 
-      const stockTotal    = parseCantidadEnjoy(row[6]) ?? 0; // Col G — ene-26, stock actual
+      let stockTotal      = parseCantidadEnjoy(row[6]) ?? 0; // Col G — ene-26, stock actual
+      const clave = elemento; // mismo criterio que la búsqueda de abajo (nombre exacto)
+      if (stockEnHoja.has(clave)) {
+        stockTotal += stockEnHoja.get(clave)!;
+        repetidos.push({ hoja, fila: filaExcel, elemento, total: stockTotal });
+      }
+      stockEnHoja.set(clave, stockTotal);
       const informe       = row[7] != null ? String(row[7]).trim() : '';
       const observaciones = row[8] != null ? String(row[8]).trim() : '';
       const historial      = buildHistorialStock(row) as unknown as Prisma.InputJsonValue;
@@ -1455,5 +1465,5 @@ async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Re
     ip: req.ip, tx: prisma,
   });
 
-  res.json({ hojas_procesadas: hojasProcesadas, creados, actualizados, omitidos, por_hoja: porHoja, errores });
+  res.json({ hojas_procesadas: hojasProcesadas, creados, actualizados, omitidos, por_hoja: porHoja, errores, repetidos });
 }

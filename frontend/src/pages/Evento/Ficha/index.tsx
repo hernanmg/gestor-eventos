@@ -26,6 +26,7 @@ import {
 import { useDisponibilidad } from '@/hooks/useStock';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
 import ProductoCombobox, { type ProductoLite } from '@/components/domain/ProductoCombobox';
+import ImportarPedidosDialog from '@/components/domain/ImportarPedidosDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1250,6 +1251,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
   const [filtroEstado, setFiltroEstado] = useState<EstadoRubroEvento | ''>('');
   const [busqueda, setBusqueda] = useState(initialBusqueda ?? '');
   const [importarOpen, setImportarOpen] = useState(false);
+  const [importarPedidosOpen, setImportarPedidosOpen] = useState(false);
 
   const contadores = useMemo(() => ({
     confirmados: fichaData.filter(r => r.estado === 'CONFIRMADO').length,
@@ -1294,14 +1296,19 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
             {isExporting ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={13} className="mr-1.5" />}
             Exportar Excel
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportarPedidosOpen(true)}>
+            <Upload size={13} className="mr-1.5" />
+            Importar pedidos
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setImportarOpen(true)}>
             <Upload size={13} className="mr-1.5" />
-            Importar desde Excel
+            Importar rubros por evento
           </Button>
         </div>
       </div>
 
       {importarOpen && <ImportarExcelDialog eventoId={eventoId} onClose={() => setImportarOpen(false)} />}
+      {importarPedidosOpen && <ImportarPedidosDialog eventoId={eventoId} onClose={() => setImportarPedidosOpen(false)} />}
 
       {fichaData.length === 0 ? (
         <p className="text-sm text-muted-foreground py-10 text-center">

@@ -157,6 +157,20 @@ export async function parseEsquemaTurnos(buffer: Buffer, hoja?: string): Promise
   if (!ws || !enc) {
     throw new Error('No se encontró la grilla del esquema (se esperan las columnas Fecha, Cantidad, Ingreso y Salida)');
   }
+  return parsearGrilla(ws, enc);
+}
+
+/**
+ * Igual que parseEsquemaTurnos pero sobre una hoja ya abierta: devuelve null si
+ * la hoja no tiene la grilla. Lo usa el importador de Pedidos de material, donde
+ * la hoja LIMPIEZA o "ESQUEMA DE ..." viene dentro del mismo libro.
+ */
+export function parseEsquemaHoja(ws: ExcelJS.Worksheet): EsquemaParseado | null {
+  const enc = detectarEncabezado(ws);
+  return enc ? parsearGrilla(ws, enc) : null;
+}
+
+function parsearGrilla(ws: ExcelJS.Worksheet, enc: { fila: number; cols: Cols }): EsquemaParseado {
   const { cols } = enc;
 
   const filas: FilaEsquemaParseada[] = [];

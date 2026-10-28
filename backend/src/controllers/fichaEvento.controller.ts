@@ -10,6 +10,9 @@ import {
   type FichaEventoRowPreview,
 } from '../lib/fichaEventoImporter';
 import { parseEsquemaTurnos } from '../lib/esquemaTurnosImporter';
+import {
+  parsePedidosMaterial, matchRubro, mejorEstado, normTexto, type BloquePedido,
+} from '../lib/pedidosMaterialImporter';
 import { derivarTurno, descripcionTurno, normalizarHora, esRubroPersonal } from '../lib/esquemaTurnos';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -903,4 +906,249 @@ export async function importarEsquemaTurnos(req: Request, res: Response) {
   });
 
   res.json({ preview: false, hoja: parsed.hoja, creados, actualizados, total_horas, omitidas: parsed.omitidas, filas: salida(filas) });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILLA DE PEDIDOS A PROVEEDORES (las de Dani)
+//   docs/enjoy/dani/Festival KM - Pedidos de material.xlsx
+//   docs/enjoy/dani/Fiesta nacional de la pelota _ Ficha de evento.xlsx
+// ═══════════════════════════════════════════════════════════════════════════
+
+type BloqueResuelto = BloquePedido & {
+  rubro_id:         number | null;
+  rubro_nombre:     string | null;
+  rubro_automatico: boolean;
+  proveedor_id:     number | null;
+  proveedor_nombre: string | null;
+  accion:           'CREAR' | 'ACTUALIZAR' | 'SIN_RUBRO' | 'OMITIDO';
+  items_nuevos:     number;
+};
+
+/** Proveedor por nombre o alias, sin tildes ni mayúsculas; "Grupo Dos57" encuentra a "DOS57". */
+function buscarProveedorPorNombre<T extends { id: number; nombre: string; alias: string | null }>(nombre: string | null, proveedores: T[]): T | null {
+  if (!nombre) return null;
+  const n = normTexto(nombre);
+  if (!n) return null;
+  const exacto = proveedores.find(p => normTexto(p.nombre) === n || (p.alias && normTexto(p.alias) === n));
+  if (exacto) return exacto;
+  const contiene = (a: string, b: string) => b.length >= 3 && ` ${a} `.includes(` ${b} `);
+  const candidatos = proveedores.filter(p => {
+    const pn = normTexto(p.nombre); const pa = normTexto(p.alias);
+    return contiene(pn, n) || contiene(n, pn) || (!!pa && (contiene(pa, n) || contiene(n, pa)));
+  });
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+/** Clave de un ítem de pedido para reimportar sin duplicar: texto + n° de aparición. */
+function clavesItems<T extends { descripcion: string; observaciones: string | null }>(items: T[]): string[] {
+  const vistas = new Map<string, number>();
+  return items.map(it => {
+    const base = `${normTexto(it.descripcion)}|${normTexto(it.observaciones)}`;
+    const n = (vistas.get(base) ?? 0) + 1;
+    vistas.set(base, n);
+    return `${base}|${n}`;
+  });
+}
+
+// POST /api/eventos/:id/ficha/importar-pedidos?preview=true|false
+// Body (multipart): archivo + asignaciones (JSON opcional { [clave]: rubro_id | 0 }):
+// 0 = no importar ese bloque; un id = usar ese rubro en lugar del detectado.
+export async function importarPedidosMaterial(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+
+  const esPreview = req.query.preview !== 'false';
+  let asignaciones: Record<string, number> = {};
+  try {
+    const raw = req.body?.asignaciones;
+    if (raw) asignaciones = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    res.status(400).json({ error: 'asignaciones no es un JSON válido' }); return;
+  }
+
+  let parsed;
+  try {
+    parsed = await parsePedidosMaterial(req.file.buffer, evento.fecha_inicio);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+
+  const [rubros, proveedores, existentes] = await Promise.all([
+    prisma.rubro.findMany({
+      where: { empresa_id: req.empresaId!, tipo: 'EGRESO', activo: true, deleted_at: null },
+      select: { id: true, nombre: true }, orderBy: { orden: 'asc' },
+    }),
+    prisma.proveedor.findMany({
+      where: { ...withTenant(req.empresaId!), deleted_at: null },
+      select: { id: true, nombre: true, alias: true },
+    }),
+    prisma.rubroEvento.findMany({
+      where: { evento_id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) },
+      select: {
+        id: true, rubro_id: true, notas: true,
+        pedido_items: {
+          where: { deleted_at: null },
+          select: { id: true, descripcion: true, observaciones: true, fecha_turno: true, ubicacion_turno: true, hora_inicio_turno: true, tipo_turno: true, orden: true },
+          orderBy: { orden: 'asc' },
+        },
+      },
+    }),
+  ]);
+  const existentePorRubro = new Map(existentes.map(e => [e.rubro_id, e]));
+
+  // ── Resolver rubro y proveedor de cada bloque ────────────────────────────
+  const bloques: BloqueResuelto[] = parsed.bloques.map(b => {
+    const manual = asignaciones[b.clave];
+    const omitido = manual === 0;
+    const rubro = omitido ? null
+      : manual !== undefined ? rubros.find(r => r.id === Number(manual)) ?? null
+      : matchRubro([b.servicio, ...b.hojas], rubros);
+    const proveedor = buscarProveedorPorNombre(b.proveedor_excel, proveedores);
+    return {
+      ...b,
+      rubro_id: rubro?.id ?? null, rubro_nombre: rubro?.nombre ?? null,
+      rubro_automatico: manual === undefined,
+      proveedor_id: proveedor?.id ?? null, proveedor_nombre: proveedor?.nombre ?? null,
+      accion: omitido ? 'OMITIDO' : !rubro ? 'SIN_RUBRO' : existentePorRubro.has(rubro.id) ? 'ACTUALIZAR' : 'CREAR',
+      items_nuevos: 0,
+    };
+  });
+
+  // ── Agrupar por rubro (Seguridad 1 + Seguridad 2 → Seguridad privada) ────
+  const grupos = new Map<number, BloqueResuelto[]>();
+  for (const b of bloques) {
+    if (!b.rubro_id || b.accion === 'OMITIDO') continue;
+    grupos.set(b.rubro_id, [...(grupos.get(b.rubro_id) ?? []), b]);
+  }
+  for (const [rubroId, bs] of grupos) {
+    if (bs.length > 1) for (const b of bs.slice(1)) b.advertencias.push(`Se suma al rubro "${b.rubro_nombre}" junto con "${bs[0].servicio}"`);
+    const existente = existentePorRubro.get(rubroId);
+    const clavesExist = new Set(clavesItems((existente?.pedido_items ?? []).filter(i => !i.fecha_turno)));
+    const todos = bs.flatMap(b => b.items.map(it => ({ it, b })));
+    clavesItems(todos.map(x => x.it)).forEach((k, i) => { if (!clavesExist.has(k)) todos[i].b.items_nuevos++; });
+  }
+
+  const evento_distinto = parsed.evento_excel && normTexto(parsed.evento_excel) !== normTexto(evento.nombre)
+    ? parsed.evento_excel : null;
+  const activos = bloques.filter(b => b.rubro_id && b.accion !== 'OMITIDO');
+  const resumen = {
+    formato: parsed.formato,
+    hoja_resumen: parsed.hoja_resumen,
+    evento_excel: parsed.evento_excel,
+    evento_distinto,
+    lugar_excel: parsed.lugar_excel,
+    hojas_omitidas: parsed.hojas_omitidas,
+    rubros_creados:      [...grupos.keys()].filter(id => !existentePorRubro.has(id)).length,
+    rubros_actualizados: [...grupos.keys()].filter(id => existentePorRubro.has(id)).length,
+    sin_rubro:           bloques.filter(b => b.accion === 'SIN_RUBRO').length,
+    items:               activos.reduce((a, b) => a + b.items.length, 0),
+    turnos:              activos.reduce((a, b) => a + b.turnos.length, 0),
+    proveedores_no_encontrados: [...new Set(activos.filter(b => b.proveedor_excel && !b.proveedor_id).map(b => b.proveedor_excel!))],
+  };
+  const salida = { ...resumen, bloques, rubros };
+
+  if (esPreview) { res.json({ preview: true, ...salida }); return; }
+
+  const fechaUTC = (s: string | null) => (s ? new Date(`${s}T00:00:00.000Z`) : null);
+
+  await prisma.$transaction(async tx => {
+    for (const [rubroId, bs] of grupos) {
+      const estado = bs.map(b => b.estado).reduce(mejorEstado);
+      const conProveedor = bs.find(b => b.proveedor_id);
+      const notas: string[] = [];
+      for (const b of bs) {
+        notas.push(...b.notas);
+        if (b.proveedor_excel && !b.proveedor_id) notas.push(`Proveedor según planilla: ${b.proveedor_excel}`);
+        if (b !== conProveedor && b.proveedor_id) notas.push(`También: ${b.proveedor_nombre} (${b.servicio})`);
+      }
+      const primerTexto = (k: 'contacto_nombre' | 'contacto_telefono' | 'contacto_cargo' | 'coordina') =>
+        bs.map(b => b[k]).find((v): v is string => !!v) ?? null;
+      const presupuesto = bs.map(b => b.presupuesto).find((v): v is number => v !== null) ?? null;
+      const ingresos = bs.map(b => b.fecha_ingreso).filter((x): x is string => !!x).sort();
+      const retiros  = bs.map(b => b.fecha_retiro).filter((x): x is string => !!x).sort();
+
+      const existente = existentePorRubro.get(rubroId);
+      // Notas: se suman las líneas nuevas a lo que ya había (no se pisa lo cargado a mano)
+      const notasPrevias = existente?.notas ?? '';
+      const nuevas = [...new Set(notas)].filter(n => !notasPrevias.includes(n));
+      const notasFinal = [notasPrevias, ...nuevas].filter(Boolean).join('\n') || null;
+
+      // Celda vacía no borra: sólo se escribe lo que trae la planilla
+      const contacto_nombre = primerTexto('contacto_nombre');
+      const contacto_telefono = primerTexto('contacto_telefono');
+      const contacto_cargo = primerTexto('contacto_cargo');
+      const coordina = primerTexto('coordina');
+      const datos = {
+        estado,
+        ...(conProveedor ? { proveedor_id: conProveedor.proveedor_id } : {}),
+        ...(contacto_nombre ? { contacto_nombre } : {}),
+        ...(contacto_telefono ? { contacto_telefono } : {}),
+        ...(contacto_cargo ? { contacto_cargo } : {}),
+        ...(coordina ? { coordina_nombre: coordina } : {}),
+        ...(presupuesto !== null ? { presupuesto } : {}),
+        ...(ingresos[0] ? { fecha_ingreso: fechaUTC(ingresos[0]) } : {}),
+        ...(retiros.length ? { fecha_retiro: fechaUTC(retiros[retiros.length - 1]) } : {}),
+        notas: notasFinal,
+        updated_by: req.user!.id,
+      };
+      const re = existente
+        ? await tx.rubroEvento.update({ where: { id: existente.id }, data: datos })
+        : await tx.rubroEvento.create({
+            data: { evento_id: eventoId, rubro_id: rubroId, empresa_id: req.empresaId!, created_by: req.user!.id, ...datos },
+          });
+
+      // Ítems del pedido: se actualizan los que ya estaban (misma descripción y
+      // observaciones) y se agregan los nuevos. Nunca se borra lo cargado a mano.
+      const previos = (existente?.pedido_items ?? []).filter(i => !i.fecha_turno);
+      const idPorClave = new Map(clavesItems(previos).map((k, i) => [k, previos[i].id]));
+      let orden = (existente?.pedido_items ?? []).reduce((m, i) => Math.max(m, i.orden), 0);
+      const items = bs.flatMap(b => b.items);
+      const claves = clavesItems(items);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const data = {
+          cantidad: it.cantidad, descripcion: it.descripcion, dias_uso: it.dias_uso,
+          horario_llegada: it.horario_llegada, horario_retiro: it.horario_retiro, observaciones: it.observaciones,
+        };
+        const id = idPorClave.get(claves[i]);
+        if (id) await tx.pedidoItem.update({ where: { id }, data });
+        else await tx.pedidoItem.create({ data: { rubro_evento_id: re.id, orden: ++orden, ...data } });
+      }
+
+      // Turnos (grilla de limpieza / seguridad): misma clave que el importador de esquema
+      const turnosPrevios = (existente?.pedido_items ?? []).filter(i => i.fecha_turno);
+      const turnoPorClave = new Map(turnosPrevios.map(t => [
+        claveTurno(t.fecha_turno!.toISOString().slice(0, 10), t.ubicacion_turno, t.hora_inicio_turno, t.tipo_turno), t.id,
+      ]));
+      for (const f of bs.flatMap(b => b.turnos)) {
+        const clave = claveTurno(f.fecha, f.ubicacion_turno, f.hora_inicio, f.tipo_turno);
+        const data = {
+          cantidad: f.cantidad, descripcion: descripcionTurno(f.tipo_turno, f.ubicacion_turno),
+          fecha_turno: fechaTurnoDate(f.fecha), hora_inicio_turno: f.hora_inicio, hora_fin_turno: f.hora_fin,
+          ubicacion_turno: f.ubicacion_turno, tipo_turno: f.tipo_turno,
+          horas_por_agente: f.horas_por_agente, total_horas_turno: f.total_horas,
+        };
+        const id = turnoPorClave.get(clave);
+        if (id) await tx.pedidoItem.update({ where: { id }, data });
+        else {
+          const created = await tx.pedidoItem.create({ data: { rubro_evento_id: re.id, orden: ++orden, ...data } });
+          turnoPorClave.set(clave, created.id);
+        }
+      }
+    }
+
+    if (!evento.lugar && parsed.lugar_excel) {
+      await tx.evento.update({ where: { id: eventoId }, data: { lugar: parsed.lugar_excel } });
+    }
+
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'RubroEvento', eventoId,
+      descripcion: `Importó la planilla de pedidos a proveedores — ${resumen.rubros_creados} rubros creados, ${resumen.rubros_actualizados} actualizados, ${resumen.items} ítems, ${resumen.turnos} turnos`,
+      ip: req.ip, tx: tx as any,
+    });
+  });
+
+  res.json({ preview: false, ...salida });
 }

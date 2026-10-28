@@ -3,6 +3,7 @@ import { PrismaClient, Tipo, TipoRubro, TipoCuenta, Moneda } from '@prisma/clien
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { RUBROS_SISTEMA } from '../src/lib/rubrosConstants';
+import type { Permiso } from '../src/lib/permisos';
 
 const prisma = new PrismaClient();
 
@@ -326,6 +327,10 @@ async function main() {
     // Pantalla principal al loguearse (ver Usuario.home_route / resolveHomeRoute
     // en el frontend). Sin este campo, usa el default por rol.
     homeRoute?: string;
+    // Permisos de carga (ver src/lib/permisos.ts) para responsables que no son ADMIN.
+    permisos?: Permiso[];
+    // false = se crea dado de baja (no entra hasta que un admin lo active).
+    activo?: boolean;
   };
 
   const USUARIOS_REALES: UsuarioSeed[] = [
@@ -351,7 +356,7 @@ async function main() {
     // docs/dos57/lorena/Datos DOS57_Datos Personales.xlsx (fila 13, apodo
     // "Lore"). Email PLACEHOLDER — no hay uno real en ninguna planilla ni
     // transcripción relevada; confirmar antes de dar de alta en producción.
-    { nombre: 'Lorena Herrera (Lore)', email: 'lorena.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/presentismo' },
+    { nombre: 'Lorena Herrera (Lore)', email: 'lorena.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/presentismo', permisos: ['PADRON_EMPLEADOS', 'UNIFORMES'] },
     // Florencia, Santiago y Nicolás: relevados en docs/dos57/florencia y
     // docs/dos57/santi-nico, pero NINGUNA planilla ni transcripción trae su
     // apellido, CUIL o email real (no están en el legajo "DOS57 FIJOS" —
@@ -359,16 +364,26 @@ async function main() {
     // PLACEHOLDERS — confirmar los datos reales antes de producción.
     // Florencia: home_route pendiente de definir (queda null → default por rol).
     { nombre: 'Florencia',           email: 'florencia.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
-    { nombre: 'Santiago (Santi)',    email: 'santiago.dos57@gmail.com',  rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible' },
-    { nombre: 'Nicolás (Nico)',      email: 'nicolas.dos57@gmail.com',   rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible' },
+    // Santi y Nico también ayudan a Mayra en Enjoy: Santi arma la tarjeta
+    // corporativa y Nico carga facturas con Male (relevado con Male, 2026-10-26).
+    {
+      nombre: 'Santiago (Santi)', email: 'santiago.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible',
+      accesoExtra: [{ empresa_id: enjoy.id, rol: 'OPERADOR' }], permisos: ['TARJETA_CORPORATIVA', 'FACTURAS'],
+    },
+    {
+      nombre: 'Nicolás (Nico)', email: 'nicolas.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/combustible',
+      accesoExtra: [{ empresa_id: enjoy.id, rol: 'OPERADOR' }], permisos: ['TARJETA_CORPORATIVA', 'FACTURAS'],
+    },
 
     // ── Enjoy — admins ──────────────────────────────────────────────────────────
     { nombre: 'Christian Xinos (Chino)',        email: 'christianxinos@gmail.com',            telefono: '351 800-5952', rol: 'ADMIN', empresa_id: enjoy.id },
     { nombre: 'Malena Perez Estevez',           email: 'envios.enjoyproducciones@gmail.com',  telefono: '351 386-3241', rol: 'ADMIN', empresa_id: enjoy.id },
 
     // ── Enjoy — operadores ──────────────────────────────────────────────────────
-    { nombre: 'Victoria Almada',   email: 'victoriaalmada@gmail.com',   telefono: '351 208-1470', rol: 'OPERADOR', empresa_id: enjoy.id },
-    { nombre: 'Daniel Yanello',    email: 'danielyanello93@gmail.com',  telefono: '351 398-0601', rol: 'OPERADOR', empresa_id: enjoy.id },
+    // Vicky (marketing, comunicación y dirección): se crea inactiva hasta definir qué necesita.
+    { nombre: 'Victoria Almada',   email: 'victoriaalmada@gmail.com',   telefono: '351 208-1470', rol: 'OPERADOR', empresa_id: enjoy.id, activo: false },
+    // Dani: depósito, stock y pedidos a proveedores de Enjoy.
+    { nombre: 'Daniel Yanello',    email: 'danielyanello93@gmail.com',  telefono: '351 398-0601', rol: 'OPERADOR', empresa_id: enjoy.id, permisos: ['UNIFORMES'] },
   ];
 
   const passwordHashInicial = await bcrypt.hash(PASSWORD_INICIAL, 10);
@@ -380,14 +395,16 @@ async function main() {
     let passwordHash = passwordHashInicial;
     if (PRODUCCION && !yaExiste) {
       const password = passwordInicialAleatoria();
-      passwordsGeneradas.push({ email: u.email, nombre: u.nombre, password });
+      // Un usuario inactivo no recibe contraseña: al activarlo, el admin le carga una.
+      if (u.activo !== false) passwordsGeneradas.push({ email: u.email, nombre: u.nombre, password });
       passwordHash = await bcrypt.hash(password, 10);
     }
 
     const usuario = await prisma.usuario.upsert({
       where:  { email: u.email },
       update: siNoEsProduccion({
-        nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: true,
+        nombre: u.nombre, telefono: u.telefono ?? null, rol: u.rol, empresa_id: u.empresa_id, activo: u.activo ?? true,
+        permisos: u.permisos ?? [],
         puede_ver_macro: u.puedeVerMacro ?? false, areas_macro: u.areasMacro ?? [],
         home_route: u.homeRoute ?? null,
       }),
@@ -402,6 +419,8 @@ async function main() {
         puede_ver_macro: u.puedeVerMacro ?? false,
         areas_macro:     u.areasMacro ?? [],
         home_route:      u.homeRoute ?? null,
+        permisos:        u.permisos ?? [],
+        activo:          u.activo ?? true,
       },
     });
 
@@ -421,7 +440,7 @@ async function main() {
       });
     }
 
-    console.log(`✓ Usuario "${u.nombre}" (${u.email}) — ${u.rol}${u.empresa_id === null ? ' [global]' : ''}`);
+    console.log(`✓ Usuario "${u.nombre}" (${u.email}) — ${u.rol}${u.empresa_id === null ? ' [global]' : ''}${u.activo === false ? ' [inactivo]' : ''}`);
   }
 
   // ── Backfill: usuarios no-admin sin UsuarioEmpresaAcceso ────────────────────

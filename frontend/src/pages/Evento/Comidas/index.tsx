@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, FileSpreadsheet, Loader2, Sparkles, ClipboardList } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, FileSpreadsheet, Loader2, Sparkles, ClipboardList, Upload } from 'lucide-react';
 import {
   usePedidoComida, useResumenComidas,
   useCreatePedido, useUpdatePedido, useDeletePedido,
@@ -9,6 +9,7 @@ import {
 import { useParteDiario } from '@/hooks/useParteDiario';
 import { useAuth } from '@/hooks/useAuth';
 import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
+import ImportarComidasDialog from '@/components/domain/ImportarComidasDialog';
 import { Button } from '@/components/ui/button';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -424,6 +425,7 @@ export default function ComidasPage({ eventoId, canEdit }: { eventoId: number; c
   const [fecha, setFecha] = useState(todayStr());
   const [vista, setVista] = useState<'DIA' | 'RESUMEN'>('DIA');
   const { exportar, isExporting } = useExportarComidas();
+  const [importarOpen, setImportarOpen] = useState(false);
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
@@ -448,8 +450,14 @@ export default function ComidasPage({ eventoId, canEdit }: { eventoId: number; c
             {isExporting ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={13} className="mr-1.5" />}
             Exportar Excel
           </Button>
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setImportarOpen(true)}>
+              <Upload size={13} className="mr-1.5" /> Importar planilla
+            </Button>
+          )}
         </div>
       </div>
+      {importarOpen && <ImportarComidasDialog eventoId={eventoId} onClose={() => setImportarOpen(false)} />}
 
       {vista === 'DIA' ? (
         <>
