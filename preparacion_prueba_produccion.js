@@ -336,6 +336,7 @@ const CONTENIDO = [
       ["", "Dani", "Fiesta Nacional de la Pelota _ Planilla Control de Viandas.xlsx", "Evento → Comidas → Importar planilla"],
       ["Expo Village / L'Etape", "Chino crea; Dani importa", "Planilla Produccion Expo Village.xlsx", "Ficha → Importar pedidos (rubros, estructuras y seguridad) y Producción → Importar planilla (cronograma, espacios, internet, branding y compras)"],
       ["", "Dani", "L'ETAPE - Planilla control de comidas.xlsx", "Evento → Comidas → Importar planilla"],
+      ["Cajas chicas", "May o Male", "CAJAS 2026.xlsx", "Caja Global → Importar cajas chicas"],
       ["Todos", "May (con Male)", "Flujo de caja de cada evento", "Pendiente: hay que pedirlos (ver 3.4)"],
     ],
     [2000, 2100, 3300, 2680]
@@ -380,7 +381,7 @@ const CONTENIDO = [
 
   h2("3.4 Lo que falta para controlar la plata"),
   body("Del lado económico solo está el flujo de caja genérico (la plantilla con datos de prueba). Sin el flujo de caja de cada evento realizado se controla lo operativo, pero no ingresos, egresos y resultado. Hay que pedírselos a May o a Male; el sistema ya tiene el importador de esa plantilla."),
-  bulletB("Cajas chicas de Enjoy", "CAJAS 2026.xlsx (cajas de Dani, Male, Gus, Flor, Vicky y Mili por mes) no tiene importador todavía. Ver decisiones."),
+  bulletB("Cajas chicas de Enjoy", "CAJAS 2026.xlsx se importa en Caja Global → Importar cajas chicas (May o Male): cada rendición (persona y mes) queda como una caja de efectivo cerrada, comparada contra su fila de totales. En la planilla actual son 38 rendiciones (diciembre 2025 a junio 2026, $ 18.147.080 de ingresos y $ 41.090.867,04 de gastos) y 8 bloques repetidos que no se importan (la hoja \"todas\" y \"ENERO 2026\", que repite la caja de Dani de diciembre). Una sola no cierra: Dani, abril 2026 (3), donde las filas suman $ 39.000 más que el total de la planilla. El bloque de la hoja OTRAS sin nombre (fila 22) hay que preguntar de quién es."),
 
   pageBreak(),
 
@@ -534,7 +535,7 @@ const CONTENIDO = [
       ["Flujos de caja", "Pedir a May o Male el flujo de caja de Festival KM, la Pelota y Expo Village para controlar la parte económica de los históricos (y los de DOS57 si entran)."],
       ["Depósito sin conteo de enero", "Que Dani complete el conteo de TANQUE y DEPO ADMINISTRACIÓN, o que el importador tome el último conteo que tenga cada elemento (marcándolo)."],
       ["Hojas dudosas de Festival KM", "Confirmar con Dani si CCTV y MOBILIARIO son de ese evento."],
-      ["Cajas chicas de Enjoy", "CAJAS 2026.xlsx no tiene importador: decidir si las cajas chicas entran en la prueba."],
+      ["Cajas chicas de Enjoy", "Se importan como histórico (ver 3.4). En la parte 2, cada caja chica se abre en Caja Global y se carga ahí: confirmar con May quién la rinde y quién la cierra."],
       ["Tarjeta de Enjoy", "Pasar a cargar los gastos en el sistema en vez de juntarlos por WhatsApp (acordarlo con Santi y Male)."],
       ["Uniformes de Enjoy", "Cuando pasen la planilla, se importa en Uniformes (Dani ya tiene el permiso)."],
       ["Personal fijo de Enjoy", "Definir con May si entra en esta prueba y con qué archivo."],

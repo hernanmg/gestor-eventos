@@ -512,6 +512,22 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Caja Global ─────────────────────────────────────────────────────────────
+  '/caja': {
+    titulo: 'Caja Global',
+    descripcion: 'Todas las cuentas de la empresa: las cajas de cada evento y las cajas sin evento (cajas chicas por persona, reserva, etc.).',
+    secciones: [
+      {
+        titulo: 'Rendición de una caja',
+        contenido: 'Una caja abierta recibe movimientos. Cuando el responsable vuelve se marca "pendiente de rendición" y un admin confirma la rendición, que la cierra. Las cajas cerradas ya están rendidas: no suman en el saldo consolidado.',
+      },
+      {
+        titulo: 'Importar cajas chicas',
+        contenido: '"Importar cajas chicas" (admin) lee la planilla de cajas chicas: cada bloque NOMBRE / MES con su fila de totales pasa a ser una caja de efectivo sin evento, ya cerrada, a nombre de la persona y el mes ("Caja chica Dani Yanello — Mayo 2026 (2)" si ese mes rindió más de una vez). Los ingresos (apertura, sobrante, reposiciones) van al debe y los gastos al haber.\nLa vista previa compara cada caja contra la fila de totales de la planilla y avisa cuando las filas no suman lo mismo. Los bloques repetidos (la hoja que junta las de todos, o una hoja copiada de otra) quedan destildados; si una copia tiene filas distintas y la importás, va a una caja aparte para compararla. Se puede abrir cada caja para ver sus movimientos antes de confirmar. Reimportar no duplica y no borra lo cargado a mano.',
+      },
+    ],
+  },
+
   // ── Uniformes ───────────────────────────────────────────────────────────────
   '/uniformes': {
     titulo: 'Uniformes',

@@ -23,8 +23,10 @@ export async function getResumen(req: Request, res: Response) {
         deleted_at: null,
         ...withTenant(empresaId),
         // Incluye cajas de empresa sin evento (caja chica, reserva, etc.) y
-        // cuentas de eventos que no estén soft-deleteados.
+        // cuentas de eventos que no estén soft-deleteados. Una caja CERRADA ya
+        // está rendida: su saldo residual no es plata disponible.
         OR: [{ evento_id: null }, { evento: { deleted_at: null } }],
+        estado: { not: 'CERRADA' },
       },
       select: {
         moneda: true,

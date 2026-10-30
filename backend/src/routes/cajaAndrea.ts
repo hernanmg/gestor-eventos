@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
-import { requireAnyRole, ROLES } from '../middleware/requireRole';
+import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import { uploadExcelAndrea, resumenAndrea, importarAndrea } from '../controllers/cajaAndrea.controller';
+import { importarCajasChicas } from '../controllers/cajasChicas.controller';
 
 function importMiddleware(req: any, res: any, next: any) {
   uploadExcelAndrea.single('archivo')(req, res, (err: any) => {
@@ -22,3 +23,5 @@ cajaAndreaRouter.use(tenantMiddleware);
 
 cajaAndreaRouter.get('/resumen-andrea',   requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(resumenAndrea));
 cajaAndreaRouter.post('/importar-andrea', requireAnyRole(ROLES.ADMIN_OPERADOR), importMiddleware, asyncHandler(importarAndrea));
+// Cajas chicas por persona (Enjoy): una caja de efectivo por rendición — lo controla administración
+cajaAndreaRouter.post('/importar-cajas-chicas', requireRole('ADMIN'), importMiddleware, asyncHandler(importarCajasChicas));

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, ChevronRight, AlertTriangle, Upload } from 'lucide-react';
 import { useCuentasEmpresa, useCreateCuentaEmpresa } from '@/hooks/useCaja';
 import { useEventos } from '@/hooks/useEvento';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EstadoBadge, MarcarPendienteDialog, ConfirmarRendicionDialog } from '@/components/domain/CuentaEstadoControls';
 import MoneyInput from '@/components/ui/MoneyInput';
+import ImportarCajasChicasDialog from '@/components/domain/ImportarCajasChicasDialog';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Moneda, TipoCuenta } from '@/types';
@@ -125,6 +126,7 @@ export default function CajaGlobalPage() {
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR'; // crear cuenta: ADMIN_OPERADOR (matriz de permisos)
   const [eventoFiltro, setEventoFiltro] = useState<'todas' | 'empresa' | number>('todas');
   const [nuevaOpen,    setNuevaOpen]    = useState(false);
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const { data: cuentas = [], isLoading } = useCuentasEmpresa();
   const { data: eventos = [] } = useEventos();
@@ -139,10 +141,12 @@ export default function CajaGlobalPage() {
     return cuentas.filter(c => c.evento_id === eventoFiltro);
   }, [cuentas, eventoFiltro]);
 
-  // La vista consolidada siempre suma TODAS las cuentas, sin importar el filtro de la tabla.
+  // La vista consolidada suma todas las cuentas, sin importar el filtro de la
+  // tabla, salvo las CERRADAS: ya están rendidas (su saldo residual no es plata).
   const totalesPorMoneda = useMemo(() => {
     const map = new Map<string, number>();
     for (const c of cuentas) {
+      if (c.estado === 'CERRADA') continue;
       const saldo = c.saldo_actual ?? c.saldo_inicial;
       map.set(c.moneda, (map.get(c.moneda) ?? 0) + saldo);
     }
@@ -158,16 +162,26 @@ export default function CajaGlobalPage() {
           (caja chica por persona, caja de reserva, etc.) sin evento asociado.
         </>}
         actions={canEdit && (
-          <Button size="sm" onClick={() => setNuevaOpen(true)}>
-            <Plus size={14} className="mr-1.5" /> Nueva cuenta
-          </Button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+                <Upload size={14} className="mr-1.5" /> Importar cajas chicas
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setNuevaOpen(true)}>
+              <Plus size={14} className="mr-1.5" /> Nueva cuenta
+            </Button>
+          </div>
         )}
       />
+      {importarOpen && <ImportarCajasChicasDialog onClose={() => setImportarOpen(false)} />}
 
       {/* Vista consolidada */}
       <div className="flex flex-wrap gap-3">
         {totalesPorMoneda.length === 0 && !isLoading && (
-          <p className="text-sm text-muted-foreground">Sin cuentas todavía.</p>
+          <p className="text-sm text-muted-foreground">
+            {cuentas.length === 0 ? 'Sin cuentas todavía.' : 'Todas las cuentas están cerradas (rendidas): no suman en el saldo consolidado.'}
+          </p>
         )}
         {totalesPorMoneda.map(([moneda, total]) => (
           <div key={moneda} className="rounded-lg border bg-white px-4 py-3 min-w-[180px]">

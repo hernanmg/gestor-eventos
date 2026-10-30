@@ -65,6 +65,8 @@ async function calcularCajasBancos(empresaId: number, fechaCorte: Date) {
   const inversiones: SnapshotSeccionCuenta[] = [];
 
   for (const c of cuentas) {
+    // Caja ya rendida a la fecha de corte (cajas chicas históricas): no tiene saldo real
+    if (c.estado === 'CERRADA' && c.fecha_cierre && c.fecha_cierre <= fechaCorte) continue;
     const ultimoMov = await prisma.movimientoCaja.findFirst({
       where:   { cuenta_id: c.id, deleted_at: null, fecha: { lte: fechaCorte } },
       orderBy: [{ fecha: 'desc' }, { orden: 'desc' }],
