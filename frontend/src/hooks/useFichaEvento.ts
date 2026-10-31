@@ -5,6 +5,12 @@ import type { RubroEvento, PedidoItem, EstadoRubroEvento, Moneda, AsignacionStoc
 
 export const fichaKey = (eventoId: number) => ['eventos', eventoId, 'ficha'];
 
+// Confirmar / cancelar un rubro genera o cancela su línea en Egresos (centro de costos)
+const invalidarFichaYEgresos = (qc: ReturnType<typeof useQueryClient>, eventoId: number) => {
+  qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
+  qc.invalidateQueries({ queryKey: ['movimientos', eventoId] });
+};
+
 // ── Ficha ──────────────────────────────────────────────────────────────────────
 
 export function useFichaEvento(eventoId: number) {
@@ -20,6 +26,15 @@ export function useInicializarFicha(eventoId: number) {
   return useMutation({
     mutationFn: () => api.post(`/eventos/${eventoId}/ficha/inicializar`).then(r => r.data as { creados: number; existentes: number }),
     onSuccess:  () => qc.invalidateQueries({ queryKey: fichaKey(eventoId) }),
+  });
+}
+
+export function useSincronizarCostos(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post(`/eventos/${eventoId}/ficha/sincronizar-costos`)
+      .then(r => r.data as { creada: number; actualizada: number; reactivada: number; cancelada: number }),
+    onSuccess:  () => invalidarFichaYEgresos(qc, eventoId),
   });
 }
 
@@ -97,7 +112,7 @@ export function useImportarFicha(eventoId: number) {
         `/eventos/${eventoId}/ficha/importar?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
       ).then(r => r.data);
     },
-    onSuccess: (data) => { if (!data.preview) qc.invalidateQueries({ queryKey: fichaKey(eventoId) }); },
+    onSuccess: (data) => { if (!data.preview) invalidarFichaYEgresos(qc, eventoId); },
   });
 }
 
@@ -126,7 +141,7 @@ export function useUpdateRubroEvento(eventoId: number) {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: RubroEventoPayload }) =>
       api.put<RubroEvento>(`/rubros-evento/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: fichaKey(eventoId) }),
+    onSuccess: () => invalidarFichaYEgresos(qc, eventoId),
   });
 }
 
@@ -248,6 +263,6 @@ export function useImportarEsquemaTurnos(eventoId: number) {
         { headers: { 'Content-Type': 'multipart/form-data' } },
       ).then(r => r.data);
     },
-    onSuccess: (data) => { if (!data.preview) qc.invalidateQueries({ queryKey: fichaKey(eventoId) }); },
+    onSuccess: (data) => { if (!data.preview) invalidarFichaYEgresos(qc, eventoId); },
   });
 }

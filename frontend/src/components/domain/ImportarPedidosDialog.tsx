@@ -77,7 +77,12 @@ export default function ImportarPedidosDialog({ eventoId, onClose }: { eventoId:
       });
       return r.data;
     },
-    onSuccess: data => { if (!data.preview) qc.invalidateQueries({ queryKey: fichaKey(eventoId) }); },
+    onSuccess: data => {
+      if (!data.preview) {
+        qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
+        qc.invalidateQueries({ queryKey: ['movimientos', eventoId] }); // líneas de costo de rubros confirmados
+      }
+    },
   });
 
   const verPreview = async (archivo: File, asig: Record<string, number>) => {

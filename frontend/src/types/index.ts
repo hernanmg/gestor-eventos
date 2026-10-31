@@ -259,6 +259,8 @@ export interface RubroEvento {
   proveedor:    ProveedorBusqueda | null;
   pedido_items: PedidoItem[];
   asignaciones_stock: RubroEventoAsignacionStock[];
+  // Lo cargado en Egresos para este rubro (sin cancelados); null = sin líneas
+  costos: { lineas: number; real: number; falta_pagar: number } | null;
 }
 
 // Vista liviana de GET /ficha/resumen — sin pedido_items
@@ -446,11 +448,29 @@ export interface Movimiento {
   proveedor_id:          number | null;
   proveedor:             ProveedorBusqueda | null;
   movimiento_caja_id:    number | null;
+  // IVA contenido en debe/haber (neto = monto − iva); null = sin desglose
+  iva:                   number | null;
+  // Línea generada desde la Ficha (rubro confirmado); null = cargada a mano
+  rubro_evento_id:       number | null;
+  // Centro de costos — vienen en GET /eventos/:id/movimientos (no en la vista Macro)
+  pagos_parciales?:      PagoParcialMovimiento[];
+  total_pagado?:         number;
+  falta_pagar?:          number;
+  falta_pagar_sobre_presupuesto?: boolean;
   created_at:            string;
   updated_at:            string;
   deleted_at:            string | null;
   created_by:            number | null;
   updated_by:            number | null;
+}
+
+export interface PagoParcialMovimiento {
+  id:            number;
+  movimiento_id: number;
+  fecha:         string;
+  monto:         number;
+  nota:          string | null;
+  created_at:    string;
 }
 
 export interface ResumenRubro {

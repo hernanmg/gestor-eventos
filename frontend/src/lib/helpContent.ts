@@ -95,7 +95,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: '¿Cómo cargar un egreso?',
-        contenido: 'Elegí la pestaña del rubro correspondiente → click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna HABER → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
+        contenido: 'Elegí la pestaña del rubro correspondiente → click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna DEBE → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
       },
       {
         titulo: 'Rubros de egresos',
@@ -112,6 +112,18 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Impactar en Caja',
         contenido: 'Al cargar un egreso podés marcar si impacta en caja y en qué cuenta bancaria — se crea automáticamente el movimiento de caja.',
+      },
+      {
+        titulo: 'Líneas que vienen de la Ficha',
+        contenido: 'Cuando un rubro se confirma en la Ficha (a mano, con el importador o desde la Pre-Macro) aparece solo como línea en Egresos, con la etiqueta "Ficha", el proveedor y el presupuesto de la Ficha y el monto real en 0. Cargá el monto real cuando lo tengas. Si cambiás el proveedor o el presupuesto en la Ficha, la línea se actualiza. Si el rubro pasa a "No va" o "Cancelado", la línea se cancela, salvo que ya tenga un monto o pagos cargados.\nSi el rubro ya tenía egresos cargados a mano no se agrega otra línea.',
+      },
+      {
+        titulo: 'IVA',
+        contenido: 'Hacé clic en la celda IVA para cargar el neto y el IVA (botones 10,5% / 21% / 27%). El Debe queda como total = neto + IVA. Los totales, saldos y la conciliatoria siguen tomando el total, así que el IVA es un desglose. Al agregar una fila podés elegir la alícuota: el monto que escribís se toma como neto y se le suma el IVA.',
+      },
+      {
+        titulo: 'Falta pagar y señas',
+        contenido: 'La columna Falta pagar muestra el total menos lo que ya se le pagó al proveedor. Mientras no hay monto real se calcula sobre el presupuesto (en cursiva). Hacé clic para registrar una seña o un pago parcial con fecha y nota. Cuando los pagos cubren el total, la línea pasa a Pagado.\nRegistrar un pago acá no mueve la Caja: el movimiento de dinero se sigue cargando en Caja o en Facturas a Pagar.',
       },
     ],
     links: [
@@ -176,6 +188,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Pedido técnico',
         contenido: 'Cada rubro puede tener uno o más ítems de pedido (cantidad, material, días de uso, horarios de llegada y retiro). Hacé clic en "Pedido" para expandir y cargar el detalle — se guarda automáticamente al salir de cada campo.',
+      },
+      {
+        titulo: 'Ficha y Egresos (centro de costos)',
+        contenido: 'Cada rubro confirmado genera su línea de costo en Egresos, con proveedor y presupuesto. La columna "En egresos" muestra el monto real cargado y cuánto falta pagar. Arriba de la tabla están los totales del evento.\nPara eventos armados antes de esta función usá "Sincronizar con Egresos": crea las líneas de los rubros confirmados que todavía no tienen ninguna. Después de eso los cambios se sincronizan solos.',
       },
       {
         titulo: 'Exportar',

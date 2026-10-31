@@ -539,6 +539,8 @@ model RubroEvento {
   // Pedido técnico detallado (una o más líneas por rubro)
   pedido_items       PedidoItem[]
   asignaciones_stock AsignacionStock[]
+  // Línea(s) del centro de costos generadas desde este rubro (ver Movimiento.rubro_evento_id)
+  movimientos        Movimiento[]
 
   @@unique([evento_id, rubro_id])
 }
@@ -757,9 +759,39 @@ model Movimiento {
   created_by            Int?
   updated_by            Int?
 
-  echeq        Echeq?       @relation("EcheqMovimiento")
-  pago_factura PagoFactura? @relation("PagoMovimiento")
-  liquidacion  Liquidacion?
+  // IVA contenido en debe/haber (no se suma aparte): neto = debe − iva. Sólo
+  // informativo/desglose para el centro de costos — los totales siguen saliendo
+  // de debe/haber, así que conciliatoria/saldos no cambian. null = sin desglose.
+  iva             Decimal?     @db.Decimal(15, 2)
+  // Línea de costo generada desde la Ficha (RubroEvento CONFIRMADO) — ver
+  // lib/lineaCostoFicha.ts. null = cargada a mano / importada / factura / RRHH.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+
+  echeq           Echeq?                  @relation("EcheqMovimiento")
+  pago_factura    PagoFactura?            @relation("PagoMovimiento")
+  liquidacion     Liquidacion?
+  pagos_parciales PagoParcialMovimiento[]
+
+  @@index([rubro_evento_id])
+}
+
+// Pagos parciales (señas, cuotas) de una línea de egreso — "Falta pagar" del
+// centro de costos = total (debe) − suma de pagos. Es un registro de lo pagado
+// al proveedor; NO genera movimiento de caja (eso sigue yendo por Caja/Facturas).
+// Cuando la suma cubre el total, el movimiento pasa a PAGADO.
+model PagoParcialMovimiento {
+  id            Int        @id @default(autoincrement())
+  movimiento_id Int
+  movimiento    Movimiento @relation(fields: [movimiento_id], references: [id])
+  fecha         DateTime
+  monto         Decimal    @db.Decimal(15, 2) // en la moneda del movimiento
+  nota          String?
+  created_at    DateTime   @default(now())
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([movimiento_id])
 }
 
 // ─── CAJA ─────────────────────────────────────────────────────────────────────

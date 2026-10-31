@@ -12,12 +12,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Trash2, ChevronDown, ChevronRight,
-  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse, Upload, Users,
+  FileSpreadsheet, Loader2, Sparkles, AlertTriangle, Warehouse, Upload, Users, RefreshCw,
 } from 'lucide-react';
 import { format, subDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
-  useFichaEvento, useInicializarFicha, useExportarFicha,
+  useFichaEvento, useInicializarFicha, useExportarFicha, useSincronizarCostos,
   useUpdateRubroEvento, useAddPedidoItem, useUpdatePedidoItem, useDeletePedidoItem,
   useAsignarStock, useDesasignarStock,
   useListarHojasFichaImport, useImportarFicha, useImportarEsquemaTurnos,
@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import { parseMoney } from '@/lib/formatters';
+import { parseMoney, formatCurrency } from '@/lib/formatters';
 import { calcHorasPorAgente, esRubroPersonal, soloFecha, fmtFechaCorta, fmtHoras } from '@/lib/turnos';
 import type {
   RubroEvento, RubroEventoAsignacionStock, PedidoItem, EstadoRubroEvento,
@@ -979,6 +979,9 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
             className={cn(inputCls, 'text-right')}
           />
         </td>
+        <td className={cn(cell, 'w-32 text-right')}>
+          <CostosRubro re={re} />
+        </td>
         <td className={cn(cell, 'w-24 text-right')}>
           {puedeVerDetalle ? (
             <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-7 text-xs">
@@ -992,7 +995,7 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
         </td>
       </tr>
       {expanded && puedeVerDetalle && (
-        <RubroDetallePanel eventoId={eventoId} evento={evento} rubroEvento={re} colSpan={9} />
+        <RubroDetallePanel eventoId={eventoId} evento={evento} rubroEvento={re} colSpan={10} />
       )}
     </>
   );
@@ -1016,6 +1019,7 @@ function RubroEventoCard({ eventoId, evento, re, expanded, onToggleExpand }: {
         <div className="min-w-0">
           <p className={cn('text-sm font-medium truncate', noVa && 'line-through')}>{re.rubro.nombre}</p>
           <p className="text-xs text-muted-foreground truncate">{re.proveedor?.nombre ?? 'Sin proveedor'}</p>
+          {re.costos && <div className="text-left mt-0.5"><CostosRubro re={re} inline /></div>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Badge variant={re.estado === 'CONFIRMADO' ? 'success' : re.estado === 'COTIZANDO' ? 'warning' : re.estado === 'PENDIENTE' ? 'muted' : 'destructive'}>
@@ -1238,6 +1242,27 @@ function ImportarExcelDialog({ eventoId, onClose }: { eventoId: number; onClose:
   );
 }
 
+// Lo cargado en Egresos para el rubro (centro de costos): real y falta pagar.
+// Las líneas se generan solas al confirmar el rubro — ver lib/lineaCostoFicha.ts.
+function CostosRubro({ re, inline }: { re: RubroEvento; inline?: boolean }) {
+  if (!re.costos) return <span className="text-xs text-muted-foreground/40">—</span>;
+  const { real, falta_pagar } = re.costos;
+  return (
+    <span className={cn('text-xs tabular-nums', inline ? 'inline-flex gap-2' : 'block leading-tight')}>
+      <span className="block" title="Real cargado en Egresos">
+        {real > 0 ? formatCurrency(real, re.moneda) : <span className="text-muted-foreground">sin real</span>}
+      </span>
+      <span
+        className={cn('block', falta_pagar > 0 ? 'text-orange-600' : 'text-green-700')}
+        title="Falta pagar (sobre el presupuesto mientras no haya real)"
+      >
+        {falta_pagar > 0 ? `falta ${formatCurrency(falta_pagar, re.moneda)}` : 'pagado'}
+      </span>
+    </span>
+  );
+}
+
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
@@ -1245,6 +1270,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
 }) {
   const { data: fichaData = [], isLoading } = useFichaEvento(eventoId);
   const inicializar = useInicializarFicha(eventoId);
+  const sincronizar = useSincronizarCostos(eventoId);
   const { exportar, isExporting } = useExportarFicha();
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -1257,6 +1283,8 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
     confirmados: fichaData.filter(r => r.estado === 'CONFIRMADO').length,
     pendientes:  fichaData.filter(r => r.estado === 'PENDIENTE').length,
     noVan:       fichaData.filter(r => r.estado === 'NO_VA').length,
+    real:        fichaData.reduce((a, r) => a + (r.costos?.real ?? 0), 0),
+    faltaPagar:  fichaData.reduce((a, r) => a + (r.costos?.falta_pagar ?? 0), 0),
   }), [fichaData]);
 
   const filtrados = useMemo(() => {
@@ -1292,6 +1320,23 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
               Inicializar ficha
             </Button>
           )}
+          {fichaData.length > 0 && (
+            <Button
+              variant="outline" size="sm"
+              disabled={sincronizar.isPending}
+              title="Genera en Egresos la línea de costo de cada rubro confirmado (los cambios nuevos se sincronizan solos)"
+              onClick={() => sincronizar.mutate(undefined, {
+                onSuccess: r => alert(
+                  `Egresos sincronizados: ${r.creada} líneas creadas, ${r.actualizada} actualizadas, ` +
+                  `${r.reactivada} reactivadas, ${r.cancelada} canceladas.`,
+                ),
+                onError: err => alert(getApiErrorMessage(err)),
+              })}
+            >
+              {sincronizar.isPending ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <RefreshCw size={13} className="mr-1.5" />}
+              Sincronizar con Egresos
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => exportar(eventoId)} disabled={isExporting || fichaData.length === 0}>
             {isExporting ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={13} className="mr-1.5" />}
             Exportar Excel
@@ -1321,6 +1366,8 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
             <span><span className="font-semibold text-green-700">{contadores.confirmados}</span> confirmados</span>
             <span><span className="font-semibold text-gray-700">{contadores.pendientes}</span> pendientes</span>
             <span><span className="font-semibold text-red-700">{contadores.noVan}</span> no van</span>
+            <span className="ml-auto">Real en egresos: <span className="font-semibold text-foreground tabular-nums">{formatCurrency(contadores.real, evento.moneda_base)}</span></span>
+            <span>Falta pagar: <span className={cn('font-semibold tabular-nums', contadores.faltaPagar > 0 ? 'text-orange-600' : 'text-green-700')}>{formatCurrency(contadores.faltaPagar, evento.moneda_base)}</span></span>
           </div>
 
           {/* Filtros */}
@@ -1350,6 +1397,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
                   <th className="px-2 py-2 text-left w-28">Coordina</th>
                   <th className="px-2 py-2 text-left w-28">F. ingreso</th>
                   <th className="px-2 py-2 text-right w-28">Presupuesto</th>
+                  <th className="px-2 py-2 text-right w-32">En egresos</th>
                   <th className="px-2 py-2 text-right w-24">Acciones</th>
                 </tr>
               </thead>
@@ -1365,7 +1413,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
                   />
                 ))}
                 {filtrados.length === 0 && (
-                  <tr><td colSpan={9} className="py-8 text-center text-sm text-muted-foreground">Ningún rubro coincide con el filtro.</td></tr>
+                  <tr><td colSpan={10} className="py-8 text-center text-sm text-muted-foreground">Ningún rubro coincide con el filtro.</td></tr>
                 )}
               </tbody>
             </BaseTable>

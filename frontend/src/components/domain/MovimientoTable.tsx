@@ -18,6 +18,7 @@ import {
 import { useCuentas } from '@/hooks/useCuentas';
 import { useUsuarios } from '@/hooks/useUsuarios';
 import ProveedorCombobox from './ProveedorCombobox';
+import { IvaDialog, PagosDialog } from './CentroCostoDialogs';
 import { SaldoCell } from './SaldoCell';
 import { EcheqEstadoBadge, MOVIMIENTO_LABEL } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -74,12 +75,13 @@ interface NewRowData {
   responsable_id:        string;
   fecha_pago:            string;
   avisado_proveedor:     boolean;
+  iva_pct:               string;   // alícuota sobre el monto (neto) — sólo EGRESO; '' = sin IVA
 }
 
 const EMPTY_ROW: NewRowData = {
   fecha: '', concepto: '', descripcion: '', monto: '',
   moneda: 'ARS', tasa_cambio: '', impuesto_subcategoria: '', impacta_caja: false, cuenta_id: '', proveedor: null,
-  presupuesto: '', responsable_id: '', fecha_pago: '', avisado_proveedor: false,
+  presupuesto: '', responsable_id: '', fecha_pago: '', avisado_proveedor: false, iva_pct: '',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -175,7 +177,7 @@ function EditableCell({
 function SortableRow({
   mov, isEgImp, isEgExtra, editCell, onCellClick, onCellChange, onCellSave, onKeyDown, onDelete,
   onCreateEcheq, echeqForRow, onNavigateToEcheqs, onProveedorChange, onEstadoChange, onResponsableChange,
-  onAvisadoChange, usuarios,
+  onAvisadoChange, usuarios, centroCosto, onOpenIva, onOpenPagos,
 }: {
   mov:                  Movimiento;
   isEgImp:              boolean;
@@ -194,6 +196,9 @@ function SortableRow({
   onResponsableChange:  (id: number, responsableId: number | null) => void;
   onAvisadoChange:      (id: number, avisado: boolean) => void;
   usuarios:             { id: number; nombre: string }[];
+  centroCosto:          boolean; // columnas IVA / Falta pagar (sólo rubros de egreso)
+  onOpenIva:            (id: number) => void;
+  onOpenPagos:          (id: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: mov.id });
@@ -287,7 +292,19 @@ function SortableRow({
       {/* Concepto */}
       <EditableCell
         value={active('concepto') ? editCell!.value : getCellValue(mov, 'concepto')}
-        display={<span className={mov.concepto ? '' : 'text-muted-foreground/40'}>{mov.concepto || '—'}</span>}
+        display={
+          <span className={mov.concepto ? '' : 'text-muted-foreground/40'}>
+            {mov.concepto || '—'}
+            {mov.rubro_evento_id !== null && (
+              <span
+                className="ml-1.5 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-700 align-middle"
+                title="Línea generada desde la Ficha del evento (rubro confirmado). Proveedor y presupuesto se actualizan desde la Ficha."
+              >
+                Ficha
+              </span>
+            )}
+          </span>
+        }
         type="text"
         editing={active('concepto')}
         className={cell}
@@ -396,6 +413,43 @@ function SortableRow({
 
       {/* Haber — editable en Ingresos */}
       {montoCell('haber')}
+
+      {/* IVA (contenido en el monto) y Falta pagar — centro de costos, sólo egresos */}
+      {centroCosto && (
+        <td
+          className={cn(cell, 'w-24 text-right tabular-nums cursor-pointer select-none')}
+          onClick={() => onOpenIva(mov.id)}
+          title="Desglose neto + IVA"
+        >
+          {mov.iva !== null ? formatCurrency(mov.iva, mov.moneda) : <span className="text-muted-foreground/40">—</span>}
+        </td>
+      )}
+      {centroCosto && (
+        <td
+          className={cn(cell, 'w-28 text-right tabular-nums', !cancelado && 'cursor-pointer select-none')}
+          onClick={() => !cancelado && onOpenPagos(mov.id)}
+          title={mov.falta_pagar_sobre_presupuesto ? 'Calculado sobre el presupuesto (todavía no hay monto real)' : 'Pagos al proveedor'}
+        >
+          {cancelado ? (
+            <span className="text-muted-foreground/40">—</span>
+          ) : (
+            <>
+              <span className={cn(
+                'font-medium',
+                (mov.falta_pagar ?? 0) > 0 ? 'text-orange-600' : 'text-green-700',
+                mov.falta_pagar_sobre_presupuesto && 'italic',
+              )}>
+                {formatCurrency(mov.falta_pagar ?? 0, mov.moneda)}
+              </span>
+              {(mov.total_pagado ?? 0) > 0 && !pagado && (
+                <span className="block text-[10px] text-muted-foreground">
+                  pagado {formatCurrency(mov.total_pagado ?? 0, mov.moneda)}
+                </span>
+              )}
+            </>
+          )}
+        </td>
+      )}
 
       {/* Tasa de cambio — sólo editable/relevante si la moneda no es ARS */}
       {mov.moneda === 'ARS' ? (
@@ -507,6 +561,7 @@ interface Props {
 export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', onCreateEcheq, echeqs, onNavigateToEcheqs }: Props) {
   const isEgImp   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
   const isEgExtra = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
+  const centroCosto = rubro.tipo === 'EGRESO';
 
   const { data: movimientos = [], isLoading } = useMovimientos(eventoId, rubro.id);
   const { data: cuentas     = [] }            = useCuentas(eventoId);
@@ -521,6 +576,8 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
   const [newRow,      setNewRow]      = useState(false);
   const [newRowData,  setNewRowData]  = useState<NewRowData>(EMPTY_ROW);
   const [newRowError, setNewRowError] = useState<string | null>(null);
+  const [dialog,      setDialog]      = useState<{ tipo: 'iva' | 'pagos'; movId: number } | null>(null);
+  const movDialog = dialog ? movimientos.find(m => m.id === dialog.movId) : undefined;
 
   // DnD
   const sensors = useSensors(
@@ -596,6 +653,11 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
       setNewRowError('Seleccioná una cuenta bancaria');
       return;
     }
+    // Monto cargado como neto + alícuota → debe = neto + IVA (el IVA queda contenido en el monto)
+    const montoNeto  = parseFloat(newRowData.monto) || 0;
+    const ivaPct     = centroCosto ? (parseFloat(newRowData.iva_pct) || 0) : 0;
+    const ivaMonto   = parseFloat((montoNeto * ivaPct / 100).toFixed(2));
+    const montoTotal = parseFloat((montoNeto + ivaMonto).toFixed(2));
     try {
       await createMov.mutateAsync({
         rubro_id:              rubro.id,
@@ -603,8 +665,9 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
         concepto:              newRowData.concepto   || null,
         descripcion:           newRowData.descripcion || null,
         // EGRESO → debe; INGRESO → haber (la otra columna queda en 0) — ver campoMontoDe
-        debe:                  campoMontoDe(rubro.tipo) === 'debe'  ? (parseFloat(newRowData.monto) || 0) : 0,
-        haber:                 campoMontoDe(rubro.tipo) === 'haber' ? (parseFloat(newRowData.monto) || 0) : 0,
+        debe:                  campoMontoDe(rubro.tipo) === 'debe'  ? montoTotal : 0,
+        haber:                 campoMontoDe(rubro.tipo) === 'haber' ? montoTotal : 0,
+        iva:                   ivaMonto > 0 ? ivaMonto : null,
         moneda:                newRowData.moneda,
         tasa_cambio:           newRowData.moneda !== 'ARS' && newRowData.tasa_cambio ? parseFloat(newRowData.tasa_cambio) : null,
         impuesto_subcategoria: isEgImp ? (newRowData.impuesto_subcategoria || null) : null,
@@ -631,7 +694,7 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
     setNewRowError(null);
   };
 
-  const colCount = 17 + (isEgImp ? 1 : 0);
+  const colCount = 17 + (isEgImp ? 1 : 0) + (centroCosto ? 2 : 0);
 
   // Subtotales por moneda — sólo se muestran cuando hay movimientos en más
   // de una moneda dentro del rubro.
@@ -667,6 +730,8 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                 <th className="px-2 py-2 text-right w-28">Diferencia</th>
                 <th className="px-2 py-2 text-right w-28">Debe</th>
                 <th className="px-2 py-2 text-right w-28">Haber</th>
+                {centroCosto && <th className="px-2 py-2 text-right w-24" title="IVA contenido en el monto">IVA</th>}
+                {centroCosto && <th className="px-2 py-2 text-right w-28">Falta pagar</th>}
                 <th className="px-2 py-2 text-right w-20">Tasa</th>
                 <th className="px-2 py-2 text-right w-32">Saldo</th>
                 <th className="px-2 py-2 text-left w-36">Responsable</th>
@@ -693,6 +758,9 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                   onResponsableChange={handleResponsableChange}
                   onAvisadoChange={handleAvisadoChange}
                   usuarios={usuarios}
+                  centroCosto={centroCosto}
+                  onOpenIva={id => setDialog({ tipo: 'iva', movId: id })}
+                  onOpenPagos={id => setDialog({ tipo: 'pagos', movId: id })}
                   onCreateEcheq={onCreateEcheq}
                   echeqForRow={echeqs?.find(e => e.movimiento_id === mov.id)}
                   onNavigateToEcheqs={onNavigateToEcheqs}
@@ -774,6 +842,9 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                         )}
                       </td>
                     ))}
+                    {/* IVA (alícuota en la fila de opciones) / Falta pagar */}
+                    {centroCosto && <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>}
+                    {centroCosto && <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>}
                     {/* Tasa — se carga en la fila de opciones de abajo */}
                     <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
                     <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
@@ -838,6 +909,22 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
                           onMonedaChange={m => setNewRowData(p => ({ ...p, moneda: m, tasa_cambio: m === 'ARS' ? '' : p.tasa_cambio }))}
                           onTasaChange={t => setNewRowData(p => ({ ...p, tasa_cambio: t }))}
                         />
+                        {centroCosto && (
+                          <label className="flex items-center gap-1.5">
+                            IVA
+                            <select
+                              value={newRowData.iva_pct}
+                              onChange={e => setNewRowData(p => ({ ...p, iva_pct: e.target.value }))}
+                              className="border rounded px-1 py-0.5 text-xs"
+                              title="El monto se toma como neto y se le suma el IVA"
+                            >
+                              <option value="">Sin IVA</option>
+                              <option value="10.5">+10,5%</option>
+                              <option value="21">+21%</option>
+                              <option value="27">+27%</option>
+                            </select>
+                          </label>
+                        )}
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
                             type="checkbox"
@@ -916,6 +1003,19 @@ export default function MovimientoTable({ eventoId, rubro, monedaBase = 'ARS', o
           )}
         </div>
       </SortableContext>
+
+      {movDialog && (
+        <>
+          <IvaDialog
+            mov={movDialog} eventoId={eventoId} rubroId={rubro.id}
+            open={dialog?.tipo === 'iva'} onClose={() => setDialog(null)}
+          />
+          <PagosDialog
+            mov={movDialog} eventoId={eventoId} rubroId={rubro.id}
+            open={dialog?.tipo === 'pagos'} onClose={() => setDialog(null)}
+          />
+        </>
+      )}
     </DndContext>
   );
 }

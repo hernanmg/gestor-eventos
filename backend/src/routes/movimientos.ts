@@ -3,7 +3,9 @@ import { auth } from '../middleware/auth';
 import { tenantMiddleware } from '../middleware/tenant';
 import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
-import { update, remove, reordenar, vincularProveedor, listMacro, exportarMacro } from '../controllers/movimientos.controller';
+import {
+  update, remove, reordenar, vincularProveedor, listMacro, exportarMacro, addPagoParcial, removePagoParcial,
+} from '../controllers/movimientos.controller';
 
 const router = Router();
 
@@ -23,5 +25,7 @@ router.post('/vincular-proveedor', tenantMiddleware, requireAnyRole(ROLES.ADMIN_
 router.put('/:id',         tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(update));
 router.delete('/:id',      tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(remove));
 router.patch('/:id/orden', tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(reordenar));
+router.post('/:id/pagos',            tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(addPagoParcial));
+router.delete('/:id/pagos/:pagoId',  tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(removePagoParcial));
 
 export default router;

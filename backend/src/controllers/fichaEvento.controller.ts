@@ -14,6 +14,8 @@ import {
   parsePedidosMaterial, matchRubro, mejorEstado, normTexto, type BloquePedido,
 } from '../lib/pedidosMaterialImporter';
 import { derivarTurno, descripcionTurno, normalizarHora, esRubroPersonal } from '../lib/esquemaTurnos';
+import { sincronizarLineaCosto, type ResultadoLineaCosto } from '../lib/lineaCostoFicha';
+import { calcFaltaPagar } from '../lib/faltaPagar';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,13 +89,65 @@ export async function getFicha(req: Request, res: Response) {
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
+  const [rubrosEvento, movs] = await Promise.all([
+    prisma.rubroEvento.findMany({
+      where:   { evento_id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) },
+      include: RUBRO_EVENTO_INCLUDE,
+      orderBy: { rubro: { orden: 'asc' } },
+    }),
+    // Centro de costos: lo cargado en Egresos para cada rubro de la ficha
+    prisma.movimiento.findMany({
+      where:   { evento_id: eventoId, tipo: 'EGRESO', deleted_at: null, rubro_id: { not: null } },
+      select:  {
+        rubro_id: true, estado_movimiento: true, debe: true, haber: true, presupuesto: true,
+        pagos_parciales: { where: { deleted_at: null }, select: { monto: true } },
+      },
+    }),
+  ]);
+
+  const costos = new Map<number, { lineas: number; real: number; falta_pagar: number }>();
+  for (const m of movs) {
+    if (m.estado_movimiento === 'CANCELADO') continue;
+    const c = costos.get(m.rubro_id!) ?? { lineas: 0, real: 0, falta_pagar: 0 };
+    c.lineas++;
+    c.real        += Number(m.debe) + Number(m.haber);
+    c.falta_pagar += calcFaltaPagar(m).falta_pagar;
+    costos.set(m.rubro_id!, c);
+  }
+
+  res.json(await Promise.all(rubrosEvento.map(async re => ({
+    ...(await mapRubroEvento(re, req.empresaId!)),
+    costos: costos.get(re.rubro_id) ?? null,
+  }))));
+}
+
+// POST /api/eventos/:id/ficha/sincronizar-costos — genera/actualiza las líneas
+// de Egresos de todos los rubros de la ficha (para eventos armados antes del
+// puente Ficha → centro de costos; después se sincroniza solo en cada cambio).
+export async function sincronizarCostos(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const rubrosEvento = await prisma.rubroEvento.findMany({
-    where:   { evento_id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) },
-    include: RUBRO_EVENTO_INCLUDE,
-    orderBy: { rubro: { orden: 'asc' } },
+    where:  { evento_id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: { id: true },
   });
 
-  res.json(await Promise.all(rubrosEvento.map(re => mapRubroEvento(re, req.empresaId!))));
+  const conteo: Record<Exclude<ResultadoLineaCosto, null>, number> = { creada: 0, actualizada: 0, reactivada: 0, cancelada: 0 };
+  await prisma.$transaction(async tx => {
+    for (const re of rubrosEvento) {
+      const r = await sincronizarLineaCosto(tx, re.id, req.user!.id);
+      if (r) conteo[r]++;
+    }
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Movimiento', eventoId,
+      descripcion: `Sincronizó la ficha con Egresos — ${conteo.creada} líneas creadas, ${conteo.actualizada} actualizadas, ${conteo.reactivada} reactivadas, ${conteo.cancelada} canceladas`,
+      ip: req.ip, tx: tx as any,
+    });
+  }, { timeout: 60_000 });
+
+  res.json(conteo);
 }
 
 export async function resumenFicha(req: Request, res: Response) {
@@ -243,6 +297,12 @@ export async function updateRubroEvento(req: Request, res: Response) {
         data:  { deleted_at: new Date() },
       });
       pedidoItemsVaciados = count;
+    }
+
+    // Centro de costos: confirmar genera la línea en Egresos; NO_VA/CANCELADO
+    // la cancela si sigue vacía (ver lib/lineaCostoFicha.ts).
+    if (d.estado !== undefined || d.proveedor_id !== undefined || d.presupuesto !== undefined || d.moneda !== undefined) {
+      await sincronizarLineaCosto(tx, id, req.user!.id);
     }
 
     const re = await tx.rubroEvento.findUniqueOrThrow({ where: { id }, include: RUBRO_EVENTO_INCLUDE });
@@ -758,7 +818,7 @@ export async function importarFicha(req: Request, res: Response) {
       if (!fila.rubro_id) continue;
 
       if (fila.corresponde) {
-        await tx.rubroEvento.upsert({
+        const re = await tx.rubroEvento.upsert({
           where: { evento_id_rubro_id: { evento_id: eventoId, rubro_id: fila.rubro_id } },
           update: {
             estado: 'CONFIRMADO',
@@ -776,8 +836,9 @@ export async function importarFicha(req: Request, res: Response) {
             created_by: req.user!.id, updated_by: req.user!.id,
           },
         });
+        await sincronizarLineaCosto(tx, re.id, req.user!.id);
       } else {
-        await tx.rubroEvento.upsert({
+        const re = await tx.rubroEvento.upsert({
           where: { evento_id_rubro_id: { evento_id: eventoId, rubro_id: fila.rubro_id } },
           update: { estado: 'NO_VA', updated_by: req.user!.id },
           create: {
@@ -785,6 +846,7 @@ export async function importarFicha(req: Request, res: Response) {
             estado: 'NO_VA', created_by: req.user!.id, updated_by: req.user!.id,
           },
         });
+        await sincronizarLineaCosto(tx, re.id, req.user!.id);
       }
     }
 
@@ -793,7 +855,7 @@ export async function importarFicha(req: Request, res: Response) {
       descripcion: `Importó la ficha de evento desde Excel (hoja "${hoja}") — ${stats.creados} creados, ${stats.actualizados} actualizados`,
       ip: req.ip, tx: tx as any,
     });
-  });
+  }, { timeout: 60_000 });
 
   res.json({ preview: false, ...stats, filas });
 }
@@ -1098,6 +1160,7 @@ export async function importarPedidosMaterial(req: Request, res: Response) {
         : await tx.rubroEvento.create({
             data: { evento_id: eventoId, rubro_id: rubroId, empresa_id: req.empresaId!, created_by: req.user!.id, ...datos },
           });
+      await sincronizarLineaCosto(tx, re.id, req.user!.id);
 
       // Ítems del pedido: se actualizan los que ya estaban (misma descripción y
       // observaciones) y se agregan los nuevos. Nunca se borra lo cargado a mano.
@@ -1148,7 +1211,7 @@ export async function importarPedidosMaterial(req: Request, res: Response) {
       descripcion: `Importó la planilla de pedidos a proveedores — ${resumen.rubros_creados} rubros creados, ${resumen.rubros_actualizados} actualizados, ${resumen.items} ítems, ${resumen.turnos} turnos`,
       ip: req.ip, tx: tx as any,
     });
-  });
+  }, { timeout: 60_000 });
 
   res.json({ preview: false, ...salida });
 }

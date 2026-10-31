@@ -4,6 +4,7 @@ import type { Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
+import { sincronizarLineaCosto } from '../lib/lineaCostoFicha';
 import { sugerirRubros } from '../lib/sugerirRubros';
 
 const INCLUDE_SOCIOS = { socios: true };
@@ -322,7 +323,7 @@ export async function confirmar(req: Request, res: Response) {
     });
 
     for (const rubroId of rubroIds) {
-      await tx.rubroEvento.create({
+      const re = await tx.rubroEvento.create({
         data: {
           evento_id:  createdEvento.id,
           rubro_id:   rubroId,
@@ -342,6 +343,8 @@ export async function confirmar(req: Request, res: Response) {
           updated_by: req.user!.id,
         },
       });
+      // Centro de costos: el rubro confirmado ya aparece como línea en Egresos
+      await sincronizarLineaCosto(tx, re.id, req.user!.id);
     }
 
     await tx.preMacro.update({
@@ -363,7 +366,7 @@ export async function confirmar(req: Request, res: Response) {
     });
 
     return createdEvento;
-  });
+  }, { timeout: 60_000 });
 
   res.json({ evento_id: evento.id });
 }

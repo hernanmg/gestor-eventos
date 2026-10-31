@@ -8,7 +8,7 @@ import {
   getFicha, resumenFicha, inicializarFicha, exportarFicha,
   updateRubroEvento, addPedidoItem, updatePedidoItem, deletePedidoItem,
   asignarStock, desasignarStock,
-  listarHojasFichaImport, importarFicha, importarEsquemaTurnos, importarPedidosMaterial,
+  listarHojasFichaImport, importarFicha, importarEsquemaTurnos, importarPedidosMaterial, sincronizarCostos,
 } from '../controllers/fichaEvento.controller';
 
 const uploadXlsx = (req: any, res: any, next: any) => {
@@ -27,6 +27,7 @@ fichaEventoRouter.use(tenantMiddleware);
 fichaEventoRouter.get('/resumen',      requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(resumenFicha));
 fichaEventoRouter.get('/exportar',     requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(exportarFicha));
 fichaEventoRouter.post('/inicializar', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(inicializarFicha));
+fichaEventoRouter.post('/sincronizar-costos', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(sincronizarCostos));
 fichaEventoRouter.post('/importar/hojas', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(listarHojasFichaImport));
 fichaEventoRouter.post('/importar',       requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarFicha));
 fichaEventoRouter.post('/importar-pedidos', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarPedidosMaterial));

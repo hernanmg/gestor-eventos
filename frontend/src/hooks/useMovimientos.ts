@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { Movimiento, ResumenMovimientos, EstadoMovimiento } from '@/types';
+import { fichaKey } from './useFichaEvento';
 
 export interface MovimientoCreatePayload {
   rubro_id:              number;
@@ -20,6 +21,7 @@ export interface MovimientoCreatePayload {
   responsable_id?:       number | null;
   fecha_pago?:           string | null;
   avisado_proveedor?:    boolean;
+  iva?:                  number | null;
 }
 
 export interface MovimientoUpdatePayload {
@@ -37,6 +39,7 @@ export interface MovimientoUpdatePayload {
   responsable_id?:       number | null;
   fecha_pago?:           string | null;
   avisado_proveedor?:    boolean;
+  iva?:                  number | null;
 }
 
 function movKey(eventoId: number, rubroId: number) {
@@ -68,6 +71,8 @@ export function useResumenMovimientos(eventoId: number) {
 function invalidate(qc: ReturnType<typeof useQueryClient>, eventoId: number, rubroId: number) {
   qc.invalidateQueries({ queryKey: movKey(eventoId, rubroId) });
   qc.invalidateQueries({ queryKey: resumenKey(eventoId) });
+  // La Ficha muestra el real / falta pagar de cada rubro
+  qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
 }
 
 export function useCreateMovimiento(eventoId: number, rubroId: number) {
@@ -100,5 +105,23 @@ export function useReordenarMovimiento(eventoId: number, rubroId: number) {
     mutationFn: ({ id, orden }) =>
       api.patch(`/movimientos/${id}/orden`, { orden }).then(r => r.data),
     onSuccess: () => invalidate(qc, eventoId, rubroId),
+  });
+}
+
+// ── Pagos parciales (señas) — "Falta pagar" del centro de costos ─────────────
+
+export function useAddPagoParcial(eventoId: number, rubroId: number) {
+  const qc = useQueryClient();
+  return useMutation<Movimiento, Error, { id: number; fecha: string; monto: number; nota?: string | null }>({
+    mutationFn: ({ id, ...data }) => api.post(`/movimientos/${id}/pagos`, data).then(r => r.data),
+    onSuccess:  () => invalidate(qc, eventoId, rubroId),
+  });
+}
+
+export function useRemovePagoParcial(eventoId: number, rubroId: number) {
+  const qc = useQueryClient();
+  return useMutation<Movimiento, Error, { id: number; pagoId: number }>({
+    mutationFn: ({ id, pagoId }) => api.delete(`/movimientos/${id}/pagos/${pagoId}`).then(r => r.data),
+    onSuccess:  () => invalidate(qc, eventoId, rubroId),
   });
 }

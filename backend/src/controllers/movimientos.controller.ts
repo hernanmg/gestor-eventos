@@ -9,6 +9,7 @@ import { withTenant } from '../lib/tenant';
 import { generateMacroExcel } from '../lib/excelExporter';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
 import { convertirARS } from '../lib/convertirARS';
+import { calcFaltaPagar } from '../lib/faltaPagar';
 
 const SUBCATEGORIAS_IMP = [
   'PAYWAY', 'REBA', 'AUTOENTRADA', 'IVA', 'IIBB', 'MUNICIPALIDAD', 'GANANCIAS',
@@ -17,6 +18,13 @@ const SUBCATEGORIAS_IMP = [
 const PROVEEDOR_SELECT = { id: true, nombre: true, alias: true } as const;
 const RESPONSABLE_SELECT = { id: true, nombre: true, email: true } as const;
 const RUBRO_SELECT = { id: true, nombre: true, tipo: true, codigo: true } as const;
+const PAGOS_INCLUDE = { where: { deleted_at: null }, orderBy: { fecha: 'asc' as const } };
+const MOV_INCLUDE = {
+  proveedor:       { select: PROVEEDOR_SELECT },
+  rubro:           { select: RUBRO_SELECT },
+  responsable:     { select: RESPONSABLE_SELECT },
+  pagos_parciales: PAGOS_INCLUDE,
+};
 
 function toDate(s: string | null | undefined): Date | null {
   if (!s) return null;
@@ -31,6 +39,11 @@ function mapMov(m: any) {
     saldo:       Number(m.saldo),
     presupuesto: m.presupuesto !== null && m.presupuesto !== undefined ? Number(m.presupuesto) : null,
     costo_real:  m.costo_real  !== null && m.costo_real  !== undefined ? Number(m.costo_real)  : null,
+    iva:         m.iva         !== null && m.iva         !== undefined ? Number(m.iva)         : null,
+    ...(Array.isArray(m.pagos_parciales) && {
+      pagos_parciales: m.pagos_parciales.map((p: any) => ({ ...p, monto: Number(p.monto) })),
+      ...calcFaltaPagar(m),
+    }),
   };
 }
 
@@ -83,7 +96,12 @@ const createSchema = z.object({
   responsable_id:        z.number().int().positive().nullable().optional(),
   fecha_pago:            z.string().nullable().optional(),
   avisado_proveedor:     z.boolean().optional(),
+  // IVA contenido en el monto (debe/haber) — ver Movimiento.iva
+  iva:                   z.number().min(0).nullable().optional(),
 }).refine(
+  d => d.iva === null || d.iva === undefined || d.iva <= (d.debe ?? 0) + (d.haber ?? 0),
+  { message: 'El IVA no puede superar el monto total', path: ['iva'] },
+).refine(
   d => !(d.impacta_caja && !d.cuenta_id),
   { message: 'cuenta_id es requerido cuando impacta_caja es true', path: ['cuenta_id'] },
 );
@@ -103,6 +121,7 @@ const updateSchema = z.object({
   responsable_id:        z.number().int().positive().nullable().optional(),
   fecha_pago:            z.string().nullable().optional(),
   avisado_proveedor:     z.boolean().optional(),
+  iva:                   z.number().min(0).nullable().optional(),
 });
 
 // ── Vista Macro (cross-evento, cross-empresa para admin global) ───────────────
@@ -452,11 +471,7 @@ export async function list(req: Request, res: Response) {
       ...(estado ? { estado_movimiento: estado as EstadoMovimiento } : {}),
     },
     orderBy: { orden: 'asc' },
-    include: {
-      proveedor:   { select: PROVEEDOR_SELECT },
-      rubro:       { select: RUBRO_SELECT },
-      responsable: { select: RESPONSABLE_SELECT },
-    },
+    include: MOV_INCLUDE,
   });
   res.json(movs.map(mapMov));
 }
@@ -473,7 +488,7 @@ export async function create(req: Request, res: Response) {
     rubro_id, fecha, concepto, descripcion,
     debe, haber, moneda, tasa_cambio, impuesto_subcategoria,
     impacta_caja, cuenta_id, proveedor_id,
-    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor,
+    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva,
   } = parsed.data;
 
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
@@ -553,6 +568,7 @@ export async function create(req: Request, res: Response) {
         responsable_id:        responsable_id         ?? null,
         fecha_pago:            toDate(fecha_pago),
         avisado_proveedor:     avisado_proveedor       ?? false,
+        iva:                   iva                     ?? null,
         created_by:            req.user!.id,
         updated_by:            req.user!.id,
       },
@@ -603,7 +619,7 @@ export async function create(req: Request, res: Response) {
 
   const updated = await prisma.movimiento.findUnique({
     where:   { id: movId },
-    include: { proveedor: { select: PROVEEDOR_SELECT }, rubro: { select: RUBRO_SELECT }, responsable: { select: RESPONSABLE_SELECT } },
+    include: MOV_INCLUDE,
   });
   res.status(201).json(mapMov(updated));
 }
@@ -624,7 +640,7 @@ export async function update(req: Request, res: Response) {
 
   const {
     fecha, concepto, descripcion, debe, haber, moneda, tasa_cambio, impuesto_subcategoria, proveedor_id,
-    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor,
+    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva,
   } = parsed.data;
 
   if (proveedor_id !== undefined && proveedor_id !== null) {
@@ -666,6 +682,15 @@ export async function update(req: Request, res: Response) {
     ? convertirARS(debeFinal > 0 ? debeFinal : haberFinal, monedaFinal, tasaFinal)
     : undefined;
 
+  // El IVA está contenido en el monto: no puede superarlo. Si se baja el monto
+  // sin mandar IVA y el desglose anterior queda inválido, se descarta (null).
+  const ivaPrevio = existing.iva !== null ? Number(existing.iva) : null;
+  let ivaFinal: number | null | undefined = iva;
+  if (iva !== undefined && iva !== null && iva > debeFinal + haberFinal) {
+    res.status(400).json({ error: 'El IVA no puede superar el monto total' }); return;
+  }
+  if (iva === undefined && ivaPrevio !== null && ivaPrevio > debeFinal + haberFinal) ivaFinal = null;
+
   const movId = await prisma.$transaction(async tx => {
     await tx.movimiento.update({
       where: { id },
@@ -685,6 +710,7 @@ export async function update(req: Request, res: Response) {
         ...(responsable_id        !== undefined && { responsable_id }),
         ...(fecha_pago            !== undefined && { fecha_pago: toDate(fecha_pago) }),
         ...(avisado_proveedor     !== undefined && { avisado_proveedor }),
+        ...(ivaFinal              !== undefined && { iva: ivaFinal }),
         updated_by: req.user!.id,
       },
     });
@@ -715,7 +741,7 @@ export async function update(req: Request, res: Response) {
 
   const updated = await prisma.movimiento.findUnique({
     where:   { id: movId },
-    include: { proveedor: { select: PROVEEDOR_SELECT }, rubro: { select: RUBRO_SELECT }, responsable: { select: RESPONSABLE_SELECT } },
+    include: MOV_INCLUDE,
   });
   res.json(mapMov(updated));
 }
@@ -1052,4 +1078,106 @@ export async function resumen(req: Request, res: Response) {
     total_egresos:  parseFloat(total_egresos.toFixed(2)),
     saldo:          parseFloat((total_ingresos - total_egresos).toFixed(2)),
   });
+}
+
+// ── Pagos parciales (señas / cuotas) — "Falta pagar" del centro de costos ─────
+// POST   /api/movimientos/:id/pagos
+// DELETE /api/movimientos/:id/pagos/:pagoId
+// Registro de lo pagado al proveedor contra una línea de egreso. No genera
+// movimiento de caja. Cuando los pagos cubren el total la línea pasa a PAGADO
+// (irreversible, igual que el cambio manual de estado).
+
+const pagoParcialSchema = z.object({
+  fecha: z.string().min(1),
+  monto: z.number().positive(),
+  nota:  z.string().nullable().optional(),
+});
+
+export async function addPagoParcial(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = pagoParcialSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const existing = await prisma.movimiento.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: { pagos_parciales: PAGOS_INCLUDE },
+  });
+  if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  if (existing.estado_movimiento === EstadoMovimiento.PAGADO || existing.estado_movimiento === EstadoMovimiento.CANCELADO) {
+    res.status(400).json({ error: `El movimiento está ${existing.estado_movimiento} — no admite pagos` }); return;
+  }
+
+  const { falta_pagar } = calcFaltaPagar(existing);
+  if (parsed.data.monto > falta_pagar + 0.005) {
+    res.status(400).json({ error: `El pago supera lo que falta pagar (${falta_pagar.toFixed(2)})` }); return;
+  }
+  const completa = parsed.data.monto >= falta_pagar - 0.005;
+
+  await prisma.$transaction(async tx => {
+    const pago = await tx.pagoParcialMovimiento.create({
+      data: {
+        movimiento_id: id,
+        fecha:         new Date(parsed.data.fecha),
+        monto:         parsed.data.monto,
+        nota:          parsed.data.nota ?? null,
+        created_by:    req.user!.id,
+      },
+    });
+    if (completa) {
+      await tx.movimiento.update({
+        where: { id },
+        data:  { estado_movimiento: EstadoMovimiento.PAGADO, fecha_pago: pago.fecha, updated_by: req.user!.id },
+      });
+    }
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'CREATE',
+      entidad:      'PagoParcialMovimiento',
+      entidadId:    pago.id,
+      eventoId:     existing.evento_id,
+      descripcion:  `Registró un pago de ${parsed.data.monto} en el movimiento #${id}${completa ? ' (queda PAGADO)' : ''}`,
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+  });
+
+  const updated = await prisma.movimiento.findUnique({ where: { id }, include: MOV_INCLUDE });
+  res.status(201).json(mapMov(updated));
+}
+
+export async function removePagoParcial(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const pagoId = Number(req.params.pagoId);
+
+  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  if (existing.estado_movimiento === EstadoMovimiento.PAGADO) {
+    res.status(400).json({ error: 'El estado PAGADO es irreversible — no se pueden quitar pagos' }); return;
+  }
+  const pago = await prisma.pagoParcialMovimiento.findFirst({ where: { id: pagoId, movimiento_id: id, deleted_at: null } });
+  if (!pago) { res.status(404).json({ error: 'Pago no encontrado' }); return; }
+
+  await prisma.$transaction(async tx => {
+    await tx.pagoParcialMovimiento.update({ where: { id: pagoId }, data: { deleted_at: new Date() } });
+    await registrarAuditoria({
+      usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
+      accion:      'DELETE',
+      entidad:     'PagoParcialMovimiento',
+      entidadId:   pagoId,
+      eventoId:    existing.evento_id,
+      descripcion: `Quitó un pago de ${Number(pago.monto)} del movimiento #${id}`,
+      datosAntes:  { fecha: pago.fecha, monto: Number(pago.monto), nota: pago.nota },
+      ip:          req.ip,
+      tx:          tx as any,
+    });
+  });
+
+  const updated = await prisma.movimiento.findUnique({ where: { id }, include: MOV_INCLUDE });
+  res.json(mapMov(updated));
 }
