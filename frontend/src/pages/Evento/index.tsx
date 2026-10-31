@@ -29,6 +29,7 @@ import CortesiasPage from './Cortesias';
 import EventoLogisticaTab from './EventoLogisticaTab';
 import ProduccionEventoPage from './Produccion';
 import ResumenRubros from './Rubros/ResumenRubros';
+import CentroCostosTab from './CentroCostos';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
@@ -237,7 +238,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -249,6 +250,8 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'FICHA',         label: 'Ficha'         },
   // Cronograma, espacios, internet, branding y compras (planilla de producción de Dani)
   { key: 'PRODUCCION',    label: 'Producción'    },
+  // Sólo eventos en modalidad CENTRO_COSTOS (Enjoy, eventos chicos) — ver CENTRO_COSTOS_OCULTAS
+  { key: 'CENTRO_COSTOS', label: 'Centro de costos' },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -271,6 +274,12 @@ const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
 // rubros configurados, así que Ficha/Conciliatoria/Echeqs/Egresos/Ingresos/
 // Facturas/A-Cobrar/Auditoría no aplican. Ver banner "¿Se factura?" abajo.
 const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS', 'LOGISTICA'];
+
+// Modalidad centro de costos (Evento.modalidad): sólo los eventos grandes (TC,
+// Lecap, Monster) llevan el flujo de caja completo; el resto se maneja con la
+// planilla de centro de costos — sin caja ni ingresos. Por debajo son los mismos
+// movimientos de egreso, así que cambiar de modalidad no pierde nada.
+const CENTRO_COSTOS_OCULTAS: MainTab[] = ['EGRESO', 'INGRESO', 'CAJA', 'CONCILIATORIA', 'ECHEQS'];
 
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
@@ -303,6 +312,7 @@ export default function EventoPage() {
   const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
     (!t.adminOnly || isAdmin)
     && (!evento?.es_informal || INFORMAL_TABS.includes(t.key))
+    && (evento?.modalidad === 'CENTRO_COSTOS' ? !CENTRO_COSTOS_OCULTAS.includes(t.key) : t.key !== 'CENTRO_COSTOS')
     && (t.key !== 'CORTESIAS' || mostrarCortesias)
     && (t.key !== 'LOGISTICA' || canEdit),
   );
@@ -318,9 +328,13 @@ export default function EventoPage() {
 
   // Si el evento carga como informal después del mount (o llega un ?tab=
   // que no aplica para informales), corrige a Resumen.
+  // Al cargar el evento: un ?tab= que dependía de la modalidad (Centro de costos)
+  // recién ahora es visible; y una pestaña que no aplica vuelve a Resumen.
   useEffect(() => {
-    if (evento?.es_informal && !INFORMAL_TABS.includes(mainTab)) setMainTab('RESUMEN');
-  }, [evento?.es_informal]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!evento) return;
+    if (tabParam && MAIN_TABS_KEYS_VISIBLES.includes(tabParam)) setMainTab(tabParam);
+    else if (!MAIN_TABS_KEYS_VISIBLES.includes(mainTab)) setMainTab('RESUMEN');
+  }, [evento?.es_informal, evento?.modalidad]); // eslint-disable-line react-hooks/exhaustive-deps
   // Deep-link "Rubro: X" desde la tab Stock → tab Ficha filtrada por ese rubro
   const [fichaBusqueda, setFichaBusqueda] = useState<string | undefined>(undefined);
   const handleVerRubroEnFicha = (rubroNombre: string) => {
@@ -513,11 +527,15 @@ export default function EventoPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
         {mainTab === 'RESUMEN' && (
-          <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} />
+          <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} soloEgresos={evento.modalidad === 'CENTRO_COSTOS'} />
         )}
 
         {mainTab === 'FICHA' && (
           <FichaEventoPage eventoId={eventoId} evento={evento} canEdit={canEdit} monedaBase={evento.moneda_base} initialBusqueda={fichaBusqueda} />
+        )}
+
+        {mainTab === 'CENTRO_COSTOS' && (
+          <CentroCostosTab eventoId={eventoId} canEdit={canEdit} />
         )}
 
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (

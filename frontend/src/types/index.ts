@@ -281,6 +281,8 @@ export interface Socio {
   porcentaje: number;
 }
 
+export type ModalidadEvento = 'FLUJO_CAJA' | 'CENTRO_COSTOS';
+
 export interface Evento {
   id:              number;
   nombre:          string;
@@ -293,6 +295,9 @@ export interface Evento {
   socios:          Socio[];
   moneda_base:     Moneda;
   es_informal:     boolean;
+  // Sólo Enjoy: FLUJO_CAJA = planilla completa (eventos grandes), CENTRO_COSTOS =
+  // pestaña Centro de costos en lugar de Egresos/Ingresos/Caja/Conciliatoria/Echeqs
+  modalidad:       ModalidadEvento;
   facturar:        boolean | null;
   facturar_notas:  string | null;
   created_at:      string;
@@ -316,6 +321,7 @@ export interface EventoPayload {
   socios:          Socio[];
   moneda_base:     Moneda;
   es_informal?:    boolean;
+  modalidad?:      ModalidadEvento;
   facturar?:       boolean | null;
   facturar_notas?: string | null;
 }
@@ -365,6 +371,7 @@ export interface PreMacro {
   descripcion:   string | null;
   para_que_es:   string | null;
   es_privado:    boolean;
+  modalidad:     ModalidadEvento;
 
   // Paso 2
   fecha_inicio:    string | null;
@@ -452,6 +459,10 @@ export interface Movimiento {
   iva:                   number | null;
   // Línea generada desde la Ficha (rubro confirmado); null = cargada a mano
   rubro_evento_id:       number | null;
+  // Línea espejo de un Extra a cargo de la empresa — se edita desde Extras
+  extra_evento_id:       number | null;
+  // Plazo de pago en texto libre ("Pre evento", "08/05 - ")
+  plazo_pago:            string | null;
   // Centro de costos — vienen en GET /eventos/:id/movimientos (no en la vista Macro)
   pagos_parciales?:      PagoParcialMovimiento[];
   total_pagado?:         number;
@@ -3094,4 +3105,52 @@ export interface MovimientoDiario {
   fecha:      string;
   camiones:   MovimientoDiarioFila[];
   camionetas: MovimientoDiarioFila[];
+}
+
+// ── Centro de costos (GET /eventos/:id/centro-costos) ────────────────────────
+
+export interface ExtraEvento {
+  id:                 number;
+  evento_id:          number;
+  orden:              number;
+  descripcion:        string;
+  responsable:        string | null;
+  moneda:             Moneda;
+  neto:               number;
+  iva:                number;
+  total:              number;
+  falta_pagar:        number;
+  pagado:             boolean;
+  plazo_pago:         string | null;
+  datos_cuenta:       string | null;
+  factura:            string | null;
+  notas:              string | null;
+  // true (default) = lo paga el cliente, no suma al costo del evento
+  a_cargo_cliente:    boolean;
+  movimiento_id:      number | null;
+  comprobante_nombre: string | null;
+  tiene_comprobante:  boolean;
+}
+
+export interface TotalCentroCostos {
+  total:         number;
+  iva:           number;
+  falta_pagar:   number;
+  otras_monedas: number; // líneas en otra moneda, no sumadas
+}
+
+export interface CentroCostos {
+  evento:  Pick<Evento, 'id' | 'nombre' | 'modalidad' | 'moneda_base'>;
+  costos:  Movimiento[];
+  rrhh:    Movimiento[];
+  extras:  ExtraEvento[];
+  totales: {
+    costos:         TotalCentroCostos;
+    rrhh:           TotalCentroCostos;
+    extras_cliente: TotalCentroCostos;
+    extras_empresa: TotalCentroCostos;
+    costo_evento:   number;
+    falta_pagar:    number;
+    moneda:         Moneda;
+  };
 }

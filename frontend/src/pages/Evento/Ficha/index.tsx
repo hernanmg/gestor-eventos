@@ -1272,6 +1272,8 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
   const inicializar = useInicializarFicha(eventoId);
   const sincronizar = useSincronizarCostos(eventoId);
   const { exportar, isExporting } = useExportarFicha();
+  // En modalidad centro de costos las líneas se ven en "Centro de costos", no en Egresos
+  const destinoCostos = evento.modalidad === 'CENTRO_COSTOS' ? 'Centro de costos' : 'Egresos';
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<EstadoRubroEvento | ''>('');
@@ -1324,17 +1326,17 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
             <Button
               variant="outline" size="sm"
               disabled={sincronizar.isPending}
-              title="Genera en Egresos la línea de costo de cada rubro confirmado (los cambios nuevos se sincronizan solos)"
+              title={`Genera en ${destinoCostos} la línea de costo de cada rubro confirmado (los cambios nuevos se sincronizan solos)`}
               onClick={() => sincronizar.mutate(undefined, {
                 onSuccess: r => alert(
-                  `Egresos sincronizados: ${r.creada} líneas creadas, ${r.actualizada} actualizadas, ` +
+                  `Sincronizado con ${destinoCostos}: ${r.creada} líneas creadas, ${r.actualizada} actualizadas, ` +
                   `${r.reactivada} reactivadas, ${r.cancelada} canceladas.`,
                 ),
                 onError: err => alert(getApiErrorMessage(err)),
               })}
             >
               {sincronizar.isPending ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <RefreshCw size={13} className="mr-1.5" />}
-              Sincronizar con Egresos
+              Sincronizar con {destinoCostos}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => exportar(eventoId)} disabled={isExporting || fichaData.length === 0}>
@@ -1366,7 +1368,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
             <span><span className="font-semibold text-green-700">{contadores.confirmados}</span> confirmados</span>
             <span><span className="font-semibold text-gray-700">{contadores.pendientes}</span> pendientes</span>
             <span><span className="font-semibold text-red-700">{contadores.noVan}</span> no van</span>
-            <span className="ml-auto">Real en egresos: <span className="font-semibold text-foreground tabular-nums">{formatCurrency(contadores.real, evento.moneda_base)}</span></span>
+            <span className="ml-auto">Real en {destinoCostos.toLowerCase()}: <span className="font-semibold text-foreground tabular-nums">{formatCurrency(contadores.real, evento.moneda_base)}</span></span>
             <span>Falta pagar: <span className={cn('font-semibold tabular-nums', contadores.faltaPagar > 0 ? 'text-orange-600' : 'text-green-700')}>{formatCurrency(contadores.faltaPagar, evento.moneda_base)}</span></span>
           </div>
 
@@ -1397,7 +1399,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
                   <th className="px-2 py-2 text-left w-28">Coordina</th>
                   <th className="px-2 py-2 text-left w-28">F. ingreso</th>
                   <th className="px-2 py-2 text-right w-28">Presupuesto</th>
-                  <th className="px-2 py-2 text-right w-32">En egresos</th>
+                  <th className="px-2 py-2 text-right w-32">{evento.modalidad === 'CENTRO_COSTOS' ? 'En costos' : 'En egresos'}</th>
                   <th className="px-2 py-2 text-right w-24">Acciones</th>
                 </tr>
               </thead>

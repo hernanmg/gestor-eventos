@@ -31,6 +31,16 @@ enum EstadoEvento {
   IMPORTADO
 }
 
+// Cómo se lleva la plata del evento (sólo Enjoy; DOS57 siempre FLUJO_CAJA).
+// FLUJO_CAJA = planilla completa (Egresos/Ingresos/Caja/Conciliatoria/Echeqs),
+// para los eventos grandes (TC, Lecap, Monster). CENTRO_COSTOS = planilla de
+// centro de costos de Male (Costos/RRHH/Extras) — mismo Movimiento por debajo,
+// cambia la vista. Ver frontend pages/Evento/CentroCostos.
+enum ModalidadEvento {
+  FLUJO_CAJA
+  CENTRO_COSTOS
+}
+
 enum TipoCuenta {
   EFECTIVO
   BANCO
@@ -394,29 +404,30 @@ model TabConfig {
 // ─── EVENTOS ─────────────────────────────────────────────────────────────────
 
 model Evento {
-  id              Int          @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   empresa_id      Int
-  empresa         Empresa      @relation(fields: [empresa_id], references: [id])
+  empresa         Empresa         @relation(fields: [empresa_id], references: [id])
   nombre          String
   fecha_inicio    DateTime?
   fecha_fin       DateTime?
-  dias_montaje    Int          @default(0) // días de armado previos a fecha_inicio
-  dias_desmontaje Int          @default(0) // días de desarmado posteriores a fecha_fin
+  dias_montaje    Int             @default(0) // días de armado previos a fecha_inicio
+  dias_desmontaje Int             @default(0) // días de desarmado posteriores a fecha_fin
   // Lugar del evento (texto libre: "Playa Norte - Estadio Kempes"). Lo usa la
   // Ficha exportada ("Ubicación: ..."). El wizard Pre-Macro lo copia de lugar_nombre/ciudad.
   lugar           String?
-  estado          EstadoEvento @default(ACTIVO)
+  estado          EstadoEvento    @default(ACTIVO)
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
-  socios          Json         @default("[]")
-  moneda_base     Moneda       @default(ARS)
+  socios          Json            @default("[]")
+  moneda_base     Moneda          @default(ARS)
   // Carga rápida sin presupuesto formal (ver Eventos/index.tsx "Carga rápida")
   // — true = no requiere ficha/socios/rubros, sólo nombre+fecha+destino.
-  es_informal     Boolean      @default(false)
+  es_informal     Boolean         @default(false)
+  modalidad       ModalidadEvento @default(FLUJO_CAJA)
   // null=sin decidir, true=sí, false=no — impulsa el flag de notificaciones
   facturar        Boolean?
   facturar_notas  String?
-  created_at      DateTime     @default(now())
-  updated_at      DateTime     @updatedAt
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
   deleted_at      DateTime?
   created_by      Int?
   updated_by      Int?
@@ -438,6 +449,7 @@ model Evento {
   asignaciones_diarias   AsignacionDiaria[]
   pedidos_comida         PedidoComida[]
   pre_macro              PreMacro?
+  extras                 ExtraEvento[]
   movimientosCCC         MovimientoCCC[]
   gastos_peaje           GastoPeaje[]
   facturas_emitidas      FacturaEmitida[]
@@ -767,6 +779,12 @@ model Movimiento {
   // lib/lineaCostoFicha.ts. null = cargada a mano / importada / factura / RRHH.
   rubro_evento_id Int?
   rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+  // Plazo de pago en texto libre, como lo anota Male ("Pre evento", "08/05 - ",
+  // "50% antes del evento") — fecha_pago queda para la fecha real.
+  plazo_pago      String?
+  // Extra del centro de costos que cuenta como costo (a_cargo_cliente=false) — la
+  // línea la mantiene lib/extrasEvento.ts, no se edita a mano.
+  extra_evento    ExtraEvento?
 
   echeq           Echeq?                  @relation("EcheqMovimiento")
   pago_factura    PagoFactura?            @relation("PagoMovimiento")
@@ -2680,7 +2698,8 @@ model PreMacro {
   tipo_evento   String? // "Festival", "Corporativo", "Privado", "Deportivo", otro
   descripcion   String?
   para_que_es   String? // texto libre: para qué es el evento
-  es_privado    Boolean @default(false)
+  es_privado    Boolean         @default(false)
+  modalidad     ModalidadEvento @default(CENTRO_COSTOS) // se copia al Evento al confirmar
 
   // PASO 2 — Dónde y cuándo
   fecha_inicio    DateTime?
@@ -3726,4 +3745,39 @@ model ControlSalidaVehiculo {
   created_by          Int?
 
   @@index([empresa_id, fecha_salida])
+}
+
+// Extras del centro de costos (hoja "Extras" de la planilla de Male): lo que
+// surge en el evento fuera de lo presupuestado. Por defecto lo paga el cliente
+// directo y NO suma al costo del evento; con a_cargo_cliente=false se genera una
+// línea de egreso en el rubro Gastos Extra (movimiento_id) — ver lib/extrasEvento.ts.
+model ExtraEvento {
+  id                 Int         @id @default(autoincrement())
+  empresa_id         Int
+  evento_id          Int
+  evento             Evento      @relation(fields: [evento_id], references: [id])
+  orden              Int
+  descripcion        String
+  responsable        String? // proveedor / persona (texto libre, como en la planilla)
+  moneda             Moneda      @default(ARS)
+  neto               Decimal     @default(0) @db.Decimal(15, 2)
+  iva                Decimal     @default(0) @db.Decimal(15, 2) // total = neto + iva
+  pagado             Boolean     @default(false)
+  plazo_pago         String? // "Fecha de pago a proveedores" (texto libre)
+  datos_cuenta       String? // titular / CUIT / CBU / alias
+  factura            String? // estado de la factura: "Con FC", "Deben factura"...
+  notas              String?
+  a_cargo_cliente    Boolean     @default(true)
+  movimiento_id      Int?        @unique
+  movimiento         Movimiento? @relation(fields: [movimiento_id], references: [id])
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+  updated_by         Int?
+
+  @@index([evento_id])
 }

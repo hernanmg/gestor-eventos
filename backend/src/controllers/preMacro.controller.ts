@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import type { Moneda } from '@prisma/client';
+import type { Moneda, ModalidadEvento } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { sincronizarLineaCosto } from '../lib/lineaCostoFicha';
 import { sugerirRubros } from '../lib/sugerirRubros';
+import { resolverModalidad } from './eventos.controller';
 
 const INCLUDE_SOCIOS = { socios: true };
 
@@ -102,6 +103,7 @@ const updateSchema = z.object({
   descripcion:   z.string().nullable().optional(),
   para_que_es:   z.string().nullable().optional(),
   es_privado:    z.boolean().optional(),
+  modalidad:     z.enum(['FLUJO_CAJA', 'CENTRO_COSTOS']).optional(),
 
   fecha_inicio:    z.string().nullable().optional(),
   fecha_fin:       z.string().nullable().optional(),
@@ -163,6 +165,7 @@ export async function update(req: Request, res: Response) {
         ...(d.descripcion   !== undefined && { descripcion: d.descripcion }),
         ...(d.para_que_es   !== undefined && { para_que_es: d.para_que_es }),
         ...(d.es_privado    !== undefined && { es_privado: d.es_privado }),
+        ...(d.modalidad     !== undefined && { modalidad: d.modalidad as ModalidadEvento }),
         ...(d.fecha_inicio    !== undefined && { fecha_inicio: toDate(d.fecha_inicio) }),
         ...(d.fecha_fin       !== undefined && { fecha_fin: toDate(d.fecha_fin) }),
         ...(d.hora_inicio     !== undefined && { hora_inicio: d.hora_inicio }),
@@ -317,6 +320,7 @@ export async function confirmar(req: Request, res: Response) {
         lugar: [preMacro.lugar_nombre, preMacro.lugar_ciudad].map(x => x?.trim()).filter(Boolean).join(', ') || null,
         socios,
         moneda_base:  preMacro.moneda,
+        modalidad:    resolverModalidad(req.empresaId!, preMacro.modalidad),
         created_by:   req.user!.id,
         updated_by:   req.user!.id,
       },

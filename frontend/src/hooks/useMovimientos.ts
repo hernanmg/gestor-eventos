@@ -22,6 +22,7 @@ export interface MovimientoCreatePayload {
   fecha_pago?:           string | null;
   avisado_proveedor?:    boolean;
   iva?:                  number | null;
+  plazo_pago?:           string | null;
 }
 
 export interface MovimientoUpdatePayload {
@@ -40,6 +41,7 @@ export interface MovimientoUpdatePayload {
   fecha_pago?:           string | null;
   avisado_proveedor?:    boolean;
   iva?:                  number | null;
+  plazo_pago?:           string | null;
 }
 
 function movKey(eventoId: number, rubroId: number) {
@@ -68,9 +70,11 @@ export function useResumenMovimientos(eventoId: number) {
   });
 }
 
-function invalidate(qc: ReturnType<typeof useQueryClient>, eventoId: number, rubroId: number) {
-  qc.invalidateQueries({ queryKey: movKey(eventoId, rubroId) });
-  qc.invalidateQueries({ queryKey: resumenKey(eventoId) });
+// Todo lo de movimientos del evento (rubro, resumen, centro de costos — ver
+// useCentroCostos): una línea editada desde el centro de costos también cambia
+// la tabla de su rubro. rubroId queda en la firma de los hooks por compatibilidad.
+function invalidate(qc: ReturnType<typeof useQueryClient>, eventoId: number, _rubroId: number) {
+  qc.invalidateQueries({ queryKey: ['movimientos', eventoId] });
   // La Ficha muestra el real / falta pagar de cada rubro
   qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
 }

@@ -38,7 +38,7 @@ const SUBCATEGORIAS = [
 
 const ESTADO_ORDEN: EstadoMovimiento[] = ['PENDIENTE', 'COTIZANDO', 'CONFIRMADO', 'PAGADO'];
 
-function estadoOptions(actual: EstadoMovimiento): EstadoMovimiento[] {
+export function estadoOptions(actual: EstadoMovimiento): EstadoMovimiento[] {
   if (actual === 'PAGADO')     return ['PAGADO', 'CANCELADO'];
   if (actual === 'CANCELADO')  return ['CANCELADO', ...ESTADO_ORDEN];
   const idx = ESTADO_ORDEN.indexOf(actual);
@@ -47,7 +47,7 @@ function estadoOptions(actual: EstadoMovimiento): EstadoMovimiento[] {
 
 // Badge de color por estado — mismo mapeo que MovimientoEstadoBadge, aplicado
 // directamente al <select> para que la celda se vea como badge editable.
-const ESTADO_SELECT_CLASS: Record<EstadoMovimiento, string> = {
+export const ESTADO_SELECT_CLASS: Record<EstadoMovimiento, string> = {
   PENDIENTE:  'bg-gray-100 text-gray-700',
   COTIZANDO:  'bg-yellow-100 text-yellow-800',
   CONFIRMADO: 'bg-blue-100 text-blue-800',
@@ -301,6 +301,14 @@ function SortableRow({
                 title="Línea generada desde la Ficha del evento (rubro confirmado). Proveedor y presupuesto se actualizan desde la Ficha."
               >
                 Ficha
+              </span>
+            )}
+            {mov.extra_evento_id !== null && (
+              <span
+                className="ml-1.5 rounded bg-purple-50 px-1 py-0.5 text-[10px] font-medium text-purple-700 align-middle"
+                title="Extra del centro de costos a cargo de la empresa. Se edita desde Centro de costos → Extras."
+              >
+                Extra
               </span>
             )}
           </span>

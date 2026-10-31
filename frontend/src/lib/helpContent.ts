@@ -274,7 +274,15 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+      },
+      {
+        titulo: 'Centro de costos o flujo de caja completo',
+        contenido: 'En Enjoy cada evento se lleva de una de dos formas. El flujo de caja completo (egresos, ingresos, caja, echeqs y conciliatoria) es para los eventos grandes, como TC, Lecap o Monster. El resto se lleva con el centro de costos, como la planilla de centro de costos: sólo lo que se gasta, sin caja ni ingresos.\nLos eventos nuevos arrancan en centro de costos; se elige en la Pre-Macro o al crear el evento, y se cambia desde Editar evento. Por debajo son los mismos movimientos, así que cambiar de modalidad no pierde nada.',
+      },
+      {
+        titulo: 'Centro de costos: Costos, RRHH y Extras',
+        contenido: 'Costos tiene una línea por cada rubro confirmado en la Ficha (aparecen solas), más las que agregues a mano: descripción, responsable, consumido, IVA, total, falta pagar, fecha de pago y si se le avisó al proveedor. Hacé clic en el IVA para cargar neto + IVA, y en Falta pagar para registrar señas o pagos parciales. RRHH muestra las líneas de personal del evento.\nExtras es lo que surge fuera de lo presupuestado. Por defecto lo paga el cliente y no suma al costo del evento; si lo paga la empresa, editalo y elegí "La empresa": pasa a sumar como Gastos Extra. Cada extra puede llevar los datos de cuenta, el estado de la factura y el comprobante adjunto.\n"Exportar Excel" baja la planilla con las hojas Costos, RRHH y Extras; "Exportar extras" baja sólo la hoja Extras, para mandársela al cliente.',
       },
       {
         titulo: 'Producción',

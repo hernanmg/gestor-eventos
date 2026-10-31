@@ -1,9 +1,10 @@
 ﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { Moneda, EstadoEvento, Prisma } from '@prisma/client';
+import { Moneda, EstadoEvento, ModalidadEvento, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { EMPRESAS } from '../lib/empresasConstants';
 
 const socioSchema = z.object({
   nombre:     z.string().min(1, 'Nombre requerido'),
@@ -20,6 +21,7 @@ const createSchema = z.object({
   socios:          z.array(socioSchema).default([]),
   moneda_base:     z.enum(['ARS', 'USD']).default('ARS'),
   es_informal:     z.boolean().optional(),
+  modalidad:       z.nativeEnum(ModalidadEvento).optional(),
   facturar:        z.boolean().nullable().optional(),
   facturar_notas:  z.string().nullable().optional(),
 }).refine(
@@ -37,6 +39,7 @@ const updateSchema = z.object({
   socios:          z.array(socioSchema).optional(),
   moneda_base:     z.enum(['ARS', 'USD']).optional(),
   estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
+  modalidad:       z.nativeEnum(ModalidadEvento).optional(),
 });
 
 // facturar nullable acá también — permite "Cambiar decisión" desde el banner
@@ -50,6 +53,15 @@ function sociosSumOk(socios: { porcentaje: number }[]): boolean {
   if (socios.length === 0) return true;
   const sum = socios.reduce((acc, s) => acc + s.porcentaje, 0);
   return Math.abs(sum - 100) < 0.01;
+}
+
+// Modalidad flujo de caja / centro de costos: sólo Enjoy elige — DOS57 (y
+// cualquier otra empresa) lleva siempre el flujo de caja completo. En Enjoy el
+// default de un evento nuevo es centro de costos (los grandes — TC, Lecap,
+// Monster — se marcan FLUJO_CAJA).
+export function resolverModalidad(empresaId: number, pedida: ModalidadEvento | undefined): ModalidadEvento {
+  if (empresaId !== EMPRESAS.ENJOY) return ModalidadEvento.FLUJO_CAJA;
+  return pedida ?? ModalidadEvento.CENTRO_COSTOS;
 }
 
 function toDate(s: string | null | undefined): Date | null | undefined {
@@ -108,7 +120,7 @@ export async function create(req: Request, res: Response) {
   }
   const {
     nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base,
-    es_informal, facturar, facturar_notas,
+    es_informal, facturar, facturar_notas, modalidad,
   } = parsed.data;
   if (!sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
@@ -128,6 +140,7 @@ export async function create(req: Request, res: Response) {
         socios,
         moneda_base:  moneda_base as Moneda,
         es_informal:  es_informal ?? false,
+        modalidad:    resolverModalidad(req.empresaId!, modalidad),
         facturar:     facturar ?? null,
         facturar_notas: facturar_notas ?? null,
         created_by:   req.user!.id,
@@ -163,7 +176,11 @@ export async function update(req: Request, res: Response) {
   const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base, estado } = parsed.data;
+  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base, estado, modalidad } = parsed.data;
+  if (modalidad !== undefined && modalidad !== existing.modalidad && req.empresaId !== EMPRESAS.ENJOY) {
+    res.status(400).json({ error: 'La modalidad centro de costos sólo aplica a Enjoy' });
+    return;
+  }
   if (socios !== undefined && !sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -182,6 +199,7 @@ export async function update(req: Request, res: Response) {
         ...(socios       !== undefined && { socios }),
         ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
         ...(estado       !== undefined && { estado: estado as EstadoEvento }),
+        ...(modalidad    !== undefined && { modalidad }),
         updated_by: req.user!.id,
       },
       include: includeCount,

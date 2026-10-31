@@ -85,9 +85,11 @@ function RubrosTable({ title, rows, moneda }: { title: string; rows: ResumenRubr
 interface Props {
   eventoId: number;
   moneda:   Moneda;
+  // Evento en modalidad centro de costos: no lleva ingresos ni saldo
+  soloEgresos?: boolean;
 }
 
-export default function ResumenRubros({ eventoId, moneda }: Props) {
+export default function ResumenRubros({ eventoId, moneda, soloEgresos }: Props) {
   const { data, isLoading } = useResumenMovimientos(eventoId);
 
   if (isLoading) return <p className="p-4 text-sm text-muted-foreground">Cargando...</p>;
@@ -95,6 +97,21 @@ export default function ResumenRubros({ eventoId, moneda }: Props) {
 
   const egresos  = data.por_rubro.filter(r => r.tipo === 'EGRESO');
   const ingresos = data.por_rubro.filter(r => r.tipo === 'INGRESO');
+
+  if (soloEgresos) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-white px-4 py-3 font-semibold">
+          <div className="text-xs text-muted-foreground">Costo del evento (presupuesto vs real por rubro)</div>
+          <span className="text-lg">{formatCurrency(data.total_egresos, moneda)}</span>
+        </div>
+        <RubrosTable title="Egresos" rows={egresos} moneda={moneda} />
+        {egresos.length === 0 && (
+          <p className="text-sm text-muted-foreground py-6 text-center">Todavía no hay costos cargados en este evento.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

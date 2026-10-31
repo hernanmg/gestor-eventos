@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCreateEvento, useUpdateEvento } from '@/hooks/useEvento';
+import { useAuth } from '@/hooks/useAuth';
+import { EMPRESAS } from '@/lib/empresasConstants';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { Evento } from '@/types';
 
@@ -24,6 +26,7 @@ const schema = z.object({
   dias_montaje:    z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
   dias_desmontaje: z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
   moneda_base:  z.enum(['ARS', 'USD', 'EUR']),
+  modalidad:    z.enum(['FLUJO_CAJA', 'CENTRO_COSTOS']),
   socios:       z.array(socioSchema).default([]),
 }).refine(data => {
   if (!data.socios || data.socios.length === 0) return true;
@@ -48,6 +51,9 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
   const createEvento = useCreateEvento();
   const updateEvento = useUpdateEvento();
   const isEdit       = !!evento;
+  const { user }     = useAuth();
+  // Modalidad flujo de caja / centro de costos: sólo Enjoy (DOS57 siempre flujo completo)
+  const eligeModalidad = user?.empresaId === EMPRESAS.ENJOY;
   const isPending    = createEvento.isPending || updateEvento.isPending;
   const mutationError = createEvento.error || updateEvento.error;
 
@@ -66,6 +72,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
       dias_montaje:    evento?.dias_montaje    ?? 0,
       dias_desmontaje: evento?.dias_desmontaje ?? 0,
       moneda_base:  evento?.moneda_base  ?? 'ARS',
+      modalidad:    evento?.modalidad    ?? (eligeModalidad ? 'CENTRO_COSTOS' : 'FLUJO_CAJA'),
       socios:       (evento?.socios as FormData['socios']) ?? [],
     },
   });
@@ -84,6 +91,7 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
       dias_desmontaje: data.dias_desmontaje,
       moneda_base:  data.moneda_base,
       socios:       data.socios,
+      ...(eligeModalidad && { modalidad: data.modalidad }),
     };
     try {
       if (isEdit) {
@@ -173,6 +181,25 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
           <option value="EUR">EUR — Euro</option>
         </select>
       </div>
+
+      {/* Modalidad — sólo Enjoy */}
+      {eligeModalidad && (
+        <div className="space-y-1">
+          <Label htmlFor="modalidad">Cómo se lleva el evento</Label>
+          <select
+            id="modalidad"
+            disabled={isPending}
+            {...register('modalidad')}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <option value="CENTRO_COSTOS">Centro de costos (eventos chicos/medianos)</option>
+            <option value="FLUJO_CAJA">Flujo de caja completo (TC, Lecap, Monster)</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Centro de costos muestra Costos / RRHH / Extras sin caja ni ingresos. Se puede cambiar después sin perder datos.
+          </p>
+        </div>
+      )}
 
       {/* Socios */}
       <div className="space-y-2">

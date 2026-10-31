@@ -19,11 +19,12 @@ const PROVEEDOR_SELECT = { id: true, nombre: true, alias: true } as const;
 const RESPONSABLE_SELECT = { id: true, nombre: true, email: true } as const;
 const RUBRO_SELECT = { id: true, nombre: true, tipo: true, codigo: true } as const;
 const PAGOS_INCLUDE = { where: { deleted_at: null }, orderBy: { fecha: 'asc' as const } };
-const MOV_INCLUDE = {
+export const MOV_INCLUDE = {
   proveedor:       { select: PROVEEDOR_SELECT },
   rubro:           { select: RUBRO_SELECT },
   responsable:     { select: RESPONSABLE_SELECT },
   pagos_parciales: PAGOS_INCLUDE,
+  extra_evento:    { select: { id: true } },
 };
 
 function toDate(s: string | null | undefined): Date | null {
@@ -31,9 +32,12 @@ function toDate(s: string | null | undefined): Date | null {
   return new Date(s);
 }
 
-function mapMov(m: any) {
+export function mapMov(m: any) {
+  const { extra_evento, ...rest } = m;
   return {
-    ...m,
+    ...rest,
+    // Línea generada por un Extra del centro de costos (no editable acá)
+    extra_evento_id: extra_evento?.id ?? null,
     debe:        Number(m.debe),
     haber:       Number(m.haber),
     saldo:       Number(m.saldo),
@@ -98,6 +102,7 @@ const createSchema = z.object({
   avisado_proveedor:     z.boolean().optional(),
   // IVA contenido en el monto (debe/haber) — ver Movimiento.iva
   iva:                   z.number().min(0).nullable().optional(),
+  plazo_pago:            z.string().trim().max(200).nullable().optional(),
 }).refine(
   d => d.iva === null || d.iva === undefined || d.iva <= (d.debe ?? 0) + (d.haber ?? 0),
   { message: 'El IVA no puede superar el monto total', path: ['iva'] },
@@ -122,6 +127,7 @@ const updateSchema = z.object({
   fecha_pago:            z.string().nullable().optional(),
   avisado_proveedor:     z.boolean().optional(),
   iva:                   z.number().min(0).nullable().optional(),
+  plazo_pago:            z.string().trim().max(200).nullable().optional(),
 });
 
 // ── Vista Macro (cross-evento, cross-empresa para admin global) ───────────────
@@ -488,7 +494,7 @@ export async function create(req: Request, res: Response) {
     rubro_id, fecha, concepto, descripcion,
     debe, haber, moneda, tasa_cambio, impuesto_subcategoria,
     impacta_caja, cuenta_id, proveedor_id,
-    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva,
+    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva, plazo_pago,
   } = parsed.data;
 
   const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
@@ -569,6 +575,7 @@ export async function create(req: Request, res: Response) {
         fecha_pago:            toDate(fecha_pago),
         avisado_proveedor:     avisado_proveedor       ?? false,
         iva:                   iva                     ?? null,
+        plazo_pago:            plazo_pago              || null,
         created_by:            req.user!.id,
         updated_by:            req.user!.id,
       },
@@ -634,13 +641,16 @@ export async function update(req: Request, res: Response) {
 
   const existing = await prisma.movimiento.findFirst({
     where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
-    include: { rubro: true },
+    include: { rubro: true, extra_evento: { select: { id: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  if (existing.extra_evento) {
+    res.status(400).json({ error: 'Esta línea viene de un Extra del centro de costos — editala desde Extras' }); return;
+  }
 
   const {
     fecha, concepto, descripcion, debe, haber, moneda, tasa_cambio, impuesto_subcategoria, proveedor_id,
-    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva,
+    estado_movimiento, presupuesto, responsable_id, fecha_pago, avisado_proveedor, iva, plazo_pago,
   } = parsed.data;
 
   if (proveedor_id !== undefined && proveedor_id !== null) {
@@ -711,6 +721,7 @@ export async function update(req: Request, res: Response) {
         ...(fecha_pago            !== undefined && { fecha_pago: toDate(fecha_pago) }),
         ...(avisado_proveedor     !== undefined && { avisado_proveedor }),
         ...(ivaFinal              !== undefined && { iva: ivaFinal }),
+        ...(plazo_pago            !== undefined && { plazo_pago: plazo_pago || null }),
         updated_by: req.user!.id,
       },
     });
@@ -748,8 +759,14 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.movimiento.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const existing = await prisma.movimiento.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: { extra_evento: { select: { id: true } } },
+  });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  if (existing.extra_evento) {
+    res.status(400).json({ error: 'Esta línea viene de un Extra del centro de costos — se quita desde Extras (marcándolo a cargo del cliente o borrándolo)' }); return;
+  }
 
   await prisma.$transaction(async tx => {
     await tx.movimiento.update({
@@ -1103,9 +1120,12 @@ export async function addPagoParcial(req: Request, res: Response) {
 
   const existing = await prisma.movimiento.findFirst({
     where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
-    include: { pagos_parciales: PAGOS_INCLUDE },
+    include: { pagos_parciales: PAGOS_INCLUDE, extra_evento: { select: { id: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  if (existing.extra_evento) {
+    res.status(400).json({ error: 'Esta línea viene de un Extra del centro de costos — el pago se marca desde Extras' }); return;
+  }
   if (existing.estado_movimiento === EstadoMovimiento.PAGADO || existing.estado_movimiento === EstadoMovimiento.CANCELADO) {
     res.status(400).json({ error: `El movimiento está ${existing.estado_movimiento} — no admite pagos` }); return;
   }

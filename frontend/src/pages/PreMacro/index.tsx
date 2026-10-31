@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { usePreMacro, useUpdatePreMacro, useUpdateRubros, useConfirmarPreMacro } from '@/hooks/usePreMacro';
 import { useUsuarios } from '@/hooks/useUsuarios';
+import { useAuth } from '@/hooks/useAuth';
+import { EMPRESAS } from '@/lib/empresasConstants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import CuitInput from '@/components/ui/CuitInput';
@@ -14,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
-import type { Moneda, PreMacro, RubroSugerido, Usuario } from '@/types';
+import type { ModalidadEvento, Moneda, PreMacro, RubroSugerido, Usuario } from '@/types';
 
 type Vista = 'wizard' | 'resumen' | 'rubros';
 
@@ -35,6 +37,7 @@ interface FormState {
   descripcion:   string;
   para_que_es:   string;
   es_privado:    boolean;
+  modalidad:     ModalidadEvento;
 
   fecha_inicio:    string;
   fecha_fin:       string;
@@ -83,6 +86,7 @@ function formFromPreMacro(pm: PreMacro): FormState {
     descripcion:   pm.descripcion ?? '',
     para_que_es:   pm.para_que_es ?? '',
     es_privado:    pm.es_privado,
+    modalidad:     pm.modalidad,
 
     fecha_inicio:    toInputDate(pm.fecha_inicio),
     fecha_fin:       toInputDate(pm.fecha_fin),
@@ -125,6 +129,7 @@ function buildPayload(form: FormState, paso_actual: number) {
     descripcion:   form.descripcion || null,
     para_que_es:   form.para_que_es || null,
     es_privado:    form.es_privado,
+    modalidad:     form.modalidad,
 
     fecha_inicio:    form.fecha_inicio || null,
     fecha_fin:       form.fecha_fin || null,
@@ -249,6 +254,9 @@ function Stepper({ step }: { step: number }) {
 // ── Paso 1 — El evento ────────────────────────────────────────────────────────
 
 function Paso1({ form, set }: StepProps) {
+  // Modalidad: sólo Enjoy elige (DOS57 siempre flujo de caja completo — el backend lo fuerza)
+  const { user } = useAuth();
+  const eligeModalidad = user?.empresaId === EMPRESAS.ENJOY;
   return (
     <div className="space-y-5 max-w-2xl">
       <Field label="¿Para qué es este evento?">
@@ -275,6 +283,20 @@ function Paso1({ form, set }: StepProps) {
         label="¿Es un evento privado?"
         description={form.es_privado ? 'Privado — acceso restringido' : 'Público'}
       />
+
+      {eligeModalidad && (
+        <Field label="¿Cómo se lleva la plata del evento?">
+          <div className="flex flex-wrap gap-2">
+            <Chip selected={form.modalidad === 'CENTRO_COSTOS'} onClick={() => set('modalidad', 'CENTRO_COSTOS')}>Centro de costos</Chip>
+            <Chip selected={form.modalidad === 'FLUJO_CAJA'} onClick={() => set('modalidad', 'FLUJO_CAJA')}>Flujo de caja completo</Chip>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {form.modalidad === 'CENTRO_COSTOS'
+              ? 'Costos, RRHH y Extras, sin caja ni ingresos. Para la mayoría de los eventos.'
+              : 'Egresos, ingresos, caja, echeqs y conciliatoria. Para los eventos grandes (TC, Lecap, Monster).'}
+          </p>
+        </Field>
+      )}
 
       <Field label="Descripción adicional (opcional)">
         <TextArea rows={3} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
