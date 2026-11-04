@@ -495,6 +495,8 @@ model Rubro {
   facturas      Factura[]
   rubros_evento RubroEvento[]
 
+  plantilla_tareas PlantillaTarea[]
+
   @@unique([empresa_id, tipo, nombre])
 }
 
@@ -513,17 +515,17 @@ enum EstadoRubroEvento {
 }
 
 model RubroEvento {
-  id                 Int               @id @default(autoincrement())
+  id                 Int                @id @default(autoincrement())
   evento_id          Int
-  evento             Evento            @relation(fields: [evento_id], references: [id])
+  evento             Evento             @relation(fields: [evento_id], references: [id])
   rubro_id           Int
-  rubro              Rubro             @relation(fields: [rubro_id], references: [id])
+  rubro              Rubro              @relation(fields: [rubro_id], references: [id])
   empresa_id         Int
-  empresa            Empresa           @relation(fields: [empresa_id], references: [id])
+  empresa            Empresa            @relation(fields: [empresa_id], references: [id])
   // Asignación
   proveedor_id       Int?
-  proveedor          Proveedor?        @relation(fields: [proveedor_id], references: [id])
-  estado             EstadoRubroEvento @default(PENDIENTE)
+  proveedor          Proveedor?         @relation(fields: [proveedor_id], references: [id])
+  estado             EstadoRubroEvento  @default(PENDIENTE)
   // Contacto del proveedor para este evento (puede diferir del proveedor genérico)
   contacto_nombre    String?
   contacto_telefono  String?
@@ -534,20 +536,20 @@ model RubroEvento {
   fecha_ingreso      DateTime? // cuándo entra el proveedor al evento
   fecha_retiro       DateTime? // cuándo se va
   // Presupuesto
-  presupuesto        Decimal?          @db.Decimal(12, 2)
-  moneda             Moneda            @default(ARS)
+  presupuesto        Decimal?           @db.Decimal(12, 2)
+  moneda             Moneda             @default(ARS)
   // Notas generales del rubro en este evento
   notas              String?
   // ── Fuentes mixtas (stock propio + proveedor externo) ────────────────────────
   // Un rubro puede cubrirse con stock propio del depósito, con un proveedor
   // externo, o ambos a la vez (ej: DOS57 con stock insuficiente completa con
   // un proveedor externo). Ver AsignacionStock.rubro_evento_id.
-  usa_stock_propio   Boolean           @default(false)
+  usa_stock_propio   Boolean            @default(false)
   cantidad_stock     Int? // suma de las AsignacionStock activas vinculadas
   cantidad_proveedor Int? // cantidad cubierta por el proveedor externo
   // audit
-  created_at         DateTime          @default(now())
-  updated_at         DateTime          @updatedAt
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
   deleted_at         DateTime?
   created_by         Int?
   updated_by         Int?
@@ -556,6 +558,8 @@ model RubroEvento {
   asignaciones_stock AsignacionStock[]
   // Línea(s) del centro de costos generadas desde este rubro (ver Movimiento.rubro_evento_id)
   movimientos        Movimiento[]
+  // Tareas del rubro en la pestaña Operación (CronogramaEvento.rubro_evento_id)
+  tareas             CronogramaEvento[]
 
   @@unique([evento_id, rubro_id])
 }
@@ -600,24 +604,67 @@ model PedidoItem {
 // responsable, estado) quedan como los escribe producción, sin vincular.
 
 model CronogramaEvento {
-  id            Int       @id @default(autoincrement())
-  evento_id     Int
-  evento        Evento    @relation(fields: [evento_id], references: [id])
-  empresa_id    Int
-  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
-  fecha         DateTime // calendario puro (medianoche UTC, ver fecha_offset_utc_fix)
-  hora          String? // "08:00"
-  actividad     String
-  proveedor     String? // "Dos57", "Enjoy", "Stands"
-  responsable   String? // "Dani + Agus"
-  observaciones String?
-  orden         Int       @default(0)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  deleted_at    DateTime?
-  created_by    Int?
+  id              Int          @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento       @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa      @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime // calendario puro (medianoche UTC, ver fecha_offset_utc_fix)
+  hora            String? // "08:00"
+  actividad       String
+  proveedor       String? // "Dos57", "Enjoy", "Stands"
+  responsable     String? // "Dani + Agus"
+  observaciones   String?
+  orden           Int          @default(0)
+  // Tareas por rubro (DOS57, pestaña Operación): la actividad del cronograma
+  // atada a un rubro del evento, con su fase y estado. Las de Producción
+  // (Enjoy) quedan sin rubro ni fase.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+  fase            FaseEvento?
+  estado          EstadoTarea  @default(PENDIENTE)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
 
   @@index([evento_id, fecha])
+  @@index([rubro_evento_id])
+}
+
+// Fases operativas de un evento (como las columnas de la hoja STAFF COSTS de la
+// matriz de DOS57): se calculan con fecha_inicio/fecha_fin y los días de montaje
+// y desmontaje del evento — ver lib/fasesEvento.ts.
+enum FaseEvento {
+  VIAJE_IDA
+  MONTAJE
+  EVENTO
+  DESMONTAJE
+  VIAJE_VUELTA
+}
+
+enum EstadoTarea {
+  PENDIENTE
+  EN_CURSO
+  HECHA
+}
+
+// Tareas tipo de un rubro (ej. Layher: carga en depósito, traslado, montaje…).
+// Se cargan en el evento con "Cargar tareas tipo"; si el rubro no tiene
+// plantilla propia se usa la default de lib/fasesEvento.ts.
+model PlantillaTarea {
+  id         Int        @id @default(autoincrement())
+  empresa_id Int
+  rubro_id   Int
+  rubro      Rubro      @relation(fields: [rubro_id], references: [id])
+  orden      Int        @default(0)
+  actividad  String
+  fase       FaseEvento
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  created_by Int?
+
+  @@index([rubro_id])
 }
 
 model EspacioEvento {
@@ -3805,10 +3852,13 @@ enum BloqueCostoReal {
   PERDIDAS
 }
 
+// CAMPO = planillas de campo (horas, viandas, alojamiento, pañol, combustible)
+// que se imprimen precargadas y se completan sin señal — ver lib/planillasCampo.ts.
 enum OrigenLineaCostoReal {
   MANUAL
   PLANILLA
   SISTEMA
+  CAMPO
 }
 
 model LineaCostoReal {

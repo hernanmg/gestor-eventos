@@ -314,9 +314,9 @@ export async function calcularDesdeSistema(
   }
 }
 
-// Reemplaza las líneas de un origen (PLANILLA o SISTEMA) en los bloques dados.
+// Reemplaza las líneas de un origen (PLANILLA, SISTEMA o CAMPO) en los bloques dados.
 // Las líneas MANUAL nunca se tocan. Si el sistema no trae valor para un concepto
-// (ej. empleado sin valor de jornada) se conserva el valor unitario que el
+// (ej. empleado sin valor de jornada, turnos de las planillas de campo) se conserva el valor unitario que el
 // usuario había cargado a mano en la línea anterior del mismo concepto.
 export async function reemplazarLineas(
   tx: Prisma.TransactionClient,
@@ -341,7 +341,7 @@ export async function reemplazarLineas(
     await tx.lineaCostoReal.createMany({
       data: lineas.map((l, i) => {
         let { valor_unitario, total } = l;
-        const prev = p.origen === 'SISTEMA' && !valor_unitario ? valorPrevio.get(`${bloque}|${l.concepto}`) : undefined;
+        const prev = p.origen !== 'PLANILLA' && !valor_unitario ? valorPrevio.get(`${bloque}|${l.concepto}`) : undefined;
         if (prev) {
           valor_unitario = Number(prev.valor_unitario);
           total = calcularTotal(l.cantidad, valor_unitario, l.porcentaje ?? null);

@@ -6,7 +6,7 @@ import { asyncHandler } from '../lib/asyncHandler';
 import { uploadExcel } from '../controllers/combustible.controller';
 import {
   getCostoReal, listCostoReal, createLinea, updateLinea, deleteLinea,
-  sincronizarBloque, importarMatriz, exportarCostoReal,
+  sincronizarBloque, importarMatriz, exportarCostoReal, descargarPlanillasCampo, importarPlanillasCampo,
 } from '../controllers/costoReal.controller';
 
 // Costo real del evento (matriz de Flor, DOS57). ADMIN o permiso COSTO_REAL.
@@ -27,6 +27,8 @@ costoRealEventoRouter.get('/exportar',     asyncHandler(exportarCostoReal));
 costoRealEventoRouter.post('/lineas',      asyncHandler(createLinea));
 costoRealEventoRouter.post('/sincronizar', asyncHandler(sincronizarBloque));
 costoRealEventoRouter.post('/importar',    excelMiddleware, asyncHandler(importarMatriz));
+costoRealEventoRouter.get('/planillas-campo', asyncHandler(descargarPlanillasCampo));
+costoRealEventoRouter.post('/importar-campo', excelMiddleware, asyncHandler(importarPlanillasCampo));
 
 // ── /api/costo-real ───────────────────────────────────────────────────────────
 export const costoRealRouter = Router();

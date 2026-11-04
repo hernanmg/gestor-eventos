@@ -3160,7 +3160,17 @@ export interface CentroCostos {
 export type BloqueCostoReal =
   | 'STAFF' | 'ALOJAMIENTO' | 'COMIDAS' | 'COMBUSTIBLE_PERSONAL' | 'COMBUSTIBLE_MATERIAL'
   | 'PANOL' | 'VARIOS' | 'RENTAL_NAC' | 'RENTAL_IMP' | 'PERDIDAS';
-export type OrigenLineaCostoReal = 'MANUAL' | 'PLANILLA' | 'SISTEMA';
+export type OrigenLineaCostoReal = 'MANUAL' | 'PLANILLA' | 'SISTEMA' | 'CAMPO';
+
+export interface ImportarCampoResultado {
+  preview: boolean;
+  hojas:   { hoja: string; tipo: string; filas: number }[];
+  avisos:  string[];
+  total:   number;
+  bloques: { bloque: BloqueCostoReal; label: string; lineas: number; total: number; reemplaza: number; otras_lineas: number }[];
+  creadas?:      number;
+  reemplazadas?: number;
+}
 
 export interface LineaCostoReal {
   id:             number;
@@ -3238,5 +3248,68 @@ export interface ImportarMatrizResultado {
   }[];
   creadas?:      number;
   reemplazadas?: number;
+}
+
+// ── Operación del evento (DOS57): cuadrilla por fase y tareas por rubro ────────
+export type FaseEvento = 'VIAJE_IDA' | 'MONTAJE' | 'EVENTO' | 'DESMONTAJE' | 'VIAJE_VUELTA';
+export type EstadoTarea = 'PENDIENTE' | 'EN_CURSO' | 'HECHA';
+
+export interface TareaEvento {
+  id:              number;
+  rubro_evento_id: number | null;
+  fecha:           string;
+  hora:            string | null;
+  actividad:       string;
+  responsable:     string | null;
+  observaciones:   string | null;
+  fase:            FaseEvento | null;
+  estado:          EstadoTarea;
+  orden:           number;
+}
+
+export interface RangoFase { fase: FaseEvento; label: string; desde: string | null; hasta: string | null; dias: number | null }
+
+export interface PersonaCuadrilla {
+  empleado_id:     number;
+  nombre:          string;
+  categoria:       string;
+  categoria_label: string;
+  dias:            Record<FaseEvento, number>;
+  total:           number;
+  trabajados:      number;
+  planificados:    number;
+}
+
+export interface RubroOperacion {
+  id:                 number;
+  rubro:              { id: number; nombre: string };
+  estado:             EstadoRubroEvento;
+  proveedor:          { id: number; nombre: string } | null;
+  usa_stock_propio:   boolean;
+  cantidad_stock:     number | null;
+  cantidad_proveedor: number | null;
+  coordina_nombre:    string | null;
+  material:           { id: number; producto: string; cantidad: number; ubicacion: string }[];
+  tareas:             TareaEvento[];
+  hechas:             number;
+}
+
+export interface Operacion {
+  evento:    { id: number; nombre: string; lugar: string | null; fecha_inicio: string | null; fecha_fin: string | null; dias_montaje: number; dias_desmontaje: number };
+  fases:     RangoFase[];
+  cuadrilla: {
+    personas:      PersonaCuadrilla[];
+    por_categoria: { categoria: string; label: string; personas: number; dias: Record<FaseEvento, number>; total: number }[];
+    sin_fechas:    boolean;
+  };
+  rubros:    RubroOperacion[];
+  generales: TareaEvento[];
+  remitos:   { id: number; tipo: string; numero: number; estado: string; fecha: string; chofer: string | null; items: number; unidades: number }[];
+}
+
+export interface PlantillaTareas {
+  rubro:      { id: number; nombre: string };
+  es_default: boolean;
+  tareas:     { actividad: string; fase: FaseEvento }[];
 }
 

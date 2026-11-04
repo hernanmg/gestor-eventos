@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Download, FileUp, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Download, FileUp, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BaseTable from '@/components/ui/BaseTable';
 import {
@@ -10,6 +10,7 @@ import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { BloqueCostoReal, BloqueCostoRealData, LineaCostoReal, OrigenLineaCostoReal } from '@/types';
 import LineaCostoRealDialog from './LineaCostoRealDialog';
 import ImportarMatrizDialog from './ImportarMatrizDialog';
+import PlanillasCampoDialog from './PlanillasCampoDialog';
 
 // Pestaña "Costo real" (DOS57, eventos en modalidad OPERATIVA) — la matriz que
 // arma Flor por evento (docs/dos57/jazmin/DOS57_NORTE ROCK_2026.xlsx): arriba el
@@ -23,9 +24,13 @@ const ORIGEN: Record<OrigenLineaCostoReal, { label: string; cls: string; title: 
   MANUAL:   { label: 'Manual',   cls: 'bg-gray-100 text-gray-700',   title: 'Cargada a mano' },
   PLANILLA: { label: 'Planilla', cls: 'bg-blue-50 text-blue-700',    title: 'Importada de la matriz Excel' },
   SISTEMA:  { label: 'Sistema',  cls: 'bg-green-50 text-green-700',  title: 'Traída de lo cargado en el sistema' },
+  CAMPO:    { label: 'Campo',    cls: 'bg-purple-50 text-purple-700', title: 'Importada de las planillas de campo' },
 };
 
-const fmtCant = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 3 });
+// Bloques que se llenan con las planillas de campo (ver backend lib/planillasCampo.ts)
+const DESDE_CAMPO: BloqueCostoReal[] = ['STAFF', 'ALOJAMIENTO', 'COMIDAS', 'COMBUSTIBLE_PERSONAL', 'COMBUSTIBLE_MATERIAL', 'PERDIDAS'];
+
+const fmtCant =(n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 3 });
 
 const GRUPOS: { label: string; bloques: BloqueCostoReal[] }[] = [
   { label: 'Opex',   bloques: ['STAFF', 'ALOJAMIENTO', 'COMIDAS', 'COMBUSTIBLE_PERSONAL', 'COMBUSTIBLE_MATERIAL', 'PANOL', 'VARIOS'] },
@@ -45,6 +50,7 @@ export default function CostoRealTab({ eventoId, canEdit }: Props) {
   const [sel, setSel] = useState<BloqueCostoReal>('STAFF');
   const [dialog, setDialog] = useState<{ linea?: LineaCostoReal } | null>(null);
   const [importando, setImportando] = useState(false);
+  const [campo, setCampo] = useState(false);
   const [avisos, setAvisos] = useState<{ titulo: string; items: string[] } | null>(null);
 
   if (isLoading || !data) {
@@ -79,6 +85,11 @@ export default function CostoRealTab({ eventoId, canEdit }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={() => setCampo(true)} title="Planillas precargadas para completar sin señal">
+            <ClipboardList size={14} className="mr-1.5" /> Planillas de campo
+          </Button>
+        )}
         {canEdit && (
           <Button variant="outline" size="sm" onClick={() => setImportando(true)}>
             <FileUp size={14} className="mr-1.5" /> Importar matriz
@@ -170,6 +181,7 @@ export default function CostoRealTab({ eventoId, canEdit }: Props) {
         <LineaCostoRealDialog eventoId={eventoId} bloque={bloque} linea={dialog.linea} open onClose={() => setDialog(null)} />
       )}
       <ImportarMatrizDialog eventoId={eventoId} eventoNombre={data.evento.nombre} open={importando} onClose={() => setImportando(false)} />
+      <PlanillasCampoDialog eventoId={eventoId} eventoNombre={data.evento.nombre} open={campo} onClose={() => setCampo(false)} />
     </div>
   );
 }
@@ -240,7 +252,11 @@ function LineasTabla({ eventoId, bloque, canEdit, onEditar }: {
           {bloque.lineas.length === 0 && (
             <tr>
               <td colSpan={cols} className="py-8 text-center text-sm text-muted-foreground">
-                Sin líneas. {bloque.fuente ? 'Traelas del sistema, importá la matriz o agregalas a mano.' : 'Importá la matriz o agregalas a mano.'}
+                Sin líneas. {[
+                  bloque.fuente && 'traelas del sistema',
+                  'importá la matriz',
+                  DESDE_CAMPO.includes(bloque.bloque) && 'las planillas de campo',
+                ].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase())} o agregalas a mano.
               </td>
             </tr>
           )}

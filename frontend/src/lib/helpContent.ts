@@ -274,7 +274,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Los de DOS57 en modalidad operativa muestran Costo real y no muestran Ingresos, Conciliatoria ni Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Los de DOS57 en modalidad operativa muestran Operación y Costo real, y no muestran Ingresos, Conciliatoria ni Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
       },
       {
         titulo: 'Centro de costos o flujo de caja completo',
@@ -283,6 +283,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Centro de costos: Costos, RRHH y Extras',
         contenido: 'Costos tiene una línea por cada rubro confirmado en la Ficha (aparecen solas), más las que agregues a mano: descripción, responsable, consumido, IVA, total, falta pagar, fecha de pago y si se le avisó al proveedor. Hacé clic en el IVA para cargar neto + IVA, y en Falta pagar para registrar señas o pagos parciales. RRHH muestra las líneas de personal del evento.\nExtras es lo que surge fuera de lo presupuestado. Por defecto lo paga el cliente y no suma al costo del evento; si lo paga la empresa, editalo y elegí "La empresa": pasa a sumar como Gastos Extra. Cada extra puede llevar los datos de cuenta, el estado de la factura y el comprobante adjunto.\n"Exportar Excel" baja la planilla con las hojas Costos, RRHH y Extras; "Exportar extras" baja sólo la hoja Extras, para mandársela al cliente.',
+      },
+      {
+        titulo: 'Operación (DOS57)',
+        contenido: 'En los eventos de DOS57 en modalidad operativa, la pestaña Operación arma el evento desde los rubros elegidos. Arriba están las fases (viaje, montaje, evento, desmontaje y regreso), que salen de las fechas del evento y de los días de montaje y desmontaje: si faltan, cargalos en Editar evento.\nCada rubro muestra su material (lo asignado desde el stock propio y el proveedor, que se carga en la Ficha) y sus tareas. "Cargar tareas tipo" agrega la lista de base del rubro, cada tarea en el primer día de su fase, sin repetir las que ya están; "Tareas tipo" permite ajustar esa lista para todos los eventos. Hacé clic en el círculo de una tarea para pasarla de pendiente a en curso y a hecha.\nLa cuadrilla sale del Parte diario: cada persona asignada al evento con sus días por fase, agrupada por categoría. Lo marcado "plan." son días asignados en un parte que todavía no se cerró. "Exportar cuadrilla" baja la hoja con el formato de STAFF COSTS. Al final están los remitos del evento con lo que salió.',
       },
       {
         titulo: 'Costo real (DOS57)',
@@ -533,6 +537,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Importar y exportar',
         contenido: '"Importar" lee la planilla de costo real del evento, la misma que se arma hoy (hojas CC, OPEX, RENTAL COSTS y L&A COSTS): primero muestra qué trae cada bloque y si el total coincide con la hoja CC, y recién al confirmar lo guarda. Reimportar reemplaza lo importado antes y no toca lo cargado a mano. "Exportar" baja el Excel con el mismo formato, que se puede volver a importar.',
+      },
+      {
+        titulo: 'Planillas de campo (sin señal)',
+        contenido: '"Planillas" baja un Excel con las planillas de control del evento ya precargadas: horas y viandas de cada día con la cuadrilla asignada (del Parte diario), alojamiento, pañol (con lo que sale y su valor) y combustible (con los vehículos del evento). Se imprimen para completar a mano o se completan directo en la notebook, sin conexión.\nA la vuelta, pasá lo anotado al mismo Excel y elegí "Planillas" → "Elegir planillas completas": primero ves qué entra en cada bloque y después se carga al costo real con la etiqueta "Campo". Las horas dan los turnos por grupo (el valor del turno se completa en el costo real y se conserva al reimportar), las viandas las comidas, lo que faltó del pañol las pérdidas, y las cargas el combustible. Reimportar reemplaza sólo lo de campo; si un bloque ya tiene líneas de la matriz o del sistema te avisa, para no contarlo dos veces.',
       },
       {
         titulo: 'Quién lo ve',

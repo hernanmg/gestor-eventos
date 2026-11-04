@@ -28,6 +28,7 @@ import { produccionEventoRouter, produccionRouter } from './routes/produccionEve
 import { cortesiasEventoRouter, cortesiasRouter } from './routes/cortesias';
 import { centroCostosEventoRouter, extrasEventoRouter } from './routes/centroCostos';
 import { costoRealEventoRouter, costoRealRouter } from './routes/costoReal';
+import { operacionEventoRouter, operacionRouter } from './routes/operacion';
 import parteDiarioRouter from './routes/parteDiario';
 import { comidasEventoRouter, comidasRouter } from './routes/comidas';
 import calendarioRouter from './routes/calendario';
@@ -127,6 +128,8 @@ app.use('/api/eventos/:id/centro-costos', centroCostosEventoRouter);
 app.use('/api/extras-evento',      extrasEventoRouter);
 app.use('/api/eventos/:id/costo-real', costoRealEventoRouter);
 app.use('/api/costo-real',         costoRealRouter);
+app.use('/api/eventos/:id/operacion', operacionEventoRouter);
+app.use('/api/operacion',          operacionRouter);
 app.use('/api/rubros-evento',     rubrosEventoRouter);
 app.use('/api/pedido-items',      pedidoItemsRouter);
 app.use('/api/parte-diario',      parteDiarioRouter);

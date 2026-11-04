@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { BloqueCostoReal, CostoReal, CostoRealEventoFila, ImportarMatrizResultado, LineaCostoReal } from '@/types';
+import type { BloqueCostoReal, CostoReal, CostoRealEventoFila, ImportarCampoResultado, ImportarMatrizResultado, LineaCostoReal } from '@/types';
 
 // Costo real del evento (DOS57) — la matriz de Flor. Ver backend lib/costoReal.ts.
 
@@ -89,22 +89,46 @@ export function useImportarMatriz(eventoId: number) {
   });
 }
 
+/** Planillas de campo completas (horas, viandas, alojamiento, pañol, combustible) */
+export function useImportarCampo(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation<ImportarCampoResultado, Error, { file: File; preview: boolean }>({
+    mutationFn: ({ file, preview }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post(`/eventos/${eventoId}/costo-real/importar-campo?preview=${preview}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data);
+    },
+    onSuccess: (r) => { if (!r.preview) invalidar(qc, eventoId); },
+  });
+}
+
+async function descargar(url: string, fallback: string) {
+  const response = await api.get(url, { responseType: 'blob' });
+  const cd       = (response.headers['content-disposition'] as string | undefined) ?? '';
+  const filename = decodeURIComponent(cd.match(/filename="([^"]+)"/)?.[1] ?? fallback);
+  const href     = URL.createObjectURL(new Blob([response.data as BlobPart]));
+  const a        = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(href);
+}
+
+/** Excel imprimible con las planillas del evento precargadas */
+export function descargarPlanillasCampo(eventoId: number) {
+  return descargar(`/eventos/${eventoId}/costo-real/planillas-campo`, `planillas-campo-evento-${eventoId}.xlsx`);
+}
+
 export function useExportarCostoReal() {
   const [exportando, setExportando] = useState<number | null>(null);
   const exportar = useCallback(async (eventoId: number) => {
     setExportando(eventoId);
     try {
-      const response = await api.get(`/eventos/${eventoId}/costo-real/exportar`, { responseType: 'blob' });
-      const cd       = (response.headers['content-disposition'] as string | undefined) ?? '';
-      const filename = decodeURIComponent(cd.match(/filename="([^"]+)"/)?.[1] ?? `costo-real-evento-${eventoId}.xlsx`);
-      const href     = URL.createObjectURL(new Blob([response.data as BlobPart]));
-      const a        = document.createElement('a');
-      a.href = href;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(href);
+      await descargar(`/eventos/${eventoId}/costo-real/exportar`, `costo-real-evento-${eventoId}.xlsx`);
     } finally {
       setExportando(null);
     }

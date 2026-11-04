@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Download, FileUp, Loader2, Search } from 'lucide-react';
+import { ClipboardList, Download, FileUp, Loader2, Search } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import BaseTable from '@/components/ui/BaseTable';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { tienePermiso } from '@/lib/permisos';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { CostoRealEventoFila } from '@/types';
 import ImportarMatrizDialog from '@/pages/Evento/CostoReal/ImportarMatrizDialog';
+import PlanillasCampoDialog from '@/pages/Evento/CostoReal/PlanillasCampoDialog';
 
 // Tablero de Flor (DOS57): el costo real de cada evento — su matriz por evento,
 // con importar / exportar desde la misma fila. El detalle se carga en la
@@ -26,6 +27,7 @@ export default function CostoRealPage() {
   const [busqueda, setBusqueda] = useState('');
   const [anio, setAnio] = useState<string>(String(new Date().getFullYear()));
   const [importar, setImportar] = useState<CostoRealEventoFila | null>(null);
+  const [campo, setCampo] = useState<CostoRealEventoFila | null>(null);
   const canEdit = tienePermiso(user, 'COSTO_REAL');
 
   const anios = useMemo(() => {
@@ -89,7 +91,7 @@ export default function CostoRealPage() {
               <th className="px-3 py-2 text-right w-36">Rental presupuestado</th>
               <th className="px-3 py-2 text-right w-36">Costo real</th>
               <th className="px-3 py-2 text-left w-28">Actualizado</th>
-              <th className="px-3 py-2 w-56" />
+              <th className="px-3 py-2 w-80" />
             </tr>
           </thead>
           <tbody>
@@ -116,6 +118,11 @@ export default function CostoRealPage() {
                 <td className={cn(cell, 'text-xs')} data-label="Actualizado">{e.actualizado ? formatFechaLocal(e.actualizado) : '—'}</td>
                 <td className={cn(cell, 'whitespace-nowrap text-right')} onClick={ev => ev.stopPropagation()}>
                   {canEdit && (
+                    <Button variant="outline" size="sm" className="mr-1.5" onClick={() => setCampo(e)} title="Planillas de campo precargadas (carga sin señal)">
+                      <ClipboardList size={14} className="mr-1" /> Planillas
+                    </Button>
+                  )}
+                  {canEdit && (
                     <Button variant="outline" size="sm" className="mr-1.5" onClick={() => setImportar(e)}>
                       <FileUp size={14} className="mr-1" /> Importar
                     </Button>
@@ -134,6 +141,9 @@ export default function CostoRealPage() {
 
       {importar && (
         <ImportarMatrizDialog eventoId={importar.id} eventoNombre={importar.nombre} open onClose={() => setImportar(null)} />
+      )}
+      {campo && (
+        <PlanillasCampoDialog eventoId={campo.id} eventoNombre={campo.nombre} open onClose={() => setCampo(null)} />
       )}
     </div>
   );

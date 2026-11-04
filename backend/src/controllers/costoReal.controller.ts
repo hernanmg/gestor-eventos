@@ -10,6 +10,8 @@ import {
 } from '../lib/costoReal';
 import { parseMatrizCostoReal } from '../lib/costoRealImporter';
 import { generateCostoRealExcel } from '../lib/costoRealExporter';
+import { datosPlanillasCampo, generarPlanillasCampo, leerPlanillasCampo } from '../lib/planillasCampo';
+import { normalizarTexto } from '../lib/costoReal';
 
 // Costo real del evento (DOS57) — la matriz de Flor. Ver lib/costoReal.ts.
 // Acceso: ADMIN o quien tenga el permiso COSTO_REAL (Flor, OPERADOR).
@@ -286,7 +288,7 @@ export async function importarMatriz(req: Request, res: Response) {
     return {
       bloque: info.bloque, label: info.label, lineas: ls.length, total: r2(ls.reduce((a, l) => a + l.total, 0)),
       reemplaza:     contar(info.bloque, 'PLANILLA'),
-      otras_lineas:  contar(info.bloque, 'MANUAL') + contar(info.bloque, 'SISTEMA'),
+      otras_lineas:  contar(info.bloque, 'MANUAL') + contar(info.bloque, 'SISTEMA') + contar(info.bloque, 'CAMPO'),
       ...(esPreview && { detalle: ls.slice(0, 50) }),
     };
   });
@@ -297,7 +299,7 @@ export async function importarMatriz(req: Request, res: Response) {
   }
   const conDuplicados = bloques.filter(b => b.lineas && b.otras_lineas);
   if (conDuplicados.length) {
-    avisos.push(`Ojo: ${conDuplicados.map(b => b.label).join(', ')} ya tiene${conDuplicados.length > 1 ? 'n' : ''} líneas cargadas a mano o traídas del sistema; se suman a las importadas.`);
+    avisos.push(`Ojo: ${conDuplicados.map(b => b.label).join(', ')} ya tiene${conDuplicados.length > 1 ? 'n' : ''} líneas cargadas a mano, traídas del sistema o de las planillas de campo; se suman a las importadas.`);
   }
   const resumen = { titulo: m.titulo, total_planilla: m.total_planilla, total, omitidas: m.omitidas, hojas: m.hojas, avisos, bloques };
   if (esPreview) { res.json({ preview: true, ...resumen }); return; }
@@ -328,4 +330,75 @@ export async function exportarCostoReal(req: Request, res: Response) {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archivo)}"`);
   res.send(buffer);
+}
+
+// ── Planillas de campo (ver lib/planillasCampo.ts) ────────────────────────────
+
+// GET /api/eventos/:id/costo-real/planillas-campo — Excel imprimible precargado
+export async function descargarPlanillasCampo(req: Request, res: Response) {
+  const datos = await datosPlanillasCampo(Number(req.params.id), req.empresaId!);
+  if (!datos) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+  if (!datos.dias.length) {
+    res.status(400).json({ error: 'Cargá la fecha de inicio del evento (y los días de montaje y desmontaje) para armar las planillas por día' });
+    return;
+  }
+  const buffer = await generarPlanillasCampo(datos);
+  const archivo = `${datos.evento.nombre.replace(/[\\/:*?"<>|]/g, '-')} - Planillas de campo.xlsx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archivo)}"`);
+  res.send(buffer);
+}
+
+// POST /api/eventos/:id/costo-real/importar-campo?preview=true|false (multipart: archivo)
+// Las planillas completas pasan al costo real como líneas CAMPO. Reimportar
+// reemplaza las líneas de campo de los bloques que trae el archivo.
+export async function importarPlanillasCampo(req: Request, res: Response) {
+  const evento = await buscarEvento(req, res);
+  if (!evento) return;
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const esPreview = req.query.preview !== 'false';
+
+  const items = await prisma.panolItem.findMany({ where: { deleted_at: null, ...withTenant(req.empresaId!) }, select: { nombre: true, valor: true } });
+  const valorPanol = new Map(items.filter(i => i.valor != null).map(i => [normalizarTexto(i.nombre), Number(i.valor)]));
+
+  let leidas: Awaited<ReturnType<typeof leerPlanillasCampo>>;
+  try {
+    leidas = await leerPlanillasCampo(req.file.buffer, evento.fecha_inicio ?? new Date(), valorPanol);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' }); return;
+  }
+
+  const existentes = await prisma.lineaCostoReal.groupBy({
+    by: ['bloque', 'origen'], where: { evento_id: evento.id, deleted_at: null }, _count: true,
+  });
+  const contar = (b: BloqueCostoReal, o: string) => existentes.find(e => e.bloque === b && e.origen === o)?._count ?? 0;
+  const bloques = BLOQUES.filter(info => leidas.porBloque[info.bloque]?.length).map(info => {
+    const ls = leidas.porBloque[info.bloque]!;
+    return {
+      bloque: info.bloque, label: info.label, lineas: ls.length, total: r2(ls.reduce((a, l) => a + l.total, 0)),
+      reemplaza:    contar(info.bloque, 'CAMPO'),
+      otras_lineas: contar(info.bloque, 'PLANILLA') + contar(info.bloque, 'SISTEMA'),
+      ...(esPreview && { detalle: ls.slice(0, 50) }),
+    };
+  });
+  const avisos = [...leidas.avisos];
+  const conOtras = bloques.filter(b => b.otras_lineas);
+  if (conOtras.length) {
+    avisos.push(`Ojo: ${conOtras.map(b => b.label).join(', ')} ya tiene${conOtras.length > 1 ? 'n' : ''} líneas de la matriz o traídas del sistema: revisá que no se cuente dos veces.`);
+  }
+  const resumen = { hojas: leidas.hojas, avisos, bloques, total: r2(bloques.reduce((a, b) => a + b.total, 0)) };
+  if (esPreview) { res.json({ preview: true, ...resumen }); return; }
+
+  const r = await prisma.$transaction(async tx => {
+    const out = await reemplazarLineas(tx, {
+      eventoId: evento.id, empresaId: req.empresaId!, userId: req.user!.id, origen: 'CAMPO', porBloque: leidas.porBloque,
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'LineaCostoReal',
+      eventoId: evento.id, tx: tx as any,
+      descripcion: `Costo real: importó planillas de campo "${req.file!.originalname}" (${out.creadas} líneas)`,
+    });
+    return out;
+  }, { timeout: 30_000 });
+  res.json({ preview: false, ...resumen, ...r });
 }

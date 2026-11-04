@@ -31,6 +31,7 @@ import ProduccionEventoPage from './Produccion';
 import ResumenRubros from './Rubros/ResumenRubros';
 import CentroCostosTab from './CentroCostos';
 import CostoRealTab, { ResumenCostoReal } from './CostoReal';
+import OperacionTab from './Operacion';
 import { tienePermiso } from '@/lib/permisos';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
@@ -240,7 +241,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'OPERACION' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -249,6 +250,8 @@ type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REA
 // así que da lo mismo cómo se llegó a la página.
 const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
+  // DOS57 (modalidad OPERATIVA): rubros con material y tareas, cuadrilla por fase
+  { key: 'OPERACION',     label: 'Operación'     },
   { key: 'FICHA',         label: 'Ficha'         },
   // Cronograma, espacios, internet, branding y compras (planilla de producción de Dani)
   { key: 'PRODUCCION',    label: 'Producción'    },
@@ -291,6 +294,7 @@ const CENTRO_COSTOS_OCULTAS: MainTab[] = ['EGRESO', 'INGRESO', 'CAJA', 'CONCILIA
 const OPERATIVA_OCULTAS: MainTab[] = ['INGRESO', 'CONCILIATORIA', 'ECHEQS'];
 
 function visiblePorModalidad(key: MainTab, modalidad: string | undefined): boolean {
+  if (key === 'OPERACION') return modalidad === 'OPERATIVA';
   if (modalidad === 'CENTRO_COSTOS') return !CENTRO_COSTOS_OCULTAS.includes(key) && key !== 'COSTO_REAL';
   if (key === 'CENTRO_COSTOS') return false;
   if (modalidad === 'OPERATIVA') return !OPERATIVA_OCULTAS.includes(key);
@@ -559,6 +563,10 @@ export default function EventoPage() {
 
         {mainTab === 'CENTRO_COSTOS' && (
           <CentroCostosTab eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'OPERACION' && (
+          <OperacionTab eventoId={eventoId} canEdit={canEdit} onIrA={setMainTab} />
         )}
 
         {mainTab === 'COSTO_REAL' && (

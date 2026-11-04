@@ -21,6 +21,12 @@ interface Props {
 
 const conPorcentaje = (b: BloqueCostoRealData) => b.porcentaje_default !== null;
 
+const ORIGEN_TEXTO: Record<Exclude<LineaCostoReal['origen'], 'MANUAL'>, { vino: string; volver: string }> = {
+  PLANILLA: { vino: 'vino de la matriz importada',        volver: 'importar la matriz' },
+  SISTEMA:  { vino: 'se trajo del sistema',               volver: 'traer el bloque del sistema' },
+  CAMPO:    { vino: 'vino de las planillas de campo',     volver: 'importar las planillas de campo' },
+};
+
 export default function LineaCostoRealDialog({ eventoId, bloque, linea, open, onClose }: Props) {
   const [concepto, setConcepto] = useState('');
   const [detalle,  setDetalle]  = useState('');
@@ -92,8 +98,7 @@ export default function LineaCostoRealDialog({ eventoId, bloque, linea, open, on
         <div className="space-y-3">
           {linea && linea.origen !== 'MANUAL' && (
             <p className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-              Esta línea {linea.origen === 'PLANILLA' ? 'vino de la planilla importada' : 'se trajo del sistema'}:
-              si volvés a {linea.origen === 'PLANILLA' ? 'importar la matriz' : 'traer el bloque del sistema'}, se reemplaza.
+              Esta línea {ORIGEN_TEXTO[linea.origen].vino}: si volvés a {ORIGEN_TEXTO[linea.origen].volver}, se reemplaza.
             </p>
           )}
           <div>
