@@ -581,6 +581,7 @@ const HOME_ROUTE_OPTIONS: { value: string; label: string }[] = [
   { value: '/macro',             label: 'Macro' },
   { value: '/rrhh',              label: 'RRHH' },
   { value: '/stock',             label: 'Stock' },
+  { value: '/costo-real',        label: 'Costo real — Matriz de costo por evento (DOS57)' },
 ];
 
 const ROL_DESCRIPCION: Record<Rol, string> = {

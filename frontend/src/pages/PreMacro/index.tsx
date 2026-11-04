@@ -7,7 +7,7 @@ import {
 import { usePreMacro, useUpdatePreMacro, useUpdateRubros, useConfirmarPreMacro } from '@/hooks/usePreMacro';
 import { useUsuarios } from '@/hooks/useUsuarios';
 import { useAuth } from '@/hooks/useAuth';
-import { EMPRESAS } from '@/lib/empresasConstants';
+import { modalidadesDe } from '@/lib/modalidades';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import CuitInput from '@/components/ui/CuitInput';
@@ -254,9 +254,12 @@ function Stepper({ step }: { step: number }) {
 // ── Paso 1 — El evento ────────────────────────────────────────────────────────
 
 function Paso1({ form, set }: StepProps) {
-  // Modalidad: sólo Enjoy elige (DOS57 siempre flujo de caja completo — el backend lo fuerza)
+  // Modalidad: Enjoy y DOS57 eligen (ver lib/modalidades.ts); el resto, flujo de
+  // caja completo. Una modalidad que no aplica a la empresa (la Pre-Macro nace con
+  // CENTRO_COSTOS) se muestra como el default de la empresa — el backend hace lo mismo.
   const { user } = useAuth();
-  const eligeModalidad = user?.empresaId === EMPRESAS.ENJOY;
+  const opcionesModalidad = modalidadesDe(user?.empresaId);
+  const modalidadActual = opcionesModalidad?.find(o => o.value === form.modalidad) ?? opcionesModalidad?.[0];
   return (
     <div className="space-y-5 max-w-2xl">
       <Field label="¿Para qué es este evento?">
@@ -284,17 +287,14 @@ function Paso1({ form, set }: StepProps) {
         description={form.es_privado ? 'Privado — acceso restringido' : 'Público'}
       />
 
-      {eligeModalidad && (
+      {opcionesModalidad && modalidadActual && (
         <Field label="¿Cómo se lleva la plata del evento?">
           <div className="flex flex-wrap gap-2">
-            <Chip selected={form.modalidad === 'CENTRO_COSTOS'} onClick={() => set('modalidad', 'CENTRO_COSTOS')}>Centro de costos</Chip>
-            <Chip selected={form.modalidad === 'FLUJO_CAJA'} onClick={() => set('modalidad', 'FLUJO_CAJA')}>Flujo de caja completo</Chip>
+            {opcionesModalidad.map(o => (
+              <Chip key={o.value} selected={modalidadActual.value === o.value} onClick={() => set('modalidad', o.value)}>{o.corto}</Chip>
+            ))}
           </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {form.modalidad === 'CENTRO_COSTOS'
-              ? 'Costos, RRHH y Extras, sin caja ni ingresos. Para la mayoría de los eventos.'
-              : 'Egresos, ingresos, caja, echeqs y conciliatoria. Para los eventos grandes (TC, Lecap, Monster).'}
-          </p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{modalidadActual.detalle}</p>
         </Field>
       )}
 

@@ -30,6 +30,8 @@ import EventoLogisticaTab from './EventoLogisticaTab';
 import ProduccionEventoPage from './Produccion';
 import ResumenRubros from './Rubros/ResumenRubros';
 import CentroCostosTab from './CentroCostos';
+import CostoRealTab, { ResumenCostoReal } from './CostoReal';
+import { tienePermiso } from '@/lib/permisos';
 import { FEATURES } from '@/lib/features';
 import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
@@ -238,7 +240,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -252,6 +254,8 @@ const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'PRODUCCION',    label: 'Producción'    },
   // Sólo eventos en modalidad CENTRO_COSTOS (Enjoy, eventos chicos) — ver CENTRO_COSTOS_OCULTAS
   { key: 'CENTRO_COSTOS', label: 'Centro de costos' },
+  // Matriz de costo real de Flor (DOS57) — ADMIN o permiso COSTO_REAL
+  { key: 'COSTO_REAL',    label: 'Costo real'    },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
@@ -280,6 +284,18 @@ const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS', 'LOGIST
 // planilla de centro de costos — sin caja ni ingresos. Por debajo son los mismos
 // movimientos de egreso, así que cambiar de modalidad no pierde nada.
 const CENTRO_COSTOS_OCULTAS: MainTab[] = ['EGRESO', 'INGRESO', 'CAJA', 'CONCILIATORIA', 'ECHEQS'];
+
+// Modalidad operativa (DOS57): el costo se lleva en la matriz de Flor (pestaña
+// Costo real). Caja, Facturas y A cobrar se siguen usando; no llevan ingresos
+// por rubro, conciliación de socios ni echeqs del evento.
+const OPERATIVA_OCULTAS: MainTab[] = ['INGRESO', 'CONCILIATORIA', 'ECHEQS'];
+
+function visiblePorModalidad(key: MainTab, modalidad: string | undefined): boolean {
+  if (modalidad === 'CENTRO_COSTOS') return !CENTRO_COSTOS_OCULTAS.includes(key) && key !== 'COSTO_REAL';
+  if (key === 'CENTRO_COSTOS') return false;
+  if (modalidad === 'OPERATIVA') return !OPERATIVA_OCULTAS.includes(key);
+  return true;
+}
 
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
@@ -312,7 +328,9 @@ export default function EventoPage() {
   const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
     (!t.adminOnly || isAdmin)
     && (!evento?.es_informal || INFORMAL_TABS.includes(t.key))
-    && (evento?.modalidad === 'CENTRO_COSTOS' ? !CENTRO_COSTOS_OCULTAS.includes(t.key) : t.key !== 'CENTRO_COSTOS')
+    && visiblePorModalidad(t.key, evento?.modalidad)
+    // Costo real: eventos de DOS57 (operativos o con flujo de caja), con permiso
+    && (t.key !== 'COSTO_REAL' || (user?.empresaId === EMPRESAS.DOS57 && tienePermiso(user, 'COSTO_REAL')))
     && (t.key !== 'CORTESIAS' || mostrarCortesias)
     && (t.key !== 'LOGISTICA' || canEdit),
   );
@@ -527,7 +545,12 @@ export default function EventoPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
         {mainTab === 'RESUMEN' && (
-          <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} soloEgresos={evento.modalidad === 'CENTRO_COSTOS'} />
+          <div className="space-y-3">
+            {MAIN_TABS_KEYS_VISIBLES.includes('COSTO_REAL') && (
+              <ResumenCostoReal eventoId={eventoId} onVer={() => setMainTab('COSTO_REAL')} />
+            )}
+            <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} soloEgresos={evento.modalidad !== 'FLUJO_CAJA'} />
+          </div>
         )}
 
         {mainTab === 'FICHA' && (
@@ -536,6 +559,10 @@ export default function EventoPage() {
 
         {mainTab === 'CENTRO_COSTOS' && (
           <CentroCostosTab eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'COSTO_REAL' && (
+          <CostoRealTab eventoId={eventoId} canEdit={tienePermiso(user, 'COSTO_REAL')} />
         )}
 
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (

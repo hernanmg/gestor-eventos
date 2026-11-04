@@ -55,13 +55,24 @@ function sociosSumOk(socios: { porcentaje: number }[]): boolean {
   return Math.abs(sum - 100) < 0.01;
 }
 
-// Modalidad flujo de caja / centro de costos: sólo Enjoy elige — DOS57 (y
-// cualquier otra empresa) lleva siempre el flujo de caja completo. En Enjoy el
-// default de un evento nuevo es centro de costos (los grandes — TC, Lecap,
-// Monster — se marcan FLUJO_CAJA).
+// Modalidad del evento por empresa. Enjoy: centro de costos por default (los
+// grandes — TC, Lecap, Monster — se marcan FLUJO_CAJA). DOS57: operativa por
+// default (matriz de costo real de Flor), o FLUJO_CAJA. Otras empresas: siempre
+// FLUJO_CAJA. La primera opción de cada lista es el default.
+export const MODALIDADES_POR_EMPRESA: Record<number, ModalidadEvento[]> = {
+  [EMPRESAS.ENJOY]: [ModalidadEvento.CENTRO_COSTOS, ModalidadEvento.FLUJO_CAJA],
+  [EMPRESAS.DOS57]: [ModalidadEvento.OPERATIVA, ModalidadEvento.FLUJO_CAJA],
+};
+
+export function modalidadesPermitidas(empresaId: number): ModalidadEvento[] {
+  return MODALIDADES_POR_EMPRESA[empresaId] ?? [ModalidadEvento.FLUJO_CAJA];
+}
+
+// Una modalidad pedida que no aplica a la empresa (ej. la Pre-Macro trae
+// CENTRO_COSTOS por default también en DOS57) cae en el default de la empresa.
 export function resolverModalidad(empresaId: number, pedida: ModalidadEvento | undefined): ModalidadEvento {
-  if (empresaId !== EMPRESAS.ENJOY) return ModalidadEvento.FLUJO_CAJA;
-  return pedida ?? ModalidadEvento.CENTRO_COSTOS;
+  const permitidas = modalidadesPermitidas(empresaId);
+  return pedida && permitidas.includes(pedida) ? pedida : permitidas[0];
 }
 
 function toDate(s: string | null | undefined): Date | null | undefined {
@@ -177,8 +188,8 @@ export async function update(req: Request, res: Response) {
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base, estado, modalidad } = parsed.data;
-  if (modalidad !== undefined && modalidad !== existing.modalidad && req.empresaId !== EMPRESAS.ENJOY) {
-    res.status(400).json({ error: 'La modalidad centro de costos sólo aplica a Enjoy' });
+  if (modalidad !== undefined && modalidad !== existing.modalidad && !modalidadesPermitidas(req.empresaId!).includes(modalidad)) {
+    res.status(400).json({ error: 'Esa modalidad no aplica a los eventos de esta empresa' });
     return;
   }
   if (socios !== undefined && !sociosSumOk(socios)) {

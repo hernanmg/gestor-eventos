@@ -31,7 +31,8 @@ enum EstadoEvento {
   IMPORTADO
 }
 
-// Cómo se lleva la plata del evento (sólo Enjoy; DOS57 siempre FLUJO_CAJA).
+// Cómo se lleva la plata del evento. Enjoy: FLUJO_CAJA o CENTRO_COSTOS.
+// DOS57: FLUJO_CAJA u OPERATIVA (matriz de costo real de Flor, ver LineaCostoReal).
 // FLUJO_CAJA = planilla completa (Egresos/Ingresos/Caja/Conciliatoria/Echeqs),
 // para los eventos grandes (TC, Lecap, Monster). CENTRO_COSTOS = planilla de
 // centro de costos de Male (Costos/RRHH/Extras) — mismo Movimiento por debajo,
@@ -39,6 +40,7 @@ enum EstadoEvento {
 enum ModalidadEvento {
   FLUJO_CAJA
   CENTRO_COSTOS
+  OPERATIVA
 }
 
 enum TipoCuenta {
@@ -450,6 +452,7 @@ model Evento {
   pedidos_comida         PedidoComida[]
   pre_macro              PreMacro?
   extras                 ExtraEvento[]
+  lineas_costo_real      LineaCostoReal[]
   movimientosCCC         MovimientoCCC[]
   gastos_peaje           GastoPeaje[]
   facturas_emitidas      FacturaEmitida[]
@@ -3780,4 +3783,59 @@ model ExtraEvento {
   updated_by         Int?
 
   @@index([evento_id])
+}
+
+// ── Costo real del evento (DOS57, matriz de Flor) ──────────────────────────────
+// Réplica de la planilla por evento (docs/dos57/jazmin/DOS57_NORTE ROCK_2026.xlsx)
+// que Flor completa antes y después del evento para Matías y Pollo. Cada bloque
+// es una hoja/sección de esa matriz. Las líneas vienen de tres lados: cargadas a
+// mano, importadas de la planilla, o generadas desde lo que ya está en el sistema
+// (jornadas, comidas, combustible, remitos, pañol). Re-sincronizar o re-importar
+// reemplaza sólo las líneas de ese origen; las manuales no se tocan.
+enum BloqueCostoReal {
+  STAFF
+  ALOJAMIENTO
+  COMIDAS
+  COMBUSTIBLE_PERSONAL
+  COMBUSTIBLE_MATERIAL
+  PANOL
+  VARIOS
+  RENTAL_NAC
+  RENTAL_IMP
+  PERDIDAS
+}
+
+enum OrigenLineaCostoReal {
+  MANUAL
+  PLANILLA
+  SISTEMA
+}
+
+model LineaCostoReal {
+  id             Int                  @id @default(autoincrement())
+  empresa_id     Int
+  evento_id      Int
+  evento         Evento               @relation(fields: [evento_id], references: [id])
+  bloque         BloqueCostoReal
+  origen         OrigenLineaCostoReal @default(MANUAL)
+  orden          Int                  @default(0)
+  concepto       String // "STAFF EXTRANJEROS", "PINTURA PARA PISO", "AR Vertical LW 2.00m"
+  detalle        String? // "5 TACHOS SINTETICO", "560 KM", medida del material
+  codigo         String? // código oficial Layher (rental importado)
+  cantidad       Decimal              @default(1) @db.Decimal(14, 3) // turnos, menús, noches, litros, unidades
+  valor_unitario Decimal              @default(0) @db.Decimal(16, 2)
+  porcentaje     Decimal?             @db.Decimal(6, 2) // rental (4%) o pérdidas (10%); null = 100%
+  // Total guardado: en las líneas de la planilla es el valor que calculó el Excel
+  // (algunas fórmulas no son cantidad × valor); en el resto se recalcula al guardar.
+  total          Decimal              @default(0) @db.Decimal(16, 2)
+  fecha_desde    DateTime? // alojamiento: check-in
+  fecha_hasta    DateTime? // alojamiento: check-out
+  notas          String?
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+  deleted_at     DateTime?
+  created_by     Int?
+  updated_by     Int?
+
+  @@index([evento_id, bloque])
 }

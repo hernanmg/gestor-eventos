@@ -9,6 +9,7 @@ export const PERMISOS: { key: Permiso; label: string; detalle: string }[] = [
   { key: 'FACTURAS',            label: 'Facturas a pagar',    detalle: 'Incluye importar el libro de compras de AFIP.' },
   { key: 'PADRON_EMPLEADOS',    label: 'Padrón de empleados', detalle: 'Importar la planilla de datos personales (sin acceso a sueldos).' },
   { key: 'UNIFORMES',           label: 'Uniformes',           detalle: 'Entregas y stock del depósito.' },
+  { key: 'COSTO_REAL',          label: 'Costo real de eventos', detalle: 'Cargar, importar y exportar la matriz de costo real (DOS57).' },
 ];
 
 export function tienePermiso(user: Pick<MeResponse, 'rol' | 'permisos'> | null | undefined, permiso: Permiso): boolean {

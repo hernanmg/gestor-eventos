@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -85,6 +85,7 @@ export function useNavModel(user: MeResponse): NavModel {
     eventos:     { to: '/eventos',           label: 'Eventos',            icon: Calendar,       group: 'eventos' },
     rental:      { to: '/materiales-rental', label: 'Ítems de Rental',    icon: Boxes,          group: 'eventos' },
     presupuestos:{ to: '/presupuestos',      label: 'Presupuestos',       icon: Calculator,     group: 'eventos' },
+    costoReal:   { to: '/costo-real',        label: 'Costo real',         icon: Sigma,          group: 'eventos' },
     importer:    { to: '/importer',          label: 'Importar eventos históricos', icon: FileUp, group: 'eventos', sublabel: 'Migrar eventos desde el Excel original' },
     caja:        { to: '/caja',              label: 'Caja Global',        icon: Wallet,         group: 'finanzas' },
     gastos:      { to: '/gastos-operativos', label: 'Gastos del mes',     icon: Banknote,       group: 'finanzas' },
@@ -155,6 +156,10 @@ export function useNavModel(user: MeResponse): NavModel {
       return flat([I.combustible, I.flota, I.bitacora, I.movDiario, I.calendario]);
     case '/parte-diario':
       return flat([I.parte, FEATURES.STOCK && I.stock, I.calendario]);
+    // Flor (DOS57): costo real por evento + lo que usa para juntar la info
+    // (remitos y logística dentro del evento, bitácora, movimiento diario, combustible)
+    case '/costo-real':
+      return flat([I.costoReal, I.eventos, I.bitacora, I.movDiario, I.combustible, I.flota, I.parte, I.calendario]);
   }
 
   // Operador de Enjoy sin dashboard propio (ej. Daniel): menú acotado a lo que usa
@@ -187,6 +192,7 @@ export function useNavModel(user: MeResponse): NavModel {
     // Presupuestación (Costo Real, DOS57) — sólo ADMIN con DOS57 activa o admin global
     esAdmin && (dos57 || user.puedeCambiarEmpresa) && I.presupuestos,
     esAdmin && (dos57 || user.puedeCambiarEmpresa) && I.rental,
+    dos57 && tienePermiso(user, 'COSTO_REAL') && I.costoReal,
     esAdmin && I.importer,
     // Finanzas
     conLectura && I.caja,

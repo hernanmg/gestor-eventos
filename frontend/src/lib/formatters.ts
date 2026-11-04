@@ -96,3 +96,10 @@ export function formatDate(dateStr: string | null | undefined): string {
     timeZone: 'UTC',
   }).format(new Date(dateStr));
 }
+
+// Marcas de tiempo reales (updated_at, created_at): al revés que formatDate, se
+// muestran en la hora local — en UTC una carga de las 22 h ya cae al día siguiente.
+export function formatFechaLocal(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(dateStr));
+}

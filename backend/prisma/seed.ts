@@ -362,8 +362,8 @@ async function main() {
     // apellido, CUIL o email real (no están en el legajo "DOS57 FIJOS" —
     // altas más recientes que esa planilla). nombre y email acá son
     // PLACEHOLDERS — confirmar los datos reales antes de producción.
-    // Florencia: home_route pendiente de definir (queda null → default por rol).
-    { nombre: 'Florencia',           email: 'florencia.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id },
+    // Florencia: tablero de costo real por evento (su matriz) + logística.
+    { nombre: 'Florencia',           email: 'florencia.dos57@gmail.com', rol: 'OPERADOR', empresa_id: dos57.id, homeRoute: '/costo-real', permisos: ['COSTO_REAL'] },
     // Santi y Nico también ayudan a Mayra en Enjoy: Santi arma la tarjeta
     // corporativa y Nico carga facturas con Male (relevado con Male, 2026-10-26).
     {

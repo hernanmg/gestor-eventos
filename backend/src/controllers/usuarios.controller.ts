@@ -35,7 +35,7 @@ const SAFE_SELECT = {
 // — null (sin fila acá) usa el default por rol en resolveHomeRoute (frontend).
 const HOME_ROUTES = [
   '/presentismo', '/combustible', '/parte-diario', '/gastos-operativos',
-  '/eventos', '/macro', '/rrhh', '/stock',
+  '/eventos', '/macro', '/rrhh', '/stock', '/costo-real',
 ] as const;
 
 // Áreas asignables de la Macro restringida — Logística queda deliberadamente

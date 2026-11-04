@@ -27,6 +27,7 @@ import { fichaEventoRouter, rubrosEventoRouter, pedidoItemsRouter } from './rout
 import { produccionEventoRouter, produccionRouter } from './routes/produccionEvento';
 import { cortesiasEventoRouter, cortesiasRouter } from './routes/cortesias';
 import { centroCostosEventoRouter, extrasEventoRouter } from './routes/centroCostos';
+import { costoRealEventoRouter, costoRealRouter } from './routes/costoReal';
 import parteDiarioRouter from './routes/parteDiario';
 import { comidasEventoRouter, comidasRouter } from './routes/comidas';
 import calendarioRouter from './routes/calendario';
@@ -124,6 +125,8 @@ app.use('/api/eventos/:id/cortesias', cortesiasEventoRouter);
 app.use('/api/eventos/cortesias',     cortesiasRouter);
 app.use('/api/eventos/:id/centro-costos', centroCostosEventoRouter);
 app.use('/api/extras-evento',      extrasEventoRouter);
+app.use('/api/eventos/:id/costo-real', costoRealEventoRouter);
+app.use('/api/costo-real',         costoRealRouter);
 app.use('/api/rubros-evento',     rubrosEventoRouter);
 app.use('/api/pedido-items',      pedidoItemsRouter);
 app.use('/api/parte-diario',      parteDiarioRouter);

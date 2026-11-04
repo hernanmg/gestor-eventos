@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import type { Moneda, ModalidadEvento } from '@prisma/client';
+import { ModalidadEvento } from '@prisma/client';
+import type { Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
@@ -103,7 +104,7 @@ const updateSchema = z.object({
   descripcion:   z.string().nullable().optional(),
   para_que_es:   z.string().nullable().optional(),
   es_privado:    z.boolean().optional(),
-  modalidad:     z.enum(['FLUJO_CAJA', 'CENTRO_COSTOS']).optional(),
+  modalidad:     z.nativeEnum(ModalidadEvento).optional(),
 
   fecha_inicio:    z.string().nullable().optional(),
   fecha_fin:       z.string().nullable().optional(),

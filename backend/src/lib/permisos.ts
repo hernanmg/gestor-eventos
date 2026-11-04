@@ -10,6 +10,7 @@ export const PERMISOS = {
   FACTURAS:            'Facturas a pagar (incluye importar el libro de compras)',
   PADRON_EMPLEADOS:    'Padrón de empleados (importar la planilla de datos personales)',
   UNIFORMES:           'Uniformes (entregas y stock del depósito)',
+  COSTO_REAL:          'Costo real de eventos (matriz: cargar, importar y exportar)',
 } as const;
 
 export type Permiso = keyof typeof PERMISOS;

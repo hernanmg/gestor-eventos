@@ -274,7 +274,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Los de DOS57 en modalidad operativa muestran Costo real y no muestran Ingresos, Conciliatoria ni Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
       },
       {
         titulo: 'Centro de costos o flujo de caja completo',
@@ -283,6 +283,14 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Centro de costos: Costos, RRHH y Extras',
         contenido: 'Costos tiene una línea por cada rubro confirmado en la Ficha (aparecen solas), más las que agregues a mano: descripción, responsable, consumido, IVA, total, falta pagar, fecha de pago y si se le avisó al proveedor. Hacé clic en el IVA para cargar neto + IVA, y en Falta pagar para registrar señas o pagos parciales. RRHH muestra las líneas de personal del evento.\nExtras es lo que surge fuera de lo presupuestado. Por defecto lo paga el cliente y no suma al costo del evento; si lo paga la empresa, editalo y elegí "La empresa": pasa a sumar como Gastos Extra. Cada extra puede llevar los datos de cuenta, el estado de la factura y el comprobante adjunto.\n"Exportar Excel" baja la planilla con las hojas Costos, RRHH y Extras; "Exportar extras" baja sólo la hoja Extras, para mandársela al cliente.',
+      },
+      {
+        titulo: 'Costo real (DOS57)',
+        contenido: [
+          'Los eventos de DOS57 se llevan en modalidad operativa: la pestaña Costo real es la matriz que arma Flor por evento, con los mismos bloques que la hoja CC (staff, alojamiento, comidas, combustible personal y material, pañol, gastos varios, rental nacional e importado, y pérdidas). Esos eventos no muestran Ingresos, Conciliatoria ni Echeqs; Caja, Facturas y A cobrar siguen igual.\nCada bloque se completa de tres formas: "Importar matriz" lee la planilla de siempre (hojas CC, OPEX, RENTAL COSTS y L&A COSTS) y avisa si el total no coincide con la hoja CC; "Traer del sistema" arma el bloque con lo que ya está cargado (jornadas del Parte diario, comidas, cargas de combustible y bitácora del evento, remitos por la matriz de rental, faltantes del pañol); y "Agregar línea" para lo demás. Volver a importar o a traer reemplaza sólo esas líneas: lo cargado a mano no se toca. "Exportar matriz" baja el Excel con el mismo formato, para Matías y Pollo. El tablero de todos los eventos está en ',
+          { texto: 'Costo real', ruta: '/costo-real' },
+          '.',
+        ],
       },
       {
         titulo: 'Producción',
@@ -511,6 +519,29 @@ const help: Record<string, HelpContent> = {
     ],
     links: [
       { label: 'Ver Calendario', ruta: '/calendario' },
+    ],
+  },
+
+  '/costo-real': {
+    titulo: 'Costo real de eventos',
+    descripcion: 'El tablero de la matriz de costo real de DOS57: cuánto salió de verdad cada evento, para comparar con lo que se cobra.',
+    secciones: [
+      {
+        titulo: 'Qué muestra',
+        contenido: 'Una fila por evento con el rental presupuestado (del presupuesto vinculado al evento), el costo real cargado y la fecha de la última carga. Los que dicen "Sin cargar" todavía no tienen matriz. Filtrá por año o buscá por nombre o lugar; hacé clic en un evento para abrir su pestaña Costo real.',
+      },
+      {
+        titulo: 'Importar y exportar',
+        contenido: '"Importar" lee la planilla de costo real del evento, la misma que se arma hoy (hojas CC, OPEX, RENTAL COSTS y L&A COSTS): primero muestra qué trae cada bloque y si el total coincide con la hoja CC, y recién al confirmar lo guarda. Reimportar reemplaza lo importado antes y no toca lo cargado a mano. "Exportar" baja el Excel con el mismo formato, que se puede volver a importar.',
+      },
+      {
+        titulo: 'Quién lo ve',
+        contenido: 'Los administradores y quien tenga el permiso "Costo real de eventos" (se asigna en Configuración → Usuarios).',
+      },
+    ],
+    links: [
+      { label: 'Ver Bitácora', ruta: '/bitacora-viajes' },
+      { label: 'Ver Movimiento diario', ruta: '/movimiento-diario' },
     ],
   },
 

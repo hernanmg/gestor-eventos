@@ -50,7 +50,7 @@ export interface Usuario {
 }
 
 // Espejo de backend/src/lib/permisos.ts
-export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES';
+export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES' | 'COSTO_REAL';
 
 export interface UsuarioEmpresaAcceso {
   id:         number;
@@ -281,7 +281,8 @@ export interface Socio {
   porcentaje: number;
 }
 
-export type ModalidadEvento = 'FLUJO_CAJA' | 'CENTRO_COSTOS';
+// Enjoy: FLUJO_CAJA | CENTRO_COSTOS. DOS57: FLUJO_CAJA | OPERATIVA (costo real).
+export type ModalidadEvento = 'FLUJO_CAJA' | 'CENTRO_COSTOS' | 'OPERATIVA';
 
 export interface Evento {
   id:              number;
@@ -3154,3 +3155,88 @@ export interface CentroCostos {
     moneda:         Moneda;
   };
 }
+
+// ── Costo real del evento (DOS57, matriz de Flor) ──────────────────────────────
+export type BloqueCostoReal =
+  | 'STAFF' | 'ALOJAMIENTO' | 'COMIDAS' | 'COMBUSTIBLE_PERSONAL' | 'COMBUSTIBLE_MATERIAL'
+  | 'PANOL' | 'VARIOS' | 'RENTAL_NAC' | 'RENTAL_IMP' | 'PERDIDAS';
+export type OrigenLineaCostoReal = 'MANUAL' | 'PLANILLA' | 'SISTEMA';
+
+export interface LineaCostoReal {
+  id:             number;
+  evento_id:      number;
+  bloque:         BloqueCostoReal;
+  origen:         OrigenLineaCostoReal;
+  orden:          number;
+  concepto:       string;
+  detalle:        string | null;
+  codigo:         string | null;
+  cantidad:       number;
+  valor_unitario: number;
+  porcentaje:     number | null;
+  total:          number;
+  fecha_desde:    string | null;
+  fecha_hasta:    string | null;
+  notas:          string | null;
+  updated_at:     string;
+}
+
+export interface BloqueCostoRealData {
+  bloque:             BloqueCostoReal;
+  label:              string;
+  cc:                 string;
+  unidad:             string;
+  valor:              string;
+  fuente:             string | null;
+  porcentaje_default: number | null;
+  total:              number;
+  lineas:             LineaCostoReal[];
+}
+
+export interface PresupuestoRef {
+  id:                  number;
+  nombre:              string;
+  estado:              string;
+  version:             number;
+  porcentaje_alquiler: string;
+  total_rental:        number;
+}
+
+export interface CostoReal {
+  evento:      { id: number; nombre: string; modalidad: ModalidadEvento; fecha_inicio: string | null; fecha_fin: string | null; lugar: string | null };
+  bloques:     BloqueCostoRealData[];
+  total:       number;
+  presupuesto: PresupuestoRef | null;
+  actualizado: string | null;
+}
+
+export interface CostoRealEventoFila {
+  id:           number;
+  nombre:       string;
+  fecha_inicio: string | null;
+  fecha_fin:    string | null;
+  lugar:        string | null;
+  estado:       string;
+  modalidad:    ModalidadEvento;
+  costo_real:   number;
+  lineas:       number;
+  actualizado:  string | null;
+  presupuesto:  { estado: string; total_rental: number } | null;
+}
+
+export interface ImportarMatrizResultado {
+  preview:        boolean;
+  titulo:         string | null;
+  total_planilla: number | null;
+  total:          number;
+  omitidas:       number;
+  hojas:          string[];
+  avisos:         string[];
+  bloques: {
+    bloque: BloqueCostoReal; label: string; lineas: number; total: number;
+    reemplaza: number; otras_lineas: number;
+  }[];
+  creadas?:      number;
+  reemplazadas?: number;
+}
+

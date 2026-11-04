@@ -40,6 +40,7 @@ import PresentismoPage      from '@/pages/Presentismo';
 import CombustiblePage      from '@/pages/Combustible';
 import BitacoraViajesPage   from '@/pages/BitacoraViajes';
 import MovimientoDiarioPage from '@/pages/MovimientoDiario';
+import CostoRealPage from '@/pages/CostoReal';
 import MaterialesRentalPage from '@/pages/MaterialesRental';
 import PresupuestosPage     from '@/pages/Presupuestos';
 import PresupuestoEditorPage from '@/pages/Presupuestos/Editor';
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/combustible"             element={<CombustiblePage />} />
             <Route path="/bitacora-viajes"         element={<BitacoraViajesPage />} />
             <Route path="/movimiento-diario"       element={<MovimientoDiarioPage />} />
+            <Route path="/costo-real"              element={<CostoRealPage />} />
             <Route path="/materiales-rental"       element={<MaterialesRentalPage />} />
             <Route path="/presupuestos"            element={<PresupuestosPage />} />
             <Route path="/presupuestos/nuevo"      element={<PresupuestoEditorPage />} />
