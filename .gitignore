@@ -4,3 +4,6 @@ node_modules/
 dist/
 .vite
 .xlsx
+
+# Scripts y salidas temporales de trabajo (ver tools/README.md)
+tools/tmp/

@@ -1,6 +1,6 @@
-# Frontend — Sistema de Gestión de Eventos
+# Frontend — Admin Portal Enjoy · DOS57
 
-SPA en React 18 + Vite + TypeScript + TailwindCSS.
+SPA en React 18 + Vite + TypeScript + Tailwind. Sirve a las dos empresas: el usuario elige la empresa (o el admin global ve las dos) y el menú se arma según su rol, sus permisos y su pantalla de inicio.
 
 ## Tech stack
 
@@ -8,112 +8,66 @@ SPA en React 18 + Vite + TypeScript + TailwindCSS.
 |----------------|-----------------------------------------|
 | Framework      | React 18 + TypeScript                   |
 | Build          | Vite 5                                  |
-| Estilos        | Tailwind CSS v3 + shadcn/ui (Radix UI)  |
+| Estilos        | Tailwind CSS v3 + shadcn/ui (Radix UI), tema claro/oscuro |
 | Routing        | React Router v6                         |
 | Data fetching  | TanStack Query v5                       |
 | HTTP           | Axios (cookie `withCredentials: true`)  |
-| Íconos         | lucide-react                            |
-| Fechas         | date-fns                                |
-
-## Prerequisitos
-
-- Node.js ≥ 20
-- Backend corriendo en `http://localhost:3001` (o según `VITE_API_URL`)
+| Gráficos       | Recharts                                |
+| Íconos / fechas| lucide-react / date-fns                 |
 
 ## Variables de entorno
 
 ```
-VITE_API_URL=http://localhost:3001/api
+VITE_API_URL=http://localhost:3001   # sin /api: lib/api.ts lo agrega solo
 ```
 
-## Instalación y dev
+## Scripts
 
 ```bash
-npm install
-npm run dev    # Vite dev server en http://localhost:5173
-```
-
-## Build
-
-```bash
-npm run build   # dist/
+npm run dev       # http://localhost:5173
+npm run build     # tsc -b + vite build → dist/ (es también el chequeo de tipos)
 npm run preview
 ```
 
-## Estructura de carpetas
+En producción como sitio estático, hace falta la regla de reescritura `/* → /index.html`. Sin ella, refrescar una ruta como `/presentismo` da 404.
+
+## Estructura
 
 ```
 src/
-├── App.tsx                  # Router raíz con todas las rutas
-├── types/index.ts           # Todos los tipos TypeScript (espejo de Prisma)
-├── lib/
-│   ├── api.ts               # Instancia Axios con baseURL y withCredentials
-│   ├── helpContent.ts       # Contenido contextual del HelpPanel por ruta
-│   ├── formatters.ts        # formatCurrency, formatDate, etc.
-│   └── utils.ts             # cn() y utilidades
-├── hooks/
-│   ├── useAuth.ts           # Autenticación (me, login, logout)
-│   ├── useEvento.ts         # CRUD eventos + exportar
-│   ├── useMovimientos.ts    # CRUD movimientos por tab
-│   ├── useFacturas.ts       # CRUD facturas + pagos + alertas
-│   ├── useEcheqs.ts         # CRUD echeqs + alertas
-│   ├── useProveedores.ts    # CRUD proveedores
-│   ├── useStock.ts          # Productos, asignaciones, alertas
-│   ├── useVincularProveedores.ts  # Post-import wizard
-│   ├── useTabConfig.ts      # Configuración de tabs
-│   └── useAuditoria.ts      # Log de auditoría
+├── App.tsx                    # rutas
+├── types/index.ts             # todos los tipos (espejo del schema Prisma)
+├── lib/                       # api, formatters, permisos, features, helpContent, calendarioItems, empresasConstants
+├── hooks/                     # un archivo por dominio (useRRHH, useFacturas, useFlota, useCalendario…)
 ├── components/
-│   ├── layout/
-│   │   ├── ProtectedLayout.tsx   # Layout con Sidebar + HelpPanel
-│   │   └── Sidebar.tsx           # Navegación lateral con badges
-│   ├── ui/
-│   │   ├── HelpPanel.tsx         # Panel de ayuda contextual (slide-in, localStorage)
-│   │   ├── button.tsx, badge.tsx, dialog.tsx, ...  # shadcn/ui
-│   └── domain/
-│       ├── MovimientoTable.tsx   # Tabla editable de movimientos
-│       ├── EcheqFormDialog.tsx   # Formulario de echeq
-│       └── ProveedorCombobox.tsx # Buscador de proveedores
-└── pages/
-    ├── Login/
-    ├── Dashboard/
-    ├── Eventos/              # Lista de eventos
-    ├── Evento/               # Detalle con 8 tabs
-    │   ├── index.tsx
-    │   ├── Caja/
-    │   ├── Conciliatoria/
-    │   ├── Echeqs/
-    │   ├── Stock/
-    │   ├── Facturas/         # Tab facturas por evento
-    │   └── VincularProveedores/  # Wizard post-import
-    ├── Facturas/             # Lista global + detalle
-    │   ├── index.tsx
-    │   ├── FacturaForm.tsx
-    │   └── FacturaDetalle.tsx
-    ├── Proveedores/
-    ├── Stock/
-    ├── Importer/
-    ├── Auditoria/
-    └── Configuracion/
+│   ├── layout/                # navConfig (fuente única del menú), Sidebar, MobileNav, NotificacionesBell, ProtectedLayout
+│   ├── ui/                    # shadcn/ui + BaseTable, MoneyInput, CuitInput, combobox, HelpPanel
+│   └── domain/ flota/ siniestros/ uniformes/ indicadores/
+└── pages/                     # una carpeta por pantalla
 ```
+
+## Pantallas por pilar
+
+| Pilar | Carpetas de `pages/` |
+|---|---|
+| RRHH | `RRHH`, `Presentismo`, `ParteDiario`, `Uniformes` |
+| Finanzas | `Caja`, `GastosOperativos`, `TarjetaCorporativa`, `CuentasCorrientes`, `AFIPPrestamos`, `FacturasEmitidas`, `CierreContable` |
+| Administración | `Eventos`, `Evento` (pestañas: resumen, operación, ficha, producción, centro de costos, costo real, egresos, ingresos, caja, conciliatoria, echeqs, stock, comidas, cortesías, logística, facturas, a cobrar, auditoría), `PreMacro`, `Macro`, `Presupuestos`, `MaterialesRental`, `CostoReal`, `EspaciosCompartidos`, `Importer` |
+| Proveedores | `Proveedores`, `Facturas`, `Evento/VincularProveedores` |
+| Depósito | `Stock` (productos, cunas, camiones, pañol, activos, alertas, firmar movimiento) |
+| Logística | `Flota`, `Combustible`, `BitacoraViajes`, `MovimientoDiario` |
+| Seguros | `Flota` (seguros), `Siniestros` |
+| Varios | `Login`, `CambiarPassword`, `SeleccionarEmpresa`, `Configuracion`, `ConfiguracionEmpresa`, `Auditoria` |
+| Calendario | `Calendario` |
 
 ## Convenciones
 
-- **Hooks**: un archivo por dominio (`useFacturas.ts`, `useEcheqs.ts`). Exportan queries + mutations.
-- **QueryKeys**: arrays descriptivos `['facturas', id]`, `['facturas', 'alertas']`. Se invalidan por prefijo.
-- **staleTime**: 30–60s en queries frecuentes, 5–10min en alertas/configuración.
-- **FormData**: para uploads de archivo (PDF, Excel) — Axios detecta el tipo automáticamente cuando se pasan headers explícitos.
-- **Soft delete**: nunca se eliminan datos. Los `deleted_at != null` no se muestran en la UI.
-- **Moneda**: `formatCurrency(importe, moneda)` desde `@/lib/formatters`.
-- **Tipos**: todos en `@/types/index.ts` como espejo del schema Prisma. Nunca definir tipos inline en componentes.
-
-## Módulos principales
-
-### HelpPanel
-Panel de ayuda contextual que se monta **una sola vez** en `ProtectedLayout`. El contenido cambia según `useLocation().pathname`. El estado abierto/cerrado persiste en `localStorage`.
-
-### Módulo de Facturas
-- Lista global en `/facturas` con filtros por estado, moneda, vencimiento.
-- Detalle en `/facturas/:id` con PDF viewer (iframe apuntando a `/api/facturas/:id/pdf`) y tabla de pagos.
-- Formulario con drag-and-drop para PDF (10 MB máx, solo `application/pdf`).
-- Tab en el evento (`/eventos/:id` → pestaña Facturas).
-- Badge de alertas en Sidebar (vencidas + próximas a vencer en 7 días).
+- **Menú:** `components/layout/navConfig.ts` es la única fuente para el Sidebar, la barra inferior del celular y los menús acotados por `home_route`. Una pantalla nueva se agrega ahí, con su grupo y su condición de visibilidad.
+- **Hooks:** un archivo por dominio, que exporta queries y mutations. Los queryKeys son arrays descriptivos (`['facturas', id]`) y se invalidan por prefijo.
+- **Tipos:** en `@/types/index.ts`; no definir tipos inline en los componentes.
+- **Calendario:** un tipo nuevo va en `TipoCalendario` (`types`), en `TIPO_QUERY_MAP` (`hooks/useCalendario.ts`) y en rótulo y color (`lib/calendarioItems.ts`), además del backend.
+- **Montos y CUIT:** usar `MoneyInput` / `CuitInput` y `formatCurrency(importe, moneda)`.
+- **Tablas:** `BaseTable` con estilo de card; en el celular las filas se apilan por `data-label`.
+- **Fechas** que son solo de calendario: se leen en UTC, porque si no se corren un día.
+- **Soft delete:** lo que tiene `deleted_at` no se muestra.
+- **Ayuda:** `lib/helpContent.ts`, contenido por ruta, con buscador y links a otras pantallas.

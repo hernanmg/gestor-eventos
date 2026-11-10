@@ -618,7 +618,7 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then(buffer => {
-  const outPath = path.join(__dirname, "docs", "Preparacion_Prueba_Produccion.docx");
+  const outPath = path.join(__dirname, "..", "..", "docs", "Preparacion_Prueba_Produccion.docx");
   fs.writeFileSync(outPath, buffer);
   console.log("OK:", outPath);
 });

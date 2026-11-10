@@ -1,5 +1,12 @@
 # Deploy On-Premise — Admin Portal
 
+> La primera prueba en producción se hace en **Render**, no on-premise: ver `docs/Preparacion_Prueba_Produccion.docx`. Esta guía queda para cuando el sistema pase a un servidor propio.
+>
+> En los dos casos:
+> - Correr el seed **una sola vez** a mano (`npx prisma db seed`). En `NODE_ENV=production` genera una contraseña inicial por usuario y no pisa datos existentes.
+> - Definir `TZ=America/Argentina/Buenos_Aires` en el `.env` del backend.
+> - En producción, solo `prisma migrate deploy`; nunca `migrate dev` ni `db push`.
+
 Guía completa para instalar y mantener el sistema en un servidor Linux propio.
 
 ---
