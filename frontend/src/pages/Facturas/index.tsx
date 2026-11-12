@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Filter, AlertTriangle, CheckCircle, Clock, Ban } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, CheckCircle, Clock, Ban, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useFacturas, type FacturaFiltros } from '@/hooks/useFacturas';
 import { useEventos } from '@/hooks/useEvento';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import FacturaForm from './FacturaForm';
+import ImportarLibroDialog from './ImportarLibroDialog';
 import { Button } from '@/components/ui/button';
-import type { EstadoFactura, Factura } from '@/types';
+import type { EstadoFactura, Factura, TipoComprobanteEmitido } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +35,12 @@ function EstadoBadge({ estado }: { estado: EstadoFactura }) {
   );
 }
 
+const TAG_COMPROBANTE: Partial<Record<TipoComprobanteEmitido, string>> = {
+  NOTA_CREDITO_A: 'NC', NOTA_CREDITO_B: 'NC', NOTA_CREDITO_C: 'NC',
+  NOTA_DEBITO_A: 'ND', NOTA_DEBITO_B: 'ND', NOTA_DEBITO_C: 'ND',
+  LIQUIDACION_A: 'Liquidación', TIQUE_FACTURA_A: 'Tique', RECIBO: 'Recibo', RECIBO_B: 'Recibo',
+};
+
 // ── Fila ──────────────────────────────────────────────────────────────────────
 
 function FilaFactura({ f }: { f: Factura }) {
@@ -39,9 +48,12 @@ function FilaFactura({ f }: { f: Factura }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-muted/30 text-sm transition-colors">
       <td className="py-2.5 px-3">
-        <Link to={`/facturas/${f.id}`} className="font-medium hover:underline text-primary">
+        <Link to={`/facturas/${f.id}`} className="font-medium hover:underline text-link">
           {f.tipo_factura} {f.numero_factura}
         </Link>
+        {f.tipo_comprobante && TAG_COMPROBANTE[f.tipo_comprobante] && (
+          <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-muted text-muted-foreground align-middle">{TAG_COMPROBANTE[f.tipo_comprobante]}</span>
+        )}
       </td>
       <td className="py-2.5 px-3 text-muted-foreground">{f.proveedor?.nombre ?? '—'}</td>
       <td className="py-2.5 px-3">
@@ -112,6 +124,7 @@ export default function FacturasPage() {
   const [filtros, setFiltros] = useState<FacturaFiltros>({});
   const [busqueda, setBusqueda] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImportar, setShowImportar] = useState(false);
 
   const { data: facturas = [], isLoading } = useFacturas(filtros);
 
@@ -133,15 +146,18 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Cuentas a pagar</h1>
-          <p className="text-sm text-muted-foreground">Facturas de todos los eventos</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={14} className="mr-1.5" /> Nueva factura
-        </Button>
-      </div>
+      <PageHeader
+        title="Facturas a Pagar"
+        subtitle="Facturas de todos los eventos"
+        actions={<>
+          <Button size="sm" variant="outline" onClick={() => setShowImportar(true)}>
+            <Upload size={14} className="mr-1.5" /> Importar libro de compras AFIP
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} className="mr-1.5" /> Nueva factura
+          </Button>
+        </>}
+      />
 
       {/* KPIs */}
       {(vencidasCount > 0 || pendienteTotal > 0) && (
@@ -208,7 +224,7 @@ export default function FacturasPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground p-6">Sin facturas.</p>
         ) : (
-          <table className="w-full min-w-[700px]">
+          <BaseTable className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground bg-muted/30">
                 <th className="text-left py-2.5 px-3 font-medium">Factura</th>
@@ -223,9 +239,11 @@ export default function FacturasPage() {
             <tbody>
               {filtered.map(f => <FilaFactura key={f.id} f={f} />)}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
+
+      {showImportar && <ImportarLibroDialog onClose={() => setShowImportar(false)} />}
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-2xl">

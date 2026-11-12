@@ -1,20 +1,30 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import * as XLSX from 'xlsx';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
+import { EMPRESAS } from '../lib/empresasConstants';
 import type { UbicacionStock, EstadoAsignacion, OrigenTransfer, Prisma } from '@prisma/client';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const productoCreateSchema = z.object({
-  nombre:       z.string().min(1),
-  descripcion:  z.string().nullable().optional(),
-  categoria_id: z.number().int().positive().nullable().optional(),
-  codigo:       z.string().nullable().optional(),
-  stock_total:  z.number().int().min(0),
-  stock_minimo: z.number().int().min(0).default(0),
-  unidad:       z.string().default('unidad'),
-  notas:        z.string().nullable().optional(),
+  nombre:          z.string().min(1),
+  descripcion:     z.string().nullable().optional(),
+  categoria_id:    z.number().int().positive().nullable().optional(),
+  codigo_interno:  z.string().nullable().optional(),
+  codigo_externo:  z.string().nullable().optional(),
+  nombre_tecnico:  z.string().nullable().optional(),
+  nombre_interno:  z.string().nullable().optional(),
+  valor_unitario:  z.number().nonnegative().nullable().optional(),
+  es_critico:      z.boolean().optional(),
+  catalogo_origen: z.string().nullable().optional(),
+  stock_total:     z.number().int().min(0),
+  stock_minimo:    z.number().int().min(0).default(0),
+  unidad:          z.string().default('unidad'),
+  notas:           z.string().nullable().optional(),
 });
 
 const categoriaSchema = z.object({
@@ -31,6 +41,8 @@ const asignarSchema = z.object({
   fecha_salida:  z.string(),
   fecha_retorno: z.string().nullable().optional(),
   notas:         z.string().nullable().optional(),
+  camion_id:     z.number().int().positive().nullable().optional(),
+  cuna_id:       z.number().int().positive().nullable().optional(),
 });
 
 const updateAsignacionSchema = z.object({
@@ -38,6 +50,8 @@ const updateAsignacionSchema = z.object({
   fecha_salida:  z.string().optional(),
   fecha_retorno: z.string().nullable().optional(),
   notas:         z.string().nullable().optional(),
+  camion_id:     z.number().int().positive().nullable().optional(),
+  cuna_id:       z.number().int().positive().nullable().optional(),
 });
 
 const transferenciaSchema = z.object({
@@ -52,14 +66,15 @@ const transferenciaSchema = z.object({
 
 function toDate(s: string): Date { return new Date(s); }
 
-async function calcDisponibilidad(
+export async function calcDisponibilidad(
   productoId: number,
   fechaDesde: Date,
   fechaHasta: Date,
+  empresaId: number,
   excludeAsignacionId?: number,
 ) {
   const producto = await prisma.producto.findFirst({
-    where: { id: productoId, deleted_at: null },
+    where: { id: productoId, deleted_at: null, ...withTenant(empresaId) },
     select: { id: true, nombre: true, stock_total: true, stock_minimo: true, unidad: true },
   });
   if (!producto) return null;
@@ -69,12 +84,25 @@ async function calcDisponibilidad(
       producto_id: productoId,
       estado:      'ACTIVA',
       deleted_at:  null,
-      fecha_salida: { lte: fechaHasta },
-      OR: [
-        { fecha_retorno: null },
-        { fecha_retorno: { gte: fechaDesde } },
-      ],
       ...(excludeAsignacionId ? { id: { not: excludeAsignacionId } } : {}),
+      // Comprometido si: (a) su ventana planificada [fecha_salida, fecha_retorno]
+      // solapa el rango consultado — para proyectar quiebres futuros de
+      // asignaciones todavía no firmadas — o (b) está físicamente afuera del
+      // depósito ahora mismo (EN_TRANSITO/EN_EVENTO/EXCEDENTE), sin importar
+      // si esa fecha planificada ya pasó o directamente cambió: firmar la
+      // salida antes o después de lo planificado no debe "liberar" stock que
+      // en la práctica sigue afuera. Vuelve a estar disponible recién al
+      // cancelar la asignación (retorno a DEPOSITO).
+      OR: [
+        {
+          fecha_salida: { lte: fechaHasta },
+          OR: [
+            { fecha_retorno: null },
+            { fecha_retorno: { gte: fechaDesde } },
+          ],
+        },
+        { ubicacion: { in: ['EN_TRANSITO', 'EN_EVENTO', 'EXCEDENTE'] } },
+      ],
     },
     include: { evento: { select: { id: true, nombre: true } } },
   });
@@ -102,11 +130,12 @@ async function calcDisponibilidad(
   };
 }
 
-async function calcSugerencias(
+export async function calcSugerencias(
   productoId: number,
   eventoDestinoId: number,
   fechaDesde: Date,
   _fechaHasta: Date,
+  empresaId: number,
 ) {
   // Find active assignments of this product in other events
   const candidatas = await prisma.asignacionStock.findMany({
@@ -115,6 +144,7 @@ async function calcSugerencias(
       estado:      'ACTIVA',
       deleted_at:  null,
       evento_id:   { not: eventoDestinoId },
+      producto:    withTenant(empresaId),
     },
     include: {
       evento: { select: { id: true, nombre: true, fecha_fin: true } },
@@ -163,15 +193,31 @@ async function calcSugerencias(
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 
-export async function listProductos(req: Request, res: Response) {
-  const search       = typeof req.query.search    === 'string' ? req.query.search    : undefined;
-  const categoriaRaw = typeof req.query.categoria === 'string' ? req.query.categoria : undefined;
+const PRODUCTO_SELECT = {
+  id: true, empresa_id: true, nombre: true, descripcion: true, categoria_id: true,
+  categoria: true, stock_total: true, stock_minimo: true, unidad: true, notas: true,
+  activo: true, created_at: true, updated_at: true, created_by: true, updated_by: true,
+  codigo_interno: true, codigo_externo: true, nombre_tecnico: true, nombre_interno: true,
+  foto_mime: true, foto_nombre: true, valor_unitario: true, es_critico: true, catalogo_origen: true,
+} satisfies Prisma.ProductoSelect;
 
-  const where: Prisma.ProductoWhereInput = { deleted_at: null, activo: true };
+function mapProducto<T extends { foto_mime: string | null }>(p: T) {
+  return { ...p, tiene_foto: !!p.foto_mime };
+}
+
+export async function listProductos(req: Request, res: Response) {
+  const search       = typeof req.query.search          === 'string' ? req.query.search          : undefined;
+  const categoriaRaw = typeof req.query.categoria        === 'string' ? req.query.categoria        : undefined;
+  const catalogoRaw  = typeof req.query.catalogo_origen  === 'string' ? req.query.catalogo_origen  : undefined;
+
+  const where: Prisma.ProductoWhereInput = { deleted_at: null, activo: true, ...withTenant(req.empresaId!) };
   if (search) {
     where.OR = [
-      { nombre:    { contains: search, mode: 'insensitive' } },
-      { codigo:    { contains: search, mode: 'insensitive' } },
+      { nombre:         { contains: search, mode: 'insensitive' } },
+      { codigo_interno: { contains: search, mode: 'insensitive' } },
+      { codigo_externo: { contains: search, mode: 'insensitive' } },
+      { nombre_tecnico: { contains: search, mode: 'insensitive' } },
+      { nombre_interno: { contains: search, mode: 'insensitive' } },
       { categoria: { is: { nombre: { contains: search, mode: 'insensitive' } } } },
     ];
   }
@@ -184,22 +230,24 @@ export async function listProductos(req: Request, res: Response) {
       where.categoria = { is: { nombre: { contains: categoriaRaw, mode: 'insensitive' } } };
     }
   }
+  if (catalogoRaw) {
+    where.catalogo_origen = catalogoRaw;
+  }
 
   const productos = await prisma.producto.findMany({
     where,
     orderBy: { nombre: 'asc' },
-    include: { categoria: true },
+    select:  PRODUCTO_SELECT,
   });
 
   const now = new Date();
   const results = await Promise.all(
     productos.map(async p => {
-      const disp = await calcDisponibilidad(p.id, now, now);
+      const disp = await calcDisponibilidad(p.id, now, now, req.empresaId!);
       return {
-        ...p,
-        stock_total:           p.stock_total,
-        comprometido_hoy:      disp?.cantidad_comprometida ?? 0,
-        disponible_hoy:        disp?.disponible ?? p.stock_total,
+        ...mapProducto(p),
+        comprometido_hoy: disp?.cantidad_comprometida ?? 0,
+        disponible_hoy:   disp?.disponible ?? p.stock_total,
       };
     }),
   );
@@ -210,26 +258,77 @@ export async function listProductos(req: Request, res: Response) {
 export async function getProducto(req: Request, res: Response) {
   const id = Number(req.params.id);
   const producto = await prisma.producto.findFirst({
-    where:   { id, deleted_at: null },
-    include: {
-      categoria: true,
+    where:  { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: {
+      ...PRODUCTO_SELECT,
       asignaciones: {
         where:   { deleted_at: null },
-        include: { evento: { select: { id: true, nombre: true, fecha_inicio: true, fecha_fin: true } } },
+        include: {
+          evento:        { select: { id: true, nombre: true, fecha_inicio: true, fecha_fin: true } },
+          evento_origen: { select: { id: true, nombre: true } },
+          camion:        { select: { id: true, codigo: true, descripcion: true } },
+          cuna:          { select: { id: true, codigo: true, descripcion: true } },
+        },
         orderBy: { fecha_salida: 'desc' },
       },
       movimientos: {
         orderBy: { fecha: 'desc' },
         take:    100,
       },
+      cunas: { include: { cuna: { select: { id: true, codigo: true, descripcion: true } } } },
     },
   });
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   const now  = new Date();
-  const disp = await calcDisponibilidad(id, now, now);
+  const disp = await calcDisponibilidad(id, now, now, req.empresaId!);
 
-  res.json({ ...producto, disponibilidad_hoy: disp });
+  res.json({ ...mapProducto(producto), disponibilidad_hoy: disp });
+}
+
+// ── Foto de producto ──────────────────────────────────────────────────────────
+
+export const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Solo se aceptan imágenes JPEG, PNG o WEBP'));
+  },
+});
+
+export async function importarFoto(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (!req.file) { res.status(400).json({ error: 'Se requiere una imagen' }); return; }
+
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  await prisma.producto.update({
+    where: { id },
+    data: {
+      foto_data:   req.file.buffer,
+      foto_nombre: req.file.originalname,
+      foto_mime:   req.file.mimetype,
+      updated_by:  req.user!.id,
+    },
+  });
+
+  res.json({ message: 'Foto actualizada correctamente' });
+}
+
+export async function getFoto(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const producto = await prisma.producto.findFirst({
+    where:  { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    select: { foto_data: true, foto_mime: true, foto_nombre: true },
+  });
+  if (!producto)          { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+  if (!producto.foto_data) { res.status(404).json({ error: 'Este producto no tiene foto' }); return; }
+
+  res.setHeader('Content-Type', producto.foto_mime ?? 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${producto.foto_nombre ?? 'foto'}"`);
+  res.send(Buffer.from(producto.foto_data));
 }
 
 export async function createProducto(req: Request, res: Response) {
@@ -237,35 +336,47 @@ export async function createProducto(req: Request, res: Response) {
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
-  const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
+  const {
+    nombre, descripcion, categoria_id, codigo_interno, codigo_externo, nombre_tecnico, nombre_interno,
+    valor_unitario, es_critico, catalogo_origen, stock_total, stock_minimo, unidad, notas,
+  } = parsed.data;
 
   if (categoria_id) {
-    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null } });
+    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
-  if (codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null } });
-    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
+  if (codigo_interno) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_interno, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código interno' }); return; }
+  }
+  if (codigo_externo) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_externo, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código externo' }); return; }
   }
 
   const producto = await prisma.$transaction(async tx => {
     const p = await tx.producto.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre, descripcion: descripcion ?? null, categoria_id: categoria_id ?? null,
-        codigo: codigo ?? null, stock_total, stock_minimo, unidad: unidad ?? 'unidad',
+        codigo_interno: codigo_interno ?? null, codigo_externo: codigo_externo ?? null,
+        nombre_tecnico: nombre_tecnico ?? null, nombre_interno: nombre_interno ?? null,
+        valor_unitario: valor_unitario ?? null, es_critico: es_critico ?? false,
+        catalogo_origen: catalogo_origen ?? null,
+        stock_total, stock_minimo, unidad: unidad ?? 'unidad',
         notas: notas ?? null, created_by: req.user!.id, updated_by: req.user!.id,
       },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'Producto', entidadId: p.id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'Producto', entidadId: p.id,
       descripcion: `Creó producto "${nombre}"`, datosDespues: { nombre, stock_total, stock_minimo },
       ip: req.ip, tx: tx as any,
     });
     return p;
   });
 
-  res.status(201).json(producto);
+  res.status(201).json(mapProducto(producto));
 }
 
 export async function updateProducto(req: Request, res: Response) {
@@ -275,37 +386,50 @@ export async function updateProducto(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
-  const { nombre, descripcion, categoria_id, codigo, stock_total, stock_minimo, unidad, notas } = parsed.data;
+  const {
+    nombre, descripcion, categoria_id, codigo_interno, codigo_externo, nombre_tecnico, nombre_interno,
+    valor_unitario, es_critico, catalogo_origen, stock_total, stock_minimo, unidad, notas,
+  } = parsed.data;
 
   if (categoria_id !== undefined && categoria_id !== null) {
-    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null } });
+    const cat = await prisma.categoriaStock.findFirst({ where: { id: categoria_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cat) { res.status(400).json({ error: 'Categoría no encontrada o inactiva' }); return; }
   }
 
-  if (codigo && codigo !== existing.codigo) {
-    const dupe = await prisma.producto.findFirst({ where: { codigo, deleted_at: null } });
-    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código' }); return; }
+  if (codigo_interno && codigo_interno !== existing.codigo_interno) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_interno, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código interno' }); return; }
+  }
+  if (codigo_externo && codigo_externo !== existing.codigo_externo) {
+    const dupe = await prisma.producto.findFirst({ where: { codigo_externo, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (dupe) { res.status(400).json({ error: 'Ya existe un producto con ese código externo' }); return; }
   }
 
   const data: Prisma.ProductoUpdateInput = {
-    ...(nombre        !== undefined && { nombre }),
-    ...(descripcion   !== undefined && { descripcion }),
-    ...(categoria_id  !== undefined && { categoria: categoria_id ? { connect: { id: categoria_id } } : { disconnect: true } }),
-    ...(codigo        !== undefined && { codigo }),
-    ...(stock_total   !== undefined && { stock_total }),
-    ...(stock_minimo  !== undefined && { stock_minimo }),
-    ...(unidad        !== undefined && { unidad }),
-    ...(notas         !== undefined && { notas }),
+    ...(nombre          !== undefined && { nombre }),
+    ...(descripcion     !== undefined && { descripcion }),
+    ...(categoria_id    !== undefined && { categoria: categoria_id ? { connect: { id: categoria_id } } : { disconnect: true } }),
+    ...(codigo_interno  !== undefined && { codigo_interno }),
+    ...(codigo_externo  !== undefined && { codigo_externo }),
+    ...(nombre_tecnico  !== undefined && { nombre_tecnico }),
+    ...(nombre_interno  !== undefined && { nombre_interno }),
+    ...(valor_unitario  !== undefined && { valor_unitario }),
+    ...(es_critico      !== undefined && { es_critico }),
+    ...(catalogo_origen !== undefined && { catalogo_origen }),
+    ...(stock_total     !== undefined && { stock_total }),
+    ...(stock_minimo    !== undefined && { stock_minimo }),
+    ...(unidad          !== undefined && { unidad }),
+    ...(notas           !== undefined && { notas }),
     updated_by: req.user!.id,
   };
 
   const producto = await prisma.$transaction(async tx => {
     const p = await tx.producto.update({ where: { id }, data });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'Producto', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'Producto', entidadId: id,
       descripcion: `Actualizó producto "${existing.nombre}"`,
       datosAntes: { nombre: existing.nombre, stock_total: existing.stock_total },
       datosDespues: parsed.data, ip: req.ip, tx: tx as any,
@@ -313,20 +437,31 @@ export async function updateProducto(req: Request, res: Response) {
     return p;
   });
 
-  res.json(producto);
+  res.json(mapProducto(producto));
 }
 
 export async function deleteProducto(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.producto.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  const cunaProductos = await prisma.cunaProducto.findMany({
+    where:   { producto_id: id },
+    include: { cuna: { select: { id: true, codigo: true } } },
+  });
+  if (cunaProductos.length > 0) {
+    const cunas = cunaProductos.map(cp => cp.cuna.codigo).join(', ');
+    res.status(400).json({
+      error: `No se puede eliminar este producto porque forma parte de ${cunaProductos.length} cuna(s): ${cunas}. Removelo de las cunas antes de eliminarlo.`,
+    }); return;
+  }
 
   const activas = await prisma.asignacionStock.count({
     where: { producto_id: id, estado: 'ACTIVA', deleted_at: null },
   });
   if (activas > 0) {
-    res.status(400).json({ error: 'No se puede eliminar un producto con asignaciones activas' }); return;
+    res.status(400).json({ error: `No se puede eliminar este producto porque tiene ${activas} asignación(es) activa(s).` }); return;
   }
 
   await prisma.$transaction(async tx => {
@@ -335,7 +470,7 @@ export async function deleteProducto(req: Request, res: Response) {
       data:  { deleted_at: new Date(), activo: false, updated_by: req.user!.id },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'DELETE', entidad: 'Producto', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'Producto', entidadId: id,
       descripcion: `Eliminó producto "${existing.nombre}"`,
       datosAntes: { nombre: existing.nombre, stock_total: existing.stock_total },
       ip: req.ip, tx: tx as any,
@@ -356,7 +491,7 @@ export async function getDisponibilidad(req: Request, res: Response) {
     res.status(400).json({ error: 'Se requieren producto_id, fecha_desde, fecha_hasta' }); return;
   }
 
-  const disp = await calcDisponibilidad(productoId, toDate(desdeStr), toDate(hastaStr));
+  const disp = await calcDisponibilidad(productoId, toDate(desdeStr), toDate(hastaStr), req.empresaId!);
   if (!disp) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
   res.json(disp);
@@ -364,9 +499,9 @@ export async function getDisponibilidad(req: Request, res: Response) {
 
 // ── Alertas ───────────────────────────────────────────────────────────────────
 
-export async function getAlertas(_req: Request, res: Response) {
+export async function getAlertas(req: Request, res: Response) {
   const productos = await prisma.producto.findMany({
-    where: { deleted_at: null, activo: true },
+    where: { deleted_at: null, activo: true, ...withTenant(req.empresaId!) },
     select: { id: true, nombre: true, categoria: true, stock_total: true, stock_minimo: true },
   });
 
@@ -376,14 +511,14 @@ export async function getAlertas(_req: Request, res: Response) {
 
   for (const p of productos) {
     // A) Quiebre actual
-    const hoyDisp = await calcDisponibilidad(p.id, now, now);
+    const hoyDisp = await calcDisponibilidad(p.id, now, now, req.empresaId!);
     if (!hoyDisp) continue;
 
     const disponible_actual = hoyDisp.disponible;
 
     if (disponible_actual < p.stock_minimo) {
       // Verificar si hay sugerencias disponibles
-      const sug = await calcSugerencias(p.id, -1, now, now);
+      const sug = await calcSugerencias(p.id, -1, now, now, req.empresaId!);
       alertas.push({
         tipo:              'QUIEBRE_ACTUAL',
         producto_id:       p.id,
@@ -419,7 +554,7 @@ export async function getAlertas(_req: Request, res: Response) {
     let quiebreFutura: Date | null = null;
     for (const f of futuras) {
       const fd = f.fecha_salida;
-      const dispFutura = await calcDisponibilidad(p.id, fd, fd);
+      const dispFutura = await calcDisponibilidad(p.id, fd, fd, req.empresaId!);
       if (dispFutura && dispFutura.disponible < p.stock_minimo) {
         quiebreFutura = fd;
         break;
@@ -427,8 +562,8 @@ export async function getAlertas(_req: Request, res: Response) {
     }
 
     if (quiebreFutura) {
-      const dispFuturaFull = await calcDisponibilidad(p.id, quiebreFutura, quiebreFutura);
-      const sug = await calcSugerencias(p.id, -1, quiebreFutura, quiebreFutura);
+      const dispFuturaFull = await calcDisponibilidad(p.id, quiebreFutura, quiebreFutura, req.empresaId!);
+      const sug = await calcSugerencias(p.id, -1, quiebreFutura, quiebreFutura, req.empresaId!);
       alertas.push({
         tipo:                    'QUIEBRE_PROYECTADO',
         producto_id:             p.id,
@@ -458,14 +593,17 @@ export async function getAlertas(_req: Request, res: Response) {
 export async function getEventoStock(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const asignaciones = await prisma.asignacionStock.findMany({
     where:   { evento_id: eventoId, deleted_at: null },
     include: {
-      producto:       { select: { id: true, nombre: true, codigo: true, categoria: true, unidad: true } },
+      producto:       { select: { id: true, nombre: true, codigo_interno: true, codigo_externo: true, categoria: true, unidad: true } },
       evento_origen:  { select: { id: true, nombre: true } },
+      camion:         { select: { id: true, codigo: true, descripcion: true } },
+      cuna:           { select: { id: true, codigo: true, descripcion: true } },
+      rubro_evento:   { select: { id: true, rubro: { select: { nombre: true } } } },
     },
     orderBy: { created_at: 'desc' },
   });
@@ -479,7 +617,17 @@ export async function getEventoStock(req: Request, res: Response) {
     },
   });
 
-  res.json({ asignaciones, prestadas });
+  // Para mostrar "Este material está asignado al rubro X" en la tab Stock del evento.
+  const mapRubroEvento = (a: (typeof asignaciones)[number]) => {
+    const { rubro_evento, ...rest } = a as any;
+    return {
+      ...rest,
+      rubro_evento_id: rubro_evento?.id ?? null,
+      rubro_nombre:    rubro_evento?.rubro?.nombre ?? null,
+    };
+  };
+
+  res.json({ asignaciones: asignaciones.map(mapRubroEvento), prestadas });
 }
 
 export async function asignarProducto(req: Request, res: Response) {
@@ -489,13 +637,22 @@ export async function asignarProducto(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const { producto_id, cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
+  const { producto_id, cantidad, fecha_salida, fecha_retorno, notas, camion_id, cuna_id } = parsed.data;
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null } });
+  const producto = await prisma.producto.findFirst({ where: { id: producto_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+
+  if (camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+  if (cuna_id) {
+    const cuna = await prisma.cuna.findFirst({ where: { id: cuna_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!cuna) { res.status(400).json({ error: 'Cuna no encontrada' }); return; }
+  }
 
   const fechaSalidaDate  = toDate(fecha_salida);
   const fechaRetornoDate = fecha_retorno ? toDate(fecha_retorno) : null;
@@ -504,6 +661,7 @@ export async function asignarProducto(req: Request, res: Response) {
     producto_id,
     fechaSalidaDate,
     fechaRetornoDate ?? fechaSalidaDate,
+    req.empresaId!,
   );
   if (!disp) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
@@ -519,6 +677,8 @@ export async function asignarProducto(req: Request, res: Response) {
         estado:        'ACTIVA' as EstadoAsignacion,
         origen:        'DEPOSITO' as OrigenTransfer,
         notas:         notas ?? null,
+        camion_id:     camion_id ?? null,
+        cuna_id:       cuna_id ?? null,
         created_by:    req.user!.id,
         updated_by:    req.user!.id,
       },
@@ -538,7 +698,7 @@ export async function asignarProducto(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'AsignacionStock', entidadId: asignacion.id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'AsignacionStock', entidadId: asignacion.id,
       eventoId, descripcion: `Asignó ${cantidad} u. de "${producto.nombre}" al evento "${evento.nombre}"`,
       datosDespues: { producto_id, cantidad, fecha_salida, fecha_retorno },
       ip: req.ip, tx: tx as any,
@@ -550,7 +710,7 @@ export async function asignarProducto(req: Request, res: Response) {
   let advertencia: object | undefined;
   if (disp.disponible < cantidad) {
     const sugerencias = await calcSugerencias(
-      producto_id, eventoId, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate,
+      producto_id, eventoId, fechaSalidaDate, fechaRetornoDate ?? fechaSalidaDate, req.empresaId!,
     );
     advertencia = {
       tipo:        'QUIEBRE',
@@ -571,13 +731,22 @@ export async function updateAsignacion(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.asignacionStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.asignacionStock.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
   if (existing.estado !== 'ACTIVA') {
     res.status(400).json({ error: 'Solo se pueden editar asignaciones ACTIVAS' }); return;
   }
 
-  const { cantidad, fecha_salida, fecha_retorno, notas } = parsed.data;
+  const { cantidad, fecha_salida, fecha_retorno, notas, camion_id, cuna_id } = parsed.data;
+
+  if (camion_id) {
+    const camion = await prisma.camion.findFirst({ where: { id: camion_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!camion) { res.status(400).json({ error: 'Camión no encontrado' }); return; }
+  }
+  if (cuna_id) {
+    const cuna = await prisma.cuna.findFirst({ where: { id: cuna_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!cuna) { res.status(400).json({ error: 'Cuna no encontrada' }); return; }
+  }
 
   const asignacion = await prisma.$transaction(async tx => {
     const a = await tx.asignacionStock.update({
@@ -587,11 +756,13 @@ export async function updateAsignacion(req: Request, res: Response) {
         ...(fecha_salida  !== undefined && { fecha_salida: toDate(fecha_salida) }),
         ...(fecha_retorno !== undefined && { fecha_retorno: fecha_retorno ? toDate(fecha_retorno) : null }),
         ...(notas         !== undefined && { notas }),
+        ...(camion_id     !== undefined && { camion_id }),
+        ...(cuna_id       !== undefined && { cuna_id }),
         updated_by: req.user!.id,
       },
     });
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'AsignacionStock', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'AsignacionStock', entidadId: id,
       eventoId: existing.evento_id,
       descripcion: `Actualizó asignación #${id}`,
       datosAntes:   { cantidad: existing.cantidad, fecha_salida: existing.fecha_salida },
@@ -607,7 +778,7 @@ export async function cancelarAsignacion(req: Request, res: Response) {
   const id = Number(req.params.id);
 
   const existing = await prisma.asignacionStock.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
     include: { producto: { select: { nombre: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
@@ -635,7 +806,7 @@ export async function cancelarAsignacion(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'DELETE', entidad: 'AsignacionStock', entidadId: id,
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'AsignacionStock', entidadId: id,
       eventoId: existing.evento_id,
       descripcion: `Canceló asignación de "${existing.producto.nombre}" (${existing.cantidad} u.)`,
       datosAntes: { estado: 'ACTIVA', cantidad: existing.cantidad },
@@ -657,7 +828,7 @@ export async function transferencia(req: Request, res: Response) {
   const { asignacion_origen_id, evento_destino_id, cantidad, fecha_transferencia, notas } = parsed.data;
 
   const origen = await prisma.asignacionStock.findFirst({
-    where:   { id: asignacion_origen_id, deleted_at: null },
+    where:   { id: asignacion_origen_id, deleted_at: null, evento: withTenant(req.empresaId!) },
     include: { producto: true, evento: { select: { id: true, nombre: true } } },
   });
   if (!origen)           { res.status(400).json({ error: 'Asignación origen no encontrada' }); return; }
@@ -671,7 +842,7 @@ export async function transferencia(req: Request, res: Response) {
     res.status(400).json({ error: `Cantidad a transferir (${cantidad}) supera la asignación origen (${origen.cantidad})` }); return;
   }
 
-  const eventoDestino = await prisma.evento.findFirst({ where: { id: evento_destino_id, deleted_at: null } });
+  const eventoDestino = await prisma.evento.findFirst({ where: { id: evento_destino_id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!eventoDestino) { res.status(400).json({ error: 'Evento destino no encontrado' }); return; }
 
   const fechaTransDate = toDate(fecha_transferencia);
@@ -723,7 +894,7 @@ export async function transferencia(req: Request, res: Response) {
     });
 
     await registrarAuditoria({
-      usuarioId: req.user!.id, accion: 'CREATE', entidad: 'TransferenciaStock',
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'TransferenciaStock',
       entidadId: nueva.id, eventoId: evento_destino_id,
       descripcion: `Transfirió ${cantidad} u. de "${origen.producto.nombre}" de "${origen.evento.nombre}" a "${eventoDestino.nombre}"`,
       datosDespues: { asignacion_origen_id, evento_destino_id, cantidad },
@@ -749,7 +920,7 @@ export async function getSugerencias(req: Request, res: Response) {
   }
 
   const sugerencias = await calcSugerencias(
-    productoId, eventoId, toDate(desdeStr), toDate(hastaStr),
+    productoId, eventoId, toDate(desdeStr), toDate(hastaStr), req.empresaId!,
   );
 
   res.json({ sugerencias });
@@ -757,9 +928,9 @@ export async function getSugerencias(req: Request, res: Response) {
 
 // ── Categorías de Stock ───────────────────────────────────────────────────────
 
-export async function listCategorias(_req: Request, res: Response) {
+export async function listCategorias(req: Request, res: Response) {
   const categorias = await prisma.categoriaStock.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...withTenant(req.empresaId!) },
     orderBy: { nombre: 'asc' },
     include: { _count: { select: { productos: { where: { deleted_at: null, activo: true } } } } },
   });
@@ -778,18 +949,19 @@ export async function createCategoria(req: Request, res: Response) {
   }
   const { nombre, descripcion, color } = parsed.data;
 
-  const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null } });
+  const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (dupe) { res.status(400).json({ error: 'Ya existe una categoría con ese nombre' }); return; }
 
   const categoria = await prisma.categoriaStock.create({
     data: {
+      ...withTenant(req.empresaId!),
       nombre, descripcion: descripcion ?? null, color: color ?? null,
       created_by: req.user!.id,
     },
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'CREATE', entidad: 'CategoriaStock', entidadId: categoria.id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'CategoriaStock', entidadId: categoria.id,
     descripcion: `Creó categoría de stock "${nombre}"`, datosDespues: { nombre, color }, ip: req.ip,
     tx: prisma,
   });
@@ -804,13 +976,13 @@ export async function updateCategoria(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
 
-  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
 
   const { nombre, descripcion, color } = parsed.data;
 
   if (nombre && nombre !== existing.nombre) {
-    const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null } });
+    const dupe = await prisma.categoriaStock.findFirst({ where: { nombre, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (dupe) { res.status(400).json({ error: 'Ya existe una categoría con ese nombre' }); return; }
   }
 
@@ -827,7 +999,7 @@ export async function updateCategoria(req: Request, res: Response) {
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'UPDATE', entidad: 'CategoriaStock', entidadId: id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'CategoriaStock', entidadId: id,
     descripcion: `Actualizó categoría "${existing.nombre}"`,
     datosAntes: { nombre: existing.nombre, color: existing.color, activo: existing.activo },
     datosDespues: parsed.data, ip: req.ip, tx: prisma,
@@ -839,11 +1011,11 @@ export async function updateCategoria(req: Request, res: Response) {
 export async function deleteCategoria(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.categoriaStock.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
 
   const productosActivos = await prisma.producto.count({
-    where: { categoria_id: id, deleted_at: null, activo: true },
+    where: { categoria_id: id, deleted_at: null, activo: true, ...withTenant(req.empresaId!) },
   });
   if (productosActivos > 0) {
     res.status(400).json({
@@ -857,10 +1029,441 @@ export async function deleteCategoria(req: Request, res: Response) {
   });
 
   await registrarAuditoria({
-    usuarioId: req.user!.id, accion: 'DELETE', entidad: 'CategoriaStock', entidadId: id,
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'CategoriaStock', entidadId: id,
     descripcion: `Eliminó categoría de stock "${existing.nombre}"`,
     datosAntes: { nombre: existing.nombre }, ip: req.ip, tx: prisma,
   });
 
   res.json({ message: 'Categoría eliminada correctamente' });
+}
+
+// ── Firmas digitales ─────────────────────────────────────────────────────────
+// Irreversibles — no hay endpoint para "desfirmar".
+
+const ASIGNACION_FIRMA_INCLUDE = {
+  producto: { select: { id: true, nombre: true, codigo_interno: true, unidad: true } },
+  evento:   { select: { id: true, nombre: true } },
+  camion:   { select: { id: true, codigo: true, descripcion: true } },
+  cuna:     { select: { id: true, codigo: true, descripcion: true } },
+} satisfies Prisma.AsignacionStockInclude;
+
+// GET /api/stock/asignaciones/pendientes-firma?paso=salida|llegada|retorno
+// Alimenta la vista mobile de firmas — lista tenant-wide (no hay campo de
+// responsable en AsignacionStock) de lo que está pendiente en cada paso.
+export async function getPendientesFirma(req: Request, res: Response) {
+  const paso = typeof req.query.paso === 'string' ? req.query.paso : undefined;
+  if (!paso || !['salida', 'llegada', 'retorno'].includes(paso)) {
+    res.status(400).json({ error: 'Se requiere paso=salida|llegada|retorno' }); return;
+  }
+
+  const where: Prisma.AsignacionStockWhereInput = {
+    estado: 'ACTIVA', deleted_at: null, evento: withTenant(req.empresaId!),
+    ...(paso === 'salida'  && { firmado_salida: false }),
+    ...(paso === 'llegada' && { firmado_salida: true, firmado_llegada: false }),
+    ...(paso === 'retorno' && { firmado_llegada: true, firmado_retorno: false }),
+  };
+
+  const asignaciones = await prisma.asignacionStock.findMany({
+    where,
+    include: ASIGNACION_FIRMA_INCLUDE,
+    orderBy: { fecha_salida: 'asc' },
+  });
+
+  res.json({ asignaciones });
+}
+
+export async function firmarSalida(req: Request, res: Response) {
+  const id = Number(req.params.id);
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (existing.firmado_salida) { res.status(400).json({ error: 'Ya se firmó la salida de esta asignación' }); return; }
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_salida:     true,
+        firmado_salida_at:  new Date(),
+        firmado_salida_por: req.user!.id,
+        ubicacion:          'EN_TRANSITO' as UbicacionStock,
+        updated_by:         req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_SALIDA', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de salida — ${existing.producto.nombre} × ${existing.cantidad}${existing.camion ? ` en ${existing.camion.codigo}` : ''}`,
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+const firmarLlegadaSchema = z.object({
+  cantidad_excedente: z.number().int().min(0).optional(),
+});
+
+export async function firmarLlegada(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = firmarLlegadaSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
+  }
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (!existing.firmado_salida) { res.status(400).json({ error: 'Primero debe firmarse la salida' }); return; }
+  if (existing.firmado_llegada) { res.status(400).json({ error: 'Ya se firmó la llegada de esta asignación' }); return; }
+
+  const cantidadExcedente = parsed.data.cantidad_excedente ?? 0;
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_llegada:     true,
+        firmado_llegada_at:  new Date(),
+        firmado_llegada_por: req.user!.id,
+        ubicacion:           (cantidadExcedente > 0 ? 'EXCEDENTE' : 'EN_EVENTO') as UbicacionStock,
+        cantidad_excedente:  cantidadExcedente,
+        updated_by:          req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_LLEGADA', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de llegada — ${existing.producto.nombre} × ${existing.cantidad} a "${existing.evento.nombre}"`
+        + (cantidadExcedente > 0 ? ` (excedente: ${cantidadExcedente})` : ''),
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+export async function firmarRetorno(req: Request, res: Response) {
+  const id = Number(req.params.id);
+
+  const existing = await prisma.asignacionStock.findFirst({
+    where:   { id, deleted_at: null, evento: withTenant(req.empresaId!) },
+    include: ASIGNACION_FIRMA_INCLUDE,
+  });
+  if (!existing) { res.status(404).json({ error: 'Asignación no encontrada' }); return; }
+  if (!existing.firmado_llegada) { res.status(400).json({ error: 'Primero debe firmarse la llegada' }); return; }
+  if (existing.firmado_retorno) { res.status(400).json({ error: 'Ya se firmó el retorno de esta asignación' }); return; }
+
+  const asignacion = await prisma.$transaction(async tx => {
+    const a = await tx.asignacionStock.update({
+      where: { id },
+      data: {
+        firmado_retorno:     true,
+        firmado_retorno_at:  new Date(),
+        firmado_retorno_por: req.user!.id,
+        ubicacion:           'EN_TRANSITO' as UbicacionStock,
+        updated_by:          req.user!.id,
+      },
+    });
+    await registrarAuditoria({
+      usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'FIRMA_RETORNO', entidad: 'AsignacionStock', entidadId: id,
+      eventoId: existing.evento_id,
+      descripcion: `Firma de retorno — ${existing.producto.nombre} × ${existing.cantidad}${existing.camion ? ` en ${existing.camion.codigo}` : ''}`,
+      ip: req.ip, tx: tx as any,
+    });
+    return a;
+  });
+
+  res.json(asignacion);
+}
+
+// ── Importador catálogo Layher ────────────────────────────────────────────────
+
+export const uploadCatalogo = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.originalname.toLowerCase().endsWith('.xlsx')) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos .xlsx'));
+  },
+});
+
+export async function importarCatalogo(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+
+  const empresaId = req.empresaId!;
+  const workbook   = XLSX.read(req.file.buffer, { type: 'buffer' });
+
+  if (empresaId === EMPRESAS.DOS57) {
+    await importarLayher(workbook, empresaId, req, res);
+  } else {
+    await importarEnjoy(workbook, empresaId, req, res);
+  }
+}
+
+// Fila de la hoja "RENTAL COSTS (IMP.)" del catálogo Layher (DOS57):
+// B=NRO ITEM, C=CODIGO OFICIAL, D=DETALLE, E=PESO X UNID, F=CANTIDAD, G=COSTO UNITARIO (no se importa)
+async function importarLayher(workbook: XLSX.WorkBook, empresaId: number, req: Request, res: Response) {
+  const sheet = workbook.Sheets['RENTAL COSTS (IMP.)'];
+  if (!sheet) { res.status(400).json({ error: 'El archivo no contiene la hoja "RENTAL COSTS (IMP.)"' }); return; }
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, blankrows: false });
+
+  let creados = 0;
+  let actualizados = 0;
+  let omitidos = 0;
+  const errores: { fila: number; motivo: string }[] = [];
+
+  for (let i = 3; i < rows.length; i++) {
+    const row       = rows[i] as unknown[];
+    const filaExcel = i + 1;
+
+    const codigoOficial = row[2] != null ? String(row[2]).trim() : '';
+    const detalle        = row[3] != null ? String(row[3]).trim() : '';
+
+    // Filas de headers/totales: sin código o sin detalle. Los últimos 5 ítems
+    // sin NRO ITEM (Col B) igual tienen código y detalle, así que se importan.
+    if (!codigoOficial || !detalle) { omitidos++; continue; }
+
+    const pesoRaw     = row[4];
+    const cantidadRaw = row[5];
+    const peso        = pesoRaw != null && !isNaN(Number(pesoRaw)) ? Number(pesoRaw) : null;
+    const cantidadNum = cantidadRaw != null ? parseInt(String(cantidadRaw), 10) : NaN;
+    const cantidad    = !isNaN(cantidadNum) ? cantidadNum : 0;
+
+    try {
+      const existing = await prisma.producto.findFirst({
+        where: { codigo_externo: codigoOficial, deleted_at: null, ...withTenant(empresaId) },
+      });
+
+      if (existing) {
+        await prisma.producto.update({
+          where: { id: existing.id },
+          data: {
+            nombre_tecnico: detalle,
+            peso_unitario:  peso,
+            updated_by:     req.user!.id,
+          },
+        });
+        actualizados++;
+      } else {
+        await prisma.producto.create({
+          data: {
+            ...withTenant(empresaId),
+            nombre:          detalle,
+            nombre_tecnico:  detalle,
+            codigo_externo:  codigoOficial,
+            peso_unitario:   peso,
+            stock_total:     cantidad,
+            catalogo_origen: 'Layher',
+            es_critico:      false,
+            created_by:      req.user!.id,
+            updated_by:      req.user!.id,
+          },
+        });
+        creados++;
+      }
+    } catch (err) {
+      errores.push({ fila: filaExcel, motivo: err instanceof Error ? err.message : 'Error desconocido' });
+    }
+  }
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Producto',
+    descripcion: `Importó catálogo Layher — ${creados} creados, ${actualizados} actualizados, ${errores.length} errores`,
+    ip: req.ip, tx: prisma,
+  });
+
+  res.json({ creados, actualizados, omitidos, errores });
+}
+
+// Una hoja por espacio físico del depósito de Enjoy. DEPO MATIAS es personal — nunca se importa.
+const ENJOY_HOJAS = [
+  'DEPO 1', 'DEPO 2', 'ALTILLO ENTREPISO', 'TANQUE',
+  'PECERA', 'SALA DE REUNIONES', 'ESCALERA', 'DEPO ADMINISTRACIÓN',
+] as const;
+
+// Prefijo de codigo_interno autogenerado por espacio, usado para identificar
+// y rastrear productos de Enjoy que no vienen de un catálogo con código propio.
+const ENJOY_PREFIJOS: Record<string, string> = {
+  'DEPO 1':              'D1-',
+  'DEPO 2':              'D2-',
+  'ALTILLO ENTREPISO':   'ALT-',
+  TANQUE:                'TAN-',
+  PECERA:                'PEC-',
+  'SALA DE REUNIONES':   'SR-',
+  ESCALERA:              'ESC-',
+  'DEPO ADMINISTRACIÓN': 'DA-',
+};
+
+// Columnas de historial de stock del Excel de Enjoy — una por período de control semestral.
+const ENJOY_PERIODOS = [
+  { periodo: 'abr-23', col: 1, fecha_aproximada: '2023-04-01' },
+  { periodo: 'dic-23', col: 2, fecha_aproximada: '2023-12-01' },
+  { periodo: 'jun-24', col: 3, fecha_aproximada: '2024-06-01' },
+  { periodo: 'oct-24', col: 4, fecha_aproximada: '2024-10-01' },
+  { periodo: 'jun-25', col: 5, fecha_aproximada: '2025-06-01' },
+  { periodo: 'ene-26', col: 6, fecha_aproximada: '2026-01-01' },
+] as const;
+
+function parseCantidadEnjoy(raw: unknown): number | null {
+  if (raw == null || String(raw).trim() === '-' || String(raw).trim() === '') return null;
+  const parsed = parseInt(String(raw), 10);
+  return !isNaN(parsed) ? parsed : null;
+}
+
+// codigo_interno es único por empresa (no por espacio) — así que el próximo
+// número no puede basarse solo en cuántos productos tiene el espacio, hay que
+// evitar colisión con cualquier código existente en la empresa que use el
+// mismo prefijo (ej: datos de demo/otro catálogo que casualmente coincidan).
+async function siguienteNumeroDisponible(empresaId: number, prefijo: string): Promise<number> {
+  const existentes = await prisma.producto.findMany({
+    where: { empresa_id: empresaId, codigo_interno: { startsWith: prefijo } },
+    select: { codigo_interno: true },
+  });
+  const patron = new RegExp(`^${prefijo.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(\\d+)$`);
+  let max = 0;
+  for (const p of existentes) {
+    const m = p.codigo_interno?.match(patron);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max;
+}
+
+function buildHistorialStock(row: unknown[]) {
+  return ENJOY_PERIODOS.map(p => ({
+    periodo:          p.periodo,
+    cantidad:         parseCantidadEnjoy(row[p.col]),
+    fecha_aproximada: p.fecha_aproximada,
+  }));
+}
+
+// Títulos de sección visuales (ej: "ENERGIA - CABLES - TABLEROS") que ocupan
+// la Col A pero no son productos — se detectan por falta total de datos de
+// stock, o por un patrón de encabezado (mayúsculas/guiones, largo) sin ningún
+// valor numérico en toda la fila.
+function esTituloDeSeccion(row: unknown[], elemento: string): boolean {
+  if (row[6] == null && row[1] == null && row[2] == null) return true;
+
+  const pareceEncabezado = /^[A-ZÁÉÍÓÚÑ\s-]+$/.test(elemento) && elemento.length > 15;
+  if (pareceEncabezado) {
+    const tieneNumero = [1, 2, 3, 4, 5, 6].some(i => parseCantidadEnjoy(row[i]) != null);
+    if (!tieneNumero) return true;
+  }
+  return false;
+}
+
+async function importarEnjoy(workbook: XLSX.WorkBook, empresaId: number, req: Request, res: Response) {
+  let creados = 0;
+  let actualizados = 0;
+  let omitidos = 0;
+  let hojasProcesadas = 0;
+  const porHoja: { hoja: string; creados: number; actualizados: number; codigos_generados: string[] }[] = [];
+  const errores: { hoja: string; fila: number; motivo: string }[] = [];
+  // Un elemento repetido en la misma hoja (DEPO 1: "Tramos Truss 2m 30x30" dos
+  // veces) se suma: el segundo no pisa al primero.
+  const repetidos: { hoja: string; fila: number; elemento: string; total: number }[] = [];
+
+  for (const hoja of ENJOY_HOJAS) {
+    const sheet = workbook.Sheets[hoja];
+    if (!sheet) { errores.push({ hoja, fila: 0, motivo: 'Hoja no encontrada en el archivo' }); continue; }
+
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, blankrows: false });
+    let hojaCreados = 0;
+    let hojaActualizados = 0;
+    const codigosGenerados: string[] = [];
+
+    const prefijo = ENJOY_PREFIJOS[hoja];
+    let siguienteNumero = await siguienteNumeroDisponible(empresaId, prefijo);
+    const stockEnHoja = new Map<string, number>();
+
+    // Fila 1: título del espacio. Fila 2: headers. Datos desde fila 3 (índice 2).
+    for (let i = 2; i < rows.length; i++) {
+      const row       = rows[i] as unknown[];
+      const filaExcel = i + 1;
+
+      const elemento = row[0] != null ? String(row[0]).trim() : '';
+      if (!elemento) { omitidos++; continue; }
+      if (esTituloDeSeccion(row, elemento)) { omitidos++; continue; }
+
+      let stockTotal      = parseCantidadEnjoy(row[6]) ?? 0; // Col G — ene-26, stock actual
+      const clave = elemento; // mismo criterio que la búsqueda de abajo (nombre exacto)
+      if (stockEnHoja.has(clave)) {
+        stockTotal += stockEnHoja.get(clave)!;
+        repetidos.push({ hoja, fila: filaExcel, elemento, total: stockTotal });
+      }
+      stockEnHoja.set(clave, stockTotal);
+      const informe       = row[7] != null ? String(row[7]).trim() : '';
+      const observaciones = row[8] != null ? String(row[8]).trim() : '';
+      const historial      = buildHistorialStock(row) as unknown as Prisma.InputJsonValue;
+
+      try {
+        const existing = await prisma.producto.findFirst({
+          where: { nombre: elemento, espacio: hoja, deleted_at: null, ...withTenant(empresaId) },
+        });
+
+        let codigoInterno = existing?.codigo_interno ?? null;
+        if (!codigoInterno) {
+          siguienteNumero++;
+          codigoInterno = `${prefijo}${String(siguienteNumero).padStart(3, '0')}`;
+          codigosGenerados.push(codigoInterno);
+        }
+
+        if (existing) {
+          await prisma.producto.update({
+            where: { id: existing.id },
+            data: {
+              stock_total:       stockTotal,
+              notas:             observaciones || null,
+              informe_situacion: informe || null,
+              historial_stock:   historial,
+              codigo_interno:    codigoInterno,
+              updated_by:        req.user!.id,
+            },
+          });
+          hojaActualizados++;
+        } else {
+          await prisma.producto.create({
+            data: {
+              ...withTenant(empresaId),
+              nombre:            elemento,
+              espacio:           hoja,
+              codigo_interno:    codigoInterno,
+              stock_total:       stockTotal,
+              catalogo_origen:   'propio',
+              notas:             observaciones || null,
+              informe_situacion: informe || null,
+              historial_stock:   historial,
+              created_by: req.user!.id,
+              updated_by: req.user!.id,
+            },
+          });
+          hojaCreados++;
+        }
+      } catch (err) {
+        errores.push({ hoja, fila: filaExcel, motivo: err instanceof Error ? err.message : 'Error desconocido' });
+      }
+    }
+
+    creados      += hojaCreados;
+    actualizados += hojaActualizados;
+    hojasProcesadas++;
+    porHoja.push({ hoja, creados: hojaCreados, actualizados: hojaActualizados, codigos_generados: codigosGenerados });
+  }
+
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'Producto',
+    descripcion: `Importó stock Enjoy — ${hojasProcesadas} hojas, ${creados} creados, ${actualizados} actualizados, ${errores.length} errores`,
+    ip: req.ip, tx: prisma,
+  });
+
+  res.json({ hojas_procesadas: hojasProcesadas, creados, actualizados, omitidos, por_hoja: porHoja, errores, repetidos });
 }

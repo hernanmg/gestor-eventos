@@ -52,6 +52,7 @@ export function useCreateEcheq(eventoId: number) {
       detalle?:              string | null;
       importe:               number;
       moneda:                string;
+      tasa_cambio?:          number | null;
       fecha_emision?:        string | null;
       fecha_cobro_estimada?: string | null;
     }) => api.post(`/eventos/${eventoId}/echeqs`, data).then(r => r.data),
@@ -90,7 +91,7 @@ export function useCobrarEcheq(eventoId: number) {
     }) => api.patch(`/echeqs/${id}/cobrar`, { cuenta_id, fecha_cobro_real, referencia }).then(r => r.data),
     onSuccess: (_data, { cuenta_id }) => {
       qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
-      qc.invalidateQueries({ queryKey: movCajaKey(cuenta_id) });
+      qc.invalidateQueries({ queryKey: movCajaKey(cuenta_id, eventoId) });
     },
   });
 }
@@ -100,6 +101,18 @@ export function useRechazarEcheq(eventoId: number) {
   return useMutation({
     mutationFn: ({ id, motivo_rechazo }: { id: number; motivo_rechazo?: string | null }) =>
       api.patch(`/echeqs/${id}/rechazar`, { motivo_rechazo }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
+    },
+  });
+}
+
+export function useVenderEcheq(eventoId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, fecha_venta, banco_descuento, tasa_descuento, monto_neto_recibido }: {
+      id: number; fecha_venta: string; banco_descuento?: string | null; tasa_descuento?: number | null; monto_neto_recibido?: number | null;
+    }) => api.patch(`/echeqs/${id}/vender`, { fecha_venta, banco_descuento, tasa_descuento, monto_neto_recibido }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: echeqsPrefix(eventoId) });
     },

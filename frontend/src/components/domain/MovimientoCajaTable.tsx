@@ -8,9 +8,11 @@ import {
 import { SaldoCell } from './SaldoCell';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { MovimientoCaja, Moneda } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Types ─────────────���──────────────────────────────��────────────────────────
 
@@ -41,8 +43,8 @@ function buildUpdatePayload(field: EditableField, value: string) {
   switch (field) {
     case 'fecha':       return { fecha:       value || null };
     case 'descripcion': return { descripcion: value || null };
-    case 'debe':        return { debe:        parseFloat(value) || 0 };
-    case 'haber':       return { haber:       parseFloat(value) || 0 };
+    case 'debe':        return { debe:        parseMoney(value) || 0 };
+    case 'haber':       return { haber:       parseMoney(value) || 0 };
   }
 }
 
@@ -54,7 +56,7 @@ function EditableCell({
 }: {
   value:           string;
   display:         React.ReactNode;
-  type:            'text' | 'number' | 'date';
+  type:            'text' | 'number' | 'date' | 'money';
   editing:         boolean;
   className?:      string;
   inputClassName?: string;
@@ -68,7 +70,8 @@ function EditableCell({
       <td className={className}>
         <input
           autoFocus
-          type={type}
+          type={type === 'money' ? 'text' : type}
+          inputMode={type === 'money' ? 'decimal' : undefined}
           value={value}
           step={type === 'number' ? '0.01' : undefined}
           min={type === 'number' ? '0' : undefined}
@@ -160,7 +163,7 @@ function ConciliarDialog({
               {query ? 'Sin resultados.' : 'Todos los movimientos están conciliados.'}
             </p>
           ) : (
-            <table className="w-full text-xs">
+            <BaseTable className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tab</th>
@@ -198,7 +201,7 @@ function ConciliarDialog({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           )}
         </div>
 
@@ -274,6 +277,16 @@ function Row({
                 onKeyDown={onKeyDown}
                 className="w-full border border-ring rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
+            ) : mov.movimiento_origen?.rubro_nombre ? (
+              <>
+                {mov.descripcion || mov.movimiento_origen.concepto || 'Pago'}
+                {' — '}
+                <span className="font-medium">{mov.movimiento_origen.rubro_nombre}</span>
+                {' '}
+                <span className="text-muted-foreground">
+                  ({mov.movimiento_origen.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'})
+                </span>
+              </>
             ) : (
               mov.descripcion || '—'
             )}
@@ -283,7 +296,7 @@ function Row({
       <EditableCell
         value={active('debe') ? editCell!.value : getCellValue(mov, 'debe')}
         display={<span className="tabular-nums">{formatCurrency(Number(mov.debe), moneda)}</span>}
-        type="number"
+        type="money"
         editing={active('debe') && !isTransfer}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -295,7 +308,7 @@ function Row({
       <EditableCell
         value={active('haber') ? editCell!.value : getCellValue(mov, 'haber')}
         display={<span className="tabular-nums">{formatCurrency(Number(mov.haber), moneda)}</span>}
-        type="number"
+        type="money"
         editing={active('haber') && !isTransfer}
         className={cn(cell, 'w-28 text-right')}
         inputClassName="text-right"
@@ -314,7 +327,7 @@ function Row({
             className="inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200"
             title={`${mov.movimiento_origen.tipo} — ${mov.movimiento_origen.concepto ?? '—'}`}
           >
-            {mov.movimiento_origen.tab_codigo}
+            {mov.movimiento_origen.rubro_nombre ?? mov.movimiento_origen.tab_codigo}
           </span>
         ) : !isTransfer && canEdit ? (
           <button
@@ -351,7 +364,7 @@ interface Props {
 }
 
 export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdit }: Props) {
-  const { data: movimientos = [], isLoading } = useMovimientosCaja(cuentaId);
+  const { data: movimientos = [], isLoading } = useMovimientosCaja(cuentaId, eventoId);
   const createMov = useCreateMovimientoCaja(cuentaId, eventoId);
   const updateMov = useUpdateMovimientoCaja(cuentaId, eventoId);
   const deleteMov = useDeleteMovimientoCaja(cuentaId, eventoId);
@@ -413,8 +426,8 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
 
   return (
     <>
-      <div className="overflow-x-auto border border-border rounded-lg">
-        <table className="w-full text-sm border-collapse">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-border bg-gray-50 text-muted-foreground text-xs font-medium">
               <th className="px-2 py-2 text-left w-28">Fecha</th>
@@ -462,19 +475,17 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <input
-                    type="number" min="0" step="0.01" placeholder="0.00"
+                  <MoneyInput
                     value={newRowData.debe}
-                    onChange={e => setNewRowData(p => ({ ...p, debe: e.target.value }))}
-                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                    onChange={v => setNewRowData(p => ({ ...p, debe: v }))}
+                    className="text-xs"
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <input
-                    type="number" min="0" step="0.01" placeholder="0.00"
+                  <MoneyInput
                     value={newRowData.haber}
-                    onChange={e => setNewRowData(p => ({ ...p, haber: e.target.value }))}
-                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                    onChange={v => setNewRowData(p => ({ ...p, haber: v }))}
+                    className="text-xs"
                   />
                 </td>
                 <td className="px-2 py-1 text-right text-muted-foreground text-xs">—</td>
@@ -517,9 +528,9 @@ export default function MovimientoCajaTable({ cuentaId, moneda, eventoId, canEdi
               </tr>
             )}
           </tbody>
-        </table>
+        </BaseTable>
 
-        {!newRow && (
+        {canEdit && !newRow && (
           <div className="px-2 py-1.5 border-t border-border bg-gray-50/50">
             <Button
               variant="ghost"

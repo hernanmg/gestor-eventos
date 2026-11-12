@@ -4,9 +4,22 @@ export interface HelpLink {
   accion?: string;   // disparar window.dispatchEvent('help:<accion>')
 }
 
+// Link embebido dentro del texto de una sección — HelpPanel lo renderiza como
+// un <Link> de React Router inline, en vez de un botón aparte en "Links
+// rápidos". Ej: "Podés crear la factura desde " + {texto:"Facturas a
+// Cobrar", ruta:"/facturas-emitidas"} + "."
+export interface HelpInlineLink {
+  texto: string;
+  ruta:  string;
+}
+
 export interface HelpSection {
   titulo:    string;
-  contenido: string;
+  // String simple (como siempre) o un array mezclando texto plano con
+  // HelpInlineLink para insertar links navegables en medio del párrafo.
+  contenido: string | (string | HelpInlineLink)[];
+  // "Ver también: [link] · [link]" al pie de esta sección.
+  veTambien?: HelpInlineLink[];
 }
 
 export interface HelpContent {
@@ -18,18 +31,18 @@ export interface HelpContent {
 
 const help: Record<string, HelpContent> = {
 
-  // ── Dashboard ───────────────────────────────────────────────────────────────
-  '/dashboard': {
-    titulo: 'Dashboard',
-    descripcion: 'Vista consolidada de todos los eventos activos.',
+  // ── Macro ───────────────────────────────────────────────────────────────────
+  '/macro': {
+    titulo: 'Macro',
+    descripcion: 'Visibilidad global del negocio — KPIs consolidados y movimientos cross-evento.',
     secciones: [
       {
-        titulo: '¿Qué muestra el dashboard?',
-        contenido: 'Resumen financiero de todos los eventos activos: ingresos, egresos, saldo neto y alertas de echeqs próximos a vencer o rechazados.',
+        titulo: 'KPIs y Alertas',
+        contenido: 'Resumen financiero de todos los eventos activos: ingresos, egresos, saldo neto y alertas de echeqs próximos a vencer o rechazados. Las alertas de nivel ERROR (en rojo) requieren atención inmediata; las de tipo WARNING (en amarillo) son avisos informativos.',
       },
       {
-        titulo: 'Alertas',
-        contenido: 'Las alertas de nivel ERROR (en rojo) requieren atención inmediata. Las de tipo WARNING (en amarillo) son avisos informativos.',
+        titulo: 'Movimientos',
+        contenido: 'Tabla de movimientos de todos los eventos con filtros cross-evento (empresa, evento, rubro, estado, fechas). Permite editar estado y aviso a proveedor en línea, y exportar a Excel.',
       },
     ],
     links: [
@@ -48,7 +61,7 @@ const help: Record<string, HelpContent> = {
       },
       {
         titulo: 'Crear un evento',
-        contenido: 'Click en "Nuevo evento" → completá nombre y fechas → configurá los socios con sus porcentajes (deben sumar exactamente 100%) → Guardar. El sistema va a crear automáticamente las 10 categorías de movimientos (5 de egresos y 5 de ingresos).',
+        contenido: 'Click en "Nuevo evento" → completá nombre y fechas → configurá los socios con sus porcentajes (deben sumar exactamente 100%) → Guardar. Los movimientos del evento se organizan en los rubros de egresos e ingresos configurados para tu empresa (ver Configuración > Rubros).',
       },
       {
         titulo: 'Estados del evento',
@@ -56,11 +69,15 @@ const help: Record<string, HelpContent> = {
       },
       {
         titulo: 'Flujo de trabajo recomendado',
-        contenido: '1. Creá el evento con sus socios\n2. Cargá los egresos por categoría (EG-TC, EG-IMP, etc.)\n3. Cargá los ingresos (Tickets, Sponsors, etc.)\n4. Configurá las cuentas de Caja\n5. Registrá los echeqs desde EG-EXTRA\n6. Mirá la Conciliatoria para ver el resultado final\n7. Exportá a Excel para compartir',
+        contenido: '1. Creá el evento con sus socios\n2. Cargá los egresos por rubro (Producción General, Impuestos, etc.)\n3. Cargá los ingresos (Tickets, Sponsors, etc.)\n4. Configurá las cuentas de Caja\n5. Registrá los echeqs desde el rubro de Gastos Extraordinarios\n6. Mirá el Resumen o la Conciliatoria para ver el resultado final\n7. Exportá a Excel para compartir',
       },
       {
         titulo: 'Importar desde Excel',
-        contenido: 'Si ya tenés eventos cargados en el Excel original, podés importarlos directamente desde el menú "Importar Excel". El sistema mapea automáticamente las 10 hojas y crea todos los movimientos.',
+        contenido: 'Si ya tenés eventos cargados en el Excel original, podés importarlos directamente desde el menú "Importar Excel". El sistema mapea automáticamente las 10 hojas del formato histórico a los rubros configurados y crea todos los movimientos.',
+      },
+      {
+        titulo: 'Carga rápida de evento',
+        contenido: 'Para eventos pequeños o informales que no necesitan ficha técnica completa. Cargá el trabajo con los datos mínimos y decidí si se factura o no. Los eventos sin decisión de facturación aparecen como alertas en las notificaciones para que administración pueda actuar a tiempo.',
       },
     ],
     links: [
@@ -74,15 +91,19 @@ const help: Record<string, HelpContent> = {
   // ── Evento > Egresos ────────────────────────────────────────────────────────
   '/eventos/:id/egresos': {
     titulo: 'Egresos',
-    descripcion: 'Registrá todos los gastos del evento organizados en 5 categorías.',
+    descripcion: 'Registrá todos los gastos del evento organizados en rubros configurables.',
     secciones: [
       {
         titulo: '¿Cómo cargar un egreso?',
-        contenido: 'Click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna HABER → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
+        contenido: 'Elegí la pestaña del rubro correspondiente → click en + al final de la tabla → completar fecha, concepto, descripción → el monto va en la columna DEBE → al salir de la celda se guarda automáticamente. El saldo se recalcula solo — no es editable.',
       },
       {
-        titulo: 'Categorías de egresos',
-        contenido: '• EG-TC: Costos generales del evento (sonido, iluminación, escenario, etc.)\n• EG-RET SOC: Retiros y gastos de socios\n• EG-EXTRA: Gastos extraordinarios. Desde acá se crean los echeqs.\n• EG-IMP: Impuestos. Cada fila tiene una subcategoría fija (PAYWAY, IIBB, IVA, etc.)\n• EG-PREST: Préstamos recibidos para financiar el evento',
+        titulo: 'Rubros de egresos',
+        contenido: 'Cada pestaña de Egresos es un rubro configurable desde Configuración > Rubros (ej: Producción General, Sonido, Impuestos, Gastos Extraordinarios). El rubro de Impuestos requiere elegir una subcategoría fija (PAYWAY, IIBB, IVA, etc.) en cada fila. Los echeqs solo se pueden crear desde el rubro de Gastos Extraordinarios.',
+      },
+      {
+        titulo: 'Estado y presupuesto',
+        contenido: 'Cada movimiento tiene un estado (Pendiente → Cotizando → Confirmado → Pagado, o Cancelado) y un presupuesto opcional. La columna Diferencia compara el presupuesto contra el monto real cargado — en rojo si el real superó lo presupuestado.',
       },
       {
         titulo: 'Vincular proveedor',
@@ -92,30 +113,97 @@ const help: Record<string, HelpContent> = {
         titulo: 'Impactar en Caja',
         contenido: 'Al cargar un egreso podés marcar si impacta en caja y en qué cuenta bancaria — se crea automáticamente el movimiento de caja.',
       },
+      {
+        titulo: 'Líneas que vienen de la Ficha',
+        contenido: 'Cuando un rubro se confirma en la Ficha (a mano, con el importador o desde la Pre-Macro) aparece solo como línea en Egresos, con la etiqueta "Ficha", el proveedor y el presupuesto de la Ficha y el monto real en 0. Cargá el monto real cuando lo tengas. Si cambiás el proveedor o el presupuesto en la Ficha, la línea se actualiza. Si el rubro pasa a "No va" o "Cancelado", la línea se cancela, salvo que ya tenga un monto o pagos cargados.\nSi el rubro ya tenía egresos cargados a mano no se agrega otra línea.',
+      },
+      {
+        titulo: 'IVA',
+        contenido: 'Hacé clic en la celda IVA para cargar el neto y el IVA (botones 10,5% / 21% / 27%). El Debe queda como total = neto + IVA. Los totales, saldos y la conciliatoria siguen tomando el total, así que el IVA es un desglose. Al agregar una fila podés elegir la alícuota: el monto que escribís se toma como neto y se le suma el IVA.',
+      },
+      {
+        titulo: 'Falta pagar y señas',
+        contenido: 'La columna Falta pagar muestra el total menos lo que ya se le pagó al proveedor. Mientras no hay monto real se calcula sobre el presupuesto (en cursiva). Hacé clic para registrar una seña o un pago parcial con fecha y nota. Cuando los pagos cubren el total, la línea pasa a Pagado.\nRegistrar un pago acá no mueve la Caja: el movimiento de dinero se sigue cargando en Caja o en Facturas a Pagar.',
+      },
     ],
     links: [
+      { label: 'Ver Resumen',              ruta:   '/eventos/:id/resumen' },
       { label: 'Ver Conciliatoria',        ruta:   '/eventos/:id/conciliatoria' },
       { label: 'Ver Caja',                 ruta:   '/eventos/:id/caja' },
-      { label: 'Ir a EG-EXTRA (Echeqs)',   accion: 'navegar_tab_egreso_3' },
     ],
   },
 
   // ── Evento > Ingresos ───────────────────────────────────────────────────────
   '/eventos/:id/ingresos': {
     titulo: 'Ingresos',
-    descripcion: 'Registrá todas las fuentes de ingreso del evento en 5 categorías.',
+    descripcion: 'Registrá todas las fuentes de ingreso del evento en rubros configurables.',
     secciones: [
       {
         titulo: '¿Cómo cargar un ingreso?',
-        contenido: 'Mismo proceso que egresos — click en +, completar fecha y concepto, monto en columna HABER.',
+        contenido: 'Mismo proceso que egresos — elegí la pestaña del rubro, click en +, completar fecha y concepto, monto en columna HABER.',
       },
       {
-        titulo: 'Categorías de ingresos',
-        contenido: '• Tickets: Venta de entradas (anticipadas, en puerta, plataformas)\n• Sponsors: Auspicios y patrocinios\n• Corporativo: Eventos corporativos o privados\n• Gastronomía: Porcentaje de ventas de food & beverage\n• Service Charge: Cargo por servicio',
+        titulo: 'Rubros de ingresos',
+        contenido: 'Cada pestaña de Ingresos es un rubro configurable desde Configuración > Rubros (ej: Tickets, Sponsors, Corporativo, Gastronomía, Service Charge). Podés renombrarlos, reordenarlos o agregar rubros nuevos según necesites.',
+      },
+    ],
+    links: [
+      { label: 'Ver Resumen',       ruta: '/eventos/:id/resumen' },
+      { label: 'Ver Conciliatoria', ruta: '/eventos/:id/conciliatoria' },
+    ],
+  },
+
+  // ── Evento > Resumen ────────────────────────────────────────────────────────
+  '/eventos/:id/resumen': {
+    titulo: 'Resumen',
+    descripcion: 'Vista rápida de presupuesto vs. costo real por rubro.',
+    secciones: [
+      {
+        titulo: '¿Qué muestra?',
+        contenido: 'Por cada rubro con movimientos cargados: el presupuesto total, el monto real (debe/haber según corresponda), la diferencia en pesos y en porcentaje, y un estado general calculado a partir del estado de sus movimientos.',
+      },
+      {
+        titulo: 'Estado general del rubro',
+        contenido: 'Si todos los movimientos del rubro están Pagados → Pagado. Si hay alguno Pendiente → Pendiente. Si no hay movimientos activos (todos Cancelados) → Cancelado.',
       },
     ],
     links: [
       { label: 'Ver Conciliatoria', ruta: '/eventos/:id/conciliatoria' },
+    ],
+  },
+
+  // ── Evento > Ficha ──────────────────────────────────────────────────────────
+  '/eventos/:id/ficha': {
+    titulo: 'Ficha de Evento',
+    descripcion: 'La Ficha de Evento centraliza todos los proveedores y pedidos del evento. Inicializá la ficha para ver los 84 rubros y asignales proveedor, estado y detalle del pedido. Al exportar generás el documento que antes se hacía a mano.',
+    secciones: [
+      {
+        titulo: '¿Ficha o Stock?',
+        contenido: 'La Ficha gestiona los PROVEEDORES EXTERNOS de cada rubro — empresas a las que Enjoy contrata servicios (sonido, luces, seguridad, etc.). El stock propio de Enjoy (equipos del depósito) se gestiona desde la tab Stock del evento, no desde la Ficha. Si un rubro lo cubre material propio del depósito, asignalo desde Stock. Si lo cubre un proveedor externo, cargalo en la Ficha.',
+      },
+      {
+        titulo: '¿Cómo empiezo?',
+        contenido: 'Hacé clic en "Inicializar ficha" — se crean automáticamente todos los rubros de egresos configurados para tu empresa, en estado Pendiente. A partir de ahí asignales proveedor, estado, contacto y quién coordina cada uno.',
+      },
+      {
+        titulo: 'Pedido técnico',
+        contenido: 'Cada rubro puede tener uno o más ítems de pedido (cantidad, material, días de uso, horarios de llegada y retiro). Hacé clic en "Pedido" para expandir y cargar el detalle — se guarda automáticamente al salir de cada campo.',
+      },
+      {
+        titulo: 'Ficha y Egresos (centro de costos)',
+        contenido: 'Cada rubro confirmado genera su línea de costo en Egresos, con proveedor y presupuesto. La columna "En egresos" muestra el monto real cargado y cuánto falta pagar. Arriba de la tabla están los totales del evento.\nPara eventos armados antes de esta función usá "Sincronizar con Egresos": crea las líneas de los rubros confirmados que todavía no tienen ninguna. Después de eso los cambios se sincronizan solos.',
+      },
+      {
+        titulo: 'Exportar',
+        contenido: 'El botón "Exportar Excel" genera un archivo con una hoja resumen de todos los proveedores y una hoja adicional por cada rubro Confirmado con su pedido técnico completo.',
+      },
+      {
+        titulo: 'Importar la planilla de pedidos',
+        contenido: '"Importar pedidos" lee la planilla de pedidos de material (hoja PROVEEDORES CONFIRMADOS + una hoja "PEDIDO DE MATERIAL" por rubro) o la ficha de evento con sus "FICHA DE PROVEEDOR". De cada servicio toma el estado, el proveedor, el contacto, quién coordina, las fechas de entrega y retiro y el pedido completo; las columnas propias de cada rubro (Piso, Uso, Medida, M2...) y las secciones como "ESCENARIO PRINCIPAL" quedan en las observaciones de cada ítem. Las grillas de limpieza o seguridad se cargan como turnos.\nEn la vista previa revisá el rubro de cada servicio: si no es el correcto elegí otro, o "No importar". Si dos servicios van al mismo rubro (Seguridad 1 y Seguridad 2) se suman en uno y el segundo proveedor queda en las notas. Un proveedor que no está dado de alta se importa igual con su nombre en las notas; si lo das de alta antes, queda vinculado.\nReimportar no duplica: actualiza lo que ya estaba y no borra ítems ni notas cargados a mano. Si una hoja dice otro evento (una hoja copiada de otro evento), la vista previa lo avisa.',
+      },
+    ],
+    links: [
+      { label: 'Ver Resumen', ruta: '/eventos/:id/resumen' },
     ],
   },
 
@@ -186,7 +274,35 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Pestañas disponibles',
-        contenido: 'Egresos (5 tabs), Ingresos (5 tabs), Caja, Conciliatoria, Echeqs y Facturas.',
+        contenido: 'Resumen, Ficha, Producción, Egresos (por rubro), Ingresos, Caja, Stock, Comidas, Facturas a Pagar, Facturas a Cobrar, Auditoría. Los eventos en modalidad centro de costos muestran la pestaña Centro de costos en lugar de Egresos, Ingresos, Caja, Conciliatoria y Echeqs. Los de DOS57 en modalidad operativa muestran Operación y Costo real, y no muestran Ingresos, Conciliatoria ni Echeqs. Para eventos informales: Resumen, Caja, Stock, Comidas.',
+      },
+      {
+        titulo: 'Centro de costos o flujo de caja completo',
+        contenido: 'En Enjoy cada evento se lleva de una de dos formas. El flujo de caja completo (egresos, ingresos, caja, echeqs y conciliatoria) es para los eventos grandes, como TC, Lecap o Monster. El resto se lleva con el centro de costos, como la planilla de centro de costos: sólo lo que se gasta, sin caja ni ingresos.\nLos eventos nuevos arrancan en centro de costos; se elige en la Pre-Macro o al crear el evento, y se cambia desde Editar evento. Por debajo son los mismos movimientos, así que cambiar de modalidad no pierde nada.',
+      },
+      {
+        titulo: 'Centro de costos: Costos, RRHH y Extras',
+        contenido: 'Costos tiene una línea por cada rubro confirmado en la Ficha (aparecen solas), más las que agregues a mano: descripción, responsable, consumido, IVA, total, falta pagar, fecha de pago y si se le avisó al proveedor. Hacé clic en el IVA para cargar neto + IVA, y en Falta pagar para registrar señas o pagos parciales. RRHH muestra las líneas de personal del evento.\nExtras es lo que surge fuera de lo presupuestado. Por defecto lo paga el cliente y no suma al costo del evento; si lo paga la empresa, editalo y elegí "La empresa": pasa a sumar como Gastos Extra. Cada extra puede llevar los datos de cuenta, el estado de la factura y el comprobante adjunto.\n"Exportar Excel" baja la planilla con las hojas Costos, RRHH y Extras; "Exportar extras" baja sólo la hoja Extras, para mandársela al cliente.',
+      },
+      {
+        titulo: 'Operación (DOS57)',
+        contenido: 'En los eventos de DOS57 en modalidad operativa, la pestaña Operación arma el evento desde los rubros elegidos. Arriba están las fases (viaje, montaje, evento, desmontaje y regreso), que salen de las fechas del evento y de los días de montaje y desmontaje: si faltan, cargalos en Editar evento.\nCada rubro muestra su material (lo asignado desde el stock propio y el proveedor, que se carga en la Ficha) y sus tareas. "Cargar tareas tipo" agrega la lista de base del rubro, cada tarea en el primer día de su fase, sin repetir las que ya están; "Tareas tipo" permite ajustar esa lista para todos los eventos. Hacé clic en el círculo de una tarea para pasarla de pendiente a en curso y a hecha.\nLa cuadrilla sale del Parte diario: cada persona asignada al evento con sus días por fase, agrupada por categoría. Lo marcado "plan." son días asignados en un parte que todavía no se cerró. "Exportar cuadrilla" baja la hoja con el formato de STAFF COSTS. Al final están los remitos del evento con lo que salió.',
+      },
+      {
+        titulo: 'Costo real (DOS57)',
+        contenido: [
+          'Los eventos de DOS57 se llevan en modalidad operativa: la pestaña Costo real es la matriz que arma Flor por evento, con los mismos bloques que la hoja CC (staff, alojamiento, comidas, combustible personal y material, pañol, gastos varios, rental nacional e importado, y pérdidas). Esos eventos no muestran Ingresos, Conciliatoria ni Echeqs; Caja, Facturas y A cobrar siguen igual.\nCada bloque se completa de tres formas: "Importar matriz" lee la planilla de siempre (hojas CC, OPEX, RENTAL COSTS y L&A COSTS) y avisa si el total no coincide con la hoja CC; "Traer del sistema" arma el bloque con lo que ya está cargado (jornadas del Parte diario, comidas, cargas de combustible y bitácora del evento, remitos por la matriz de rental, faltantes del pañol); y "Agregar línea" para lo demás. Volver a importar o a traer reemplaza sólo esas líneas: lo cargado a mano no se toca. "Exportar matriz" baja el Excel con el mismo formato, para Matías y Pollo. El tablero de todos los eventos está en ',
+          { texto: 'Costo real', ruta: '/costo-real' },
+          '.',
+        ],
+      },
+      {
+        titulo: 'Producción',
+        contenido: 'La pestaña Producción reúne lo que antes estaba en la planilla de producción: el cronograma de montaje, evento y desarme (por día y hora, con proveedor y responsable), los espacios del evento con lo que lleva cada uno y su estado, los puntos de internet, el branding (tipo, marca, cantidad y ubicación) y las compras del evento (quién pide, quién autoriza y cómo se paga).\nCada fila se edita en el lugar y se guarda al salir del campo; la última fila de cada tabla sirve para agregar. "Importar planilla de producción" lee esas hojas del Excel (se reconocen por sus columnas); reimportar actualiza lo que ya estaba y no borra lo cargado a mano.\nLas compras no generan movimientos: lo que se paga con tarjeta o en cuenta corriente entra por la tarjeta corporativa o las facturas. El total no cuenta las canceladas.',
+      },
+      {
+        titulo: 'Comidas',
+        contenido: 'Cada día del evento tiene sus almuerzos y cenas por área, con la cantidad, el valor por persona y el detalle (quiénes comieron). "Importar planilla" lee la planilla de control de viandas (valor por unidad y tipo de menú: el área es Plato o Vianda) o la de control de comidas (costo por línea y proveedor: el área es el proveedor y el valor por persona sale del costo).\nLa vista previa muestra, por hoja, el total que da el sistema contra el total de la planilla, y lista las filas que no cierran (por ejemplo una fórmula que apunta a una celda vacía). Si una hoja cae fuera de las fechas del evento queda destildada: revisala antes de importarla. Reimportar no duplica y no borra lo cargado a mano.',
       },
       {
         titulo: 'Egresos e ingresos',
@@ -195,6 +311,19 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Conciliatoria',
         contenido: 'Resume el total de ingresos menos egresos y calcula el saldo final con la distribución entre socios configurada.',
+      },
+      {
+        titulo: '¿Se factura este evento?',
+        contenido: [
+          'Cada evento tiene una decisión de facturación que debe tomarse a tiempo. Si marcás "Sí se factura", podés crear la factura directamente desde ',
+          { texto: 'Facturas a Cobrar', ruta: '/facturas-emitidas' },
+          ' vinculada a este evento.',
+        ],
+        veTambien: [
+          { texto: 'Facturas a Cobrar', ruta: '/facturas-emitidas' },
+          { texto: 'Caja Global',       ruta: '/caja' },
+          { texto: 'Calendario',        ruta: '/calendario' },
+        ],
       },
     ],
   },
@@ -263,6 +392,22 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Facturas a Cobrar (facturas emitidas a clientes) ───────────────────────
+  '/facturas-emitidas': {
+    titulo: 'Facturas a Cobrar',
+    descripcion: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una. Podés registrar cobros parciales — el sistema actualiza el estado automáticamente (Emitida → Cobrada parcial → Cobrada). Si una factura corresponde a un evento, vinculala para tener todo centralizado.',
+      },
+      {
+        titulo: 'Vencimientos',
+        contenido: 'Las facturas vencidas sin cobrar aparecen en el Calendario y en las notificaciones.',
+      },
+    ],
+  },
+
   // ── Proveedores ─────────────────────────────────────────────────────────────
   '/proveedores': {
     titulo: 'Proveedores',
@@ -287,6 +432,245 @@ const help: Record<string, HelpContent> = {
     ],
     links: [
       { label: 'Nuevo proveedor', accion: 'abrir_modal_nuevo_proveedor' },
+    ],
+  },
+
+  // ── Cuentas corrientes ───────────────────────────────────────────────────────
+  '/cuentas-corrientes': {
+    titulo: 'Cuentas Corrientes',
+    descripcion: 'Registrá cuentas corrientes con clientes, proveedores o socios.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Registrá cuentas corrientes con clientes, proveedores o socios. Cada cuenta tiene movimientos Debe/Haber con saldo acumulado. Soporta ARS, USD y EUR con tasa de cambio por movimiento.',
+      },
+    ],
+  },
+
+  // ── Flota ────────────────────────────────────────────────────────────────────
+  '/flota': {
+    titulo: 'Flota',
+    descripcion: 'Gestioná la flota de vehículos con seguros, revisión técnica, patentes, peajes, taller, carnets, multas y el control de salida.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: [
+          'Gestioná la flota de vehículos con seguros, patentes, peajes y servicios de taller. Las alertas de vencimiento aparecen en el ',
+          { texto: 'Calendario', ruta: '/calendario' },
+          '.',
+        ],
+        veTambien: [{ texto: 'Calendario', ruta: '/calendario' }],
+      },
+      {
+        titulo: 'Semáforo de vencimientos',
+        contenido: 'Seguros, RTO/ITV, carnets y multas usan el mismo semáforo: verde = vigente, amarillo = vence dentro de los próximos 30 días, rojo = vencido. Los vencimientos de RTO, carnets, multas y los controles de salida sin revisar llegan a la campanita sólo de quien tiene la documentación de flota a cargo (y de administración); el resto los ve en Flota y en el Calendario.',
+      },
+      {
+        titulo: 'RTO / ITV',
+        contenido: 'En la pestaña Vehículos, la columna "RTO / ITV" muestra el tipo y el vencimiento de la revisión técnica. Hacé click en la celda para actualizarla. Trailers y autoelevadores figuran como "No lleva". La pizarra (Importar pizarra) también la carga desde la columna ITU / RTO, con el formato "RTO 27/09/2026"; la plantilla que descargás sale con los datos actuales del sistema, así no se pisa nada al reimportarla.',
+      },
+      {
+        titulo: 'Carnets de conducir',
+        contenido: 'En la pestaña Carnets cargás categoría, número y vencimiento del carnet de cada empleado. Por defecto se ven sólo los que tienen carnet; destildá el filtro para cargar uno nuevo. El vencimiento aparece en el Calendario y se usa en el control de salida para avisar si el chofer tiene el carnet vencido.',
+      },
+      {
+        titulo: 'Control de salida',
+        contenido: [
+          'Antes de cada viaje se revisa la papelería del vehículo. Arriba de la pestaña aparecen los vehículos que salen ese día según la ',
+          { texto: 'Bitácora de viajes', ruta: '/bitacora-viajes' },
+          ' y el ',
+          { texto: 'Parte diario', ruta: '/parte-diario' },
+          ' y todavía no tienen control: un click lo crea con el chofer y el destino precargados. El sistema muestra en rojo lo que impide salir (vehículo de baja, sin seguro vigente, RTO o carnet vencidos) y en amarillo lo que hay que mirar (vence pronto, dato sin cargar). Tildá lo que viste en la carpeta (tarjeta verde, seguro, RTO/ITV, carnet) y "Dar por revisado". Con alertas en rojo no se puede dar por revisado: marcalo como observado y contá qué pasó.',
+        ],
+      },
+      {
+        titulo: 'Multas',
+        contenido: 'Cargá multas de tránsito (con vehículo o patente) e internas (ej. vehículo sucio) con fecha, lugar, motivo, vencimiento, monto, pago y medio de pago. Si tildás "Descontarla al empleado", se crea un vale tipo MULTA que entra solo en la próxima liquidación de sueldos; una vez descontada ya no se puede cambiar el monto ni borrarla (sí anularla). En "Informe por empleado / vehículo" tenés el resumen para pasarle a Mati.',
+      },
+    ],
+  },
+
+  // ── Presentismo (Lorena, DOS57) ──────────────────────────────────────────────
+  '/presentismo': {
+    titulo: 'Control de Presentismo',
+    descripcion: 'Asistencia diaria del personal de DOS57: citación, llegada, demoras, llegadas tarde, faltas y francos. Alimenta el premio presentismo de Sueldos Admin.',
+    secciones: [
+      {
+        titulo: 'Día: cargar la asistencia',
+        contenido: 'Elegí la fecha y cargá para cada persona la hora de citación de ese día y la hora en que llegó. Si dejás la citación vacía se usa la habitual del empleado. Al cargar la llegada el estado se pone solo: hasta 6 minutos tarde es Presente, de 7 a 15 es Demora y desde 16 es Llegada tarde. Podés cambiarlo a mano (Faltó, Justificado / médica, Libre / no convocado, Vacaciones, Licencia, Franco). "Marcar todos presentes" precarga a los que todavía no tienen registro.',
+      },
+      {
+        titulo: 'Llegadas tarde y Matías',
+        contenido: 'Cada Llegada tarde queda pendiente de que Matías la apruebe o la rechace (desde acá o desde la campanita). Aprobada no afecta el premio; rechazada lo hace perder. Las Demoras no piden aprobación: cuentan para el semáforo.',
+      },
+      {
+        titulo: 'Mes: resumen y semáforo',
+        contenido: 'La vista Mes muestra la grilla día por día (click en una celda para corregirla) y, por persona, presentes, demoras, llegadas tarde, faltas, saldo de francos y el semáforo:\n• Excelente: hasta 2 demoras, 1 llegada tarde y ninguna falta.\n• Seguimiento: 3-4 demoras, 2-3 llegadas tarde o 1 falta.\n• Atención: 5 o más demoras, 4 o más llegadas tarde o 2 o más faltas.\nVale el peor de los tres. "Exportar Excel" baja la grilla con el mismo informe; "Cerrar mes" guarda el resumen que usa Sueldos Admin para el premio presentismo.',
+        veTambien: [{ texto: 'Sueldos Administrativos', ruta: '/rrhh/sueldos-admin' }],
+      },
+      {
+        titulo: 'Francos',
+        contenido: 'Cada domingo trabajado suma un franco; cada día marcado como "Franco (por domingo)" lo descuenta. En la vista Francos ves cuántos le corresponden a cada uno. El saldo inicial es lo que traían de antes de cargar en el sistema y lo podés corregir ahí mismo.',
+      },
+      {
+        titulo: 'Importar la planilla del mes',
+        contenido: 'Desde la vista Día, "Importar planilla del mes" lee tu Excel con una hoja por persona (MES y NOMBRE arriba, y la tabla CONVOCATORIA · FECHA · HORARIO · SI · DEMORA · LLEGADA TARDE · NO CONVOCADO · FALTO · MÉDICA · VACACIONES · FRANCO POR DOMINGO · OBSERVACIÓN). Manda tu marca de cada día; si un día no tiene marca, se usa lo que dice CONVOCATORIA (LIBRE, FRANCO, LICENCIA…) y, si tampoco, se clasifica la hora de llegada contra la citación. Antes de importar ves una vista previa por hoja: las personas que no están cargadas en RRHH aparecen en amarillo y no se importan. Reimportar el mismo archivo no duplica.',
+      },
+      {
+        titulo: 'Importar el padrón de empleados',
+        contenido: 'Quien lleva el padrón (con el permiso "Padrón de empleados") ve arriba "Importar padrón de empleados": lee la planilla de datos personales (hoja de fijos) y da de alta a los que faltan, con CUIL, contacto, escalafón, licencia y talles. Los que ya están se reconocen por CUIL (o por apellido y nombre) y se actualizan con lo que trae la planilla: una celda vacía no borra nada. Nadie se da de baja: la vista previa lista a los activos que no aparecen en la planilla para que los revises. Importá el padrón antes que la planilla del mes, así no quedan personas en amarillo.',
+      },
+    ],
+    links: [
+      { label: 'Ver Calendario', ruta: '/calendario' },
+    ],
+  },
+
+  '/costo-real': {
+    titulo: 'Costo real de eventos',
+    descripcion: 'El tablero de la matriz de costo real de DOS57: cuánto salió de verdad cada evento, para comparar con lo que se cobra.',
+    secciones: [
+      {
+        titulo: 'Qué muestra',
+        contenido: 'Una fila por evento con el rental presupuestado (del presupuesto vinculado al evento), el costo real cargado y la fecha de la última carga. Los que dicen "Sin cargar" todavía no tienen matriz. Filtrá por año o buscá por nombre o lugar; hacé clic en un evento para abrir su pestaña Costo real.',
+      },
+      {
+        titulo: 'Importar y exportar',
+        contenido: '"Importar" lee la planilla de costo real del evento, la misma que se arma hoy (hojas CC, OPEX, RENTAL COSTS y L&A COSTS): primero muestra qué trae cada bloque y si el total coincide con la hoja CC, y recién al confirmar lo guarda. Reimportar reemplaza lo importado antes y no toca lo cargado a mano. "Exportar" baja el Excel con el mismo formato, que se puede volver a importar.',
+      },
+      {
+        titulo: 'Planillas de campo (sin señal)',
+        contenido: '"Planillas" baja un Excel con las planillas de control del evento ya precargadas: horas y viandas de cada día con la cuadrilla asignada (del Parte diario), alojamiento, pañol (con lo que sale y su valor) y combustible (con los vehículos del evento). Se imprimen para completar a mano o se completan directo en la notebook, sin conexión.\nA la vuelta, pasá lo anotado al mismo Excel y elegí "Planillas" → "Elegir planillas completas": primero ves qué entra en cada bloque y después se carga al costo real con la etiqueta "Campo". Las horas dan los turnos por grupo (el valor del turno se completa en el costo real y se conserva al reimportar), las viandas las comidas, lo que faltó del pañol las pérdidas, y las cargas el combustible. Reimportar reemplaza sólo lo de campo; si un bloque ya tiene líneas de la matriz o del sistema te avisa, para no contarlo dos veces.',
+      },
+      {
+        titulo: 'Quién lo ve',
+        contenido: 'Los administradores y quien tenga el permiso "Costo real de eventos" (se asigna en Configuración → Usuarios).',
+      },
+    ],
+    links: [
+      { label: 'Ver Bitácora', ruta: '/bitacora-viajes' },
+      { label: 'Ver Movimiento diario', ruta: '/movimiento-diario' },
+    ],
+  },
+
+  '/bitacora-viajes': {
+    titulo: 'Bitácora de viajes de camiones',
+    descripcion: 'Los viajes de los camiones de DOS57 (planillas de Flor): tramo, chofer, km, litros, combustible y caja entregada. Vinculados a un evento, aparecen en el tab Logística de ese evento.',
+    secciones: [
+      {
+        titulo: 'Importar la planilla',
+        contenido: '"Importar planilla" lee el Excel de Flor (la puede importar quien la lleva, aunque sea Operador): las hojas por evento, la de logística diaria (con sus bloques) y las de viajes con horario. Primero ves una vista previa y no se guarda nada hasta confirmar. Reimportar el mismo archivo actualiza los viajes, no los duplica.',
+      },
+      {
+        titulo: 'Cómo encuentra el evento',
+        contenido: 'El nombre del evento sale de la columna EVENTO, del título del bloque ("PLANILLA DE VIAJES CAMIONES - …") o del nombre de la hoja. No hace falta escribirlo igual que en el sistema: se comparan sin tildes, mayúsculas ni signos, y por palabras ("JUJUY - LA RENGA" encuentra "La Renga Jujuy 2026"). Si el mismo evento aparece escrito de dos formas, se agrupa en uno solo.\nPara elegir el evento se usan también las fechas: si hay dos ediciones del mismo evento, se propone la que coincide con las fechas de los viajes (contando el montaje y el desmontaje). Si el evento propuesto tiene fechas que no coinciden, lo vas a ver en amarillo.',
+      },
+      {
+        titulo: 'Confirmar la vinculación',
+        contenido: 'Para cada evento de la planilla respondés Sí o No a la sugerencia, o elegís otro evento de la lista. Si no hay sugerencia, podés elegir uno o dejarlo como texto libre. Lo que confirmás queda recordado: la próxima vez que aparezca ese nombre se propone directo, aunque no se parezca al del sistema (por ejemplo "SGO" para "Aniversario Santiago del Estero"). Si respondés No, se olvida.\nResponder No nunca desvincula viajes que ya estaban vinculados. Un viaje suelto también se puede vincular a mano desde su ficha.',
+      },
+    ],
+    links: [
+      { label: 'Ver Eventos', ruta: '/eventos' },
+    ],
+  },
+
+  // ── Caja Global ─────────────────────────────────────────────────────────────
+  '/caja': {
+    titulo: 'Caja Global',
+    descripcion: 'Todas las cuentas de la empresa: las cajas de cada evento y las cajas sin evento (cajas chicas por persona, reserva, etc.).',
+    secciones: [
+      {
+        titulo: 'Rendición de una caja',
+        contenido: 'Una caja abierta recibe movimientos. Cuando el responsable vuelve se marca "pendiente de rendición" y un admin confirma la rendición, que la cierra. Las cajas cerradas ya están rendidas: no suman en el saldo consolidado.',
+      },
+      {
+        titulo: 'Importar cajas chicas',
+        contenido: '"Importar cajas chicas" (admin) lee la planilla de cajas chicas: cada bloque NOMBRE / MES con su fila de totales pasa a ser una caja de efectivo sin evento, ya cerrada, a nombre de la persona y el mes ("Caja chica Dani Yanello — Mayo 2026 (2)" si ese mes rindió más de una vez). Los ingresos (apertura, sobrante, reposiciones) van al debe y los gastos al haber.\nLa vista previa compara cada caja contra la fila de totales de la planilla y avisa cuando las filas no suman lo mismo. Los bloques repetidos (la hoja que junta las de todos, o una hoja copiada de otra) quedan destildados; si una copia tiene filas distintas y la importás, va a una caja aparte para compararla. Se puede abrir cada caja para ver sus movimientos antes de confirmar. Reimportar no duplica y no borra lo cargado a mano.',
+      },
+    ],
+  },
+
+  // ── Uniformes ───────────────────────────────────────────────────────────────
+  '/uniformes': {
+    titulo: 'Uniformes',
+    descripcion: 'Entregas de uniformes por empleado y stock del depósito por talle.',
+    secciones: [
+      {
+        titulo: 'Entregas',
+        contenido: 'Totales del año por empleado. Hacé click en una fila para ver su historial, cargar una entrega o corregirla. "Importar desde Excel" lee el libro de entregas (hoja PLANTA ESTABLE, hojas por empleado y resúmenes anuales); revisá la vista previa antes de confirmar, porque una hoja marcada en rojo da de baja al empleado.',
+      },
+      {
+        titulo: 'Stock del depósito',
+        contenido: 'Lo que hay por prenda y talle en cada depósito. "Importar stock" lee la planilla de stock de uniformes: cada hoja es un conteo en una fecha y se toma la última (podés elegir otra en la vista previa). Los talles en 0 también se guardan: en rojo los que no tienen stock y en ámbar los que tienen 5 o menos, que además avisan en la campanita.',
+      },
+    ],
+  },
+
+  // ── AFIP y Créditos Bancarios ────────────────────────────────────────────────
+  '/afip-prestamos': {
+    titulo: 'AFIP y Créditos Bancarios',
+    descripcion: 'Seguimiento de planes de pago AFIP y créditos bancarios con cronograma de cuotas.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: [
+          'Seguimiento de planes de pago AFIP y créditos bancarios con cronograma de cuotas. Las cuotas próximas a vencer aparecen en el ',
+          { texto: 'Calendario', ruta: '/calendario' },
+          ' y en las ',
+          { texto: 'notificaciones', ruta: '/notificaciones' },
+          '.',
+        ],
+        veTambien: [{ texto: 'Calendario', ruta: '/calendario' }],
+      },
+    ],
+  },
+
+  // ── Tarjeta Corporativa ──────────────────────────────────────────────────────
+  '/tarjeta-corporativa': {
+    titulo: 'Tarjeta Corporativa',
+    descripcion: 'Consumos mensuales de las tarjetas Galicia de DOS57 y Enjoy por responsable, en $ y USD.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Reemplaza la planilla mensual de tarjeta corporativa: arriba el resumen por responsable (igual al bloque del Excel) y abajo el detalle de cada consumo. Hacé click en un responsable o en los chips para ver sólo sus consumos.',
+      },
+      {
+        titulo: 'Importar desde Excel',
+        contenido: 'Subí la planilla anual (una hoja por mes). Los totales se recalculan desde el detalle — el bloque resumen del Excel no se usa. Reimportar el mismo archivo no duplica: actualiza los consumos existentes. Los consumos de ANDRE marcados "PERSONAL Y DOS57" quedan en la parte Empresa con la observación "(MIXTO – revisar)" para repartirlos a mano.',
+      },
+      {
+        titulo: 'Descontado',
+        contenido: 'Si la observación dice "SE DESCONTO" (ej. multas descontadas al chofer) el consumo muestra el badge rojo "Descontado"; si dice "NO SE DESCONTO", el gris "No descontado". También se puede marcar a mano al editar.',
+      },
+    ],
+  },
+
+  // ── Sueldos administrativos ──────────────────────────────────────────────────
+  '/rrhh/sueldos-admin': {
+    titulo: 'Sueldos Administrativos',
+    descripcion: 'Liquidación mensual de personal administrativo con conceptos configurables por escalafón.',
+    secciones: [
+      {
+        titulo: '¿Para qué sirve?',
+        contenido: 'Liquidación mensual de personal administrativo con conceptos configurables por escalafón. Si el empleado trabaja para más de una empresa, el costo se divide automáticamente según el porcentaje acordado.',
+      },
+      {
+        titulo: 'Bitácora de Viajes (choferes)',
+        contenido: 'Para choferes con viático variable por recorrido (Provincial/Nacional/Nacional +1000km), cargá cada viaje en la Bitácora de Viajes — el viático del mes se calcula solo y reemplaza el monto fijo del acuerdo al generar la liquidación.',
+      },
+    ],
+  },
+
+  // ── Calendario ───────────────────────────────────────────────────────────────
+  '/calendario': {
+    titulo: 'Calendario',
+    descripcion: 'Vista centralizada de todos los vencimientos y eventos del sistema.',
+    secciones: [
+      {
+        titulo: '¿Qué muestra?',
+        contenido: 'Vista centralizada de todos los vencimientos y eventos del sistema: seguros, RTO/ITV, carnets de conducir, multas, controles de salida pendientes, patentes, cuotas AFIP, créditos, facturas y más. Filtrá por tipo con los badges de colores. Lo vencido aparece en rojo y lo que vence pronto en amarillo.',
+      },
     ],
   },
 
@@ -339,12 +723,68 @@ const help: Record<string, HelpContent> = {
     descripcion: 'Ajustes globales del sistema.',
     secciones: [
       {
-        titulo: 'Tabs de egresos e ingresos',
-        contenido: 'Configurá los nombres de las 5 pestañas de egreso (EG-TC, EG-SOC, etc.) y las 5 de ingreso. Los cambios afectan a todos los eventos.',
+        titulo: 'Rubros de egresos e ingresos',
+        contenido: 'Creá, renombrá, reordená (arrastrando) o desactivá los rubros de egresos e ingresos de tu empresa. Cada rubro activo aparece como una pestaña en todos los eventos. Los rubros del sistema no se pueden eliminar ni desactivar.',
       },
       {
         titulo: 'Usuarios',
-        contenido: 'Creá y gestioná usuarios. Roles disponibles: ADMIN (acceso total), OPERADOR (puede editar), VIEWER (solo lectura).',
+        contenido: 'Creá y gestioná usuarios. Cada usuario tiene un rol que define qué puede ver y hacer en el sistema — ver la sección "Roles y permisos" para el detalle de cada uno.',
+      },
+      {
+        titulo: 'Contraseñas',
+        contenido: 'Al crear un usuario le ponés una contraseña inicial y se la pasás. En su primer ingreso el sistema le pide elegir una propia antes de seguir. Si alguien se olvida la suya, editás el usuario y le cargás una nueva: también la va a tener que cambiar al entrar. Cada uno puede cambiar la suya cuando quiera desde "Cambiar contraseña", abajo en el menú.',
+      },
+      {
+        titulo: 'Permisos de carga',
+        contenido: 'Para que el responsable de un archivo lo cargue sin esperar a un admin, al editar un usuario que no es Admin podés tildarle permisos puntuales: Tarjeta corporativa (ver e importar los resúmenes), Facturas a pagar (incluye importar el libro de compras de AFIP), Padrón de empleados (importar la planilla de datos personales, sin ver sueldos) y Uniformes. El módulo le aparece en el menú y el cambio rige enseguida.',
+      },
+      {
+        titulo: 'Roles y permisos',
+        contenido: 'ADMIN — Acceso total. Puede crear eventos, gestionar usuarios, ver todas las áreas.\n\n'
+          + 'OPERADOR — Acceso operativo. Puede ver eventos y cargar datos en Caja, Ficha, Stock y Parte Diario. No puede crear eventos ni acceder a RRHH, Facturas o Proveedores, salvo lo que le habiliten los permisos de carga.\n\n'
+          + 'VIEWER — Solo lectura. Ve todo lo que ve el Operador pero no puede cargar ni modificar nada.\n\n'
+          + 'JORNALERO — Acceso mínimo. Solo puede cargar sus propias jornadas y ver su asignación en el Parte Diario del día.\n\n'
+          + 'PAÑOLERO — Acceso al pañol. Solo puede gestionar las salidas y devoluciones del pañol.',
+      },
+    ],
+  },
+
+  // ── Parte Diario (DOS57) ────────────────────────────────────────────────────
+  '/parte-diario': {
+    titulo: 'Parte Diario de Personal',
+    descripcion: 'Planilla diaria que reemplaza el armado manual en Excel: quién trabaja, en qué horario, dónde y con qué vehículo.',
+    secciones: [
+      {
+        titulo: '¿Cómo se arma?',
+        contenido: 'Elegí la fecha con el navegador de días y creá el parte si todavía no existe. Agregá personas en cada sección (Administración, Depósito, Eventos) con su horario, lugar, tarea y vehículo. Las personas sin asignación van a "No citados".',
+      },
+      {
+        titulo: 'Orden y secciones',
+        contenido: 'Podés reordenar arrastrando las filas dentro de cada sección. El orden se guarda automáticamente.',
+      },
+      {
+        titulo: 'Cerrar el parte',
+        contenido: 'Al cerrar el parte, el sistema crea automáticamente las Jornadas de RRHH para cada persona asignada que tenga hora de ingreso y hora de salida fija cargadas. Un parte cerrado ya no se puede editar.',
+      },
+      {
+        titulo: 'Hora de salida "***"',
+        contenido: 'Si alguien se queda más tiempo por su propia voluntad, no marques "Hora fija": esa hora no se usa para calcular horas trabajadas.',
+      },
+    ],
+    links: [
+      { label: 'Ver historial de partes', ruta: '/parte-diario/historial' },
+      { label: 'Ver RRHH', ruta: '/rrhh' },
+    ],
+  },
+
+  // ── Notificaciones (campanita) ──────────────────────────────────────────────
+  '/notificaciones': {
+    titulo: 'Notificaciones',
+    descripcion: 'Alertas del sistema que requieren tu atención — vencimientos, pendientes y decisiones sin tomar.',
+    secciones: [
+      {
+        titulo: 'Evento sin decisión de facturación',
+        contenido: 'Eventos nuevos sin decisión de facturación — hacé click para ir al evento y decidir.',
       },
     ],
   },
@@ -358,6 +798,7 @@ export function getHelpContent(pathname: string): HelpContent | null {
 
   // Event sub-paths — orden de más específico a menos
   if (/^\/eventos\/\d+\/vincular-proveedores/.test(pathname)) return help['/eventos/:id/vincular-proveedores'] ?? null;
+  if (/^\/eventos\/\d+\/ficha/.test(pathname))                return help['/eventos/:id/ficha']                ?? null;
   if (/^\/eventos\/\d+\/egresos/.test(pathname))              return help['/eventos/:id/egresos']              ?? null;
   if (/^\/eventos\/\d+\/ingresos/.test(pathname))             return help['/eventos/:id/ingresos']             ?? null;
   if (/^\/eventos\/\d+\/caja/.test(pathname))                 return help['/eventos/:id/caja']                 ?? null;
@@ -366,4 +807,38 @@ export function getHelpContent(pathname: string): HelpContent | null {
   if (/^\/facturas\/\d+/.test(pathname))                      return help['/facturas/:id']                     ?? null;
 
   return null;
+}
+
+// ── Búsqueda ─────────────────────────────────────────────────────────────────
+
+export interface HelpSearchResult {
+  ruta:       string; // clave de `help` — puede tener ":id", se resuelve en HelpPanel
+  pageTitulo: string;
+  section:    HelpSection;
+}
+
+function contenidoATexto(contenido: HelpSection['contenido']): string {
+  if (typeof contenido === 'string') return contenido;
+  return contenido.map(t => (typeof t === 'string' ? t : t.texto)).join('');
+}
+
+function normalizar(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+}
+
+// Busca en título/contenido de TODAS las secciones de TODAS las páginas
+// (no sólo la página actual) — el buscador del panel de ayuda es global,
+// como un mini-helpdesk, no un filtro de la página en la que estás parado.
+export function searchHelp(query: string): HelpSearchResult[] {
+  const q = normalizar(query.trim());
+  if (!q) return [];
+
+  const resultados: HelpSearchResult[] = [];
+  for (const [ruta, content] of Object.entries(help)) {
+    for (const section of content.secciones) {
+      const haystack = normalizar(`${content.titulo} ${section.titulo} ${contenidoATexto(section.contenido)}`);
+      if (haystack.includes(q)) resultados.push({ ruta, pageTitulo: content.titulo, section });
+    }
+  }
+  return resultados;
 }

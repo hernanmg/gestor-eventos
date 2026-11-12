@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
 import type { AsignacionStock, Evento, RiesgoSugerencia, SugerenciaStock } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Plus, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Plus, AlertTriangle, ArrowRight, Warehouse } from 'lucide-react';
+import BaseTable from '@/components/ui/BaseTable';
 
 const RIESGO_CLASS: Record<RiesgoSugerencia, string> = {
   BAJO:  'bg-green-100 text-green-800',
@@ -145,7 +146,7 @@ function AsignarDialog({
             >
               <option value="">Seleccioná un producto…</option>
               {productos.map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}{p.codigo ? ` (${p.codigo})` : ''}</option>
+                <option key={p.id} value={p.id}>{p.nombre}{p.codigo_interno ? ` (${p.codigo_interno})` : ''}</option>
               ))}
             </select>
           </div>
@@ -302,7 +303,9 @@ function TransferenciaDialog({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function EventoStockPage({ evento, canEdit }: { evento: Evento; canEdit: boolean }) {
+export default function EventoStockPage({ evento, canEdit, onVerRubro }: {
+  evento: Evento; canEdit: boolean; onVerRubro?: (rubroNombre: string) => void;
+}) {
   const { data, isLoading } = useEventoStock(evento.id);
   const cancelar = useCancelarAsignacion();
 
@@ -340,8 +343,8 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
         {activas.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin stock asignado.</p>
         ) : (
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Producto</th>
@@ -358,7 +361,7 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                   <tr key={a.id}>
                     <td className="px-3 py-2.5">
                       <span className="font-medium">{a.producto?.nombre ?? `#${a.producto_id}`}</span>
-                      {a.producto?.codigo && <span className="ml-1.5 text-xs text-muted-foreground font-mono">{a.producto.codigo}</span>}
+                      {a.producto?.codigo_interno && <span className="ml-1.5 text-xs text-muted-foreground font-mono">{a.producto.codigo_interno}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right">{a.cantidad}</td>
                     <td className="px-3 py-2.5 text-xs">{format(new Date(a.fecha_salida), 'dd/MM/yy', { locale: es })}</td>
@@ -370,7 +373,20 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                         </span>
                       ) : 'Depósito'}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.notas ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {a.rubro_evento_id && a.rubro_nombre && (
+                          <button
+                            onClick={() => onVerRubro?.(a.rubro_nombre!)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium hover:bg-blue-100 transition"
+                            title="Ver este rubro en la Ficha"
+                          >
+                            <Warehouse size={10} /> Rubro: {a.rubro_nombre}
+                          </button>
+                        )}
+                        <span>{a.notas ?? (a.rubro_evento_id ? '' : '—')}</span>
+                      </div>
+                    </td>
                     {canEdit && (
                       <td className="px-3 py-2.5">
                         <button
@@ -384,7 +400,7 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>
@@ -393,8 +409,8 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
       {prestadas.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold mb-3">Stock prestado a otros eventos</h2>
-          <div className="rounded-lg border bg-white overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Producto</th>
@@ -428,7 +444,7 @@ export default function EventoStockPage({ evento, canEdit }: { evento: Evento; c
                   );
                 })}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </div>
       )}

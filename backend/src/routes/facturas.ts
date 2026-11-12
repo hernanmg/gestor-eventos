@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole } from '../middleware/requireRole';
 import { requireEventoAcceso } from '../middleware/requireEventoAcceso';
 import { asyncHandler } from '../lib/asyncHandler';
+import { upload as uploadXlsx } from '../controllers/importer.controller';
+import { importarLibroCompras } from '../controllers/libroCompras.controller';
 import {
   uploadPDF,
   list,
@@ -29,31 +32,45 @@ function pdfMiddleware(req: any, res: any, next: any) {
   });
 }
 
+function xlsxMiddleware(req: any, res: any, next: any) {
+  uploadXlsx.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
+
 // ── Router /api/facturas ──────────────────────────────────────────────────────
 
 export const facturasRouter = Router();
 facturasRouter.use(auth);
+facturasRouter.use(tenantMiddleware);
+// Facturas es de ADMIN (matriz de permisos), o del responsable con permiso
+// FACTURAS — quien importa el libro de compras de AFIP.
+facturasRouter.use(requireRole('ADMIN', { permiso: 'FACTURAS' }));
 
+facturasRouter.post('/importar-libro-compras', xlsxMiddleware, asyncHandler(importarLibroCompras));
 facturasRouter.get('/alertas',          asyncHandler(alertas));
 facturasRouter.get('/',                 asyncHandler(listGlobal));
 facturasRouter.get('/:id',              asyncHandler(detail));
 facturasRouter.get('/:id/pdf',          asyncHandler(getPDF));
-facturasRouter.put('/:id',              requireRole('OPERADOR'), asyncHandler(update));
-facturasRouter.put('/:id/pdf',          requireRole('OPERADOR'), pdfMiddleware, asyncHandler(updatePDF));
-facturasRouter.delete('/:id',           requireRole('OPERADOR'), asyncHandler(remove));
-facturasRouter.patch('/:id/aprobar',    requireRole('OPERADOR'), asyncHandler(aprobar));
-facturasRouter.patch('/:id/anular',     requireRole('OPERADOR'), asyncHandler(anular));
-facturasRouter.post('/:id/pagos',       requireRole('OPERADOR'), asyncHandler(pagarFactura));
+facturasRouter.put('/:id',              asyncHandler(update));
+facturasRouter.put('/:id/pdf',          pdfMiddleware, asyncHandler(updatePDF));
+facturasRouter.delete('/:id',           asyncHandler(remove));
+facturasRouter.patch('/:id/aprobar',    asyncHandler(aprobar));
+facturasRouter.patch('/:id/anular',     asyncHandler(anular));
+facturasRouter.post('/:id/pagos',       asyncHandler(pagarFactura));
 
 // ── Router /api/pagos ─────────────────────────────────────────────────────────
 
 export const pagosRouter = Router();
 pagosRouter.use(auth);
-pagosRouter.delete('/:id', requireRole('OPERADOR'), asyncHandler(anularPago));
+pagosRouter.use(tenantMiddleware);
+pagosRouter.delete('/:id', requireRole('ADMIN'), asyncHandler(anularPago));
 
 // ── Router /api/eventos (sub-rutas facturas) ──────────────────────────────────
 
 export const facturasEventoRouter = Router();
 facturasEventoRouter.use(auth);
-facturasEventoRouter.get('/:id/facturas',  requireEventoAcceso(), asyncHandler(list));
-facturasEventoRouter.post('/:id/facturas', requireEventoAcceso(), requireRole('OPERADOR'), pdfMiddleware, asyncHandler(create));
+facturasEventoRouter.use(tenantMiddleware);
+facturasEventoRouter.get('/:id/facturas',  requireEventoAcceso(), requireRole('ADMIN'), asyncHandler(list));
+facturasEventoRouter.post('/:id/facturas', requireEventoAcceso(), requireRole('ADMIN'), pdfMiddleware, asyncHandler(create));

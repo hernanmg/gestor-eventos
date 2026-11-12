@@ -2,7 +2,7 @@
   "name": "admin-portal",
   "version": "1.0.0",
   "description": "",
-  "main": "plan_desarrollo.js",
+  "main": "tools/documentos/plan_desarrollo.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

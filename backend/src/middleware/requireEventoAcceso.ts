@@ -1,23 +1,22 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { prisma } from '../lib/prisma';
 
-type GetEventoIdFn = (req: Request) => Promise<number | null>;
-
-export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler {
+// Único uso restante: facturas.ts (Facturas es SOLO_ADMIN de todos modos, así
+// que esto sólo aplica cuando el usuario ya es ADMIN — bypass inmediato — o
+// cuando hace falta el 403 explícito "Sin acceso a este evento" en vez de un
+// 404 genérico). El resto de los módulos (eventos, movimientos, caja, ficha,
+// comidas, echeqs, stock) dejaron de usar el ACL per-evento: la lectura es
+// TODOS_MENOS_RESTRINGIDOS y la escritura se gatea por rol global
+// (ver requireRole.ts) — el control granular vive en botones/tabs del
+// frontend, no en el acceso a la página (matriz de permisos).
+export function requireEventoAcceso(): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // Global ADMIN always has access
     if (req.user!.rol === 'ADMIN') {
       next(); return;
     }
 
-    const eventoId = getEventoId
-      ? await getEventoId(req)
-      : Number(req.params.id) || null;
-
-    if (!eventoId) {
-      res.status(400).json({ error: 'Evento no identificado' });
-      return;
-    }
+    const eventoId = Number(req.params.id) || null;
+    if (!eventoId) { next(); return; }
 
     const acceso = await (prisma as any).eventoAcceso.findUnique({
       where: { usuario_id_evento_id: { usuario_id: req.user!.id, evento_id: eventoId } },
@@ -28,53 +27,6 @@ export function requireEventoAcceso(getEventoId?: GetEventoIdFn): RequestHandler
       return;
     }
 
-    req.eventoRol = acceso.rol;
     next();
   };
 }
-
-// Call after requireEventoAcceso — blocks VIEWER event roles from write operations
-export function requireEventoRole(minRol: 'OPERADOR' | 'ADMIN'): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (req.user!.rol === 'ADMIN') { next(); return; }
-    if (minRol === 'OPERADOR' && req.eventoRol === 'VIEWER') {
-      res.status(403).json({ error: 'Sin permisos de escritura en este evento' });
-      return;
-    }
-    next();
-  };
-}
-
-// ── Lookup helpers for resource-based routes ──────────────────────────────────
-
-export const byMovimientoId: GetEventoIdFn = async (req) => {
-  const m = await (prisma as any).movimiento.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return m?.evento_id ?? null;
-};
-
-export const byCuentaId: GetEventoIdFn = async (req) => {
-  const c = await (prisma as any).cuentaBancaria.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return c?.evento_id ?? null;
-};
-
-export const byMovCajaId: GetEventoIdFn = async (req) => {
-  const mc = await (prisma as any).movimientoCaja.findFirst({
-    where:   { id: Number(req.params.id) },
-    include: { cuenta: { select: { evento_id: true } } },
-  });
-  return mc?.cuenta?.evento_id ?? null;
-};
-
-export const byEcheqId: GetEventoIdFn = async (req) => {
-  const e = await (prisma as any).echeq.findFirst({
-    where:  { id: Number(req.params.id) },
-    select: { evento_id: true },
-  });
-  return e?.evento_id ?? null;
-};

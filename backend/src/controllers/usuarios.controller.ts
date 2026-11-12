@@ -1,32 +1,74 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { Rol } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
+import { PERMISO_KEYS } from '../lib/permisos';
+
+// Usuario no tiene empresa_id obligatorio (es la "empresa activa" de sesión,
+// nullable). El ABM de usuarios se escopea vía UsuarioEmpresaAcceso: solo
+// aparecen/son editables los usuarios con una fila de acceso a la empresa activa.
+const belongsToEmpresa = (empresaId: number) => ({
+  empresaAccesos: { some: { empresa_id: empresaId } },
+});
+
+// Admin global: rol ADMIN sin empresa fija en su propia fila (Usuario.empresa_id
+// null). Es el único habilitado a otorgar acceso cross-empresa a otros usuarios
+// (mismo criterio que auth.controller.ts#esAdminGlobal).
+async function esAdminGlobal(usuarioId: number): Promise<boolean> {
+  const u = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null }, select: { rol: true, empresa_id: true } });
+  return !!u && u.rol === 'ADMIN' && u.empresa_id === null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const SAFE_SELECT = {
-  id: true, email: true, nombre: true, rol: true,
+  id: true, email: true, nombre: true, apodo: true, telefono: true, rol: true,
   activo: true, created_at: true, updated_at: true, deleted_at: true,
+  puede_ver_macro: true, areas_macro: true, home_route: true,
+  debe_cambiar_password: true, permisos: true,
 };
+
+// Pantallas ofrecidas en el selector de Configuración (ver PARTE 4 del pedido)
+// — null (sin fila acá) usa el default por rol en resolveHomeRoute (frontend).
+const HOME_ROUTES = [
+  '/presentismo', '/combustible', '/parte-diario', '/gastos-operativos',
+  '/eventos', '/macro', '/rrhh', '/stock', '/costo-real',
+] as const;
+
+// Áreas asignables de la Macro restringida — Logística queda deliberadamente
+// afuera (ver Usuario.areas_macro en schema.prisma).
+const AREAS_MACRO = ['FINANZAS', 'ADMIN', 'RRHH', 'STOCK'] as const;
+
+// 'PANOLERO' (sin Ñ) — es el identificador que usa Prisma Client en JS/TS
+// para Rol.PAÑOLERO (ver types/express.d.ts para el porqué).
+const ROLES = ['ADMIN', 'OPERADOR', 'VIEWER', 'JORNALERO', 'PANOLERO'] as const;
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
   nombre:   z.string().min(1, 'Nombre requerido'),
+  apodo:    z.string().nullable().optional(),
+  telefono: z.string().nullable().optional(),
   email:    z.string().email('Email inválido'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  rol:      z.enum(['ADMIN', 'OPERADOR', 'VIEWER']).default('OPERADOR'),
+  rol:      z.enum(ROLES).default('OPERADOR'),
 });
 
 const updateSchema = z.object({
   nombre:   z.string().min(1).optional(),
+  apodo:    z.string().nullable().optional(),
+  telefono: z.string().nullable().optional(),
   email:    z.string().email().optional(),
   password: z.string().min(8).optional(),
-  rol:      z.enum(['ADMIN', 'OPERADOR', 'VIEWER']).optional(),
+  rol:      z.enum(ROLES).optional(),
   activo:   z.boolean().optional(),
+  puede_ver_macro: z.boolean().optional(),
+  areas_macro:     z.array(z.enum(AREAS_MACRO)).optional(),
+  home_route:      z.enum(HOME_ROUTES).nullable().optional(),
+  permisos:        z.array(z.enum(PERMISO_KEYS)).optional(),
 });
 
 const accesoSchema = z.object({
@@ -35,18 +77,18 @@ const accesoSchema = z.object({
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 
-export async function list(_req: Request, res: Response) {
+export async function list(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...belongsToEmpresa(req.empresaId!) },
     orderBy: { created_at: 'asc' },
     select:  SAFE_SELECT,
   });
   res.json(usuarios);
 }
 
-export async function listWithAccesos(_req: Request, res: Response) {
+export async function listWithAccesos(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
-    where:   { deleted_at: null },
+    where:   { deleted_at: null, ...belongsToEmpresa(req.empresaId!) },
     orderBy: { created_at: 'asc' },
     select:  {
       ...SAFE_SELECT,
@@ -63,7 +105,7 @@ export async function create(req: Request, res: Response) {
     return;
   }
 
-  const { nombre, email, password, rol } = parsed.data;
+  const { nombre, apodo, telefono, email, password, rol } = parsed.data;
 
   const exists = await prisma.usuario.findFirst({ where: { email, deleted_at: null } });
   if (exists) { res.status(400).json({ error: 'Ya existe un usuario con ese email' }); return; }
@@ -72,11 +114,16 @@ export async function create(req: Request, res: Response) {
 
   const usuario = await prisma.$transaction(async tx => {
     const created = await tx.usuario.create({
-      data:   { nombre, email, password_hash, rol: rol as Rol },
+      // La contraseña la eligió el admin: el usuario la cambia en su primer ingreso
+      data:   { nombre, apodo: apodo ?? null, telefono: telefono ?? null, email, password_hash, rol: rol as Rol, empresa_id: req.empresaId!, debe_cambiar_password: true },
       select: SAFE_SELECT,
+    });
+    await tx.usuarioEmpresaAcceso.create({
+      data: { usuario_id: created.id, empresa_id: req.empresaId!, created_by: req.user!.id },
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Usuario',
       entidadId:    created.id,
@@ -99,11 +146,17 @@ export async function update(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   if (parsed.data.rol && parsed.data.rol !== 'ADMIN' && req.user!.id === id) {
     res.status(400).json({ error: 'No podés quitarte el rol ADMIN a vos mismo' }); return;
+  }
+
+  // Otorgar/restringir la vista Macro es una decisión cross-tenant — mismo
+  // criterio que createEmpresaAcceso/deleteEmpresaAcceso: solo el admin global.
+  if ((parsed.data.puede_ver_macro !== undefined || parsed.data.areas_macro !== undefined) && !(await esAdminGlobal(req.user!.id))) {
+    res.status(403).json({ error: 'Solo el admin global puede configurar el acceso a la Macro' }); return;
   }
 
   if (parsed.data.email && parsed.data.email !== existing.email) {
@@ -111,26 +164,37 @@ export async function update(req: Request, res: Response) {
     if (dupe) { res.status(400).json({ error: 'Ya existe un usuario con ese email' }); return; }
   }
 
-  const { nombre, email, password, rol, activo } = parsed.data;
+  const { nombre, apodo, telefono, email, password, rol, activo, puede_ver_macro, areas_macro, home_route, permisos } = parsed.data;
 
   const data: Record<string, unknown> = {
-    ...(nombre  !== undefined && { nombre }),
-    ...(email   !== undefined && { email }),
-    ...(rol     !== undefined && { rol: rol as Rol }),
-    ...(activo  !== undefined && { activo }),
+    ...(nombre   !== undefined && { nombre }),
+    ...(apodo    !== undefined && { apodo }),
+    ...(telefono !== undefined && { telefono }),
+    ...(email    !== undefined && { email }),
+    ...(rol      !== undefined && { rol: rol as Rol }),
+    ...(activo   !== undefined && { activo }),
+    ...(puede_ver_macro !== undefined && { puede_ver_macro }),
+    ...(areas_macro     !== undefined && { areas_macro }),
+    ...(home_route      !== undefined && { home_route }),
+    ...(permisos        !== undefined && { permisos: [...new Set(permisos)] }),
   };
-  if (password) data.password_hash = await bcrypt.hash(password, 10);
+  if (password) {
+    data.password_hash = await bcrypt.hash(password, 10);
+    // Reseteada por un admin ⇒ el usuario la cambia al ingresar
+    if (req.user!.id !== id) data.debe_cambiar_password = true;
+  }
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.usuario.update({ where: { id }, data, select: SAFE_SELECT });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Usuario',
       entidadId:    id,
       descripcion:  `Actualizó el usuario "${existing.nombre}"`,
       datosAntes:   { nombre: existing.nombre, email: existing.email, rol: existing.rol, activo: existing.activo },
-      datosDespues: parsed.data,
+      datosDespues: { ...parsed.data, password: password ? '(cambiada)' : undefined },
       ip:           req.ip,
       tx:           tx as any,
     });
@@ -147,13 +211,14 @@ export async function remove(req: Request, res: Response) {
     res.status(400).json({ error: 'No podés eliminar tu propio usuario' }); return;
   }
 
-  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.usuario.findFirst({ where: { id, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
     await tx.usuario.update({ where: { id }, data: { deleted_at: new Date() } });
     await registrarAuditoria({
       usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
       accion:      'DELETE',
       entidad:     'Usuario',
       entidadId:   id,
@@ -171,7 +236,7 @@ export async function remove(req: Request, res: Response) {
 
 export async function listAccesos(req: Request, res: Response) {
   const usuarioId = Number(req.params.id);
-  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null } });
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
   const accesos = await (prisma as any).eventoAcceso.findMany({
@@ -192,10 +257,10 @@ export async function createAcceso(req: Request, res: Response) {
     return;
   }
 
-  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null } });
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
   if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const existing = await (prisma as any).eventoAcceso.findUnique({
@@ -215,6 +280,7 @@ export async function createAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'CREATE',
     entidad:      'EventoAcceso',
     entidadId:    acceso.id,
@@ -238,6 +304,11 @@ export async function updateAcceso(req: Request, res: Response) {
     return;
   }
 
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const existing = await (prisma as any).eventoAcceso.findUnique({
     where: { usuario_id_evento_id: { usuario_id: usuarioId, evento_id: eventoId } },
   });
@@ -251,6 +322,7 @@ export async function updateAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'EventoAcceso',
     entidadId:    acceso.id,
@@ -269,6 +341,11 @@ export async function deleteAcceso(req: Request, res: Response) {
   const usuarioId = Number(req.params.id);
   const eventoId  = Number(req.params.eventoId);
 
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
   const existing = await (prisma as any).eventoAcceso.findUnique({
     where: { usuario_id_evento_id: { usuario_id: usuarioId, evento_id: eventoId } },
   });
@@ -280,11 +357,105 @@ export async function deleteAcceso(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
     accion:      'DELETE',
     entidad:     'EventoAcceso',
     eventoId,
     descripcion: `Revocó acceso de usuario #${usuarioId} en evento #${eventoId} (rol: ${existing.rol})`,
     datosAntes:  { usuario_id: usuarioId, evento_id: eventoId, rol: existing.rol },
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+
+  res.json({ message: 'Acceso revocado correctamente' });
+}
+
+// ── UsuarioEmpresaAcceso CRUD (acceso multi-empresa) ──────────────────────────
+// Solo el admin global puede otorgar/revocar acceso de otros usuarios a
+// empresas adicionales — es una decisión cross-tenant, no algo que un admin
+// de una sola empresa deba poder hacer aunque tenga rol ADMIN localmente.
+
+// NOTA: UsuarioEmpresaAcceso no tiene columna `rol` propia — el modelo actual
+// del sistema usa un único Usuario.rol global aplicado a todas las empresas a
+// las que el usuario tiene acceso (no hay rol distinto por empresa). El pedido
+// original de "selector de empresas adicionales con rol por empresa" excede
+// lo que el schema soporta hoy sin un cambio de arquitectura más profundo
+// (tocaría también el JWT/login para resolver el rol efectivo por empresa) —
+// se implementó la versión simple: otorgar/revocar acceso a una empresa, el
+// rol que aplica ahí es siempre el Usuario.rol global. Señalado en el reporte
+// final para que el usuario decida si vale la pena el cambio más grande.
+export async function listEmpresaAccesos(req: Request, res: Response) {
+  const usuarioId = Number(req.params.id);
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null, ...belongsToEmpresa(req.empresaId!) } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+
+  const accesos = await prisma.usuarioEmpresaAcceso.findMany({
+    where:   { usuario_id: usuarioId },
+    include: { empresa: { select: { id: true, nombre: true, nombre_corto: true } } },
+    orderBy: { id: 'asc' },
+  });
+  res.json(accesos);
+}
+
+export async function createEmpresaAcceso(req: Request, res: Response) {
+  if (!(await esAdminGlobal(req.user!.id))) { res.status(403).json({ error: 'Solo el admin global puede otorgar acceso a otras empresas' }); return; }
+
+  const usuarioId = Number(req.params.id);
+  const empresaId = Number(req.params.empresaId);
+
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, deleted_at: null } });
+  if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+  const empresa = await prisma.empresa.findFirst({ where: { id: empresaId, activo: true } });
+  if (!empresa) { res.status(404).json({ error: 'Empresa no encontrada' }); return; }
+
+  const existing = await prisma.usuarioEmpresaAcceso.findUnique({
+    where: { usuario_id_empresa_id: { usuario_id: usuarioId, empresa_id: empresaId } },
+  });
+  if (existing) { res.status(400).json({ error: 'El usuario ya tiene acceso a esa empresa' }); return; }
+
+  const acceso = await prisma.usuarioEmpresaAcceso.create({
+    data: { usuario_id: usuarioId, empresa_id: empresaId, created_by: req.user!.id },
+    include: { empresa: { select: { id: true, nombre: true, nombre_corto: true } } },
+  });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
+    accion:       'CREATE',
+    entidad:      'UsuarioEmpresaAcceso',
+    entidadId:    acceso.id,
+    descripcion:  `Otorgó acceso a la empresa "${empresa.nombre}" al usuario "${usuario.nombre}"`,
+    datosDespues: { usuario_id: usuarioId, empresa_id: empresaId },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
+  res.status(201).json(acceso);
+}
+
+export async function deleteEmpresaAcceso(req: Request, res: Response) {
+  if (!(await esAdminGlobal(req.user!.id))) { res.status(403).json({ error: 'Solo el admin global puede revocar acceso a otras empresas' }); return; }
+
+  const usuarioId = Number(req.params.id);
+  const empresaId = Number(req.params.empresaId);
+
+  const existing = await prisma.usuarioEmpresaAcceso.findUnique({
+    where:   { usuario_id_empresa_id: { usuario_id: usuarioId, empresa_id: empresaId } },
+    include: { empresa: { select: { nombre: true } } },
+  });
+  if (!existing) { res.status(404).json({ error: 'Acceso no encontrado' }); return; }
+
+  await prisma.usuarioEmpresaAcceso.delete({
+    where: { usuario_id_empresa_id: { usuario_id: usuarioId, empresa_id: empresaId } },
+  });
+
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'DELETE',
+    entidad:     'UsuarioEmpresaAcceso',
+    entidadId:   existing.id,
+    descripcion: `Revocó acceso del usuario #${usuarioId} a la empresa "${existing.empresa.nombre}"`,
     ip:          req.ip,
     tx:          prisma as any,
   });

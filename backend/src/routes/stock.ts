@@ -1,8 +1,8 @@
 // Stock module — activo en backend, oculto en UI (FEATURES.STOCK = false en frontend/src/lib/features.ts)
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
-import { requireRole } from '../middleware/requireRole';
-import { requireEventoAcceso, requireEventoRole } from '../middleware/requireEventoAcceso';
+import { tenantMiddleware } from '../middleware/tenant';
+import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   listProductos, getProducto, createProducto, updateProducto, deleteProducto,
@@ -11,16 +11,28 @@ import {
   updateAsignacion, cancelarAsignacion,
   transferencia, getSugerencias,
   listCategorias, createCategoria, updateCategoria, deleteCategoria,
+  uploadFoto, importarFoto, getFoto,
+  uploadCatalogo, importarCatalogo,
+  getPendientesFirma, firmarSalida, firmarLlegada, firmarRetorno,
 } from '../controllers/stock.controller';
+import {
+  listCamiones, createCamion, updateCamion, deleteCamion,
+} from '../controllers/camion.controller';
+import {
+  listCunas, getCuna, createCuna, updateCuna, deleteCuna,
+  addProductoCuna, removeProductoCuna,
+} from '../controllers/cuna.controller';
 
 const router = Router();
 router.use(auth);
+router.use(tenantMiddleware);
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 router.get('/productos',                   asyncHandler(listProductos));
 router.get('/productos/:id',               asyncHandler(getProducto));
-router.post('/productos',    requireRole('OPERADOR'), asyncHandler(createProducto));
-router.put('/productos/:id', requireRole('OPERADOR'), asyncHandler(updateProducto));
+router.get('/productos/:id/foto',          asyncHandler(getFoto));
+router.post('/productos',    requireRole('ADMIN'), asyncHandler(createProducto));
+router.put('/productos/:id', requireRole('ADMIN'), asyncHandler(updateProducto));
 router.delete('/productos/:id', requireRole('ADMIN'), asyncHandler(deleteProducto));
 
 // ── Categorías ────────────────────────────────────────────────────────────────
@@ -35,16 +47,42 @@ router.get('/alertas',         asyncHandler(getAlertas));
 router.get('/sugerencias',     asyncHandler(getSugerencias));
 
 // ── Asignaciones ─────────────────────────────────────────────────────────────
+router.get('/asignaciones/pendientes-firma', asyncHandler(getPendientesFirma));
 router.put('/asignaciones/:id',    requireRole('OPERADOR'), asyncHandler(updateAsignacion));
 router.delete('/asignaciones/:id', requireRole('OPERADOR'), asyncHandler(cancelarAsignacion));
 
+// ── Firmas digitales ─────────────────────────────────────────────────────────
+router.patch('/asignaciones/:id/firmar-salida',  requireRole('OPERADOR'), asyncHandler(firmarSalida));
+router.patch('/asignaciones/:id/firmar-llegada', requireRole('OPERADOR'), asyncHandler(firmarLlegada));
+router.patch('/asignaciones/:id/firmar-retorno', requireRole('OPERADOR'), asyncHandler(firmarRetorno));
+
 // ── Transferencia ─────────────────────────────────────────────────────────────
 router.post('/transferencia', requireRole('OPERADOR'), asyncHandler(transferencia));
+
+// ── Importador catálogo Layher / foto de producto ─────────────────────────────
+router.post('/importar/catalogo', requireRole('OPERADOR'), uploadCatalogo.single('archivo'), asyncHandler(importarCatalogo));
+router.post('/importar/foto/:id', requireRole('OPERADOR'), uploadFoto.single('foto'),        asyncHandler(importarFoto));
+
+// ── Camiones ──────────────────────────────────────────────────────────────────
+router.get('/camiones',           asyncHandler(listCamiones));
+router.post('/camiones',          requireRole('ADMIN'), asyncHandler(createCamion));
+router.put('/camiones/:id',       requireRole('ADMIN'), asyncHandler(updateCamion));
+router.delete('/camiones/:id',    requireRole('ADMIN'), asyncHandler(deleteCamion));
+
+// ── Cunas ─────────────────────────────────────────────────────────────────────
+router.get('/cunas',                       asyncHandler(listCunas));
+router.get('/cunas/:id',                   asyncHandler(getCuna));
+router.post('/cunas',                      requireRole('ADMIN'), asyncHandler(createCuna));
+router.put('/cunas/:id',                   requireRole('ADMIN'), asyncHandler(updateCuna));
+router.post('/cunas/:id/productos',        requireRole('ADMIN'), asyncHandler(addProductoCuna));
+router.delete('/cunas/:id/productos/:productoId', requireRole('ADMIN'), asyncHandler(removeProductoCuna));
+router.delete('/cunas/:id',                requireRole('ADMIN'), asyncHandler(deleteCuna));
 
 export default router;
 
 // ── Nested under /api/eventos/:id ─────────────────────────────────────────────
 export const eventoStockRouter = Router({ mergeParams: true });
 eventoStockRouter.use(auth);
-eventoStockRouter.get('/',  requireEventoAcceso(), asyncHandler(getEventoStock));
-eventoStockRouter.post('/', requireEventoAcceso(), requireEventoRole('OPERADOR'), asyncHandler(asignarProducto));
+eventoStockRouter.use(tenantMiddleware);
+eventoStockRouter.get('/',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getEventoStock));
+eventoStockRouter.post('/', requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(asignarProducto));

@@ -1,23 +1,33 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { withTenant } from '../lib/tenant';
 
 // ── GET /dashboard/resumen ────────────────────────────────────────────────────
 
-export async function getResumen(_req: Request, res: Response) {
+export async function getResumen(req: Request, res: Response) {
   const today  = new Date(); today.setHours(0, 0, 0, 0);
   const in7    = new Date(today); in7.setDate(in7.getDate() + 7);
+  const empresaId = req.empresaId!;
 
   const [eventos, movimientos, cuentas, echeqs, eventosRecientes] = await Promise.all([
     prisma.evento.findMany({
-      where:  { deleted_at: null },
+      where:  { deleted_at: null, ...withTenant(empresaId) },
       select: { estado: true },
     }),
     prisma.movimiento.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null, estado: 'ACTIVO' } },
+      where:  { deleted_at: null, evento: { deleted_at: null, estado: 'ACTIVO', ...withTenant(empresaId) } },
       select: { tipo: true, moneda: true, debe: true, haber: true },
     }),
     prisma.cuentaBancaria.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null } },
+      where: {
+        deleted_at: null,
+        ...withTenant(empresaId),
+        // Incluye cajas de empresa sin evento (caja chica, reserva, etc.) y
+        // cuentas de eventos que no estén soft-deleteados. Una caja CERRADA ya
+        // está rendida: su saldo residual no es plata disponible.
+        OR: [{ evento_id: null }, { evento: { deleted_at: null } }],
+        estado: { not: 'CERRADA' },
+      },
       select: {
         moneda: true,
         saldo_inicial: true,
@@ -29,11 +39,11 @@ export async function getResumen(_req: Request, res: Response) {
       },
     }),
     prisma.echeq.findMany({
-      where:  { deleted_at: null, estado: 'PENDIENTE' },
+      where:  { deleted_at: null, estado: 'PENDIENTE', evento: withTenant(empresaId) },
       select: { moneda: true, importe: true, fecha_cobro_estimada: true },
     }),
     prisma.evento.findMany({
-      where:   { deleted_at: null },
+      where:   { deleted_at: null, ...withTenant(empresaId) },
       orderBy: { updated_at: 'desc' },
       take:    5,
       select:  { id: true, nombre: true, estado: true, moneda_base: true, updated_at: true },
@@ -75,10 +85,11 @@ export async function getResumen(_req: Request, res: Response) {
   }
 
   // Echeqs
-  let ars = 0, usd = 0, vencidos = 0, proximos = 0;
+  let ars = 0, usd = 0, eur = 0, vencidos = 0, proximos = 0;
   for (const e of echeqs) {
-    if (e.moneda === 'ARS') ars += Number(e.importe);
-    else                    usd += Number(e.importe);
+    if (e.moneda === 'ARS')      ars += Number(e.importe);
+    else if (e.moneda === 'EUR') eur += Number(e.importe);
+    else                         usd += Number(e.importe);
     if (e.fecha_cobro_estimada) {
       const f = new Date(e.fecha_cobro_estimada); f.setHours(0, 0, 0, 0);
       if (f < today)      vencidos++;
@@ -100,6 +111,7 @@ export async function getResumen(_req: Request, res: Response) {
       proximos_a_vencer:  proximos,
       total_expuesto_ars: parseFloat(ars.toFixed(2)),
       total_expuesto_usd: parseFloat(usd.toFixed(2)),
+      total_expuesto_eur: parseFloat(eur.toFixed(2)),
     },
     eventos_recientes: eventosRecientes,
   });
@@ -110,13 +122,13 @@ export async function getResumen(_req: Request, res: Response) {
 export async function getKPIsEvento(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
-  const [evento, tabs, movimientos, cuentas, echeqs] = await Promise.all([
-    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } }),
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+  const [evento, rubros, movimientos, cuentas, echeqs] = await Promise.all([
+    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } }),
+    prisma.rubro.findMany({ where: { ...withTenant(req.empresaId!), deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, deleted_at: null },
       orderBy: { orden: 'asc' },
-      select:  { tipo: true, tab_numero: true, fecha: true, debe: true, haber: true, moneda: true },
+      select:  { tipo: true, rubro_id: true, fecha: true, debe: true, haber: true, moneda: true },
     }),
     prisma.cuentaBancaria.findMany({
       where:  { evento_id: eventoId, deleted_at: null },
@@ -135,8 +147,8 @@ export async function getKPIsEvento(req: Request, res: Response) {
     }),
   ]);
 
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
 
   const monedasSet = new Set(movimientos.map(m => m.moneda as string));
   if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
@@ -144,17 +156,17 @@ export async function getKPIsEvento(req: Request, res: Response) {
   const por_moneda = [...monedasSet].map(moneda => {
     const fm = movimientos.filter(m => m.moneda === moneda);
 
-    const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoTabs) =>
-      list.map(t => {
-        const ms    = fm.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+    const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoRubros) =>
+      list.map(r => {
+        const ms    = fm.filter(m => m.tipo === tipo && m.rubro_id === r.id);
         const debe  = ms.reduce((a, m) => a + Number(m.debe),  0);
         const haber = ms.reduce((a, m) => a + Number(m.haber), 0);
         const saldo = tipo === 'INGRESO' ? haber - debe : debe - haber;
-        return { tab_numero: t.numero, nombre: t.nombre, saldo: parseFloat(saldo.toFixed(2)) };
+        return { rubro_id: r.id, nombre: r.nombre, saldo: parseFloat(saldo.toFixed(2)) };
       });
 
-    const ingRows = buildRows('INGRESO', ingresoTabs);
-    const egrRows = buildRows('EGRESO',  egresoTabs);
+    const ingRows = buildRows('INGRESO', ingresoRubros);
+    const egrRows = buildRows('EGRESO',  egresoRubros);
 
     const total_ingresos = parseFloat(ingRows.reduce((a, r) => a + r.saldo, 0).toFixed(2));
     const total_egresos  = parseFloat(egrRows.reduce((a, r) => a + r.saldo, 0).toFixed(2));
@@ -207,10 +219,11 @@ export async function getKPIsEvento(req: Request, res: Response) {
   });
 
   // Echeqs
-  let eArs = 0, eUsd = 0;
+  let eArs = 0, eUsd = 0, eEur = 0;
   for (const e of echeqs) {
-    if (e.moneda === 'ARS') eArs += Number(e.importe);
-    else                    eUsd += Number(e.importe);
+    if (e.moneda === 'ARS')      eArs += Number(e.importe);
+    else if (e.moneda === 'EUR') eEur += Number(e.importe);
+    else                         eUsd += Number(e.importe);
   }
 
   res.json({
@@ -233,19 +246,21 @@ export async function getKPIsEvento(req: Request, res: Response) {
       pendientes:         echeqs.length,
       total_expuesto_ars: parseFloat(eArs.toFixed(2)),
       total_expuesto_usd: parseFloat(eUsd.toFixed(2)),
+      total_expuesto_eur: parseFloat(eEur.toFixed(2)),
     },
   });
 }
 
 // ── GET /dashboard/alertas ───────────────────────────────────────────────────
 
-export async function getAlertas(_req: Request, res: Response) {
+export async function getAlertas(req: Request, res: Response) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const in7   = new Date(today); in7.setDate(in7.getDate() + 7);
+  const empresaId = req.empresaId!;
 
   const [echeqsPendientes, eventosActivos, allMovimientos, allEventos] = await Promise.all([
     prisma.echeq.findMany({
-      where:  { deleted_at: null, estado: 'PENDIENTE' },
+      where:  { deleted_at: null, estado: 'PENDIENTE', evento: withTenant(empresaId) },
       select: {
         id: true, numero: true, razon_social: true, importe: true, moneda: true,
         fecha_cobro_estimada: true, evento_id: true,
@@ -253,15 +268,15 @@ export async function getAlertas(_req: Request, res: Response) {
       },
     }),
     prisma.evento.findMany({
-      where:  { deleted_at: null, estado: 'ACTIVO' },
+      where:  { deleted_at: null, estado: 'ACTIVO', ...withTenant(empresaId) },
       select: { id: true, nombre: true, fecha_fin: true },
     }),
     prisma.movimiento.findMany({
-      where:  { deleted_at: null, evento: { deleted_at: null } },
+      where:  { deleted_at: null, evento: { deleted_at: null, ...withTenant(empresaId) } },
       select: { evento_id: true, tipo: true, moneda: true, debe: true, haber: true },
     }),
     prisma.evento.findMany({
-      where:  { deleted_at: null },
+      where:  { deleted_at: null, ...withTenant(empresaId) },
       select: { id: true, nombre: true },
     }),
   ]);

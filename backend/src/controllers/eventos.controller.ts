@@ -1,8 +1,10 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { Moneda, EstadoEvento, Prisma } from '@prisma/client';
+import { Moneda, EstadoEvento, ModalidadEvento, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
+import { EMPRESAS } from '../lib/empresasConstants';
 
 const socioSchema = z.object({
   nombre:     z.string().min(1, 'Nombre requerido'),
@@ -10,26 +12,67 @@ const socioSchema = z.object({
 });
 
 const createSchema = z.object({
-  nombre:       z.string().min(1, 'El nombre es requerido'),
-  fecha_inicio: z.string().nullable().optional(),
-  fecha_fin:    z.string().nullable().optional(),
-  socios:       z.array(socioSchema).default([]),
-  moneda_base:  z.enum(['ARS', 'USD']).default('ARS'),
-});
+  nombre:          z.string().min(1, 'El nombre es requerido'),
+  fecha_inicio:    z.string().nullable().optional(),
+  fecha_fin:       z.string().nullable().optional(),
+  dias_montaje:    z.number().int().nonnegative().optional(),
+  dias_desmontaje: z.number().int().nonnegative().optional(),
+  lugar:           z.string().trim().nullable().optional(),
+  socios:          z.array(socioSchema).default([]),
+  moneda_base:     z.enum(['ARS', 'USD']).default('ARS'),
+  es_informal:     z.boolean().optional(),
+  modalidad:       z.nativeEnum(ModalidadEvento).optional(),
+  facturar:        z.boolean().nullable().optional(),
+  facturar_notas:  z.string().nullable().optional(),
+}).refine(
+  data => !data.es_informal || !!data.fecha_inicio,
+  { message: 'La fecha es requerida', path: ['fecha_inicio'] },
+);
 
 const updateSchema = z.object({
-  nombre:       z.string().min(1).optional(),
-  fecha_inicio: z.string().nullable().optional(),
-  fecha_fin:    z.string().nullable().optional(),
-  socios:       z.array(socioSchema).optional(),
-  moneda_base:  z.enum(['ARS', 'USD']).optional(),
-  estado:       z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
+  nombre:          z.string().min(1).optional(),
+  fecha_inicio:    z.string().nullable().optional(),
+  fecha_fin:       z.string().nullable().optional(),
+  dias_montaje:    z.number().int().nonnegative().optional(),
+  dias_desmontaje: z.number().int().nonnegative().optional(),
+  lugar:           z.string().trim().nullable().optional(),
+  socios:          z.array(socioSchema).optional(),
+  moneda_base:     z.enum(['ARS', 'USD']).optional(),
+  estado:          z.enum(['ACTIVO', 'CERRADO', 'IMPORTADO']).optional(),
+  modalidad:       z.nativeEnum(ModalidadEvento).optional(),
+});
+
+// facturar nullable acá también — permite "Cambiar decisión" desde el banner
+// del evento, que vuelve a null en vez de forzar sí/no.
+const marcarFacturarSchema = z.object({
+  facturar: z.boolean().nullable(),
+  notas:    z.string().nullable().optional(),
 });
 
 function sociosSumOk(socios: { porcentaje: number }[]): boolean {
   if (socios.length === 0) return true;
   const sum = socios.reduce((acc, s) => acc + s.porcentaje, 0);
   return Math.abs(sum - 100) < 0.01;
+}
+
+// Modalidad del evento por empresa. Enjoy: centro de costos por default (los
+// grandes — TC, Lecap, Monster — se marcan FLUJO_CAJA). DOS57: operativa por
+// default (matriz de costo real de Flor), o FLUJO_CAJA. Otras empresas: siempre
+// FLUJO_CAJA. La primera opción de cada lista es el default.
+export const MODALIDADES_POR_EMPRESA: Record<number, ModalidadEvento[]> = {
+  [EMPRESAS.ENJOY]: [ModalidadEvento.CENTRO_COSTOS, ModalidadEvento.FLUJO_CAJA],
+  [EMPRESAS.DOS57]: [ModalidadEvento.OPERATIVA, ModalidadEvento.FLUJO_CAJA],
+};
+
+export function modalidadesPermitidas(empresaId: number): ModalidadEvento[] {
+  return MODALIDADES_POR_EMPRESA[empresaId] ?? [ModalidadEvento.FLUJO_CAJA];
+}
+
+// Una modalidad pedida que no aplica a la empresa (ej. la Pre-Macro trae
+// CENTRO_COSTOS por default también en DOS57) cae en el default de la empresa.
+export function resolverModalidad(empresaId: number, pedida: ModalidadEvento | undefined): ModalidadEvento {
+  const permitidas = modalidadesPermitidas(empresaId);
+  return pedida && permitidas.includes(pedida) ? pedida : permitidas[0];
 }
 
 function toDate(s: string | null | undefined): Date | null | undefined {
@@ -48,16 +91,19 @@ function mapEvento(e: any) {
 }
 
 export async function list(req: Request, res: Response) {
-  const isAdmin = req.user!.rol === 'ADMIN';
-  const where: Prisma.EventoWhereInput = { deleted_at: null };
+  // Lectura abierta a todo rol TODOS_MENOS_RESTRINGIDOS (ver requireAnyRole en
+  // routes/eventos.ts) — ya no se filtra por EventoAcceso, ese ACL puntual
+  // quedó reservado para uso futuro (matriz de permisos: página vs botón).
+  const where: Prisma.EventoWhereInput = { ...withTenant(req.empresaId!), deleted_at: null };
 
-  if (!isAdmin) {
-    const accesos = await (prisma as any).eventoAcceso.findMany({
-      where:  { usuario_id: req.user!.id },
-      select: { evento_id: true },
-    });
-    where.id = { in: accesos.map((a: any) => a.evento_id) };
-  }
+  // ?es_informal=true|false|all (default: all)
+  const esInformalParam = req.query.es_informal;
+  if (esInformalParam === 'true')  where.es_informal = true;
+  if (esInformalParam === 'false') where.es_informal = false;
+
+  // ?facturar=null → eventos informales sin decidir (usado por el link de la
+  // notificación de facturación pendiente)
+  if (req.query.facturar === 'null') where.facturar = null;
 
   const eventos = await prisma.evento.findMany({
     where,
@@ -70,7 +116,7 @@ export async function list(req: Request, res: Response) {
 export async function detail(req: Request, res: Response) {
   const id = Number(req.params.id);
   const evento = await prisma.evento.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: includeCount,
   });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
@@ -83,7 +129,10 @@ export async function create(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { nombre, fecha_inicio, fecha_fin, socios, moneda_base } = parsed.data;
+  const {
+    nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base,
+    es_informal, facturar, facturar_notas, modalidad,
+  } = parsed.data;
   if (!sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -92,11 +141,19 @@ export async function create(req: Request, res: Response) {
   const evento = await prisma.$transaction(async tx => {
     const created = await tx.evento.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre,
-        fecha_inicio: toDate(fecha_inicio) ?? null,
-        fecha_fin:    toDate(fecha_fin) ?? null,
+        fecha_inicio:    toDate(fecha_inicio) ?? null,
+        fecha_fin:       toDate(fecha_fin) ?? null,
+        dias_montaje:    dias_montaje    ?? 0,
+        dias_desmontaje: dias_desmontaje ?? 0,
+        lugar:           lugar || null,
         socios,
         moneda_base:  moneda_base as Moneda,
+        es_informal:  es_informal ?? false,
+        modalidad:    resolverModalidad(req.empresaId!, modalidad),
+        facturar:     facturar ?? null,
+        facturar_notas: facturar_notas ?? null,
         created_by:   req.user!.id,
         updated_by:   req.user!.id,
       },
@@ -104,6 +161,7 @@ export async function create(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Evento',
       entidadId:    created.id,
@@ -126,10 +184,14 @@ export async function update(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const { nombre, fecha_inicio, fecha_fin, socios, moneda_base, estado } = parsed.data;
+  const { nombre, fecha_inicio, fecha_fin, dias_montaje, dias_desmontaje, lugar, socios, moneda_base, estado, modalidad } = parsed.data;
+  if (modalidad !== undefined && modalidad !== existing.modalidad && !modalidadesPermitidas(req.empresaId!).includes(modalidad)) {
+    res.status(400).json({ error: 'Esa modalidad no aplica a los eventos de esta empresa' });
+    return;
+  }
   if (socios !== undefined && !sociosSumOk(socios)) {
     res.status(400).json({ error: 'Los porcentajes de socios deben sumar 100' });
     return;
@@ -139,18 +201,23 @@ export async function update(req: Request, res: Response) {
     const updated = await tx.evento.update({
       where: { id },
       data: {
-        ...(nombre       !== undefined && { nombre }),
-        ...(fecha_inicio !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
-        ...(fecha_fin    !== undefined && { fecha_fin:    toDate(fecha_fin) }),
+        ...(nombre          !== undefined && { nombre }),
+        ...(fecha_inicio    !== undefined && { fecha_inicio: toDate(fecha_inicio) }),
+        ...(fecha_fin       !== undefined && { fecha_fin:    toDate(fecha_fin) }),
+        ...(dias_montaje    !== undefined && { dias_montaje }),
+        ...(dias_desmontaje !== undefined && { dias_desmontaje }),
+        ...(lugar !== undefined && { lugar: lugar || null }),
         ...(socios       !== undefined && { socios }),
         ...(moneda_base  !== undefined && { moneda_base: moneda_base as Moneda }),
         ...(estado       !== undefined && { estado: estado as EstadoEvento }),
+        ...(modalidad    !== undefined && { modalidad }),
         updated_by: req.user!.id,
       },
       include: includeCount,
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Evento',
       entidadId:    id,
@@ -167,9 +234,52 @@ export async function update(req: Request, res: Response) {
   res.json(mapEvento(evento));
 }
 
+// ── Marcar decisión de facturación ────────────────────────────────────────────
+
+export async function marcarFacturar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const parsed = marcarFacturarSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const { facturar, notas } = parsed.data;
+
+  const evento = await prisma.$transaction(async tx => {
+    const updated = await tx.evento.update({
+      where: { id },
+      data: {
+        facturar,
+        ...(notas !== undefined && { facturar_notas: notas }),
+        updated_by: req.user!.id,
+      },
+      include: includeCount,
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'UPDATE',
+      entidad:      'Evento',
+      entidadId:    id,
+      eventoId:     id,
+      descripcion:  `Marcó facturación del evento "${existing.nombre}": ${facturar === null ? 'sin decidir' : facturar ? 'sí' : 'no'}`,
+      datosAntes:   { facturar: existing.facturar, facturar_notas: existing.facturar_notas },
+      datosDespues: { facturar, facturar_notas: notas },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return updated;
+  });
+
+  res.json(mapEvento(evento));
+}
+
 export async function remove(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -179,6 +289,7 @@ export async function remove(req: Request, res: Response) {
     });
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'Evento',
       entidadId:  id,
@@ -198,14 +309,14 @@ export async function remove(req: Request, res: Response) {
 export async function conciliatoria(req: Request, res: Response) {
   const id = Number(req.params.id);
 
-  const evento = await prisma.evento.findFirst({ where: { id, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
-  const [tabs, movimientos, cuentas, echeqsPendientes] = await Promise.all([
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+  const [rubros, movimientos, cuentas, echeqsPendientes] = await Promise.all([
+    prisma.rubro.findMany({ where: { ...withTenant(req.empresaId!), deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:  { evento_id: id, deleted_at: null },
-      select: { tipo: true, tab_numero: true, moneda: true, debe: true, haber: true },
+      select: { tipo: true, rubro_id: true, moneda: true, debe: true, haber: true },
     }),
     prisma.cuentaBancaria.findMany({
       where:   { evento_id: id, deleted_at: null },
@@ -227,26 +338,26 @@ export async function conciliatoria(req: Request, res: Response) {
   if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
   const monedas = [...monedasSet];
 
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
   const socios      = (evento.socios as { nombre: string; porcentaje: number }[]);
 
   const por_moneda = monedas.map(moneda => {
     const forMoneda = movimientos.filter(m => m.moneda === moneda);
 
-    const buildTabs = (tipo: 'INGRESO' | 'EGRESO', tabList: typeof ingresoTabs) =>
-      tabList.map(t => {
-        const rows        = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+    const buildRubros = (tipo: 'INGRESO' | 'EGRESO', rubroList: typeof ingresoRubros) =>
+      rubroList.map(r => {
+        const rows        = forMoneda.filter(m => m.tipo === tipo && m.rubro_id === r.id);
         const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
         const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
         const saldo = tipo === 'INGRESO'
           ? parseFloat((total_haber - total_debe).toFixed(2))
           : parseFloat((total_debe  - total_haber).toFixed(2));
-        return { tab_numero: t.numero, nombre: t.nombre, total_debe, total_haber, saldo };
+        return { rubro_id: r.id, nombre: r.nombre, total_debe, total_haber, saldo };
       });
 
-    const ingresos        = buildTabs('INGRESO', ingresoTabs);
-    const egresos         = buildTabs('EGRESO',  egresoTabs);
+    const ingresos        = buildRubros('INGRESO', ingresoRubros);
+    const egresos         = buildRubros('EGRESO',  egresoRubros);
     const total_ingresos  = parseFloat(ingresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
     const total_egresos   = parseFloat(egresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
     const saldo_final     = parseFloat((total_ingresos - total_egresos).toFixed(2));

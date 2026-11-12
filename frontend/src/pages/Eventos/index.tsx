@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, Pencil, Trash2, Eye, FileSpreadsheet, FileDown, Loader2, FileClock, Zap } from 'lucide-react';
 import { useEventos, useDeleteEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
+import { useCreatePreMacro, usePreMacroBorrador, useDiscardPreMacro } from '@/hooks/usePreMacro';
 import { useAuth } from '@/hooks/useAuth';
-import { EstadoBadge } from '@/components/ui/badge';
+import { EstadoBadge, InformalBadge, FacturarBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,13 +13,33 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import EventoForm from './EventoForm';
+import CargaRapidaDialog from './CargaRapidaDialog';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import type { Evento } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function EventosPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: eventos = [], isLoading } = useEventos();
+  const [searchParams] = useSearchParams();
+  const { data: eventosRaw = [], isLoading } = useEventos();
+
+  // Filtro por URL (?es_informal=true&facturar=null) — soporta links externos
+  // que ya apunten a esta combinación.
+  const filtroEsInformal = searchParams.get('es_informal');
+  const filtroFacturarURL = searchParams.get('facturar');
+  const [soloSinFacturar, setSoloSinFacturar] = useState(filtroFacturarURL === 'null');
+
+  const sinFacturarCount = eventosRaw.filter(e => e.facturar === null).length;
+
+  const eventos = eventosRaw.filter(e => {
+    if (filtroEsInformal === 'true'  && !e.es_informal) return false;
+    if (filtroEsInformal === 'false' &&  e.es_informal) return false;
+    if (soloSinFacturar && e.facturar !== null) return false;
+    return true;
+  });
   const { mutate: deleteEvento }          = useDeleteEvento();
   const { exportar }                            = useExportarExcel();
   const { exportar: exportPDF }                = useExportarPDF();
@@ -27,20 +48,32 @@ export default function EventosPage() {
 
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
+  const [cargaRapidaOpen, setCargaRapidaOpen] = useState(false);
 
-  const canEdit = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const createPreMacro = useCreatePreMacro();
+  const { data: borrador } = usePreMacroBorrador();
+  const discardPreMacro    = useDiscardPreMacro();
+
+  // Crear/editar/eliminar eventos (y arrancar el wizard de pre-macro) es
+  // exclusivo de ADMIN — OPERADOR sólo puede ver (matriz de permisos).
+  const canEdit = user?.rol === 'ADMIN';
 
   const handleNew = () => {
-    setEditingEvento(null);
-    setDialogOpen(true);
+    createPreMacro.mutate();
   };
 
-  // El panel de ayuda puede abrir este modal con el evento personalizado
+  // El panel de ayuda puede abrir el wizard de pre-macro
   useEffect(() => {
     const handler = () => handleNew();
     window.addEventListener('help:abrir_modal_nuevo_evento', handler);
     return () => window.removeEventListener('help:abrir_modal_nuevo_evento', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDescartarBorrador = () => {
+    if (!borrador) return;
+    if (!window.confirm(`¿Descartar la pre-macro sin completar "${borrador.nombre_evento || 'sin nombre'}"?`)) return;
+    discardPreMacro.mutate(borrador.id);
+  };
 
   const handleEdit = (evento: Evento) => {
     setEditingEvento(evento);
@@ -77,15 +110,60 @@ export default function EventosPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Eventos</h1>
-        {canEdit && (
-          <Button onClick={handleNew} size="sm">
-            <Plus size={16} className="mr-1.5" />
-            Nuevo evento
-          </Button>
+      <PageHeader
+        title="Eventos"
+        className="mb-6"
+        actions={canEdit && (
+          <>
+            <Button onClick={handleNew} size="sm" disabled={createPreMacro.isPending}>
+              <Plus size={16} className="mr-1.5" />
+              Nuevo evento
+            </Button>
+            <Button onClick={() => setCargaRapidaOpen(true)} size="sm" variant="outline">
+              <Zap size={16} className="mr-1.5" />
+              Carga rápida
+            </Button>
+          </>
         )}
+      />
+
+      {/* Filtros rápidos */}
+      <div className="flex items-center gap-2 mb-4">
+        <Button
+          size="sm"
+          variant={soloSinFacturar ? 'default' : 'outline'}
+          onClick={() => setSoloSinFacturar(v => !v)}
+          className="flex items-center gap-1.5"
+        >
+          Sin facturar
+          {sinFacturarCount > 0 && (
+            <span className={cn(
+              'inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full text-[10px] font-bold',
+              soloSinFacturar ? 'bg-primary-foreground text-primary' : 'bg-amber-500 text-white',
+            )}>
+              {sinFacturarCount}
+            </span>
+          )}
+        </Button>
       </div>
+
+      {/* Banner de pre-macro sin completar */}
+      {borrador && (
+        <div className="flex items-center gap-2 mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <FileClock size={16} className="text-amber-600 shrink-0" />
+          <span className="text-sm text-amber-800">
+            Tenés una pre-macro sin completar: <strong>{borrador.nombre_evento || 'Sin nombre'}</strong>
+          </span>
+          <div className="ml-auto flex gap-2 shrink-0">
+            <Button size="sm" onClick={() => navigate(`/pre-macro/${borrador.id}`)}>
+              Continuar →
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleDescartarBorrador} disabled={discardPreMacro.isPending}>
+              Descartar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
@@ -97,7 +175,7 @@ export default function EventosPage() {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-muted-foreground text-sm">No hay eventos registrados.</p>
           {canEdit && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={handleNew}>
+            <Button variant="outline" size="sm" className="mt-3" onClick={handleNew} disabled={createPreMacro.isPending}>
               <Plus size={14} className="mr-1.5" />
               Crear el primer evento
             </Button>
@@ -108,8 +186,8 @@ export default function EventosPage() {
       {/* Desktop table */}
       {!isLoading && eventos.length > 0 && (
         <>
-          <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+          <div className="hidden md:block overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-gray-50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nombre</th>
@@ -124,7 +202,13 @@ export default function EventosPage() {
               <tbody className="divide-y divide-border">
                 {eventos.map(evento => (
                   <tr key={evento.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium">{evento.nombre}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {evento.nombre}
+                        {evento.es_informal && <InformalBadge />}
+                        {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
+                      </div>
+                    </td>
                     <td className="px-4 py-3"><EstadoBadge estado={evento.estado} /></td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(evento.fecha_inicio)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(evento.fecha_fin)}</td>
@@ -192,7 +276,7 @@ export default function EventosPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
 
           {/* Mobile cards */}
@@ -204,7 +288,11 @@ export default function EventosPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{evento.nombre}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium truncate">{evento.nombre}</p>
+                      {evento.es_informal && <InformalBadge />}
+                      {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       {evento.fecha_inicio && <span>Inicio: {formatDate(evento.fecha_inicio)}</span>}
                       {evento.fecha_fin    && <span>Fin: {formatDate(evento.fecha_fin)}</span>}
@@ -267,13 +355,11 @@ export default function EventosPage() {
         </>
       )}
 
-      {/* Create / Edit dialog */}
+      {/* Edit dialog — la creación de eventos pasa por la pre-macro */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editingEvento ? 'Editar evento' : 'Nuevo evento'}
-            </DialogTitle>
+            <DialogTitle>Editar evento</DialogTitle>
           </DialogHeader>
           <EventoForm
             evento={editingEvento ?? undefined}
@@ -282,6 +368,8 @@ export default function EventosPage() {
           />
         </DialogContent>
       </Dialog>
+
+      <CargaRapidaDialog open={cargaRapidaOpen} onClose={() => setCargaRapidaOpen(false)} />
     </div>
   );
 }

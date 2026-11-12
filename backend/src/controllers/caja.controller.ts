@@ -1,80 +1,352 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { TipoCuenta, Moneda } from '@prisma/client';
+import multer from 'multer';
+import { TipoCuenta, Moneda, EstadoCuenta, type Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
 
-let _tabCache: Map<string, string> | null = null;
-async function getTabMap(): Promise<Map<string, string>> {
-  if (!_tabCache) {
-    const tabs = await prisma.tabConfig.findMany();
-    _tabCache = new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo]));
+// Comprobante de un movimiento de caja cargado desde la vista de Andrea (Caja
+// del mes) — mismo patrón que uploadDocumento en afipPrestamos.controller.ts.
+// Multipart es opcional: si el request llega como JSON (resto de las pantallas
+// que usan estos mismos endpoints), multer no interfiere y sigue igual.
+export const uploadComprobanteMovCaja = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos PDF o imágenes'));
+  },
+});
+
+// Cache por empresa — TabConfig ahora es per-tenant, así que una única Map
+// global mezclaría tabs de distintas empresas entre requests.
+const _tabCacheByEmpresa = new Map<number, Map<string, string>>();
+async function getTabMap(empresaId: number): Promise<Map<string, string>> {
+  if (!_tabCacheByEmpresa.has(empresaId)) {
+    const tabs = await prisma.tabConfig.findMany({ where: withTenant(empresaId) });
+    _tabCacheByEmpresa.set(empresaId, new Map(tabs.map(t => [`${t.tipo}-${t.numero}`, t.codigo])));
   }
-  return _tabCache;
+  return _tabCacheByEmpresa.get(empresaId)!;
 }
 
 function mapCuenta(c: any) {
-  return { ...c, saldo_inicial: Number(c.saldo_inicial) };
+  return {
+    ...c,
+    saldo_inicial: Number(c.saldo_inicial),
+    saldo_minimo:  c.saldo_minimo != null ? Number(c.saldo_minimo) : null,
+  };
+}
+
+// Cuentas "del evento" = propias (CuentaBancaria.evento_id) + vinculadas
+// (EventoCuenta) — una cuenta de empresa (ej. "Caja Pollo") puede operarse
+// desde varios eventos sin dejar de ser una cuenta global de Caja General.
+export async function resolveCuentaIdsEvento(eventoId: number): Promise<{ propiasIds: number[]; vinculadaIds: number[] }> {
+  const [propias, vinculos] = await Promise.all([
+    prisma.cuentaBancaria.findMany({ where: { evento_id: eventoId, deleted_at: null }, select: { id: true } }),
+    prisma.eventoCuenta.findMany({ where: { evento_id: eventoId }, select: { cuenta_id: true } }),
+  ]);
+  return { propiasIds: propias.map(c => c.id), vinculadaIds: vinculos.map(v => v.cuenta_id) };
 }
 
 function mapMovCaja(m: any, tabMap?: Map<string, string>) {
   const raw = m.movimientos_origen?.[0] ?? null;
-  const movOrigen = raw && tabMap ? {
-    id:         raw.id,
-    tipo:       raw.tipo,
-    tab_numero: raw.tab_numero,
-    tab_codigo: tabMap.get(`${raw.tipo}-${raw.tab_numero}`) ?? null,
-    concepto:   raw.concepto,
+  const movOrigen = raw ? {
+    id:                raw.id,
+    tipo:              raw.tipo,
+    tab_numero:        raw.tab_numero,
+    tab_codigo:        tabMap ? (tabMap.get(`${raw.tipo}-${raw.tab_numero}`) ?? null) : null,
+    concepto:          raw.concepto,
+    rubro_id:          raw.rubro_id  ?? null,
+    rubro_nombre:      raw.rubro?.nombre ?? null,
+    estado_movimiento: raw.estado_movimiento ?? null,
   } : null;
 
   return {
     ...m,
-    debe:              Number(m.debe),
-    haber:             Number(m.haber),
-    saldo_corriente:   Number(m.saldo_corriente),
-    movimiento_origen: movOrigen,
+    debe:               Number(m.debe),
+    haber:              Number(m.haber),
+    saldo_corriente:    Number(m.saldo_corriente),
+    movimiento_origen:  movOrigen,
     movimientos_origen: undefined,
+    // Nunca mandar el binario del comprobante en el listado — sólo su nombre,
+    // el front pide el archivo aparte vía GET /movimientos-caja/:id/comprobante.
+    comprobante_data:   undefined,
+    tiene_comprobante:  m.comprobante_data != null,
   };
 }
 
 const createCuentaSchema = z.object({
   nombre:        z.string().min(1),
-  tipo:          z.enum(['EFECTIVO', 'BANCO']),
+  tipo:          z.enum(['EFECTIVO', 'BANCO', 'FIMA']),
   moneda:        z.enum(['ARS', 'USD']).default('ARS'),
   saldo_inicial: z.number().default(0),
+  saldo_minimo:  z.number().min(0).nullable().optional(),
 });
 
 const updateCuentaSchema = z.object({
   nombre:        z.string().min(1).optional(),
-  tipo:          z.enum(['EFECTIVO', 'BANCO']).optional(),
+  tipo:          z.enum(['EFECTIVO', 'BANCO', 'FIMA']).optional(),
   moneda:        z.enum(['ARS', 'USD']).optional(),
   saldo_inicial: z.number().optional(),
+  saldo_minimo:  z.number().min(0).nullable().optional(),
 });
 
+const estadoCuentaSchema = z.object({
+  estado:          z.enum(['ABIERTA', 'PENDIENTE_RENDICION', 'CERRADA']),
+  notas_rendicion: z.string().nullable().optional(),
+});
+
+// Categorías de la vista de Andrea (Caja del mes, DOS57) — columnas del libro
+// diario real (CAJAS_JULIO-2026.xlsx). Null = movimiento de ingreso, o
+// movimiento cargado desde otro módulo que no pasa por esa vista.
+const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES'] as const;
+
+// z.coerce.number() acepta tanto number (JSON) como string (multipart, cuando
+// el request trae un comprobante adjunto) — ver uploadComprobanteMovCaja.
 const createMovCajaSchema = z.object({
-  fecha:       z.string().nullable().optional(),
-  descripcion: z.string().nullable().optional(),
-  debe:        z.number().min(0).default(0),
-  haber:       z.number().min(0).default(0),
+  fecha:              z.string().nullable().optional(),
+  descripcion:        z.string().nullable().optional(),
+  debe:               z.coerce.number().min(0).default(0),
+  haber:              z.coerce.number().min(0).default(0),
+  categoria_andrea:   z.preprocess(v => (v === '' ? null : v), z.enum(CATEGORIAS_ANDREA).nullable().optional()),
+  responsable_nombre: z.string().nullable().optional(),
+  referencia:         z.string().nullable().optional(),
 });
 
 const updateMovCajaSchema = z.object({
-  fecha:       z.string().nullable().optional(),
-  descripcion: z.string().nullable().optional(),
-  debe:        z.number().min(0).optional(),
-  haber:       z.number().min(0).optional(),
+  fecha:              z.string().nullable().optional(),
+  descripcion:        z.string().nullable().optional(),
+  debe:               z.coerce.number().min(0).optional(),
+  haber:              z.coerce.number().min(0).optional(),
+  categoria_andrea:   z.preprocess(v => (v === '' ? null : v), z.enum(CATEGORIAS_ANDREA).nullable().optional()),
+  responsable_nombre: z.string().nullable().optional(),
+  referencia:         z.string().nullable().optional(),
 });
 
 // ── Cuentas ───────────────────────────────────────────────────────────────────
 
+// GET /api/cuentas — todas las cuentas de la empresa, con o sin evento.
+// ?evento_id filtra a un evento puntual; sin filtro devuelve todo (incluye
+// las cajas de empresa sin evento_id: caja chica por persona, reserva, etc.)
+export async function listCuentasEmpresa(req: Request, res: Response) {
+  const eventoIdRaw   = req.query.evento_id;
+  const tipoRaw       = req.query.tipo;
+  const monedaRaw     = req.query.moneda;
+  const paraEventoRaw = req.query.para_evento;
+  const estadoRaw     = req.query.estado;
+
+  const where: Prisma.CuentaBancariaWhereInput = { deleted_at: null, ...withTenant(req.empresaId!) };
+
+  if (typeof eventoIdRaw === 'string' && eventoIdRaw !== '') {
+    const eventoId = Number(eventoIdRaw);
+    if (isNaN(eventoId)) { res.status(400).json({ error: 'evento_id inválido' }); return; }
+    where.evento_id = eventoId;
+  }
+  // ?para_evento=:eventoId — candidatas para vincular a ESE evento (ver
+  // vincularCuenta()): CUALQUIER cuenta de la empresa, tenga o no evento_id
+  // propio (con EventoCuenta una cuenta puede estar en varios eventos a la
+  // vez), excepto las que ya están vinculadas a este evento puntual. Las que
+  // ya son propias de este evento las filtra el frontend (ya vienen en su
+  // lista de cuentas del evento).
+  if (typeof paraEventoRaw === 'string' && paraEventoRaw !== '') {
+    const eventoId = Number(paraEventoRaw);
+    if (isNaN(eventoId)) { res.status(400).json({ error: 'para_evento inválido' }); return; }
+    const vinculadas = await prisma.eventoCuenta.findMany({ where: { evento_id: eventoId }, select: { cuenta_id: true } });
+    where.id = { notIn: vinculadas.map(v => v.cuenta_id) };
+  }
+  if (typeof tipoRaw === 'string' && (tipoRaw === 'EFECTIVO' || tipoRaw === 'BANCO')) {
+    where.tipo = tipoRaw;
+  }
+  if (typeof monedaRaw === 'string' && (monedaRaw === 'ARS' || monedaRaw === 'USD')) {
+    where.moneda = monedaRaw;
+  }
+  if (typeof estadoRaw === 'string' && ['ABIERTA', 'PENDIENTE_RENDICION', 'CERRADA'].includes(estadoRaw)) {
+    where.estado = estadoRaw as EstadoCuenta;
+  }
+
+  const cuentas = await prisma.cuentaBancaria.findMany({
+    where,
+    orderBy: { id: 'asc' },
+    include: {
+      evento:      { select: { id: true, nombre: true } },
+      responsable: { select: { id: true, nombre: true } },
+      movimientos: {
+        where:   { deleted_at: null },
+        orderBy: { orden: 'asc' },
+        select:  { saldo_corriente: true },
+      },
+    },
+  });
+
+  res.json(cuentas.map(c => {
+    const movs        = c.movimientos;
+    const last        = movs[movs.length - 1];
+    const saldo_actual = last ? Number(last.saldo_corriente) : Number(c.saldo_inicial);
+    const alerta_saldo_minimo = c.saldo_minimo != null && saldo_actual < Number(c.saldo_minimo);
+    return { ...mapCuenta(c), saldo_actual, alerta_saldo_minimo, movimientos: undefined };
+  }));
+}
+
+// GET /api/cuentas/:id — detalle de una cuenta puntual con su saldo actual.
+// Usado por la pantalla de detalle de cuenta en Caja Global.
+export async function getCuenta(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const cuenta = await prisma.cuentaBancaria.findFirst({
+    where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    include: {
+      evento:      { select: { id: true, nombre: true } },
+      responsable: { select: { id: true, nombre: true } },
+      movimientos: {
+        where:   { deleted_at: null },
+        orderBy: { orden: 'asc' },
+        select:  { saldo_corriente: true },
+      },
+    },
+  });
+  if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+
+  const movs        = cuenta.movimientos;
+  const last         = movs[movs.length - 1];
+  const saldo_actual = last ? Number(last.saldo_corriente) : Number(cuenta.saldo_inicial);
+  const alerta_saldo_minimo = cuenta.saldo_minimo != null && saldo_actual < Number(cuenta.saldo_minimo);
+  res.json({ ...mapCuenta(cuenta), saldo_actual, alerta_saldo_minimo, movimientos: undefined });
+}
+
+// POST /api/cuentas — crea una cuenta de empresa, sin evento asociado.
+export async function createCuentaEmpresa(req: Request, res: Response) {
+  const parsed = createCuentaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const cuenta = await prisma.$transaction(async tx => {
+    const c = await tx.cuentaBancaria.create({
+      data: {
+        ...withTenant(req.empresaId!),
+        evento_id:     null,
+        nombre:        parsed.data.nombre,
+        tipo:          parsed.data.tipo as TipoCuenta,
+        moneda:        parsed.data.moneda as Moneda,
+        saldo_inicial: parsed.data.saldo_inicial,
+        saldo_minimo:  parsed.data.saldo_minimo ?? null,
+        fecha_apertura: new Date(),
+      },
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'CREATE',
+      entidad:      'CuentaBancaria',
+      entidadId:    c.id,
+      descripcion:  `Creó cuenta de empresa "${parsed.data.nombre}"`,
+      datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return c;
+  });
+
+  res.status(201).json(mapCuenta(cuenta));
+}
+
 export async function listCuentas(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
-  const cuentas  = await prisma.cuentaBancaria.findMany({
-    where:   { evento_id: eventoId, deleted_at: null },
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(eventoId);
+  const vinculadaSet = new Set(vinculadaIds);
+
+  const cuentas = await prisma.cuentaBancaria.findMany({
+    where:   { id: { in: [...propiasIds, ...vinculadaIds] }, deleted_at: null },
     orderBy: { id: 'asc' },
   });
-  res.json(cuentas.map(mapCuenta));
+  res.json(cuentas.map(c => ({ ...mapCuenta(c), vinculada: vinculadaSet.has(c.id) })));
+}
+
+// POST /api/eventos/:id/cuentas/vincular — asocia una cuenta de empresa
+// existente (evento_id null) a este evento sin duplicarla ni sacarla de
+// Caja Global (ver EventoCuenta en schema.prisma).
+const vincularCuentaSchema = z.object({
+  cuenta_id: z.number().int().positive(),
+});
+
+export async function vincularCuenta(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const parsed   = vincularCuentaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: parsed.data.cuenta_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+  if (cuenta.evento_id === eventoId) { res.status(400).json({ error: 'Esa cuenta ya pertenece a este evento' }); return; }
+
+  const existente = await prisma.eventoCuenta.findUnique({
+    where: { evento_id_cuenta_id: { evento_id: eventoId, cuenta_id: cuenta.id } },
+  });
+  if (existente) { res.status(400).json({ error: 'Esa cuenta ya está vinculada a este evento' }); return; }
+
+  const vinculo = await prisma.$transaction(async tx => {
+    const v = await tx.eventoCuenta.create({
+      data: { evento_id: eventoId, cuenta_id: cuenta.id, created_by: req.user!.id },
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'CREATE',
+      entidad:      'EventoCuenta',
+      entidadId:    v.id,
+      eventoId,
+      descripcion:  `Vinculó la cuenta "${cuenta.nombre}" al evento #${eventoId}`,
+      datosDespues: { evento_id: eventoId, cuenta_id: cuenta.id },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return v;
+  });
+
+  res.status(201).json({ ...mapCuenta(cuenta), vinculada: true, evento_cuenta_id: vinculo.id });
+}
+
+// DELETE /api/eventos/:id/cuentas/:cuentaId/desvincular — sólo elimina el
+// vínculo (EventoCuenta), nunca la cuenta en sí.
+export async function desvincularCuenta(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const cuentaId = Number(req.params.cuentaId);
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const existente = await prisma.eventoCuenta.findUnique({
+    where:   { evento_id_cuenta_id: { evento_id: eventoId, cuenta_id: cuentaId } },
+    include: { cuenta: { select: { nombre: true } } },
+  });
+  if (!existente) { res.status(404).json({ error: 'Vínculo no encontrado' }); return; }
+
+  await prisma.$transaction(async tx => {
+    await tx.eventoCuenta.delete({ where: { id: existente.id } });
+    await registrarAuditoria({
+      usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
+      accion:      'DELETE',
+      entidad:     'EventoCuenta',
+      entidadId:   existente.id,
+      eventoId,
+      descripcion: `Desvinculó la cuenta "${existente.cuenta.nombre}" del evento #${eventoId}`,
+      ip:          req.ip,
+      tx:          tx as any,
+    });
+  });
+
+  res.json({ message: 'Cuenta desvinculada correctamente' });
 }
 
 export async function createCuenta(req: Request, res: Response) {
@@ -85,21 +357,25 @@ export async function createCuenta(req: Request, res: Response) {
     return;
   }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const cuenta = await prisma.$transaction(async tx => {
     const c = await tx.cuentaBancaria.create({
       data: {
+        ...withTenant(req.empresaId!),
         evento_id:     eventoId,
         nombre:        parsed.data.nombre,
         tipo:          parsed.data.tipo as TipoCuenta,
         moneda:        parsed.data.moneda as Moneda,
         saldo_inicial: parsed.data.saldo_inicial,
+        saldo_minimo:  parsed.data.saldo_minimo ?? null,
+        fecha_apertura: new Date(),
       },
     });
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'CuentaBancaria',
       entidadId:    c.id,
@@ -123,10 +399,10 @@ export async function updateCuenta(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
-  const { nombre, tipo, moneda, saldo_inicial } = parsed.data;
+  const { nombre, tipo, moneda, saldo_inicial, saldo_minimo } = parsed.data;
 
   const updated = await prisma.$transaction(async tx => {
     const c = await tx.cuentaBancaria.update({
@@ -136,6 +412,7 @@ export async function updateCuenta(req: Request, res: Response) {
         ...(tipo          !== undefined && { tipo: tipo as TipoCuenta }),
         ...(moneda        !== undefined && { moneda: moneda as Moneda }),
         ...(saldo_inicial !== undefined && { saldo_inicial }),
+        ...(saldo_minimo  !== undefined && { saldo_minimo }),
       },
     });
     if (saldo_inicial !== undefined) {
@@ -143,13 +420,76 @@ export async function updateCuenta(req: Request, res: Response) {
     }
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'CuentaBancaria',
       entidadId:    id,
-      eventoId:     existing.evento_id,
+      eventoId:     existing.evento_id ?? undefined,
       descripcion:  `Actualizó cuenta bancaria "${existing.nombre}"`,
-      datosAntes:   { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda, saldo_inicial: Number(existing.saldo_inicial) },
+      datosAntes:   { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda, saldo_inicial: Number(existing.saldo_inicial), saldo_minimo: existing.saldo_minimo != null ? Number(existing.saldo_minimo) : null },
       datosDespues: parsed.data,
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return c;
+  });
+
+  res.json(mapCuenta(updated));
+}
+
+// PATCH /api/cuentas/:id/estado — ciclo de rendición de una cuenta (viaje/evento).
+// ABIERTA → PENDIENTE_RENDICION: cualquier usuario con acceso a la ruta.
+// PENDIENTE_RENDICION → CERRADA: solo ADMIN (confirma la rendición).
+// CERRADA es terminal — no puede volver atrás.
+export async function updateEstadoCuenta(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = estadoCuentaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+
+  const { estado: target, notas_rendicion } = parsed.data;
+
+  if (existing.estado === 'CERRADA') {
+    res.status(400).json({ error: 'Esta cuenta ya está cerrada y no puede modificarse' });
+    return;
+  }
+  if (existing.estado === 'ABIERTA' && target !== 'PENDIENTE_RENDICION') {
+    res.status(400).json({ error: 'Transición de estado inválida' });
+    return;
+  }
+  if (existing.estado === 'PENDIENTE_RENDICION' && target !== 'CERRADA') {
+    res.status(400).json({ error: 'Transición de estado inválida' });
+    return;
+  }
+  if (target === 'CERRADA' && req.user!.rol !== 'ADMIN') {
+    res.status(403).json({ error: 'Sólo un administrador puede confirmar la rendición' });
+    return;
+  }
+
+  const updated = await prisma.$transaction(async tx => {
+    const c = await tx.cuentaBancaria.update({
+      where: { id },
+      data: {
+        estado: target as EstadoCuenta,
+        ...(notas_rendicion !== undefined && { notas_rendicion }),
+        ...(target === 'CERRADA' && { fecha_cierre: new Date() }),
+      },
+    });
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'UPDATE',
+      entidad:      'CuentaBancaria',
+      entidadId:    id,
+      eventoId:     existing.evento_id ?? undefined,
+      descripcion:  `Cambió el estado de la cuenta "${existing.nombre}" de ${existing.estado} a ${target}`,
+      datosAntes:   { estado: existing.estado },
+      datosDespues: { estado: target, notas_rendicion },
       ip:           req.ip,
       tx:           tx as any,
     });
@@ -161,17 +501,18 @@ export async function updateCuenta(req: Request, res: Response) {
 
 export async function deleteCuenta(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.cuentaBancaria.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
   await prisma.$transaction(async tx => {
     await tx.cuentaBancaria.update({ where: { id }, data: { deleted_at: new Date() } });
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'CuentaBancaria',
       entidadId:  id,
-      eventoId:   existing.evento_id,
+      eventoId:   existing.evento_id ?? undefined,
       descripcion: `Eliminó cuenta bancaria "${existing.nombre}"`,
       datosAntes:  { nombre: existing.nombre, tipo: existing.tipo, moneda: existing.moneda },
       ip:          req.ip,
@@ -186,19 +527,30 @@ export async function deleteCuenta(req: Request, res: Response) {
 
 export async function listMovimientosCaja(req: Request, res: Response) {
   const cuentaId = Number(req.params.id);
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
+
   const [movs, tabMap] = await Promise.all([
     prisma.movimientoCaja.findMany({
       where:   { cuenta_id: cuentaId, deleted_at: null },
       orderBy: { orden: 'asc' },
       include: {
+        // Sólo se usa desde la pantalla de detalle de cuenta en Caja Global
+        // (resumen agrupado por evento) — el endpoint scoped a evento no lo
+        // necesita, ya sabe de antemano en qué evento está parado.
+        evento: { select: { id: true, nombre: true } },
         movimientos_origen: {
           where:  { deleted_at: null },
-          select: { id: true, tipo: true, tab_numero: true, concepto: true },
+          select: {
+            id: true, tipo: true, tab_numero: true, concepto: true,
+            rubro_id: true, estado_movimiento: true,
+            rubro: { select: { nombre: true } },
+          },
           take:   1,
         },
       },
     }),
-    getTabMap(),
+    getTabMap(req.empresaId!),
   ]);
   res.json(movs.map(m => mapMovCaja(m, tabMap)));
 }
@@ -211,7 +563,7 @@ export async function createMovimientoCaja(req: Request, res: Response) {
     return;
   }
 
-  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null } });
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return; }
 
   const movId = await prisma.$transaction(async tx => {
@@ -222,24 +574,136 @@ export async function createMovimientoCaja(req: Request, res: Response) {
     });
     const mov = await tx.movimientoCaja.create({
       data: {
-        cuenta_id:   cuentaId,
-        fecha:       parsed.data.fecha ? new Date(parsed.data.fecha) : null,
-        descripcion: parsed.data.descripcion ?? null,
-        debe:        parsed.data.debe,
-        haber:       parsed.data.haber,
-        orden:       (last?.orden ?? 0) + 1,
-        created_by:  req.user!.id,
-        updated_by:  req.user!.id,
+        cuenta_id:          cuentaId,
+        fecha:              parsed.data.fecha ? new Date(parsed.data.fecha) : null,
+        descripcion:        parsed.data.descripcion ?? null,
+        debe:               parsed.data.debe,
+        haber:              parsed.data.haber,
+        categoria_andrea:   parsed.data.categoria_andrea ?? null,
+        responsable_nombre: parsed.data.responsable_nombre ?? null,
+        referencia:         parsed.data.referencia ?? null,
+        ...(req.file && { comprobante_data: req.file.buffer, comprobante_nombre: req.file.originalname, comprobante_mime: req.file.mimetype }),
+        orden:            (last?.orden ?? 0) + 1,
+        created_by:       req.user!.id,
+        updated_by:       req.user!.id,
       },
     });
     await recalcularSaldosCaja(cuentaId, tx);
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'MovimientoCaja',
       entidadId:    mov.id,
-      eventoId:     cuenta.evento_id,
+      eventoId:     cuenta.evento_id ?? undefined,
       descripcion:  `Creó movimiento de caja en cuenta "${cuenta.nombre}"`,
+      datosDespues: { debe: parsed.data.debe, haber: parsed.data.haber, descripcion: parsed.data.descripcion },
+      ip:           req.ip,
+      tx:           tx as any,
+    });
+    return mov.id;
+  });
+
+  const updated = await prisma.movimientoCaja.findUnique({ where: { id: movId } });
+  res.status(201).json(mapMovCaja(updated));
+}
+
+// ── Movimientos de Caja, en contexto de un evento ─────────────────────────────
+// Una cuenta puede estar vinculada a varios eventos (EventoCuenta) — estos dos
+// endpoints filtran/etiquetan por evento_id para que la tab Caja de un evento
+// sólo vea (y sólo genere) los movimientos cargados en SU contexto, no los de
+// otro evento que comparte la misma cuenta. El endpoint flat de arriba
+// (sin evento) sigue sin filtrar — lo usa Caja Global, donde sí interesa ver
+// todo el movimiento real de la cuenta.
+
+async function verificarCuentaDelEvento(eventoId: number, cuentaId: number, empresaId: number) {
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(empresaId) } });
+  if (!evento) return { ok: false as const, status: 404, error: 'Evento no encontrado' };
+
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuentaId, deleted_at: null, ...withTenant(empresaId) } });
+  if (!cuenta) return { ok: false as const, status: 404, error: 'Cuenta no encontrada' };
+
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(eventoId);
+  if (![...propiasIds, ...vinculadaIds].includes(cuentaId)) {
+    return { ok: false as const, status: 400, error: 'Esa cuenta no pertenece a este evento' };
+  }
+  return { ok: true as const, cuenta };
+}
+
+export async function listMovimientosCajaEvento(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const cuentaId = Number(req.params.cuentaId);
+
+  const check = await verificarCuentaDelEvento(eventoId, cuentaId, req.empresaId!);
+  if (!check.ok) { res.status(check.status).json({ error: check.error }); return; }
+
+  const [movs, tabMap] = await Promise.all([
+    prisma.movimientoCaja.findMany({
+      where:   { cuenta_id: cuentaId, evento_id: eventoId, deleted_at: null },
+      orderBy: { orden: 'asc' },
+      include: {
+        movimientos_origen: {
+          where:  { deleted_at: null },
+          select: {
+            id: true, tipo: true, tab_numero: true, concepto: true,
+            rubro_id: true, estado_movimiento: true,
+            rubro: { select: { nombre: true } },
+          },
+          take:   1,
+        },
+      },
+    }),
+    getTabMap(req.empresaId!),
+  ]);
+  res.json(movs.map(m => mapMovCaja(m, tabMap)));
+}
+
+export async function createMovimientoCajaEvento(req: Request, res: Response) {
+  const eventoId = Number(req.params.id);
+  const cuentaId = Number(req.params.cuentaId);
+  const parsed   = createMovCajaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const check = await verificarCuentaDelEvento(eventoId, cuentaId, req.empresaId!);
+  if (!check.ok) { res.status(check.status).json({ error: check.error }); return; }
+  const { cuenta } = check;
+
+  const movId = await prisma.$transaction(async tx => {
+    // orden es por-cuenta (no por-evento): saldo_corriente es el saldo real
+    // de la cuenta y tiene que ser una secuencia única sin importar desde
+    // qué evento se cargó cada movimiento.
+    const last = await tx.movimientoCaja.findFirst({
+      where:   { cuenta_id: cuentaId, deleted_at: null },
+      orderBy: { orden: 'desc' },
+      select:  { orden: true },
+    });
+    const mov = await tx.movimientoCaja.create({
+      data: {
+        cuenta_id:        cuentaId,
+        evento_id:        eventoId,
+        fecha:            parsed.data.fecha ? new Date(parsed.data.fecha) : null,
+        descripcion:      parsed.data.descripcion ?? null,
+        debe:             parsed.data.debe,
+        haber:            parsed.data.haber,
+        categoria_andrea: parsed.data.categoria_andrea ?? null,
+        referencia:       parsed.data.referencia ?? null,
+        orden:            (last?.orden ?? 0) + 1,
+        created_by:       req.user!.id,
+        updated_by:       req.user!.id,
+      },
+    });
+    await recalcularSaldosCaja(cuentaId, tx);
+    await registrarAuditoria({
+      usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
+      accion:       'CREATE',
+      entidad:      'MovimientoCaja',
+      entidadId:    mov.id,
+      eventoId,
+      descripcion:  `Creó movimiento de caja en cuenta "${cuenta.nombre}" (evento #${eventoId})`,
       datosDespues: { debe: parsed.data.debe, haber: parsed.data.haber, descripcion: parsed.data.descripcion },
       ip:           req.ip,
       tx:           tx as any,
@@ -260,7 +724,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
   }
 
   const existing = await prisma.movimientoCaja.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, cuenta: withTenant(req.empresaId!) },
     include: { cuenta: { select: { evento_id: true, nombre: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
@@ -269,20 +733,24 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
     await tx.movimientoCaja.update({
       where: { id },
       data: {
-        ...(parsed.data.fecha       !== undefined && { fecha: parsed.data.fecha ? new Date(parsed.data.fecha) : null }),
-        ...(parsed.data.descripcion !== undefined && { descripcion: parsed.data.descripcion }),
-        ...(parsed.data.debe        !== undefined && { debe: parsed.data.debe }),
-        ...(parsed.data.haber       !== undefined && { haber: parsed.data.haber }),
+        ...(parsed.data.fecha              !== undefined && { fecha: parsed.data.fecha ? new Date(parsed.data.fecha) : null }),
+        ...(parsed.data.descripcion        !== undefined && { descripcion: parsed.data.descripcion }),
+        ...(parsed.data.debe               !== undefined && { debe: parsed.data.debe }),
+        ...(parsed.data.haber              !== undefined && { haber: parsed.data.haber }),
+        ...(parsed.data.categoria_andrea   !== undefined && { categoria_andrea: parsed.data.categoria_andrea }),
+        ...(parsed.data.responsable_nombre !== undefined && { responsable_nombre: parsed.data.responsable_nombre }),
+        ...(parsed.data.referencia         !== undefined && { referencia: parsed.data.referencia }),
         updated_by: req.user!.id,
       },
     });
     await recalcularSaldosCaja(existing.cuenta_id, tx);
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'MovimientoCaja',
       entidadId:    id,
-      eventoId:     (existing as any).cuenta.evento_id,
+      eventoId:     (existing as any).cuenta.evento_id ?? undefined,
       descripcion:  `Actualizó movimiento de caja #${id}`,
       datosAntes:   { debe: Number(existing.debe), haber: Number(existing.haber), descripcion: existing.descripcion },
       datosDespues: parsed.data,
@@ -299,7 +767,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
 export async function deleteMovimientoCaja(req: Request, res: Response) {
   const id       = Number(req.params.id);
   const existing = await prisma.movimientoCaja.findFirst({
-    where:   { id, deleted_at: null },
+    where:   { id, deleted_at: null, cuenta: withTenant(req.empresaId!) },
     include: { cuenta: { select: { evento_id: true } } },
   });
   if (!existing) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
@@ -312,10 +780,11 @@ export async function deleteMovimientoCaja(req: Request, res: Response) {
     await recalcularSaldosCaja(existing.cuenta_id, tx);
     await registrarAuditoria({
       usuarioId:  req.user!.id,
+      empresaId:  req.empresaId,
       accion:     'DELETE',
       entidad:    'MovimientoCaja',
       entidadId:  id,
-      eventoId:   (existing as any).cuenta.evento_id,
+      eventoId:   (existing as any).cuenta.evento_id ?? undefined,
       descripcion: `Eliminó movimiento de caja #${id}`,
       datosAntes:  { debe: Number(existing.debe), haber: Number(existing.haber), descripcion: existing.descripcion },
       ip:          req.ip,
@@ -350,10 +819,18 @@ export async function transferencia(req: Request, res: Response) {
     res.status(400).json({ error: 'La cuenta origen y destino no pueden ser la misma' }); return;
   }
 
-  const [cuentaOrigen, cuentaDestino] = await Promise.all([
-    prisma.cuentaBancaria.findFirst({ where: { id: cuenta_origen_id,  evento_id: eventoId, deleted_at: null } }),
-    prisma.cuentaBancaria.findFirst({ where: { id: cuenta_destino_id, evento_id: eventoId, deleted_at: null } }),
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(eventoId);
+  const idsDelEvento = new Set([...propiasIds, ...vinculadaIds]);
+
+  const [cuentaOrigenRaw, cuentaDestinoRaw] = await Promise.all([
+    prisma.cuentaBancaria.findFirst({ where: { id: cuenta_origen_id,  deleted_at: null } }),
+    prisma.cuentaBancaria.findFirst({ where: { id: cuenta_destino_id, deleted_at: null } }),
   ]);
+  const cuentaOrigen  = cuentaOrigenRaw  && idsDelEvento.has(cuentaOrigenRaw.id)  ? cuentaOrigenRaw  : null;
+  const cuentaDestino = cuentaDestinoRaw && idsDelEvento.has(cuentaDestinoRaw.id) ? cuentaDestinoRaw : null;
 
   if (!cuentaOrigen)  { res.status(400).json({ error: 'Cuenta origen no encontrada en este evento' }); return; }
   if (!cuentaDestino) { res.status(400).json({ error: 'Cuenta destino no encontrada en este evento' }); return; }
@@ -377,6 +854,7 @@ export async function transferencia(req: Request, res: Response) {
     const orig = await tx.movimientoCaja.create({
       data: {
         cuenta_id:   cuenta_origen_id,
+        evento_id:   eventoId,
         haber:       importe,
         debe:        0,
         descripcion: descOrigen,
@@ -390,6 +868,7 @@ export async function transferencia(req: Request, res: Response) {
     const dest = await tx.movimientoCaja.create({
       data: {
         cuenta_id:            cuenta_destino_id,
+        evento_id:            eventoId,
         debe:                 importe,
         haber:                0,
         descripcion:          descDestino,
@@ -407,6 +886,7 @@ export async function transferencia(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'CREATE',
       entidad:      'Transferencia',
       eventoId,
@@ -441,14 +921,19 @@ export async function conciliar(req: Request, res: Response) {
     res.status(400).json({ error: 'movimiento_id es requerido' }); return;
   }
 
-  const movCaja = await prisma.movimientoCaja.findFirst({ where: { id: movCajaId, deleted_at: null } });
+  const movCaja = await prisma.movimientoCaja.findFirst({ where: { id: movCajaId, deleted_at: null, cuenta: withTenant(req.empresaId!) } });
   if (!movCaja) { res.status(404).json({ error: 'Movimiento de caja no encontrado' }); return; }
 
-  const movimiento = await prisma.movimiento.findFirst({ where: { id: parsed.data.movimiento_id, deleted_at: null } });
+  const movimiento = await prisma.movimiento.findFirst({ where: { id: parsed.data.movimiento_id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!movimiento) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
 
+  // Válido si la cuenta es propia del evento del movimiento, O está vinculada
+  // a ese evento vía EventoCuenta (una cuenta compartida entre varios
+  // eventos también puede conciliar movimientos de cualquiera de ellos).
   const cuenta = await prisma.cuentaBancaria.findUnique({ where: { id: movCaja.cuenta_id } });
-  if (!cuenta || cuenta.evento_id !== movimiento.evento_id) {
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(movimiento.evento_id);
+  const cuentaValida = !!cuenta && [...propiasIds, ...vinculadaIds].includes(cuenta.id);
+  if (!cuentaValida) {
     res.status(400).json({ error: 'El movimiento de caja y el movimiento no pertenecen al mismo evento' }); return;
   }
 
@@ -472,7 +957,7 @@ export async function conciliar(req: Request, res: Response) {
 
   const [updatedCaja, tabs] = await Promise.all([
     prisma.movimientoCaja.findUnique({ where: { id: movCajaId } }),
-    getTabMap(),
+    getTabMap(req.empresaId!),
   ]);
 
   res.json({
@@ -486,14 +971,19 @@ export async function conciliar(req: Request, res: Response) {
 export async function posicionConsolidada(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
 
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(eventoId);
+
   const cuentas = await prisma.cuentaBancaria.findMany({
-    where:   { evento_id: eventoId, deleted_at: null },
+    where:   { id: { in: [...propiasIds, ...vinculadaIds] }, deleted_at: null },
     orderBy: { id: 'asc' },
     include: {
       movimientos: {
         where:   { deleted_at: null },
         orderBy: { orden: 'asc' },
-        select:  { debe: true, haber: true, saldo_corriente: true, transferencia_par_id: true },
+        select:  { debe: true, haber: true, saldo_corriente: true, transferencia_par_id: true, evento_id: true },
       },
     },
   });
@@ -504,11 +994,16 @@ export async function posicionConsolidada(req: Request, res: Response) {
     const cuentasMoneda = cuentas.filter(c => c.moneda === moneda);
 
     const cuentasDetalle = cuentasMoneda.map(c => {
-      const movs       = c.movimientos;
+      // saldo_actual es el saldo REAL de la cuenta (secuencia completa,
+      // incluye movimientos de otros eventos si la cuenta está compartida) —
+      // total_debe/total_haber/cantidad_movimientos, en cambio, son "la
+      // actividad que cargó ESTE evento en la cuenta", así que se filtran.
+      const movs      = c.movimientos;
+      const movsEvento = movs.filter(m => m.evento_id === eventoId);
       const last       = movs[movs.length - 1];
       const saldo_actual = last ? Number(last.saldo_corriente) : Number(c.saldo_inicial);
-      const total_debe  = movs.reduce((a, m) => a + Number(m.debe),  0);
-      const total_haber = movs.reduce((a, m) => a + Number(m.haber), 0);
+      const total_debe  = movsEvento.reduce((a, m) => a + Number(m.debe),  0);
+      const total_haber = movsEvento.reduce((a, m) => a + Number(m.haber), 0);
       return {
         cuenta_id:             c.id,
         nombre:                c.nombre,
@@ -517,7 +1012,7 @@ export async function posicionConsolidada(req: Request, res: Response) {
         saldo_actual:          parseFloat(saldo_actual.toFixed(2)),
         total_debe:            parseFloat(total_debe.toFixed(2)),
         total_haber:           parseFloat(total_haber.toFixed(2)),
-        cantidad_movimientos:  movs.length,
+        cantidad_movimientos:  movsEvento.length,
       };
     });
 
@@ -534,4 +1029,19 @@ export async function posicionConsolidada(req: Request, res: Response) {
   });
 
   res.json({ evento_id: eventoId, por_moneda });
+}
+
+// ── Comprobante de movimiento de caja ─────────────────────────────────────────
+
+export async function descargarComprobanteMovCaja(req: Request, res: Response) {
+  const id  = Number(req.params.id);
+  const mov = await prisma.movimientoCaja.findFirst({ where: { id, deleted_at: null, cuenta: withTenant(req.empresaId!) } });
+  if (!mov || !mov.comprobante_data) { res.status(404).json({ error: 'Comprobante no encontrado' }); return; }
+
+  const buffer   = Buffer.from(mov.comprobante_data);
+  const filename = encodeURIComponent(mov.comprobante_nombre ?? 'comprobante');
+  res.setHeader('Content-Type',        mov.comprobante_mime ?? 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length',      buffer.length);
+  res.end(buffer);
 }

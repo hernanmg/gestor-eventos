@@ -1,11 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Package, AlertTriangle, Plus, Search, ChevronRight, X } from 'lucide-react';
-import { useProductos, useCreateProducto, useUpdateProducto, useAlertasStock, useSugerencias, useCategoriasStock } from '@/hooks/useStock';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Package, AlertTriangle, Plus, Search, ChevronRight, X, Upload, Pencil, Trash2 } from 'lucide-react';
+import {
+  useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto, useAlertasStock, useSugerencias, useCategoriasStock,
+  useUploadFotoProducto, useFotoBlobUrl, useImportarCatalogo,
+  type ImportCatalogoResult,
+} from '@/hooks/useStock';
+import { useAlertasPanol } from '@/hooks/usePanol';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import type { Producto, AlertaStock, SugerenciaStock, CategoriaStock } from '@/types';
+import CunasTab from './CunasTab';
+import CamionesTab from './CamionesTab';
+import PanolTab from './PanolTab';
+import ActivosTab from './ActivosTab';
+import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip, { TabCount } from '@/components/ui/TabStrip';
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -35,20 +49,50 @@ function CategoriaBadge({ categoria }: { categoria: CategoriaStock | null | unde
 }
 
 interface ProductoFormData {
-  nombre:       string;
-  descripcion:  string;
-  categoria_id: number | '';
-  codigo:       string;
-  stock_total:  number;
-  stock_minimo: number;
-  unidad:       string;
-  notas:        string;
+  nombre:          string;
+  descripcion:     string;
+  categoria_id:    number | '';
+  codigo_interno:  string;
+  codigo_externo:  string;
+  nombre_tecnico:  string;
+  nombre_interno:  string;
+  es_critico:      boolean;
+  stock_total:     number;
+  stock_minimo:    number;
+  unidad:          string;
+  notas:           string;
 }
 
 const EMPTY: ProductoFormData = {
-  nombre: '', descripcion: '', categoria_id: '', codigo: '',
+  nombre: '', descripcion: '', categoria_id: '', codigo_interno: '', codigo_externo: '',
+  nombre_tecnico: '', nombre_interno: '', es_critico: false,
   stock_total: 0, stock_minimo: 0, unidad: 'unidad', notas: '',
 };
+
+function FotoUpload({ producto }: { producto: Producto | null }) {
+  const uploadFoto = useUploadFotoProducto();
+  const fotoUrl     = useFotoBlobUrl(producto?.id, producto?.tiene_foto ?? false);
+  const inputRef    = useRef<HTMLInputElement>(null);
+
+  if (!producto) return null;
+
+  return (
+    <div className="col-span-2 flex items-center gap-3">
+      <div className="h-16 w-16 rounded border bg-muted/30 flex items-center justify-center overflow-hidden shrink-0">
+        {fotoUrl ? <img src={fotoUrl} alt={producto.nombre} className="h-full w-full object-cover" /> : <Package size={20} className="text-muted-foreground" />}
+      </div>
+      <div>
+        <input
+          ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) uploadFoto.mutate({ id: producto.id, file: f }); }}
+        />
+        <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()} disabled={uploadFoto.isPending}>
+          <Upload size={13} className="mr-1.5" /> {uploadFoto.isPending ? 'Subiendo…' : 'Subir foto'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function ProductoDialog({
   open, producto, onClose,
@@ -68,14 +112,18 @@ function ProductoDialog({
   useEffect(() => {
     setForm(producto
       ? {
-          nombre:       producto.nombre,
-          descripcion:  producto.descripcion ?? '',
-          categoria_id: producto.categoria_id ?? '',
-          codigo:       producto.codigo     ?? '',
-          stock_total:  producto.stock_total,
-          stock_minimo: producto.stock_minimo,
-          unidad:       producto.unidad,
-          notas:        producto.notas ?? '',
+          nombre:         producto.nombre,
+          descripcion:    producto.descripcion ?? '',
+          categoria_id:   producto.categoria_id ?? '',
+          codigo_interno: producto.codigo_interno ?? '',
+          codigo_externo: producto.codigo_externo ?? '',
+          nombre_tecnico: producto.nombre_tecnico ?? '',
+          nombre_interno: producto.nombre_interno ?? '',
+          es_critico:     producto.es_critico,
+          stock_total:    producto.stock_total,
+          stock_minimo:   producto.stock_minimo,
+          unidad:         producto.unidad,
+          notas:          producto.notas ?? '',
         }
       : EMPTY,
     );
@@ -89,14 +137,18 @@ function ProductoDialog({
     e.preventDefault();
     setError(null);
     const payload = {
-      nombre:       form.nombre       || undefined,
-      descripcion:  form.descripcion  || null,
-      categoria_id: form.categoria_id !== '' ? Number(form.categoria_id) : null,
-      codigo:       form.codigo       || null,
-      stock_total:  form.stock_total,
-      stock_minimo: form.stock_minimo,
-      unidad:       form.unidad       || 'unidad',
-      notas:        form.notas        || null,
+      nombre:         form.nombre         || undefined,
+      descripcion:    form.descripcion    || null,
+      categoria_id:   form.categoria_id !== '' ? Number(form.categoria_id) : null,
+      codigo_interno: form.codigo_interno || null,
+      codigo_externo: form.codigo_externo || null,
+      nombre_tecnico: form.nombre_tecnico || null,
+      nombre_interno: form.nombre_interno || null,
+      es_critico:     form.es_critico,
+      stock_total:    form.stock_total,
+      stock_minimo:   form.stock_minimo,
+      unidad:         form.unidad         || 'unidad',
+      notas:          form.notas          || null,
     };
     try {
       if (isEdit) {
@@ -120,13 +172,26 @@ function ProductoDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div className="grid grid-cols-2 gap-3">
+            <FotoUpload producto={producto} />
             <div className="col-span-2">
               <label className={labelCls}>Nombre *</label>
               <input value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={inputCls} required />
             </div>
             <div>
-              <label className={labelCls}>Código</label>
-              <input value={form.codigo} onChange={e => setForm(p => ({ ...p, codigo: e.target.value }))} className={inputCls} />
+              <label className={labelCls}>Código interno</label>
+              <input value={form.codigo_interno} onChange={e => setForm(p => ({ ...p, codigo_interno: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Código externo (fabricante)</label>
+              <input value={form.codigo_externo} onChange={e => setForm(p => ({ ...p, codigo_externo: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Nombre técnico</label>
+              <input value={form.nombre_tecnico} onChange={e => setForm(p => ({ ...p, nombre_tecnico: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Nombre interno (apodo)</label>
+              <input value={form.nombre_interno} onChange={e => setForm(p => ({ ...p, nombre_interno: e.target.value }))} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Categoría</label>
@@ -143,9 +208,15 @@ function ProductoDialog({
               {activeCats.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   No hay categorías activas.{' '}
-                  <a href="/configuracion" className="text-primary underline">Crear categoría</a>
+                  <a href="/configuracion" className="text-link underline">Crear categoría</a>
                 </p>
               )}
+            </div>
+            <div className="flex items-end pb-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.es_critico} onChange={e => setForm(p => ({ ...p, es_critico: e.target.checked }))} />
+                Pieza crítica (sin ella no se puede armar)
+              </label>
             </div>
             <div>
               <label className={labelCls}>Stock total *</label>
@@ -183,13 +254,156 @@ function ProductoDialog({
 
 // ── Productos tab ─────────────────────────────────────────────────────────────
 
+function CriticoBadge({ esCritico }: { esCritico: boolean }) {
+  if (!esCritico) return null;
+  return <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">CRÍTICO</span>;
+}
+
+function isEnjoyResult(r: ImportCatalogoResult): r is Extract<ImportCatalogoResult, { hojas_procesadas: number }> {
+  return 'hojas_procesadas' in r;
+}
+
+function ImportResultView({ result, onClose }: { result: ImportCatalogoResult; onClose: () => void }) {
+  const totalErrores = result.errores.length;
+  const enjoy = isEnjoyResult(result);
+
+  return (
+    <div className="space-y-3 mt-1">
+      <div className={cn(
+        'rounded-md border px-3 py-2.5 text-sm',
+        totalErrores > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-900' : 'border-green-300 bg-green-50 text-green-900',
+      )}>
+        {enjoy ? (
+          <>
+            <p className="font-medium">✓ {result.hojas_procesadas} espacios procesados</p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              {result.por_hoja.map(h => (
+                <li key={h.hoja}>· {h.hoja}: {h.creados + h.actualizados} productos ({h.creados} nuevos, {h.actualizados} actualizados)</li>
+              ))}
+              <li className="pt-1 font-medium">
+                · Total: {result.creados} creados, {result.actualizados} actualizados
+                {result.omitidos > 0 ? `, ${result.omitidos} omitidos` : ''}, {totalErrores} errores
+              </li>
+            </ul>
+          </>
+        ) : (
+          <>
+            <p className="font-medium">✓ {result.creados + result.actualizados} productos importados</p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              <li>· {result.creados} creados nuevos</li>
+              <li>· {result.actualizados} actualizados</li>
+              {result.omitidos > 0 && <li>· {result.omitidos} omitidos</li>}
+              <li>· {totalErrores} errores</li>
+            </ul>
+          </>
+        )}
+      </div>
+
+      {totalErrores > 0 && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-xs text-red-800 max-h-40 overflow-y-auto space-y-1">
+          {result.errores.map((e, i) => (
+            <p key={i}>{'hoja' in e ? `${e.hoja} — ` : ''}fila {e.fila}: {e.motivo}</p>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" size="sm" onClick={onClose}>Cerrar</Button>
+      </div>
+    </div>
+  );
+}
+
+function ImportarCatalogoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [file, setFile]         = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [result, setResult]     = useState<ImportCatalogoResult | null>(null);
+  const [error, setError]       = useState<string | null>(null);
+  const importar  = useImportarCatalogo();
+  const inputRef  = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) { setFile(null); setResult(null); setError(null); }
+  }, [open]);
+
+  const handleFile = (f: File | null) => {
+    setError(null);
+    if (f && !f.name.toLowerCase().endsWith('.xlsx')) { setError('Solo se aceptan archivos .xlsx'); return; }
+    setFile(f);
+  };
+
+  const handleAnalizar = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      const data = await importar.mutateAsync(file);
+      setResult(data);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Importar catálogo de stock</DialogTitle>
+        </DialogHeader>
+
+        {result ? (
+          <ImportResultView result={result} onClose={onClose} />
+        ) : (
+          <div className="space-y-3 mt-1">
+            <div
+              className={cn(
+                'rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 py-10 text-center cursor-pointer transition-colors',
+                dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/30',
+              )}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false);
+                handleFile(e.dataTransfer.files?.[0] ?? null);
+              }}
+            >
+              <Upload size={28} className="text-muted-foreground" />
+              {file ? (
+                <p className="text-sm font-medium">{file.name} <span className="text-muted-foreground">({(file.size / 1024).toFixed(0)} KB)</span></p>
+              ) : (
+                <p className="text-sm text-muted-foreground px-6">Arrastrá el archivo Excel aquí, o hacé clic para elegirlo</p>
+              )}
+              <input
+                ref={inputRef} type="file" accept=".xlsx" className="hidden"
+                onChange={e => handleFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+              <Button type="button" size="sm" onClick={handleAnalizar} disabled={!file || importar.isPending}>
+                {importar.isPending ? 'Analizando…' : 'Analizar archivo'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProductosTab() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin        = user?.rol === 'ADMIN'; // catálogo de productos: sólo ADMIN edita (matriz de permisos)
+  const puedeImportar   = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const [search,       setSearch]       = useState('');
   const [categoriaId,  setCategoriaId]  = useState('');
+  const [catalogoOrigen, setCatalogoOrigen] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing,    setEditing]    = useState<Producto | null>(null);
+  const [importarOpen, setImportarOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -199,15 +413,23 @@ function ProductosTab() {
   }, [search]);
 
   const { data: productos = [], isLoading } = useProductos({
-    search:    debouncedSearch || undefined,
-    categoria: categoriaId    || undefined,
+    search:          debouncedSearch || undefined,
+    categoria:       categoriaId     || undefined,
+    catalogo_origen: catalogoOrigen  || undefined,
   });
   const { data: categorias = [] } = useCategoriasStock();
   const activeCats = categorias.filter(c => c.activo);
+  const catalogos = Array.from(new Set(productos.map(p => p.catalogo_origen).filter((c): c is string => !!c)));
+  const deleteProducto = useDeleteProducto();
+
+  const handleDelete = (p: Producto) => {
+    if (!window.confirm(`¿Eliminar el producto "${p.nombre}"?`)) return;
+    deleteProducto.mutate(p.id, { onError: err => alert(getApiErrorMessage(err)) });
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -230,9 +452,24 @@ function ProductosTab() {
           <option value="">Todas las categorías</option>
           {activeCats.map(c => <option key={c.id} value={String(c.id)}>{c.nombre}</option>)}
         </select>
-        <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-          <Plus size={14} className="mr-1.5" /> Nuevo producto
-        </Button>
+        <select
+          value={catalogoOrigen}
+          onChange={e => setCatalogoOrigen(e.target.value)}
+          className="border rounded px-2 py-1.5 text-sm"
+        >
+          <option value="">Todos los catálogos</option>
+          {catalogos.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {puedeImportar && (
+          <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+            <Upload size={14} className="mr-1.5" /> Importar catálogo
+          </Button>
+        )}
+        {isAdmin && (
+          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+            <Plus size={14} className="mr-1.5" /> Nuevo producto
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -240,18 +477,21 @@ function ProductosTab() {
       ) : productos.length === 0 ? (
         <p className="text-sm text-muted-foreground">No se encontraron productos.</p>
       ) : (
-        <div className="rounded-lg border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm">
             <thead className="border-b bg-muted/30">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código interno</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código externo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre interno</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Categoría</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Stock total</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Comprometido</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Disponible</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Mínimo</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
+                {isAdmin && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>}
                 <th className="px-3 py-2 w-6" />
               </tr>
             </thead>
@@ -265,8 +505,15 @@ function ProductosTab() {
                     className="hover:bg-muted/20 cursor-pointer"
                     onClick={() => navigate(`/stock/productos/${p.id}`)}
                   >
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo ?? '-'}</td>
-                    <td className="px-3 py-2.5 font-medium">{p.nombre}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo_interno ?? '-'}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{p.codigo_externo ?? '-'}</td>
+                    <td className="px-3 py-2.5 font-medium">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {p.nombre}
+                        <CriticoBadge esCritico={p.es_critico} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.nombre_interno ?? '-'}</td>
                     <td className="px-3 py-2.5"><CategoriaBadge categoria={p.categoria} /></td>
                     <td className="px-3 py-2.5 text-right">{p.stock_total} {p.unidad}</td>
                     <td className="px-3 py-2.5 text-right text-muted-foreground">{comp}</td>
@@ -277,6 +524,14 @@ function ProductosTab() {
                     <td className="px-3 py-2.5">
                       <DisponibleBadge disponible={disp} minimo={p.stock_minimo} />
                     </td>
+                    {isAdmin && (
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => { setEditing(p); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                        </div>
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 text-muted-foreground">
                       <ChevronRight size={14} />
                     </td>
@@ -284,7 +539,7 @@ function ProductosTab() {
                 );
               })}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 
@@ -293,6 +548,7 @@ function ProductosTab() {
         producto={editing}
         onClose={() => { setDialogOpen(false); setEditing(null); }}
       />
+      <ImportarCatalogoDialog open={importarOpen} onClose={() => setImportarOpen(false)} />
     </div>
   );
 }
@@ -336,7 +592,7 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
             <span>Disponible: <strong className={alerta.disponible_actual < alerta.stock_minimo ? 'text-red-600' : 'text-foreground'}>{alerta.disponible_actual}</strong></span>
             <span>Mínimo: <strong className="text-foreground">{alerta.stock_minimo}</strong></span>
             {alerta.fecha_quiebre_proyectado && (
-              <span>Quiebre el: <strong className="text-yellow-700">{new Date(alerta.fecha_quiebre_proyectado).toLocaleDateString('es-AR')}</strong></span>
+              <span>Quiebre el: <strong className="text-yellow-700">{formatDate(alerta.fecha_quiebre_proyectado)}</strong></span>
             )}
           </div>
         </div>
@@ -350,8 +606,8 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
               <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
               <span className="font-medium">{e.evento_nombre}</span>
               <span className="text-muted-foreground">— {e.cantidad} u.</span>
-              <span className="text-muted-foreground">{new Date(e.fecha_salida).toLocaleDateString('es-AR')}</span>
-              {e.fecha_retorno && <span className="text-muted-foreground">→ {new Date(e.fecha_retorno).toLocaleDateString('es-AR')}</span>}
+              <span className="text-muted-foreground">{formatDate(e.fecha_salida)}</span>
+              {e.fecha_retorno && <span className="text-muted-foreground">→ {formatDate(e.fecha_retorno)}</span>}
             </div>
           ))}
         </div>
@@ -361,7 +617,7 @@ function AlertaCard({ alerta }: { alerta: AlertaStock }) {
         <div className="ml-7">
           <button
             onClick={() => setShowSug(p => !p)}
-            className="text-xs text-primary underline-offset-2 hover:underline"
+            className="text-xs text-link underline-offset-2 hover:underline"
           >
             {showSug ? 'Ocultar sugerencias' : 'Ver fuentes alternativas'}
           </button>
@@ -418,41 +674,53 @@ function AlertasTab() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type StockTab = 'productos' | 'alertas';
+type StockTab = 'productos' | 'alertas' | 'cunas' | 'camiones' | 'panol' | 'activos';
 
 export default function StockPage() {
-  const [tab, setTab] = useState<StockTab>('productos');
-  const { data: alertasData } = useAlertasStock();
-  const quiebresCount = (alertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as StockTab | null;
+  const [tab, setTab] = useState<StockTab>(tabParam ?? 'productos');
+  const { data: alertasData }      = useAlertasStock();
+  // Pañol es exclusivo de ADMIN/PAÑOLERO (matriz de permisos) — no pedir sus
+  // alertas para OPERADOR/VIEWER, que ya ni ven la tab.
+  const vePanol = user?.rol === 'ADMIN';
+  const { data: alertasPanolData } = useAlertasPanol(vePanol);
+  const quiebresCount     = (alertasData?.alertas ?? []).filter(a => a.tipo === 'QUIEBRE_ACTUAL').length;
+  const alertasPanolCount = (alertasPanolData?.alertas ?? []).length;
+
+  // PAÑOLERO — sin acceso a Productos/Cunas/Camiones/Activos/Alertas, sólo Pañol.
+  if (user?.rol === 'PANOLERO') {
+    return (
+      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+        <PageHeader title="Pañol" />
+        <PanolTab />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Package size={22} />
-        Gestión de Stock
-      </h1>
+      <PageHeader title="Gestión de Stock" />
 
-      <div className="flex border-b border-border">
-        {([
+      <TabStrip<StockTab>
+        value={tab}
+        onChange={setTab}
+        items={[
           { key: 'productos', label: 'Productos' },
-          { key: 'alertas',  label: `Alertas de stock${quiebresCount > 0 ? ` (${quiebresCount})` : ''}` },
-        ] as { key: StockTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+          { key: 'cunas',     label: 'Cunas' },
+          { key: 'camiones',  label: 'Camiones' },
+          ...(vePanol ? [{ key: 'panol' as StockTab, label: 'Pañol', badge: <TabCount count={alertasPanolCount} /> }] : []),
+          { key: 'activos',   label: 'Activos' },
+          { key: 'alertas',   label: 'Alertas de stock', badge: <TabCount count={quiebresCount} /> },
+        ]}
+      />
 
       {tab === 'productos' && <ProductosTab />}
+      {tab === 'cunas'     && <CunasTab />}
+      {tab === 'camiones'  && <CamionesTab />}
+      {tab === 'panol' && vePanol && <PanolTab />}
+      {tab === 'activos'   && <ActivosTab />}
       {tab === 'alertas'   && <AlertasTab />}
     </div>
   );

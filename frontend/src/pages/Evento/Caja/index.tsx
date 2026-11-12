@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, ArrowLeftRight, FileDown, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Link2, Link2Off, ChevronDown, ChevronRight, ArrowLeftRight, FileDown, Loader2, AlertTriangle } from 'lucide-react';
 import {
   useCuentas, useCreateCuenta, useUpdateCuenta, useDeleteCuenta,
+  useVincularCuenta, useDesvincularCuenta, useCuentasParaEvento,
   useTransferencia, usePosicionConsolidada,
 } from '@/hooks/useCaja';
 import { useExportarPDF } from '@/hooks/useEvento';
@@ -12,9 +13,11 @@ import {
 import { Button } from '@/components/ui/button';
 import MovimientoCajaTable from '@/components/domain/MovimientoCajaTable';
 import CobrarEcheqDialog from '@/components/domain/CobrarEcheqDialog';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import MoneyInput from '@/components/ui/MoneyInput';
+import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { CuentaBancaria, Echeq, Moneda, TipoCuenta, PosicionConsolidada } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Add Cuenta Dialog ─────────────────────────────────────────────────────────
 
@@ -29,6 +32,7 @@ function AddCuentaDialog({
   const [tipo,         setTipo]         = useState<TipoCuenta>('BANCO');
   const [moneda,       setMoneda]       = useState<Moneda>('ARS');
   const [saldoInicial, setSaldoInicial] = useState('0');
+  const [saldoMinimo,  setSaldoMinimo]  = useState('');
   const [error,        setError]        = useState<string | null>(null);
 
   const createCuenta = useCreateCuenta(eventoId);
@@ -43,8 +47,9 @@ function AddCuentaDialog({
         tipo,
         moneda,
         saldo_inicial: parseFloat(saldoInicial) || 0,
+        saldo_minimo:  saldoMinimo.trim() === '' ? null : parseFloat(saldoMinimo),
       });
-      setNombre(''); setTipo('BANCO'); setMoneda('ARS'); setSaldoInicial('0');
+      setNombre(''); setTipo('BANCO'); setMoneda('ARS'); setSaldoInicial('0'); setSaldoMinimo('');
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Error al crear');
@@ -95,19 +100,104 @@ function AddCuentaDialog({
             </div>
             <div>
               <label className={label}>Saldo inicial</label>
-              <input
-                type="number" min="0" step="0.01"
+              <MoneyInput
                 value={saldoInicial}
-                onChange={e => setSaldoInicial(e.target.value)}
-                className={cn(input, 'text-right')}
+                onChange={setSaldoInicial}
+                className={input}
               />
             </div>
+          </div>
+          <div>
+            <label className={label}>Saldo mínimo (opcional)</label>
+            <MoneyInput
+              value={saldoMinimo}
+              onChange={setSaldoMinimo}
+              className={input}
+              placeholder="Ej: 500000"
+            />
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              El sistema te alertará si el saldo cae por debajo de este valor.
+            </p>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
             <Button type="submit" size="sm" disabled={createCuenta.isPending}>
               {createCuenta.isPending ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Asignar cuenta existente Dialog ───────────────────────────────────────────
+// Vincula una cuenta de empresa (Caja Global, evento_id null — "Caja Pollo",
+// "Caja Jazmín") a este evento sin duplicarla ni sacarla de Caja Global.
+
+function AsignarCuentaExistenteDialog({
+  eventoId, cuentasYaEnEvento, open, onClose,
+}: {
+  eventoId:          number;
+  cuentasYaEnEvento: CuentaBancaria[];
+  open:              boolean;
+  onClose:           () => void;
+}) {
+  const { data: disponibles = [], isLoading } = useCuentasParaEvento(eventoId);
+  const vincular = useVincularCuenta(eventoId);
+  const [cuentaId, setCuentaId] = useState('');
+  const [error,    setError]    = useState<string | null>(null);
+
+  const yaEnEventoIds = new Set(cuentasYaEnEvento.map(c => c.id));
+  const opciones = disponibles.filter(c => !yaEnEventoIds.has(c.id));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!cuentaId) { setError('Seleccioná una cuenta'); return; }
+    try {
+      await vincular.mutateAsync(Number(cuentaId));
+      setCuentaId('');
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Error al vincular la cuenta');
+    }
+  };
+
+  const input = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+  const label = 'block text-xs font-medium text-muted-foreground mb-0.5';
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Asignar cuenta existente</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-2 mb-1">
+          Vincula una cuenta de empresa (Caja Global) a este evento — la cuenta sigue apareciendo en Caja Global y puede estar vinculada a varios eventos a la vez.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div>
+            <label className={label}>Cuenta *</label>
+            {isLoading ? (
+              <p className="text-xs text-muted-foreground py-1">Cargando cuentas...</p>
+            ) : opciones.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-1">No hay cuentas de empresa disponibles para asignar.</p>
+            ) : (
+              <select value={cuentaId} onChange={e => setCuentaId(e.target.value)} className={input}>
+                <option value="">-- seleccionar --</option>
+                {opciones.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre} ({c.tipo} — {c.moneda})</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={vincular.isPending || opciones.length === 0}>
+              {vincular.isPending ? 'Vinculando…' : 'Vincular'}
             </Button>
           </div>
         </form>
@@ -228,12 +318,10 @@ function TransferenciaDialog({
           </div>
           <div>
             <label className={label}>Importe *</label>
-            <input
-              type="number" min="0.01" step="0.01"
+            <MoneyInput
               value={importe}
-              onChange={e => setImporte(e.target.value)}
-              className={cn(input, 'text-right')}
-              placeholder="0.00"
+              onChange={setImporte}
+              className={input}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -291,7 +379,7 @@ function PosicionConsolidadaSection({ posicion }: { posicion: PosicionConsolidad
                 <span className="text-sm font-bold tabular-nums">{formatCurrency(pm.saldo_total, pm.moneda)}</span>
               </div>
               {/* Desktop: full breakdown */}
-              <table className="w-full hidden sm:table">
+              <BaseTable className="w-full hidden sm:table">
                 <thead>
                   <tr className="border-b border-border">
                     <th className={thClass}>Cuenta</th>
@@ -310,7 +398,7 @@ function PosicionConsolidadaSection({ posicion }: { posicion: PosicionConsolidad
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </BaseTable>
             </div>
           ))}
         </div>
@@ -360,7 +448,7 @@ function EcheqsSection({
         {pendientes.length === 0 ? (
           <p className="px-3 py-4 text-sm text-muted-foreground text-center">Sin echeqs pendientes.</p>
         ) : (
-          <table className="w-full">
+          <BaseTable className="w-full">
             <thead>
               <tr className="border-b border-border">
                 <th className={thClass}>N°</th>
@@ -410,7 +498,7 @@ function EcheqsSection({
                 </tr>
               );})}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 
@@ -425,7 +513,7 @@ function EcheqsSection({
             {historialOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
           {historialOpen && (
-            <table className="w-full">
+            <BaseTable className="w-full">
               <thead>
                 <tr className="border-b border-border">
                   <th className={thClass}>N°</th>
@@ -457,7 +545,7 @@ function EcheqsSection({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           )}
         </div>
       )}
@@ -485,12 +573,14 @@ interface Props {
 export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }: Props) {
   const { data: cuentas = [], isLoading } = useCuentas(eventoId);
   const { data: posicion }                = usePosicionConsolidada(eventoId);
-  const updateCuenta  = useUpdateCuenta(eventoId);
-  const deleteCuenta  = useDeleteCuenta(eventoId);
+  const updateCuenta     = useUpdateCuenta(eventoId);
+  const deleteCuenta     = useDeleteCuenta(eventoId);
+  const desvincularCuenta = useDesvincularCuenta(eventoId);
   const { exportar: exportPDF } = useExportarPDF();
 
   const [selectedId,        setSelectedId]        = useState<number | null>(null);
   const [addCuentaOpen,     setAddCuentaOpen]     = useState(false);
+  const [asignarOpen,       setAsignarOpen]       = useState(false);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
   const [editSaldo,         setEditSaldo]         = useState<string | null>(null);
   const [isPDFExporting,    setIsPDFExporting]    = useState(false);
@@ -506,17 +596,22 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
 
   const handleSaldoSave = () => {
     if (editSaldo === null || !selectedCuenta) return;
-    const val = parseFloat(editSaldo);
+    const val = parseMoney(editSaldo);
     if (!isNaN(val) && val !== selectedCuenta.saldo_inicial) {
       updateCuenta.mutate({ id: selectedCuenta.id, data: { saldo_inicial: val } });
     }
     setEditSaldo(null);
   };
 
-  const handleDeleteCuenta = (id: number) => {
-    if (!window.confirm('¿Eliminar esta cuenta? Se perderán todos sus movimientos.')) return;
-    deleteCuenta.mutate(id);
-    if (selectedId === id) setSelectedId(null);
+  const handleDeleteCuenta = (cuenta: CuentaBancaria) => {
+    if (cuenta.vinculada) {
+      if (!window.confirm(`¿Desvincular "${cuenta.nombre}" de este evento? La cuenta sigue existiendo en Caja Global.`)) return;
+      desvincularCuenta.mutate(cuenta.id);
+    } else {
+      if (!window.confirm('¿Eliminar esta cuenta? Se perderán todos sus movimientos.')) return;
+      deleteCuenta.mutate(cuenta.id);
+    }
+    if (selectedId === cuenta.id) setSelectedId(null);
   };
 
   if (isLoading) {
@@ -531,11 +626,23 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
         </p>
         {canEdit && (
           <>
-            <Button size="sm" onClick={() => setAddCuentaOpen(true)}>
-              <Plus size={14} className="mr-1.5" />
-              Agregar cuenta
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => setAddCuentaOpen(true)}>
+                <Plus size={14} className="mr-1.5" />
+                Nueva cuenta
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAsignarOpen(true)}>
+                <Link2 size={14} className="mr-1.5" />
+                Asignar cuenta existente
+              </Button>
+            </div>
             <AddCuentaDialog eventoId={eventoId} open={addCuentaOpen} onClose={() => setAddCuentaOpen(false)} />
+            <AsignarCuentaExistenteDialog
+              eventoId={eventoId}
+              cuentasYaEnEvento={activeCuentas}
+              open={asignarOpen}
+              onClose={() => setAsignarOpen(false)}
+            />
           </>
         )}
       </div>
@@ -572,24 +679,35 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
             <button
               key={c.id}
               onClick={() => setSelectedId(c.id)}
+              title={c.vinculada ? 'Cuenta de empresa vinculada a este evento (Caja Global)' : undefined}
               className={cn(
-                'px-3 py-1.5 text-sm rounded-md border transition-colors',
+                'px-3 py-1.5 text-sm rounded-md border transition-colors inline-flex items-center gap-1.5',
                 (selectedCuenta?.id === c.id)
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border hover:bg-accent',
               )}
             >
+              {c.vinculada && <Link2 size={11} className="opacity-70" />}
               {c.nombre}
             </button>
           ))}
           {canEdit && (
-            <button
-              onClick={() => setAddCuentaOpen(true)}
-              className="px-3 py-1.5 text-sm rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors"
-            >
-              <Plus size={13} className="inline mr-1" />
-              Agregar
-            </button>
+            <>
+              <button
+                onClick={() => setAddCuentaOpen(true)}
+                className="px-3 py-1.5 text-sm rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                <Plus size={13} className="inline mr-1" />
+                Agregar
+              </button>
+              <button
+                onClick={() => setAsignarOpen(true)}
+                className="px-3 py-1.5 text-sm rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                <Link2 size={13} className="inline mr-1" />
+                Asignar existente
+              </button>
+            </>
           )}
         </div>
         {canEdit && activeCuentas.length >= 2 && (
@@ -607,6 +725,12 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
 
       {selectedCuenta && (
         <>
+          {selectedCuenta.estado === 'PENDIENTE_RENDICION' && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle size={15} className="shrink-0" />
+              Esta cuenta tiene una rendición pendiente.
+            </div>
+          )}
           {/* Cuenta header */}
           <div className="flex items-center justify-between gap-4 mb-4 p-3 rounded-lg border border-border bg-gray-50">
             <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -621,8 +745,8 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
                 {canEdit && editSaldo !== null ? (
                   <input
                     autoFocus
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={editSaldo}
                     onChange={e => setEditSaldo(e.target.value)}
                     onBlur={handleSaldoSave}
@@ -647,11 +771,11 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
             </div>
             {canEdit && (
               <button
-                onClick={() => handleDeleteCuenta(selectedCuenta.id)}
-                title="Eliminar cuenta"
+                onClick={() => handleDeleteCuenta(selectedCuenta)}
+                title={selectedCuenta.vinculada ? 'Desvincular de este evento' : 'Eliminar cuenta'}
                 className="p-1 rounded text-destructive hover:bg-destructive/10 transition"
               >
-                <Trash2 size={15} />
+                {selectedCuenta.vinculada ? <Link2Off size={15} /> : <Trash2 size={15} />}
               </button>
             )}
           </div>
@@ -672,6 +796,12 @@ export default function CajaPage({ eventoId, monedaBase: _monedaBase, canEdit }:
       )}
 
       <AddCuentaDialog eventoId={eventoId} open={addCuentaOpen} onClose={() => setAddCuentaOpen(false)} />
+      <AsignarCuentaExistenteDialog
+        eventoId={eventoId}
+        cuentasYaEnEvento={activeCuentas}
+        open={asignarOpen}
+        onClose={() => setAsignarOpen(false)}
+      />
 
       <TransferenciaDialog
         eventoId={eventoId}

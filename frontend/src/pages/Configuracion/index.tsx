@@ -14,16 +14,27 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   useAllTabs, useUpdateTab, useCreateTab, useDeleteTab, useReorderTabs, useToggleTab,
 } from '@/hooks/useTabConfig';
-import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } from '@/hooks/useUsuarios';
+import {
+  useAllRubros, useUpdateRubro, useCreateRubro, useDeleteRubro, useReorderRubros, useToggleRubro,
+} from '@/hooks/useRubros';
+import {
+  useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario,
+  useUsuarioEmpresaAccesos, useCreateUsuarioEmpresaAcceso, useDeleteUsuarioEmpresaAcceso,
+} from '@/hooks/useUsuarios';
 import { useEventoAccesos, useCreateAcceso, useUpdateAcceso, useDeleteAcceso } from '@/hooks/useEventoAccesos';
 import { useEventos } from '@/hooks/useEvento';
+import { useEmpresas } from '@/hooks/useEmpresas';
 import { useCategoriasStock, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/hooks/useStock';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock } from '@/types';
+import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro, Permiso } from '@/types';
+import { PERMISOS } from '@/lib/permisos';
+import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Sortable tab row ──────────────────────────────────────────────────────────
 
@@ -174,8 +185,8 @@ function DraggableTipGroup({
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className="px-2 py-2 w-8" />
@@ -193,7 +204,7 @@ function DraggableTipGroup({
                   />
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         </SortableContext>
       </DndContext>
@@ -274,34 +285,428 @@ function TabsSection() {
   );
 }
 
+// ── Sortable rubro row ────────────────────────────────────────────────────────
+
+function SortableRubroRow({
+  rubro, onToggle, onDelete,
+}: {
+  rubro:    Rubro;
+  onToggle: (rubro: Rubro) => void;
+  onDelete: (rubro: Rubro) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(rubro.nombre);
+  const updateRubro = useUpdateRubro();
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rubro.id });
+
+  const style = {
+    transform:  CSS.Transform.toString(transform),
+    transition,
+    opacity:    isDragging ? 0.5 : 1,
+    zIndex:     isDragging ? 1 : undefined,
+  };
+
+  const startEdit  = () => { setEditValue(rubro.nombre); setIsEditing(true); };
+  const cancelEdit = () => setIsEditing(false);
+  const saveEdit   = () => {
+    const v = editValue.trim();
+    if (v && v !== rubro.nombre) updateRubro.mutate({ id: rubro.id, data: { nombre: v } });
+    setIsEditing(false);
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={cn('group', !rubro.activo && 'opacity-50 bg-gray-50/50')}
+    >
+      <td className="px-2 py-2 w-8">
+        <span
+          {...attributes}
+          {...listeners}
+          className="flex items-center justify-center cursor-grab text-muted-foreground hover:text-foreground p-0.5 rounded"
+          title="Arrastrar para reordenar"
+        >
+          <GripVertical size={14} />
+        </span>
+      </td>
+      <td className="px-3 py-2 w-32">
+        {rubro.es_sistema && (
+          <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded font-mono">
+            Sistema
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        {isEditing ? (
+          <input
+            autoFocus
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={saveEdit}
+            onKeyDown={e => {
+              if (e.key === 'Enter')  saveEdit();
+              if (e.key === 'Escape') cancelEdit();
+            }}
+            className="w-full border border-ring rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <span className={cn(!rubro.activo && 'line-through text-muted-foreground')}>
+              {rubro.nombre}
+            </span>
+            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
+              <button
+                onClick={startEdit}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                title="Editar nombre"
+              >
+                <Pencil size={13} />
+              </button>
+              {!rubro.es_sistema && (
+                <>
+                  <button
+                    onClick={() => onToggle(rubro)}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                    title={rubro.activo ? 'Desactivar' : 'Activar'}
+                  >
+                    {rubro.activo
+                      ? <ToggleRight size={16} className="text-primary" />
+                      : <ToggleLeft size={16} />
+                    }
+                  </button>
+                  <button
+                    onClick={() => onDelete(rubro)}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ── Draggable rubro group ─────────────────────────────────────────────────────
+
+function DraggableRubroGroup({
+  title, tipo, rubros,
+}: {
+  title: string;
+  tipo:  Tipo;
+  rubros: Rubro[];
+}) {
+  const [items, setItems] = useState<Rubro[]>(rubros);
+  const reorderRubros = useReorderRubros();
+  const toggleRubro   = useToggleRubro();
+  const deleteRubro   = useDeleteRubro();
+
+  useEffect(() => setItems(rubros), [rubros]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex(r => r.id === active.id);
+    const newIndex = items.findIndex(r => r.id === over.id);
+    const newItems = arrayMove(items, oldIndex, newIndex);
+    setItems(newItems);
+    reorderRubros.mutate({ tipo, orden: newItems.map((r, i) => ({ id: r.id, orden: i + 1 })) });
+  };
+
+  const handleToggle = (rubro: Rubro) => toggleRubro.mutate(rubro.id);
+
+  const handleDelete = (rubro: Rubro) => {
+    if (!window.confirm(`¿Eliminar el rubro "${rubro.nombre}"?`)) return;
+    deleteRubro.mutate(rubro.id, {
+      onError: (err: any) => alert(err?.response?.data?.error ?? 'Error al eliminar'),
+    });
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-2">{title}</h3>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={items.map(r => r.id)} strategy={verticalListSortingStrategy}>
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-border">
+                <tr>
+                  <th className="px-2 py-2 w-8" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-32" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {items.length === 0 ? (
+                  <tr><td colSpan={3} className="px-3 py-4 text-center text-sm text-muted-foreground">Sin rubros configurados.</td></tr>
+                ) : items.map(rubro => (
+                  <SortableRubroRow
+                    key={rubro.id}
+                    rubro={rubro}
+                    onToggle={handleToggle}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </tbody>
+            </BaseTable>
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+// ── Rubros section ────────────────────────────────────────────────────────────
+
+function RubrosSection() {
+  const { data: rubros = [] } = useAllRubros();
+  const createRubro = useCreateRubro();
+
+  const [addDialog, setAddDialog] = useState<{ open: boolean; tipo: Tipo }>({ open: false, tipo: 'EGRESO' });
+  const [addNombre, setAddNombre] = useState('');
+  const [addDescripcion, setAddDescripcion] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const egresoRubros  = [...rubros.filter(r => r.tipo === 'EGRESO')].sort((a, b) => a.orden - b.orden);
+  const ingresoRubros = [...rubros.filter(r => r.tipo === 'INGRESO')].sort((a, b) => a.orden - b.orden);
+
+  const openAdd  = (tipo: Tipo) => { setAddNombre(''); setAddDescripcion(''); setAddError(null); setAddDialog({ open: true, tipo }); };
+  const closeAdd = () => setAddDialog(p => ({ ...p, open: false }));
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addNombre.trim()) return;
+    setAddError(null);
+    try {
+      await createRubro.mutateAsync({ tipo: addDialog.tipo, nombre: addNombre.trim(), descripcion: addDescripcion.trim() || null });
+      closeAdd();
+    } catch (err: any) {
+      setAddError(err?.response?.data?.error ?? 'Error al crear el rubro');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <p className="text-xs text-muted-foreground max-w-md">
+          Los rubros del sistema no se pueden eliminar ni desactivar.
+          Arrastrá las filas para reordenar. Cada rubro activo aparece como una pestaña
+          dentro de Egresos o Ingresos en cada evento.
+        </p>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button size="sm" variant="outline" onClick={() => openAdd('EGRESO')}>
+            <Plus size={14} className="mr-1" /> Egreso
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => openAdd('INGRESO')}>
+            <Plus size={14} className="mr-1" /> Ingreso
+          </Button>
+        </div>
+      </div>
+
+      <DraggableRubroGroup title="Egresos"  tipo="EGRESO"  rubros={egresoRubros} />
+      <DraggableRubroGroup title="Ingresos" tipo="INGRESO" rubros={ingresoRubros} />
+
+      <Dialog open={addDialog.open} onOpenChange={open => !open && closeAdd()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Nuevo rubro de {addDialog.tipo === 'EGRESO' ? 'egresos' : 'ingresos'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAdd} className="space-y-3 mt-1">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-0.5">Nombre *</label>
+              <input
+                autoFocus
+                value={addNombre}
+                onChange={e => setAddNombre(e.target.value)}
+                className="w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-0.5">Descripción</label>
+              <input
+                value={addDescripcion}
+                onChange={e => setAddDescripcion(e.target.value)}
+                className="w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            {addError && <p className="text-xs text-destructive">{addError}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={closeAdd}>Cancelar</Button>
+              <Button type="submit" size="sm" disabled={createRubro.isPending}>
+                {createRubro.isPending ? 'Creando…' : 'Crear'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ── Usuario form dialog ───────────────────────────────────────────────────────
 
 interface UsuarioFormData {
   nombre:   string;
+  apodo:    string;
+  telefono: string;
   email:    string;
   password: string;
   rol:      Rol;
 }
 
-const EMPTY_FORM: UsuarioFormData = { nombre: '', email: '', password: '', rol: 'OPERADOR' };
+const EMPTY_FORM: UsuarioFormData = { nombre: '', apodo: '', telefono: '', email: '', password: '', rol: 'OPERADOR' };
+
+// Pantalla de inicio (Módulo de dashboards personalizados) — mismo listado
+// que HOME_ROUTES en usuarios.controller.ts.
+const HOME_ROUTE_OPTIONS: { value: string; label: string }[] = [
+  { value: '/presentismo',       label: 'Presentismo — Control de presentismo' },
+  { value: '/combustible',       label: 'Combustible — Combustible y flota' },
+  { value: '/parte-diario',      label: 'Parte diario — Parte diario' },
+  { value: '/gastos-operativos', label: 'Gastos del mes' },
+  { value: '/eventos',           label: 'Eventos — Lista de eventos' },
+  { value: '/macro',             label: 'Macro' },
+  { value: '/rrhh',              label: 'RRHH' },
+  { value: '/stock',             label: 'Stock' },
+  { value: '/costo-real',        label: 'Costo real — Matriz de costo por evento (DOS57)' },
+];
+
+const ROL_DESCRIPCION: Record<Rol, string> = {
+  ADMIN:     'Acceso total a su empresa',
+  OPERADOR:  'Carga y edita datos operativos',
+  VIEWER:    'Solo lectura',
+  JORNALERO: 'Solo carga sus propias jornadas',
+  PANOLERO:  'Solo gestiona el pañol',
+};
+
+// ── Acceso multi-empresa (sólo admin global) ──────────────────────────────────
+// El rol que rige en cada empresa adicional es el mismo Usuario.rol global del
+// usuario — el schema actual no guarda un rol distinto por empresa. Esto sólo
+// otorga/revoca la posibilidad de operar en esa empresa.
+
+function EmpresaAccesoPanel({ usuarioId, empresaHogarId }: { usuarioId: number; empresaHogarId: number | null }) {
+  const { data: accesos = [], isLoading } = useUsuarioEmpresaAccesos(usuarioId);
+  const { data: empresas = [] }           = useEmpresas();
+  const createAcceso = useCreateUsuarioEmpresaAcceso(usuarioId);
+  const deleteAcceso = useDeleteUsuarioEmpresaAcceso(usuarioId);
+
+  const [newEmpresaId, setNewEmpresaId] = useState<number | ''>('');
+
+  // La empresa "hogar" del usuario ya le da acceso implícito — no tiene sentido
+  // ofrecerla de nuevo acá.
+  const existingIds = new Set([...accesos.map(a => a.empresa_id), empresaHogarId].filter((id): id is number => id !== null));
+  const disponibles = empresas.filter(e => !existingIds.has(e.id));
+
+  const handleAdd = async () => {
+    if (!newEmpresaId) return;
+    await createAcceso.mutateAsync({ empresaId: Number(newEmpresaId) });
+    setNewEmpresaId('');
+  };
+
+  if (isLoading) return <p className="text-xs text-muted-foreground py-2">Cargando accesos...</p>;
+
+  return (
+    <div className="space-y-2 py-2 px-1">
+      {accesos.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin empresas adicionales asignadas.</p>
+      ) : (
+        <div className="space-y-1">
+          {accesos.map(a => (
+            <div key={a.id} className="flex items-center gap-2 text-xs">
+              <span className="flex-1 truncate font-medium">{a.empresa.nombre_corto ?? a.empresa.nombre}</span>
+              <button
+                onClick={() => deleteAcceso.mutate(a.empresa_id)}
+                className="text-destructive hover:bg-destructive/10 rounded p-0.5"
+                title="Revocar acceso"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {disponibles.length > 0 && (
+        <div className="flex items-center gap-2 pt-1 border-t">
+          <select
+            value={newEmpresaId}
+            onChange={e => setNewEmpresaId(e.target.value ? Number(e.target.value) : '')}
+            className="flex-1 border rounded px-1.5 py-1 text-xs"
+          >
+            <option value="">Agregar empresa...</option>
+            {disponibles.map(e => <option key={e.id} value={e.id}>{e.nombre_corto ?? e.nombre}</option>)}
+          </select>
+          <button
+            onClick={handleAdd}
+            disabled={!newEmpresaId || createAcceso.isPending}
+            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          >
+            Agregar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UsuarioDialog({
-  open, usuario, isSelf, onClose,
+  open, usuario, isSelf, esAdminGlobal, onClose,
   onCreate, onUpdate, isLoading,
 }: {
-  open:      boolean;
-  usuario:   Usuario | null;
-  isSelf:    boolean;
-  onClose:   () => void;
-  onCreate:  (d: UsuarioFormData) => Promise<void>;
-  onUpdate:  (id: number, d: Partial<UsuarioFormData>) => Promise<void>;
-  isLoading: boolean;
+  open:          boolean;
+  usuario:       Usuario | null;
+  isSelf:        boolean;
+  esAdminGlobal: boolean;
+  onClose:       () => void;
+  onCreate:      (d: UsuarioFormData) => Promise<void>;
+  onUpdate:      (id: number, d: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null; permisos?: Permiso[] }) => Promise<void>;
+  isLoading:     boolean;
 }) {
   const isEdit = usuario !== null;
   const [form,  setForm]  = useState<UsuarioFormData>(() =>
-    usuario ? { nombre: usuario.nombre, email: usuario.email, password: '', rol: usuario.rol } : EMPTY_FORM,
+    usuario ? { nombre: usuario.nombre, apodo: usuario.apodo ?? '', telefono: usuario.telefono ?? '', email: usuario.email, password: '', rol: usuario.rol } : EMPTY_FORM,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+  const [multiEmpresa, setMultiEmpresa] = useState(false);
+  const [puedeVerMacro, setPuedeVerMacro] = useState(usuario?.puede_ver_macro ?? false);
+  const [areasMacro, setAreasMacro]       = useState<AreaMacro[]>(usuario?.areas_macro ?? []);
+  const [homeRoute, setHomeRoute]         = useState<string>(usuario?.home_route ?? '');
+  const [permisos, setPermisos]           = useState<Permiso[]>(usuario?.permisos ?? []);
+
+  // Accesos adicionales (más allá de la empresa "hogar") — determina si el
+  // usuario editado es candidato a la Macro restringida (ver MacroMayra.tsx).
+  const { data: empresaAccesos = [] } = useUsuarioEmpresaAccesos(usuario?.id ?? null);
+  const tieneAccesoMultiEmpresa = empresaAccesos.length >= 1;
+
+  // El diálogo queda montado entre aperturas: al cambiar de usuario hay que
+  // recargar también el formulario (si no, quedaba el del primer render —
+  // nombre/email vacíos y rol OPERADOR — y guardar degradaba a un ADMIN).
+  useEffect(() => {
+    setForm(usuario
+      ? { nombre: usuario.nombre, apodo: usuario.apodo ?? '', telefono: usuario.telefono ?? '', email: usuario.email, password: '', rol: usuario.rol }
+      : EMPTY_FORM);
+    setError(null);
+    setPuedeVerMacro(usuario?.puede_ver_macro ?? false);
+    setAreasMacro(usuario?.areas_macro ?? []);
+    setHomeRoute(usuario?.home_route ?? '');
+    setPermisos(usuario?.permisos ?? []);
+  }, [usuario?.id, open]);
+
+  const toggleArea = (area: AreaMacro) =>
+    setAreasMacro(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
 
   const f = (key: keyof UsuarioFormData) => ({
     value:    form[key],
@@ -314,11 +719,22 @@ function UsuarioDialog({
     setError(null);
     try {
       if (isEdit) {
-        const patch: Partial<UsuarioFormData> = {};
-        if (form.nombre   !== usuario!.nombre) patch.nombre   = form.nombre;
-        if (form.email    !== usuario!.email)  patch.email    = form.email;
-        if (form.password)                     patch.password = form.password;
-        if (!isSelf && form.rol !== usuario!.rol) patch.rol   = form.rol;
+        const patch: Partial<UsuarioFormData> & { puede_ver_macro?: boolean; areas_macro?: AreaMacro[]; home_route?: string | null; permisos?: Permiso[] } = {};
+        if (form.nombre   !== usuario!.nombre)          patch.nombre   = form.nombre;
+        if (form.apodo    !== (usuario!.apodo ?? ''))   patch.apodo    = form.apodo;
+        if (form.telefono !== (usuario!.telefono ?? '')) patch.telefono = form.telefono;
+        if (form.email    !== usuario!.email)           patch.email    = form.email;
+        if (form.password)                              patch.password = form.password;
+        if (!isSelf && form.rol !== usuario!.rol)        patch.rol      = form.rol;
+        if (homeRoute !== (usuario!.home_route ?? ''))  patch.home_route = homeRoute || null;
+        const mismosPermisos = permisos.length === usuario!.permisos.length && permisos.every(p => usuario!.permisos.includes(p));
+        if (!mismosPermisos) patch.permisos = permisos;
+        if (esAdminGlobal && tieneAccesoMultiEmpresa) {
+          if (puedeVerMacro !== usuario!.puede_ver_macro) patch.puede_ver_macro = puedeVerMacro;
+          const mismasAreas = areasMacro.length === usuario!.areas_macro.length
+            && areasMacro.every(a => usuario!.areas_macro.includes(a));
+          if (!mismasAreas) patch.areas_macro = areasMacro;
+        }
         await onUpdate(usuario!.id, patch);
       } else {
         await onCreate(form);
@@ -345,12 +761,22 @@ function UsuarioDialog({
             <label className={labelCls}>Nombre *</label>
             <input {...f('nombre')} className={inputCls} required />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Apodo</label>
+              <input {...f('apodo')} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Teléfono</label>
+              <input {...f('telefono')} className={inputCls} />
+            </div>
+          </div>
           <div>
             <label className={labelCls}>Email *</label>
             <input type="email" {...f('email')} className={inputCls} required />
           </div>
           <div>
-            <label className={labelCls}>{isEdit ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label>
+            <label className={labelCls}>{isEdit ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña inicial *'}</label>
             <input
               type="password"
               {...f('password')}
@@ -358,15 +784,98 @@ function UsuarioDialog({
               minLength={8}
               required={!isEdit}
             />
+            {!isSelf && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {isEdit ? 'Si la cambiás, el usuario va a tener que elegir una propia en su próximo ingreso.' : 'El usuario la cambia por una propia en su primer ingreso.'}
+              </p>
+            )}
           </div>
           {!isSelf && (
             <div>
               <label className={labelCls}>Rol</label>
               <select {...f('rol')} className={inputCls}>
-                <option value="VIEWER">Visualizador</option>
+                <option value="ADMIN">Admin</option>
                 <option value="OPERADOR">Operador</option>
-                <option value="ADMIN">Administrador</option>
+                <option value="VIEWER">Visualizador</option>
+                <option value="JORNALERO">Jornalero</option>
+                <option value="PANOLERO">Pañolero</option>
               </select>
+              <p className="text-xs text-muted-foreground mt-1">{ROL_DESCRIPCION[form.rol]}</p>
+            </div>
+          )}
+          {isEdit && (
+            <div>
+              <label className={labelCls}>Pantalla de inicio</label>
+              <select value={homeRoute} onChange={e => setHomeRoute(e.target.value)} className={inputCls}>
+                <option value="">(Default según rol)</option>
+                {HOME_ROUTE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pantalla a la que entra este usuario al hacer login. Solo un admin puede cambiarla.
+              </p>
+            </div>
+          )}
+          {isEdit && form.rol !== 'ADMIN' && (
+            <div className="border-t border-border pt-3">
+              <p className="text-sm font-medium">Permisos de carga</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Para el responsable de un archivo: le habilita ese módulo o importador aunque su rol no lo tenga.
+              </p>
+              <div className="space-y-1.5">
+                {PERMISOS.map(p => (
+                  <label key={p.key} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox" className="mt-0.5"
+                      checked={permisos.includes(p.key)}
+                      onChange={() => setPermisos(prev => prev.includes(p.key) ? prev.filter(x => x !== p.key) : [...prev, p.key])}
+                    />
+                    <span>{p.label} <span className="text-xs text-muted-foreground">— {p.detalle}</span></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {isEdit && esAdminGlobal && (
+            <div className="border-t border-border pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={multiEmpresa}
+                  onChange={e => setMultiEmpresa(e.target.checked)}
+                />
+                Acceso a múltiples empresas
+              </label>
+              {multiEmpresa && (
+                <EmpresaAccesoPanel usuarioId={usuario!.id} empresaHogarId={null} />
+              )}
+            </div>
+          )}
+          {isEdit && esAdminGlobal && tieneAccesoMultiEmpresa && (
+            <div className="border-t border-border pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={puedeVerMacro}
+                  onChange={e => setPuedeVerMacro(e.target.checked)}
+                />
+                Puede ver Macro
+              </label>
+              {puedeVerMacro && (
+                <div className="mt-2 flex flex-wrap gap-3 pl-1">
+                  {(['FINANZAS', 'ADMIN', 'RRHH', 'STOCK'] as AreaMacro[]).map(area => (
+                    <label key={area} className="flex items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={areasMacro.includes(area)} onChange={() => toggleArea(area)} />
+                      {area === 'FINANZAS' ? 'Finanzas' : area === 'ADMIN' ? 'Admin' : area === 'RRHH' ? 'RRHH' : 'Stock'}
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground/50 cursor-not-allowed" title="No disponible para la Macro">
+                    <input type="checkbox" checked={false} disabled />
+                    Logística
+                  </label>
+                </div>
+              )}
             </div>
           )}
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -475,18 +984,22 @@ function AccesoPanel({ usuarioId }: { usuarioId: number }) {
 // ── Usuarios section ──────────────────────────────────────────────────────────
 
 const ROL_LABEL: Record<Rol, string> = {
-  ADMIN:    'Admin',
-  OPERADOR: 'Operador',
-  VIEWER:   'Visualizador',
+  ADMIN:     'Admin',
+  OPERADOR:  'Operador',
+  VIEWER:    'Visualizador',
+  JORNALERO: 'Jornalero',
+  PANOLERO:  'Pañolero',
 };
 
 const ROL_CLASS: Record<Rol, string> = {
-  ADMIN:    'bg-purple-50 text-purple-700',
-  OPERADOR: 'bg-blue-50 text-blue-700',
-  VIEWER:   'bg-gray-100 text-gray-600',
+  ADMIN:     'bg-blue-900 text-white',      // azul oscuro
+  OPERADOR:  'bg-blue-50 text-blue-700',    // azul
+  VIEWER:    'bg-gray-100 text-gray-600',   // gris
+  JORNALERO: 'bg-green-50 text-green-700',  // verde
+  PANOLERO:  'bg-orange-50 text-orange-700', // naranja
 };
 
-function UsuariosSection({ currentUserId }: { currentUserId: number }) {
+function UsuariosSection({ currentUserId, esAdminGlobal }: { currentUserId: number; esAdminGlobal: boolean }) {
   const { data: usuarios = [], isLoading } = useUsuarios();
   const createUsuario = useCreateUsuario();
   const updateUsuario = useUpdateUsuario();
@@ -529,8 +1042,8 @@ function UsuariosSection({ currentUserId }: { currentUserId: number }) {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className="px-3 py-2 w-6" />
@@ -632,13 +1145,14 @@ function UsuariosSection({ currentUserId }: { currentUserId: number }) {
               );
             })}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
 
       <UsuarioDialog
         open={dialogOpen}
         usuario={editing}
         isSelf={editing?.id === currentUserId}
+        esAdminGlobal={esAdminGlobal}
         onClose={closeDialog}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
@@ -780,8 +1294,8 @@ function CategoriasSection() {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-10">Color</th>
@@ -844,7 +1358,7 @@ function CategoriasSection() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
 
       <CategoriaDialog open={dialogOpen} categoria={editing} onClose={close} />
@@ -854,42 +1368,34 @@ function CategoriasSection() {
 
 // ── ConfiguracionPage ─────────────────────────────────────────────────────────
 
-type ActiveTab = 'tabs' | 'usuarios' | 'categorias';
+type ActiveTab = 'rubros' | 'tabs' | 'usuarios' | 'categorias';
 
 export default function ConfiguracionPage() {
   const { user } = useAuth();
   if (!user) return null;
   if (user.rol !== 'ADMIN') return <Navigate to="/dashboard" replace />;
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('tabs');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('rubros');
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold text-foreground mb-6">Configuración</h1>
+      <PageHeader title="Configuración" className="mb-4" />
 
-      <div className="flex border-b border-border mb-6">
-        {([
+      <TabStrip<ActiveTab>
+        value={activeTab}
+        onChange={setActiveTab}
+        className="mb-6"
+        items={[
+          { key: 'rubros',     label: 'Rubros' },
           { key: 'tabs',       label: 'Pestañas del sistema' },
           { key: 'usuarios',   label: 'Usuarios' },
           { key: 'categorias', label: 'Categorías de Stock' },
-        ] as { key: ActiveTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              activeTab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
+      {activeTab === 'rubros'     && <RubrosSection />}
       {activeTab === 'tabs'       && <TabsSection />}
-      {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} />}
+      {activeTab === 'usuarios'   && <UsuariosSection currentUserId={user.id} esAdminGlobal={user.puedeCambiarEmpresa} />}
       {activeTab === 'categorias' && <CategoriasSection />}
     </div>
   );

@@ -1,11 +1,13 @@
 import { Router } from 'express';
-import { auth }         from '../middleware/auth';
-import { requireRole }  from '../middleware/requireRole';
-import { prisma }       from '../lib/prisma';
+import { auth }             from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
+import { requireRole }      from '../middleware/requireRole';
+import { prisma }           from '../lib/prisma';
 import type { Request, Response } from 'express';
 
 const router = Router();
 router.use(auth);
+router.use(tenantMiddleware);
 router.use(requireRole('ADMIN'));
 
 async function list(req: Request, res: Response) {
@@ -20,7 +22,7 @@ async function list(req: Request, res: Response) {
   const desde     = typeof req.query.desde   === 'string' ? new Date(req.query.desde)   : undefined;
   const hasta     = typeof req.query.hasta   === 'string' ? new Date(req.query.hasta)   : undefined;
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { empresa_id: req.empresaId! };
   if (eventoId  !== undefined) where.evento_id  = eventoId;
   if (usuarioId !== undefined) where.usuario_id = usuarioId;
   if (accion)    where.accion  = accion;
@@ -52,7 +54,7 @@ async function listByEvento(req: Request, res: Response) {
   const limit    = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
   const skip     = (page - 1) * limit;
 
-  const where = { evento_id: eventoId };
+  const where = { evento_id: eventoId, empresa_id: req.empresaId! };
 
   const [total, logs] = await Promise.all([
     (prisma as any).auditoriaLog.count({ where }),

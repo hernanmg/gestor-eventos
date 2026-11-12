@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/errorHandler';
+import { restrictedRoleGate } from './middleware/restrictedRoleGate';
 import authRouter                    from './routes/auth';
 import eventosRouter                 from './routes/eventos';
 import movimientosRouter             from './routes/movimientos';
@@ -10,18 +11,77 @@ import { cuentasRouter, movCajaRouter } from './routes/caja';
 import echeqsRouter                  from './routes/echeqs';
 import usuariosRouter                from './routes/usuarios';
 import importerRouter                from './routes/importer';
+import importarRouter                from './routes/importar';
 import exportarRouter               from './routes/exportar';
 import dashboardRouter              from './routes/dashboard';
 import proveedoresRouter            from './routes/proveedores';
 import auditoriaRouter             from './routes/auditoria';
 import stockRouter, { eventoStockRouter } from './routes/stock';
 import { facturasRouter, pagosRouter, facturasEventoRouter } from './routes/facturas';
+import { empresasRouter, empresaActualRouter } from './routes/empresas';
+import rrhhRouter from './routes/rrhh';
+import panolRouter from './routes/panol';
+import activosRouter from './routes/activos';
+import rubrosRouter from './routes/rubros';
+import { fichaEventoRouter, rubrosEventoRouter, pedidoItemsRouter } from './routes/fichaEvento';
+import { produccionEventoRouter, produccionRouter } from './routes/produccionEvento';
+import { cortesiasEventoRouter, cortesiasRouter } from './routes/cortesias';
+import { centroCostosEventoRouter, extrasEventoRouter } from './routes/centroCostos';
+import { costoRealEventoRouter, costoRealRouter } from './routes/costoReal';
+import { operacionEventoRouter, operacionRouter } from './routes/operacion';
+import parteDiarioRouter from './routes/parteDiario';
+import { comidasEventoRouter, comidasRouter } from './routes/comidas';
+import calendarioRouter from './routes/calendario';
+import preMacroRouter from './routes/preMacro';
+import { cuentasCorrientesRouter } from './routes/cuentasCorrientes';
+import { macroRouter } from './routes/macro';
+import flotaRouter from './routes/flota';
+import combustibleRouter from './routes/combustible';
+import { materialesRentalRouter, presupuestosRouter } from './routes/presupuestos';
+import indicadoresRouter from './routes/indicadores';
+import remitosRouter from './routes/remitos';
+import movimientoDiarioRouter from './routes/movimientoDiario';
+import notificacionesRouter from './routes/notificaciones';
+import { afipRouter, prestamosRouter } from './routes/afipPrestamos';
+import sgrRouter from './routes/sgr';
+import cierreContableRouter from './routes/cierreContable';
+import { facturasEmitidasRouter } from './routes/facturasEmitidas';
+import { espaciosCompartidosRouter } from './routes/espaciosCompartidos';
+import presentismoRouter from './routes/presentismo';
+import multasRouter from './routes/multas';
+import { cajaAndreaRouter } from './routes/cajaAndrea';
+import siniestrosRouter from './routes/siniestros';
+import siniestrosVehiculoRouter from './routes/siniestrosVehiculo';
+import uniformesRouter from './routes/uniformes';
+import tarjetaCorporativaRouter from './routes/tarjetaCorporativa';
+import excedenteHorasRouter from './routes/excedenteHoras';
 
 const app = express();
 
+// FRONTEND_URL (si está seteado) + puertos habituales de Vite en desarrollo
+// (Vite pasa al siguiente puerto libre — 5174, 5175... — cuando 5173 está
+// ocupado, por ejemplo por otra instancia del dev server corriendo en paralelo).
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:3000',
+].filter((o): o is string => Boolean(o));
+
 app.use(cors({
-  origin:      process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
+  // Sin esto, el navegador bloquea la lectura de este header en las
+  // respuestas cross-origin — los hooks de descarga (Excel/PDF) no pueden
+  // leer el filename real y caen siempre a su nombre por defecto.
+  exposedHeaders: ['Content-Disposition'],
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -29,6 +89,10 @@ app.use(cookieParser());
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Corta acá para JORNALERO/PAÑOLERO antes de entrar a cualquier router — ver
+// restrictedRoleGate.ts para el porqué de este approach.
+app.use(restrictedRoleGate);
 
 app.use('/api/auth',             authRouter);
 app.use('/api/eventos',          eventosRouter);
@@ -39,6 +103,7 @@ app.use('/api/movimientos-caja', movCajaRouter);
 app.use('/api/echeqs',           echeqsRouter);
 app.use('/api/usuarios',         usuariosRouter);
 app.use('/api/importer',         importerRouter);
+app.use('/api/importar',         importarRouter);
 app.use('/api/eventos',          exportarRouter);
 app.use('/api/dashboard',        dashboardRouter);
 app.use('/api/proveedores',      proveedoresRouter);
@@ -48,6 +113,54 @@ app.use('/api/eventos/:id/stock', eventoStockRouter);
 app.use('/api/facturas',          facturasRouter);
 app.use('/api/pagos',             pagosRouter);
 app.use('/api/eventos',           facturasEventoRouter);
+app.use('/api/empresas',          empresasRouter);
+app.use('/api/empresa',           empresaActualRouter);
+app.use('/api/rrhh',              rrhhRouter);
+app.use('/api/panol',             panolRouter);
+app.use('/api/activos',           activosRouter);
+app.use('/api/rubros',            rubrosRouter);
+app.use('/api/eventos/:id/ficha', fichaEventoRouter);
+app.use('/api/eventos/:id/produccion', produccionEventoRouter);
+app.use('/api/produccion', produccionRouter);
+app.use('/api/eventos/:id/cortesias', cortesiasEventoRouter);
+app.use('/api/eventos/cortesias',     cortesiasRouter);
+app.use('/api/eventos/:id/centro-costos', centroCostosEventoRouter);
+app.use('/api/extras-evento',      extrasEventoRouter);
+app.use('/api/eventos/:id/costo-real', costoRealEventoRouter);
+app.use('/api/costo-real',         costoRealRouter);
+app.use('/api/eventos/:id/operacion', operacionEventoRouter);
+app.use('/api/operacion',          operacionRouter);
+app.use('/api/rubros-evento',     rubrosEventoRouter);
+app.use('/api/pedido-items',      pedidoItemsRouter);
+app.use('/api/parte-diario',      parteDiarioRouter);
+app.use('/api/eventos/:id/comidas', comidasEventoRouter);
+app.use('/api/comidas',             comidasRouter);
+app.use('/api/calendario',          calendarioRouter);
+app.use('/api/pre-macro',           preMacroRouter);
+app.use('/api/cuentas-corrientes',  cuentasCorrientesRouter);
+app.use('/api/macro',               macroRouter);
+app.use('/api/flota',               flotaRouter);
+app.use('/api/combustible',         combustibleRouter);
+app.use('/api/materiales-rental',   materialesRentalRouter);
+app.use('/api/presupuestos',        presupuestosRouter);
+app.use('/api/remitos',             remitosRouter);
+app.use('/api/movimiento-diario',   movimientoDiarioRouter);
+app.use('/api/indicadores',         indicadoresRouter);
+app.use('/api/notificaciones',      notificacionesRouter);
+app.use('/api/afip',                afipRouter);
+app.use('/api/prestamos',           prestamosRouter);
+app.use('/api/sgr',                 sgrRouter);
+app.use('/api/cierre-contable',     cierreContableRouter);
+app.use('/api/facturas-emitidas',   facturasEmitidasRouter);
+app.use('/api/espacios-compartidos', espaciosCompartidosRouter);
+app.use('/api/presentismo',         presentismoRouter);
+app.use('/api/multas',              multasRouter);
+app.use('/api/caja',                cajaAndreaRouter);
+app.use('/api/siniestros',          siniestrosRouter);
+app.use('/api/siniestros-vehiculos', siniestrosVehiculoRouter);
+app.use('/api/uniformes',           uniformesRouter);
+app.use('/api/tarjeta-corporativa', tarjetaCorporativaRouter);
+app.use('/api/excedente-horas',     excedenteHorasRouter);
 
 app.use(errorHandler);
 

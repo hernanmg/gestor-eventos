@@ -1,0 +1,583 @@
+import { useEffect, useState } from 'react';
+import { Plus, Truck, Pencil, Wrench, ShieldOff, Upload, Download } from 'lucide-react';
+import { useImportarPizarraFlota, descargarPlantillaPizarra, useUpdateTecnicaVehiculo, type ImportarPizarraResultado } from '@/hooks/useFlota';
+import VencimientoBadge from '@/components/flota/VencimientoBadge';
+import {
+  useVehiculosFlota, useVehiculoFlota, useCreateVehiculoFlota, useUpdateVehiculoFlota, useDarDeBajaVehiculo,
+  useSegurosVehiculo, type VehiculoFiltros, type VehiculoPayload,
+} from '@/hooks/useFlota';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SeguroEstadoBadge, PatenteEstadoBadge, ServicioTallerEstadoBadge } from '@/components/ui/badge';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatDate, formatCurrency, normalizarPatente, formatearPatente } from '@/lib/formatters';
+import type { VehiculoFlota } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
+
+const inputCls = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
+const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
+const selectCls = 'border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-white';
+
+// ── Formulario vehículo ───────────────────────────────────────────────────────
+
+interface VehiculoFormData {
+  codigo:          string;
+  descripcion:     string;
+  patente:         string;
+  tipo:            string;
+  marca:           string;
+  modelo:          string;
+  anio:            string;
+  color:           string;
+  titular:         string;
+  numero_telepase: string;
+  tipo_tecnica:        '' | 'RTO' | 'ITV' | 'VTV' | 'ITU';
+  vencimiento_tecnica: string;
+}
+
+const EMPTY: VehiculoFormData = {
+  codigo: '', descripcion: '', patente: '', tipo: '', marca: '', modelo: '', anio: '', color: '', titular: '', numero_telepase: '',
+  tipo_tecnica: '', vencimiento_tecnica: '',
+};
+
+const TIPOS_TECNICA = ['RTO', 'ITV', 'VTV', 'ITU'] as const;
+
+function VehiculoDialog({ open, vehiculo, onClose }: { open: boolean; vehiculo: VehiculoFlota | null; onClose: () => void }) {
+  const isEdit = !!vehiculo;
+  const createVehiculo = useCreateVehiculoFlota();
+  const updateVehiculo = useUpdateVehiculoFlota(vehiculo?.id ?? -1);
+  const [form, setForm] = useState<VehiculoFormData>(EMPTY);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(vehiculo ? {
+      codigo: vehiculo.codigo, descripcion: vehiculo.descripcion ?? '', patente: formatearPatente(vehiculo.patente), tipo: vehiculo.tipo ?? '',
+      marca: vehiculo.marca ?? '', modelo: vehiculo.modelo ?? '', anio: vehiculo.anio ? String(vehiculo.anio) : '',
+      color: vehiculo.color ?? '', titular: vehiculo.titular ?? '', numero_telepase: vehiculo.numero_telepase ?? '',
+      tipo_tecnica: vehiculo.tipo_tecnica ?? '', vencimiento_tecnica: vehiculo.vencimiento_tecnica?.slice(0, 10) ?? '',
+    } : EMPTY);
+    setError(null);
+  }, [vehiculo, open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const payload: VehiculoPayload = {
+      codigo:          form.codigo,
+      descripcion:     form.descripcion || null,
+      patente:         form.patente ? normalizarPatente(form.patente) : null,
+      tipo:            form.tipo || null,
+      marca:           form.marca || null,
+      modelo:          form.modelo || null,
+      anio:            form.anio ? Number(form.anio) : null,
+      color:           form.color || null,
+      titular:         form.titular || null,
+      numero_telepase: form.numero_telepase || null,
+      tipo_tecnica:        form.vencimiento_tecnica ? (form.tipo_tecnica || 'RTO') : (form.tipo_tecnica || null),
+      vencimiento_tecnica: form.vencimiento_tecnica || null,
+    };
+    try {
+      if (isEdit) await updateVehiculo.mutateAsync(payload);
+      else        await createVehiculo.mutateAsync(payload);
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  const pending = createVehiculo.isPending || updateVehiculo.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Editar vehículo' : 'Nuevo vehículo'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Código *</label>
+              <input value={form.codigo} onChange={e => setForm(p => ({ ...p, codigo: e.target.value }))} className={inputCls} required placeholder="C1" />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <input value={form.tipo} onChange={e => setForm(p => ({ ...p, tipo: e.target.value }))} className={inputCls} placeholder="camión, camioneta, van" />
+            </div>
+            <div>
+              <label className={labelCls}>Marca</label>
+              <input value={form.marca} onChange={e => setForm(p => ({ ...p, marca: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Modelo</label>
+              <input value={form.modelo} onChange={e => setForm(p => ({ ...p, modelo: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Año</label>
+              <input type="number" value={form.anio} onChange={e => setForm(p => ({ ...p, anio: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Color</label>
+              <input value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Patente</label>
+              <input
+                value={form.patente}
+                onChange={e => setForm(p => ({ ...p, patente: e.target.value }))}
+                onBlur={e => setForm(p => ({ ...p, patente: formatearPatente(e.target.value) }))}
+                className={inputCls}
+                placeholder="HLW 156"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>N° Telepase</label>
+              <input value={form.numero_telepase} onChange={e => setForm(p => ({ ...p, numero_telepase: e.target.value }))} className={inputCls} />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Titular registral</label>
+              <input value={form.titular} onChange={e => setForm(p => ({ ...p, titular: e.target.value }))} className={inputCls} />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Descripción</label>
+              <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} className={inputCls} placeholder="Mercedes Sprinter blanca" />
+            </div>
+            <div>
+              <label className={labelCls}>Revisión técnica</label>
+              <select value={form.tipo_tecnica} onChange={e => setForm(p => ({ ...p, tipo_tecnica: e.target.value as VehiculoFormData['tipo_tecnica'] }))} className={cn(selectCls, 'w-full')}>
+                <option value="">—</option>
+                {TIPOS_TECNICA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Vence</label>
+              <input type="date" value={form.vencimiento_tecnica} onChange={e => setForm(p => ({ ...p, vencimiento_tecnica: e.target.value }))} className={inputCls} />
+            </div>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={pending}>{pending ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── RTO / ITV (OPERADOR) ──────────────────────────────────────────────────────
+// Editar el vehículo completo es sólo ADMIN; la revisión técnica la mantiene
+// Lorena (OPERADOR) junto con los seguros.
+
+function TecnicaDialog({ vehiculo, onClose }: { vehiculo: VehiculoFlota | null; onClose: () => void }) {
+  const mut = useUpdateTecnicaVehiculo();
+  const [tipo, setTipo] = useState<'RTO' | 'ITV' | 'VTV' | 'ITU'>('RTO');
+  const [vence, setVence] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTipo(vehiculo?.tipo_tecnica ?? 'RTO');
+    setVence(vehiculo?.vencimiento_tecnica?.slice(0, 10) ?? '');
+    setError(null);
+  }, [vehiculo]);
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vehiculo) return;
+    setError(null);
+    try {
+      await mut.mutateAsync({ id: vehiculo.id, tipo_tecnica: vence ? tipo : null, vencimiento_tecnica: vence || null });
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open={!!vehiculo} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader><DialogTitle>Revisión técnica — {vehiculo?.codigo}</DialogTitle></DialogHeader>
+        <form onSubmit={guardar} className="space-y-3 mt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <select value={tipo} onChange={e => setTipo(e.target.value as typeof tipo)} className={cn(selectCls, 'w-full')}>
+                {TIPOS_TECNICA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Vence</label>
+              <input type="date" value={vence} onChange={e => setVence(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Dejá la fecha vacía si el vehículo no tiene revisión cargada. El vencimiento aparece en el Calendario y en el control de salida.</p>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={mut.isPending}>{mut.isPending ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TecnicaCell({ v }: { v: VehiculoFlota }) {
+  if (v.requiere_tecnica === false && !v.vencimiento_tecnica) return <span className="text-xs text-muted-foreground">No lleva</span>;
+  return <VencimientoBadge estado={v.estado_tecnica} fecha={v.vencimiento_tecnica} prefijo={v.vencimiento_tecnica ? (v.tipo_tecnica ?? 'RTO') : undefined} />;
+}
+
+// ── Dar de baja ───────────────────────────────────────────────────────────────
+
+function BajaDialog({ vehiculo, onClose }: { vehiculo: VehiculoFlota | null; onClose: () => void }) {
+  const darDeBaja = useDarDeBajaVehiculo();
+  const { data: seguros = [] } = useSegurosVehiculo(vehiculo?.id ?? null);
+  const [motivo, setMotivo] = useState('');
+  const [error, setError]   = useState<string | null>(null);
+
+  useEffect(() => { setMotivo(''); setError(null); }, [vehiculo]);
+
+  const segurosVigentes = seguros.filter(s => s.estado === 'VIGENTE' || s.estado === 'POR_VENCER');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vehiculo) return;
+    setError(null);
+    try {
+      await darDeBaja.mutateAsync({ id: vehiculo.id, motivo_baja: motivo });
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  return (
+    <Dialog open={!!vehiculo} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Dar de baja "{vehiculo?.codigo}"</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 mt-1">
+          {segurosVigentes.length > 0 && (
+            <p className="text-xs bg-yellow-50 text-yellow-800 border border-yellow-200 rounded px-2 py-1.5">
+              ⚠️ Este vehículo tiene {segurosVigentes.length} seguro{segurosVigentes.length !== 1 ? 's' : ''} vigente{segurosVigentes.length !== 1 ? 's' : ''}
+              {' '}({segurosVigentes.map(s => `${s.aseguradora}, vence ${formatDate(s.fecha_vencimiento)}`).join(' · ')}).
+              Al darlo de baja, {segurosVigentes.length !== 1 ? 'quedarán' : 'quedará'} cancelado{segurosVigentes.length !== 1 ? 's' : ''} en el sistema.
+            </p>
+          )}
+          <div>
+            <label className={labelCls}>Motivo *</label>
+            <textarea value={motivo} onChange={e => setMotivo(e.target.value)} className={cn(inputCls, 'min-h-20')} required />
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" size="sm" variant="destructive" disabled={darDeBaja.isPending}>
+              {darDeBaja.isPending ? 'Guardando…' : 'Dar de baja'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Drawer de detalle ─────────────────────────────────────────────────────────
+
+function DetalleVehiculo({ id, onClose }: { id: number | null; onClose: () => void }) {
+  const { data: v, isLoading } = useVehiculoFlota(id);
+
+  return (
+    <Dialog open={id != null} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        {isLoading || !v ? (
+          <p className="text-sm text-muted-foreground p-4">Cargando…</p>
+        ) : (
+          <div className="space-y-5">
+            <DialogHeader><DialogTitle>{v.codigo} — {v.descripcion ?? v.tipo ?? 'Vehículo'}</DialogTitle></DialogHeader>
+
+            <section className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <p><span className="text-muted-foreground">Marca/Modelo:</span> {v.marca ?? '—'} {v.modelo ?? ''}</p>
+              <p><span className="text-muted-foreground">Año:</span> {v.anio ?? '—'}</p>
+              <p><span className="text-muted-foreground">Color:</span> {v.color ?? '—'}</p>
+              <p><span className="text-muted-foreground">Patente:</span> {v.patente ? formatearPatente(v.patente) : '—'}</p>
+              <p><span className="text-muted-foreground">Titular:</span> {v.titular ?? '—'}</p>
+              <p><span className="text-muted-foreground">Telepase:</span> {v.numero_telepase ?? '—'}</p>
+              <p className="col-span-2"><span className="text-muted-foreground">Revisión técnica:</span>{' '}
+                {v.vencimiento_tecnica ? <VencimientoBadge estado={v.estado_tecnica} fecha={v.vencimiento_tecnica} prefijo={v.tipo_tecnica ?? 'RTO'} /> : '—'}
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold mb-1.5">Seguros</h3>
+              {v.seguros.length === 0 ? <p className="text-xs text-muted-foreground">Sin seguros cargados.</p> : (
+                <div className="space-y-1">
+                  {v.seguros.map(s => (
+                    <div key={s.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
+                      <span>{s.aseguradora} {s.numero_poliza ? `— Póliza ${s.numero_poliza}` : ''} · vence {formatDate(s.fecha_vencimiento)}</span>
+                      <SeguroEstadoBadge estado={s.estado} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold mb-1.5">Patentes</h3>
+              {v.patentes.length === 0 ? <p className="text-xs text-muted-foreground">Sin patentes cargadas.</p> : (
+                <div className="space-y-1">
+                  {v.patentes.map(p => (
+                    <div key={p.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
+                      <span>{p.tipo} {p.anio}{p.cuota ? ` cuota ${p.cuota}` : ''} — {formatCurrency(p.importe)} · vence {formatDate(p.fecha_vencimiento)}</span>
+                      <PatenteEstadoBadge estado={p.estado} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold mb-1.5">Taller</h3>
+              {v.servicios_taller.length === 0 ? <p className="text-xs text-muted-foreground">Sin servicios registrados.</p> : (
+                <div className="space-y-1">
+                  {v.servicios_taller.slice(0, 5).map(s => (
+                    <div key={s.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
+                      <span>{s.tipo} — {s.descripcion} · {formatDate(s.fecha_ingreso)}</span>
+                      <ServicioTallerEstadoBadge estado={s.estado} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold mb-1.5">Últimos peajes</h3>
+              {v.gastos_peaje.length === 0 ? <p className="text-xs text-muted-foreground">Sin gastos de peaje.</p> : (
+                <div className="space-y-1">
+                  {v.gastos_peaje.map(g => (
+                    <div key={g.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
+                      <span>{formatDate(g.fecha)} — {g.ruta ?? (g.es_carga_telepase ? 'Carga telepase' : 'Peaje')}{g.evento ? ` · ${g.evento.nombre}` : ''}</span>
+                      <span className="font-medium">{formatCurrency(g.importe)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Badges auxiliares ─────────────────────────────────────────────────────────
+
+function SeguroCell({ v }: { v: VehiculoFlota }) {
+  if (!v.seguro_vigente) return <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">Sin seguro</span>;
+  const s = v.seguro_vigente;
+  if (s.estado === 'VENCIDO') return <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800">VENCIDO</span>;
+  if (s.estado === 'POR_VENCER') {
+    const dias = Math.ceil((new Date(s.fecha_vencimiento).getTime() - Date.now()) / 86_400_000);
+    return <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-800">Vence en {dias} día{dias !== 1 ? 's' : ''}</span>;
+  }
+  return <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-800">Vigente</span>;
+}
+
+// ── Tab principal ─────────────────────────────────────────────────────────────
+
+// La pizarra física de DOS57 se pasó a una planilla Excel: Lorena descarga la
+// plantilla (precargada con lo transcripto de la foto), la mantiene al día y
+// la reimporta acá.
+function ImportarPizarraDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const importar = useImportarPizarraFlota();
+  const [file, setFile] = useState<File | null>(null);
+  const [resultado, setResultado] = useState<ImportarPizarraResultado | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [descargando, setDescargando] = useState(false);
+
+  useEffect(() => { if (open) { setFile(null); setResultado(null); setError(null); } }, [open]);
+
+  const handleImportar = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      setResultado(await importar.mutateAsync(file));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  };
+
+  const handlePlantilla = async () => {
+    setError(null);
+    setDescargando(true);
+    try { await descargarPlantillaPizarra(); }
+    catch { setError('No se pudo descargar la plantilla'); }
+    finally { setDescargando(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Importar pizarra de flota</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1 text-sm">
+          {!resultado && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Crea/actualiza los vehículos y seguros desde la planilla de la pizarra (camionetas, camiones,
+                trailers y autoelevadores). Las celdas vacías no borran datos ya cargados.
+              </p>
+              <div className="rounded border bg-muted/30 px-3 py-2 text-xs flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">¿No tenés la planilla? Descargala con los datos actuales y mantenela al día.</span>
+                <Button type="button" variant="outline" size="sm" onClick={handlePlantilla} disabled={descargando}>
+                  <Download size={13} className="mr-1" /> {descargando ? 'Descargando…' : 'Descargar plantilla'}
+                </Button>
+              </div>
+              <div>
+                <label className={labelCls}>Planilla (.xlsx) *</label>
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={e => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+                  className="block w-full text-sm file:mr-3 file:rounded file:border file:border-input file:bg-white file:px-3 file:py-1 file:text-sm hover:file:bg-muted/50"
+                />
+              </div>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+                <Button size="sm" onClick={handleImportar} disabled={!file || importar.isPending}>
+                  {importar.isPending ? 'Importando…' : 'Importar'}
+                </Button>
+              </div>
+            </>
+          )}
+          {resultado && (
+            <div className="space-y-2">
+              <p>Vehículos creados: <span className="font-medium text-green-700">{resultado.vehiculos_creados.length}</span></p>
+              <p>Vehículos actualizados: <span className="font-medium">{resultado.vehiculos_actualizados.length}</span></p>
+              <p>Seguros cargados: <span className="font-medium text-green-700">{resultado.seguros_creados.length}</span></p>
+              {resultado.seguros_omitidos > 0 && <p>Seguros ya existentes (omitidos): <span className="font-medium">{resultado.seguros_omitidos}</span></p>}
+              {resultado.errores.length > 0 && (
+                <div className="text-amber-700 bg-amber-50 rounded p-2">
+                  <p className="font-medium text-xs mb-1">Avisos:</p>
+                  <ul className="list-disc pl-4 text-xs space-y-0.5">
+                    {resultado.errores.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="flex justify-end pt-1"><Button size="sm" onClick={onClose}>Cerrar</Button></div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function VehiculosTab({ focusVehiculoId }: { focusVehiculoId: number | null }) {
+  const { user } = useAuth();
+  const isAdmin = user?.rol === 'ADMIN';
+  const canImportar = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
+  const canEditarTecnica = canImportar;
+  const [tecnica, setTecnica] = useState<VehiculoFlota | null>(null);
+  const [filtros, setFiltros] = useState<VehiculoFiltros>({ en_servicio: 'true' });
+  const { data: vehiculos = [], isLoading } = useVehiculosFlota(filtros);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<VehiculoFlota | null>(null);
+  const [baja, setBaja] = useState<VehiculoFlota | null>(null);
+  const [detalleId, setDetalleId] = useState<number | null>(focusVehiculoId);
+  const [pizarraOpen, setPizarraOpen] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <select
+          value={filtros.en_servicio ?? ''}
+          onChange={e => setFiltros(f => ({ ...f, en_servicio: (e.target.value as 'true' | 'false') || undefined }))}
+          className={selectCls}
+        >
+          <option value="true">En servicio</option>
+          <option value="false">Dados de baja</option>
+          <option value="">Todos</option>
+        </select>
+        <div className="flex items-center gap-2">
+          {canImportar && (
+            <Button size="sm" variant="outline" onClick={() => setPizarraOpen(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar pizarra
+            </Button>
+          )}
+          {isAdmin && (
+            <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Plus size={14} className="mr-1.5" /> Nuevo vehículo
+            </Button>
+          )}
+        </div>
+      </div>
+      <ImportarPizarraDialog open={pizarraOpen} onClose={() => setPizarraOpen(false)} />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Cargando...</p>
+      ) : vehiculos.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Truck size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No hay vehículos registrados.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full text-sm min-w-[800px]">
+            <thead className="border-b bg-muted/30">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Código</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Marca/Modelo</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Patente</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tipo</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Seguro</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">RTO / ITV</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">En taller</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {vehiculos.map(v => (
+                <tr key={v.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setDetalleId(v.id)}>
+                  <td className="px-3 py-2.5 font-mono font-medium">{v.codigo}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{[v.marca, v.modelo].filter(Boolean).join(' ') || '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{v.patente ? formatearPatente(v.patente) : '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{v.tipo ?? '-'}</td>
+                  <td className="px-3 py-2.5"><SeguroCell v={v} /></td>
+                  <td className="px-3 py-2.5" onClick={e => { if (canEditarTecnica) { e.stopPropagation(); setTecnica(v); } }}>
+                    <span className={cn(canEditarTecnica && 'cursor-pointer hover:opacity-80')} title={canEditarTecnica ? 'Actualizar revisión técnica' : undefined}>
+                      <TecnicaCell v={v} />
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {v.en_taller ? <Wrench size={14} className="text-blue-600" /> : <span className="text-muted-foreground text-xs">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', v.en_servicio ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600')}>
+                      {v.en_servicio ? 'En servicio' : 'De baja'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                    {isAdmin && (
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(v); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
+                        {v.en_servicio && (
+                          <Button variant="ghost" size="icon" onClick={() => setBaja(v)} className="text-destructive hover:text-destructive" title="Dar de baja"><ShieldOff size={14} /></Button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </BaseTable>
+        </div>
+      )}
+
+      <VehiculoDialog open={dialogOpen} vehiculo={editing} onClose={() => { setDialogOpen(false); setEditing(null); }} />
+      <BajaDialog vehiculo={baja} onClose={() => setBaja(null)} />
+      <TecnicaDialog vehiculo={tecnica} onClose={() => setTecnica(null)} />
+      <DetalleVehiculo id={detalleId} onClose={() => setDetalleId(null)} />
+    </div>
+  );
+}

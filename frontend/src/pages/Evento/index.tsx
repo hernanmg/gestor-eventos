@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
-import { useEvento, useExportarExcel, useExportarPDF } from '@/hooks/useEvento';
-import { useTabConfig } from '@/hooks/useTabConfig';
+import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { ArrowLeft, FileSpreadsheet, ChevronDown, Loader2, ChevronRight, AlertTriangle, CheckCircle2, XCircle, MessageCircleQuestion } from 'lucide-react';
+import { useEvento, useExportarExcel, useExportarPDF, useMarcarFacturar } from '@/hooks/useEvento';
+import { useExportarFicha } from '@/hooks/useFichaEvento';
+import { useCortesias } from '@/hooks/useCortesias';
+import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcheqs, useAlertasEcheqs } from '@/hooks/useEcheqs';
 import { useSinProveedor } from '@/hooks/useVincularProveedores';
@@ -10,24 +12,40 @@ import { useAuditoriaEvento } from '@/hooks/useAuditoria';
 import type { AuditoriaLog } from '@/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { EstadoBadge } from '@/components/ui/badge';
+import { EstadoBadge, InformalBadge, FacturarBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import MovimientoTable from '@/components/domain/MovimientoTable';
 import EcheqFormDialog from '@/components/domain/EcheqFormDialog';
 import CajaPage from './Caja';
+import FichaEventoPage from './Ficha';
 import ConciliatoriaPage from './Conciliatoria';
 import EcheqsPage from './Echeqs';
 import EventoStockPage from './Stock';
 import EventoFacturas from './Facturas';
+import FacturasACobrarTab from './FacturasACobrar';
+import ComidasPage from './Comidas';
+import CortesiasPage from './Cortesias';
+import EventoLogisticaTab from './EventoLogisticaTab';
+import ProduccionEventoPage from './Produccion';
+import ResumenRubros from './Rubros/ResumenRubros';
+import CentroCostosTab from './CentroCostos';
+import CostoRealTab, { ResumenCostoReal } from './CostoReal';
+import OperacionTab from './Operacion';
+import { tienePermiso } from '@/lib/permisos';
 import { FEATURES } from '@/lib/features';
+import { EMPRESAS } from '@/lib/empresasConstants';
 import { cn } from '@/lib/utils';
-import type { TabConfig, Tipo } from '@/types';
+import type { Rubro } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
+import TabStrip, { TabCount } from '@/components/ui/TabStrip';
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
 
-function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[] }) {
+function ExportDropdown({ eventoId, rubros }: { eventoId: number; rubros: Rubro[] }) {
   const { exportar: exportExcel } = useExportarExcel();
   const { exportar: exportPDF }   = useExportarPDF();
+  const { exportar: exportFicha } = useExportarFicha();
   const [open,        setOpen]        = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -46,14 +64,21 @@ function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[
     try { await exportExcel(eventoId, tab); } finally { setIsExporting(false); }
   };
 
+  // Ficha de proveedores: hoja "PROVEEDORES CONFIRMADOS" + un pedido de material por rubro confirmado
+  const handleFicha = async () => {
+    setOpen(false);
+    setIsExporting(true);
+    try { await exportFicha(eventoId); } finally { setIsExporting(false); }
+  };
+
   const handlePDF = async (seccion?: string) => {
     setOpen(false);
     setIsExporting(true);
     try { await exportPDF(eventoId, seccion); } finally { setIsExporting(false); }
   };
 
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
 
   const itemClass = 'w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50';
   const sectionLabel = 'px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-gray-50';
@@ -78,19 +103,22 @@ function ExportDropdown({ eventoId, tabs }: { eventoId: number; tabs: TabConfig[
         <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-white shadow-lg py-1 max-h-96 overflow-y-auto">
           {/* Excel section */}
           <div className={sectionLabel}>Excel</div>
+          <button onClick={handleFicha} className={itemClass}>
+            Ficha de proveedores (pedidos)
+          </button>
           <button onClick={() => handleExcel()} className={itemClass}>
             Evento completo
           </button>
           <hr className="my-0.5 border-border" />
-          {egresoTabs.map(t => (
-            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
-              {t.nombre}
+          {egresoRubros.map(r => (
+            <button key={r.id} onClick={() => handleExcel(String(r.id))} className={itemClass}>
+              {r.nombre}
             </button>
           ))}
           <hr className="my-0.5 border-border" />
-          {ingresoTabs.map(t => (
-            <button key={t.codigo} onClick={() => handleExcel(t.codigo)} className={itemClass}>
-              {t.nombre}
+          {ingresoRubros.map(r => (
+            <button key={r.id} onClick={() => handleExcel(String(r.id))} className={itemClass}>
+              {r.nombre}
             </button>
           ))}
           <hr className="my-0.5 border-border" />
@@ -138,8 +166,8 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <BaseTable className="w-full text-sm">
           <thead className="border-b bg-muted/30">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Fecha</th>
@@ -198,7 +226,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
               );
             })}
           </tbody>
-        </table>
+        </BaseTable>
       </div>
       {data.pages > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -213,26 +241,77 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'OPERACION' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
-const MAIN_TABS_BASE: { key: MainTab; label: string }[] = [
+// adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
+// ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
+// Comidas (matriz de permisos). Esto se evalúa siempre a partir de
+// useAuth() — no depende de la ruta de navegación (sidebar, calendario, etc.),
+// así que da lo mismo cómo se llegó a la página.
+const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
+  { key: 'RESUMEN',       label: 'Resumen'       },
+  // DOS57 (modalidad OPERATIVA): rubros con material y tareas, cuadrilla por fase
+  { key: 'OPERACION',     label: 'Operación'     },
+  { key: 'FICHA',         label: 'Ficha'         },
+  // Cronograma, espacios, internet, branding y compras (planilla de producción de Dani)
+  { key: 'PRODUCCION',    label: 'Producción'    },
+  // Sólo eventos en modalidad CENTRO_COSTOS (Enjoy, eventos chicos) — ver CENTRO_COSTOS_OCULTAS
+  { key: 'CENTRO_COSTOS', label: 'Centro de costos' },
+  // Matriz de costo real de Flor (DOS57) — ADMIN o permiso COSTO_REAL
+  { key: 'COSTO_REAL',    label: 'Costo real'    },
   { key: 'EGRESO',        label: 'Egresos'       },
   { key: 'INGRESO',       label: 'Ingresos'      },
   { key: 'CAJA',          label: 'Caja'          },
-  { key: 'CONCILIATORIA', label: 'Conciliatoria' },
-  { key: 'ECHEQS',        label: 'Echeqs'        },
+  { key: 'CONCILIATORIA', label: 'Conciliatoria', adminOnly: true },
+  { key: 'ECHEQS',        label: 'Echeqs',        adminOnly: true },
   ...(FEATURES.STOCK ? [{ key: 'STOCK' as MainTab, label: 'Stock' }] : []),
-  { key: 'FACTURAS',      label: 'Facturas'      },
+  { key: 'COMIDAS',       label: 'Comidas'       },
+  { key: 'CORTESIAS',     label: 'Cortesías'     },
+  // Bitácora de viajes + cargas de combustible del evento (ADMIN/OPERADOR,
+  // igual que /flota y /combustible). Reemplaza al viejo tab "Combustible".
+  { key: 'LOGISTICA',     label: 'Logística'     },
+  { key: 'FACTURAS',      label: 'Facturas',      adminOnly: true },
+  { key: 'A_COBRAR',      label: 'A Cobrar',      adminOnly: true },
+  { key: 'AUDITORIA',     label: 'Auditoría',     adminOnly: true },
 ];
+
+const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
+
+// Evento informal (carga rápida, sin presupuesto) — no tiene ficha, socios ni
+// rubros configurados, así que Ficha/Conciliatoria/Echeqs/Egresos/Ingresos/
+// Facturas/A-Cobrar/Auditoría no aplican. Ver banner "¿Se factura?" abajo.
+const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS', 'LOGISTICA'];
+
+// Modalidad centro de costos (Evento.modalidad): sólo los eventos grandes (TC,
+// Lecap, Monster) llevan el flujo de caja completo; el resto se maneja con la
+// planilla de centro de costos — sin caja ni ingresos. Por debajo son los mismos
+// movimientos de egreso, así que cambiar de modalidad no pierde nada.
+const CENTRO_COSTOS_OCULTAS: MainTab[] = ['EGRESO', 'INGRESO', 'CAJA', 'CONCILIATORIA', 'ECHEQS'];
+
+// Modalidad operativa (DOS57): el costo se lleva en la matriz de Flor (pestaña
+// Costo real). Caja, Facturas y A cobrar se siguen usando; no llevan ingresos
+// por rubro, conciliación de socios ni echeqs del evento.
+const OPERATIVA_OCULTAS: MainTab[] = ['INGRESO', 'CONCILIATORIA', 'ECHEQS'];
+
+function visiblePorModalidad(key: MainTab, modalidad: string | undefined): boolean {
+  if (key === 'OPERACION') return modalidad === 'OPERATIVA';
+  if (modalidad === 'CENTRO_COSTOS') return !CENTRO_COSTOS_OCULTAS.includes(key) && key !== 'COSTO_REAL';
+  if (key === 'CENTRO_COSTOS') return false;
+  if (modalidad === 'OPERATIVA') return !OPERATIVA_OCULTAS.includes(key);
+  return true;
+}
 
 export default function EventoPage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
+  const location   = useLocation();
   const eventoId   = Number(id);
   const { user }   = useAuth();
+  const [searchParams] = useSearchParams();
+  const successMessage = (location.state as { successMessage?: string } | null)?.successMessage;
 
-  const { data: evento,   isLoading: loadingEvento } = useEvento(eventoId);
-  const { data: tabs = [], isLoading: loadingTabs }  = useTabConfig();
+  const { data: evento,    isLoading: loadingEvento } = useEvento(eventoId);
+  const { data: rubros = [], isLoading: loadingRubros } = useRubros();
 
   const { data: echeqs = [] }    = useEcheqs(eventoId);
   const { data: alertas }        = useAlertasEcheqs(eventoId);
@@ -241,26 +320,73 @@ export default function EventoPage() {
   const { data: sinProveedor } = useSinProveedor(eventoId);
   const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
-  const [mainTab, setMainTab] = useState<MainTab>('EGRESO');
-  const [subTab,  setSubTab]  = useState(1);
-  const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
-
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
   const isAdmin  = user?.rol === 'ADMIN';
-  const MAIN_TABS = isAdmin
-    ? [...MAIN_TABS_BASE, { key: 'AUDITORIA' as MainTab, label: 'Auditoría' }]
-    : MAIN_TABS_BASE;
 
-  const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
-  const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-  const subTabs     = mainTab === 'EGRESO' ? egresoTabs : ingresoTabs;
+  // Cortesías: visible si el evento ya tiene o si el usuario es ADMIN/OPERADOR de Enjoy
+  // (donde se cargan). En el resto de las empresas la tab no aparece salvo que haya datos.
+  const { data: cortesiasData } = useCortesias(eventoId);
+  const mostrarCortesias = (cortesiasData?.cortesias.length ?? 0) > 0
+    || (canEdit && user?.empresaId === EMPRESAS.ENJOY);
+
+  const MAIN_TABS = MAIN_TABS_ALL.filter(t =>
+    (!t.adminOnly || isAdmin)
+    && (!evento?.es_informal || INFORMAL_TABS.includes(t.key))
+    && visiblePorModalidad(t.key, evento?.modalidad)
+    // Costo real: eventos de DOS57 (operativos o con flujo de caja), con permiso
+    && (t.key !== 'COSTO_REAL' || (user?.empresaId === EMPRESAS.DOS57 && tienePermiso(user, 'COSTO_REAL')))
+    && (t.key !== 'CORTESIAS' || mostrarCortesias)
+    && (t.key !== 'LOGISTICA' || canEdit),
+  );
+  const MAIN_TABS_KEYS_VISIBLES = MAIN_TABS.map(t => t.key);
+
+  const tabParam = searchParams.get('tab')?.toUpperCase() as MainTab | null;
+  const [mainTab, setMainTab] = useState<MainTab>(
+    tabParam && MAIN_TAB_KEYS.includes(tabParam) && MAIN_TABS_KEYS_VISIBLES.includes(tabParam) ? tabParam : 'RESUMEN',
+  );
+  const [subTab,  setSubTab]  = useState<number | null>(null);
+  const [echeqMovimientoId, setEcheqMovimientoId] = useState<number | null>(null);
+  const marcarFacturar = useMarcarFacturar();
+
+  // Si el evento carga como informal después del mount (o llega un ?tab=
+  // que no aplica para informales), corrige a Resumen.
+  // Al cargar el evento: un ?tab= que dependía de la modalidad (Centro de costos)
+  // recién ahora es visible; y una pestaña que no aplica vuelve a Resumen.
+  useEffect(() => {
+    if (!evento) return;
+    if (tabParam && MAIN_TABS_KEYS_VISIBLES.includes(tabParam)) setMainTab(tabParam);
+    else if (!MAIN_TABS_KEYS_VISIBLES.includes(mainTab)) setMainTab('RESUMEN');
+  }, [evento?.es_informal, evento?.modalidad]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Deep-link "Rubro: X" desde la tab Stock → tab Ficha filtrada por ese rubro
+  const [fichaBusqueda, setFichaBusqueda] = useState<string | undefined>(undefined);
+  const handleVerRubroEnFicha = (rubroNombre: string) => {
+    setFichaBusqueda(rubroNombre);
+    setMainTab('FICHA');
+  };
+
+  const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
+  const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+  const subRubros     = mainTab === 'EGRESO' ? egresoRubros : ingresoRubros;
+
+  // Rubros técnicos (codigo != null: RRHH, Impuestos, Gastos Extraordinarios)
+  // van al final del combobox, separados de los operativos por un divider.
+  const subRubroOptions: ComboboxOption[] = [
+    ...subRubros.filter(r => !r.codigo).map(r => ({ value: String(r.id), label: r.nombre, group: 'operativo' })),
+    ...subRubros.filter(r =>  r.codigo).map(r => ({ value: String(r.id), label: r.nombre, group: 'tecnico' })),
+  ];
 
   const handleMainTab = (key: MainTab) => {
     setMainTab(key);
-    setSubTab(1);
+    setSubTab(null);
   };
 
-  if (loadingEvento || loadingTabs) {
+  useEffect(() => {
+    if (subRubros.length > 0 && !subRubros.some(r => r.id === subTab)) {
+      setSubTab(subRubros[0].id);
+    }
+  }, [subRubros, subTab]);
+
+  if (loadingEvento || loadingRubros) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
         Cargando...
@@ -291,11 +417,91 @@ export default function EventoPage() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{evento.nombre}</h1>
+          <h1 className="page-title truncate">{evento.nombre}</h1>
         </div>
         <EstadoBadge estado={evento.estado} />
-        <ExportDropdown eventoId={eventoId} tabs={tabs} />
+        {evento.es_informal && <InformalBadge />}
+        {evento.es_informal && <FacturarBadge facturar={evento.facturar} />}
+        <ExportDropdown eventoId={eventoId} rubros={rubros} />
       </div>
+
+      {/* Banner de decisión de facturación — null/true/false, ver [[facturacion_emitida_clientes]] */}
+      {evento.facturar === null && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-blue-50 border-b border-blue-200 shrink-0">
+          <MessageCircleQuestion size={18} className="text-blue-600 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-blue-900">¿Este evento se factura?</p>
+            <p className="text-xs text-blue-700">Decidí ahora para no perder el seguimiento</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: true } })}
+            >
+              <CheckCircle2 size={14} className="mr-1.5" />
+              Sí, se factura
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: false } })}
+            >
+              <XCircle size={14} className="mr-1.5" />
+              No se factura
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {evento.facturar === true && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-green-50 border-b border-green-200 shrink-0">
+          <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-green-900">Este evento se factura</p>
+            <p className="text-xs text-green-700">Podés crear la factura desde "Facturas a Cobrar"</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3 shrink-0">
+            <Link to={`/facturas-emitidas?evento_id=${eventoId}`} className="text-xs font-semibold text-green-900 hover:underline whitespace-nowrap">
+              Crear factura →
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: null } })}
+            >
+              Cambiar decisión
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {evento.facturar === false && (
+        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-gray-50 border-b border-border shrink-0">
+          <XCircle size={16} className="text-muted-foreground shrink-0" />
+          <p className="text-sm text-muted-foreground">Este evento no se factura</p>
+          <div className="ml-auto shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarFacturar.isPending}
+              onClick={() => marcarFacturar.mutate({ id: eventoId, data: { facturar: null } })}
+            >
+              Cambiar decisión
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Banner de éxito (ej: evento recién creado desde la pre-macro) */}
+      {successMessage && (
+        <div className="flex items-center gap-2 px-6 py-2.5 bg-green-50 border-b border-green-200 shrink-0">
+          <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+          <span className="text-sm text-green-800">{successMessage}</span>
+        </div>
+      )}
 
       {/* Banner sin proveedor */}
       {countSinProveedor > 0 && (
@@ -314,60 +520,74 @@ export default function EventoPage() {
       )}
 
       {/* Main tab navigation */}
-      <div className="flex border-b border-border bg-white shrink-0 px-6">
-        {MAIN_TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => handleMainTab(key)}
-            className={cn(
-              'relative px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              mainTab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-            {key === 'ECHEQS' && alertasCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full bg-red-500 text-white">
-                {alertasCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <TabStrip<MainTab>
+        className="bg-white shrink-0 px-4 md:px-6"
+        value={mainTab}
+        onChange={handleMainTab}
+        items={MAIN_TABS.map(({ key, label }) => ({
+          key,
+          label,
+          badge: key === 'ECHEQS' ? <TabCount count={alertasCount} /> : undefined,
+        }))}
+      />
 
-      {/* Sub-tab navigation (Egresos / Ingresos) */}
-      {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subTabs.length > 0 && (
-        <div className="flex border-b border-border bg-gray-50 shrink-0 px-6 overflow-x-auto">
-          {subTabs.map(tab => (
-            <button
-              key={tab.numero}
-              onClick={() => setSubTab(tab.numero)}
-              className={cn(
-                'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
-                subTab === tab.numero
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {tab.nombre}
-            </button>
-          ))}
+      {/* Sub-selector de rubro (Egresos / Ingresos) */}
+      {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && subRubros.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-border bg-gray-50 shrink-0 px-6 py-2">
+          <Combobox
+            className="w-full sm:w-64"
+            options={subRubroOptions}
+            value={subTab !== null ? String(subTab) : null}
+            onChange={v => setSubTab(Number(v))}
+            placeholder="Seleccionar rubro..."
+            searchPlaceholder="Buscar rubro..."
+            emptyMessage="Ningún rubro coincide."
+          />
         </div>
       )}
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
+        {mainTab === 'RESUMEN' && (
+          <div className="space-y-3">
+            {MAIN_TABS_KEYS_VISIBLES.includes('COSTO_REAL') && (
+              <ResumenCostoReal eventoId={eventoId} onVer={() => setMainTab('COSTO_REAL')} />
+            )}
+            <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} soloEgresos={evento.modalidad !== 'FLUJO_CAJA'} />
+          </div>
+        )}
+
+        {mainTab === 'FICHA' && (
+          <FichaEventoPage eventoId={eventoId} evento={evento} canEdit={canEdit} monedaBase={evento.moneda_base} initialBusqueda={fichaBusqueda} />
+        )}
+
+        {mainTab === 'CENTRO_COSTOS' && (
+          <CentroCostosTab eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'OPERACION' && (
+          <OperacionTab eventoId={eventoId} canEdit={canEdit} onIrA={setMainTab} />
+        )}
+
+        {mainTab === 'COSTO_REAL' && (
+          <CostoRealTab eventoId={eventoId} canEdit={tienePermiso(user, 'COSTO_REAL')} />
+        )}
+
         {(mainTab === 'EGRESO' || mainTab === 'INGRESO') && (
-          <MovimientoTable
-            eventoId={eventoId}
-            tipo={mainTab as Tipo}
-            tabNumero={subTab}
-            monedaBase={evento.moneda_base}
-            onCreateEcheq={canEdit && mainTab === 'EGRESO' ? setEcheqMovimientoId : undefined}
-            echeqs={mainTab === 'EGRESO' ? echeqs : undefined}
-            onNavigateToEcheqs={() => handleMainTab('ECHEQS')}
-          />
+          subRubros.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-10 text-center">
+              No hay rubros de {mainTab === 'EGRESO' ? 'egresos' : 'ingresos'} configurados. Creá uno desde Configuración.
+            </p>
+          ) : subTab !== null && (
+            <MovimientoTable
+              eventoId={eventoId}
+              rubro={subRubros.find(r => r.id === subTab)!}
+              monedaBase={evento.moneda_base}
+              onCreateEcheq={canEdit && mainTab === 'EGRESO' ? setEcheqMovimientoId : undefined}
+              echeqs={mainTab === 'EGRESO' ? echeqs : undefined}
+              onNavigateToEcheqs={() => handleMainTab('ECHEQS')}
+            />
+          )
         )}
 
         {mainTab === 'CAJA' && (
@@ -387,11 +607,31 @@ export default function EventoPage() {
         )}
 
         {FEATURES.STOCK && mainTab === 'STOCK' && (
-          <EventoStockPage evento={evento} canEdit={canEdit} />
+          <EventoStockPage evento={evento} canEdit={canEdit} onVerRubro={handleVerRubroEnFicha} />
         )}
 
         {mainTab === 'FACTURAS' && (
           <EventoFacturas eventoId={eventoId} />
+        )}
+
+        {mainTab === 'A_COBRAR' && (
+          <FacturasACobrarTab eventoId={eventoId} eventoNombre={evento.nombre} />
+        )}
+
+        {mainTab === 'PRODUCCION' && (
+          <ProduccionEventoPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'COMIDAS' && (
+          <ComidasPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'CORTESIAS' && (
+          <CortesiasPage eventoId={eventoId} canEdit={canEdit} />
+        )}
+
+        {mainTab === 'LOGISTICA' && canEdit && (
+          <EventoLogisticaTab eventoId={eventoId} eventoNombre={evento.nombre} conRemitos={user?.empresaId === EMPRESAS.DOS57} />
         )}
 
         {mainTab === 'AUDITORIA' && isAdmin && (

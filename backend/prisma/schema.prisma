@@ -13,6 +13,11 @@ enum Rol {
   ADMIN
   OPERADOR
   VIEWER
+  JORNALERO
+  // Identificador ASCII por restricción de Prisma (los enum values no aceptan
+  // "Ñ") — el valor real en DB y en el runtime de Prisma Client es "PAÑOLERO"
+  // (ver @map), que es lo que se usa en el resto del código (TS, JSON, zod).
+  PANOLERO  @map("PAÑOLERO")
 }
 
 enum Tipo {
@@ -26,27 +31,50 @@ enum EstadoEvento {
   IMPORTADO
 }
 
+// Cómo se lleva la plata del evento. Enjoy: FLUJO_CAJA o CENTRO_COSTOS.
+// DOS57: FLUJO_CAJA u OPERATIVA (matriz de costo real de Flor, ver LineaCostoReal).
+// FLUJO_CAJA = planilla completa (Egresos/Ingresos/Caja/Conciliatoria/Echeqs),
+// para los eventos grandes (TC, Lecap, Monster). CENTRO_COSTOS = planilla de
+// centro de costos de Male (Costos/RRHH/Extras) — mismo Movimiento por debajo,
+// cambia la vista. Ver frontend pages/Evento/CentroCostos.
+enum ModalidadEvento {
+  FLUJO_CAJA
+  CENTRO_COSTOS
+  OPERATIVA
+}
+
 enum TipoCuenta {
   EFECTIVO
   BANCO
+  FIMA // fondo de inversión (ej. FIMA Galicia) — se comporta como cualquier CuentaBancaria para movimientos/saldos
+}
+
+enum EstadoCuenta {
+  ABIERTA // operativa, recibiendo movimientos
+  PENDIENTE_RENDICION // el responsable volvió, falta rendir
+  CERRADA // rendición confirmada por admin
 }
 
 enum EstadoEcheq {
   PENDIENTE
   COBRADO
   RECHAZADO
+  VENDIDO // descontado en el banco antes del vencimiento — ver Echeq.fecha_venta/banco_descuento/tasa_descuento/monto_neto_recibido
 }
 
 enum Moneda {
   ARS
   USD
+  EUR
 }
 
 enum UbicacionStock {
   DEPOSITO
-  EN_EVENTO
-  EN_TRANSITO
-  BAJA
+  EN_TRANSITO // en camión, entre depósito y evento o entre eventos
+  EN_EVENTO // armado en el lugar
+  EXCEDENTE // enviado de más, en campo pero no usado
+  ALQUILADO // material de terceros sumado temporalmente
+  BAJA // dado de baja
 }
 
 enum EstadoAsignacion {
@@ -84,131 +112,841 @@ enum CondicionPago {
   OTRO
 }
 
+enum CategoriaEmpleado {
+  CAPITAN
+  ARMADOR
+  CHOFER
+  ADMINISTRATIVO
+  TECNICO
+  JORNALERO
+  FOFI
+  NESTORAS
+  EXTRANJERO
+  SERENO
+  OTRO
+}
+
+enum EstadoEmpleado {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+}
+
+enum EstadoJornada {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+// Control de Presentismo (Lorena, DOS57) — distinto de EstadoJornada: Jornada
+// es el registro de horas para liquidación (Enjoy + DOS57), esto es la lectura
+// diaria de tarjetas de marcación física que alimenta el premio presentismo.
+enum EstadoAsistencia {
+  PRESENTE
+  DEMORA // llegó hasta 15 min después de la citación (columna DEMORA de la planilla de Lorena)
+  TARDE // llegó más de 15 min después de la citación (LLEGADA TARDE)
+  MEDIA_JORNADA // solo estuvo medio día
+  AUSENTE // no vino sin justificación
+  JUSTIFICADO // falta justificada (médico, trámite, etc.)
+  LIBRE // día libre acordado / no convocado
+  VACACIONES
+  LICENCIA
+  FRANCO // franco compensatorio por domingo trabajado (FRANCO POR DOMINGO)
+}
+
+enum SemaforoPresentismo {
+  EXCELENTE
+  SEGUIMIENTO
+  ATENCION
+}
+
+enum EstadoLiquidacion {
+  BORRADOR
+  APROBADA
+  PAGADA
+  CANCELADA
+}
+
+enum TipoLiquidacion {
+  LINEAL // horas_normales × valor_hora — modelo actual (Enjoy)
+  JORNADA // por umbral de horas, con jornada completa/media — DOS57
+}
+
+enum TipoAnticipo {
+  ADELANTO
+  VALE
+  DESCUENTO
+  MULTA
+}
+
+enum TipoPanolItem {
+  HERRAMIENTA
+  CONSUMIBLE
+}
+
+enum EstadoPanolItem {
+  DISPONIBLE
+  FUERA_DE_SERVICIO
+  BAJA
+}
+
+enum TipoMovPanol {
+  SALIDA
+  DEVOLUCION
+  USO_INTERNO
+  BAJA
+}
+
+enum EstadoActivo {
+  BUENO
+  REGULAR
+  DETERIORADO
+  BAJA
+}
+
+enum TipoRubro {
+  EGRESO
+  INGRESO
+}
+
+enum EstadoMovimiento {
+  PENDIENTE
+  COTIZANDO
+  CONFIRMADO
+  PAGADO
+  CANCELADO
+}
+
+// ─── EMPRESAS (multitenancy — row-level tenancy) ─────────────────────────────
+
+model Empresa {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  nombre_corto   String?
+  cuit           String?  @unique
+  domicilio      String?
+  logo_url       String?
+  color_primario String?
+  activo         Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // ── Identidad visual (Módulo A — Configuración de empresa) ──────────────────
+  logo_data        Bytes? // logo guardado en DB (mismo patrón que PDF en facturas)
+  logo_nombre      String?
+  logo_mime        String?
+  color_secundario String?
+
+  // ── Datos fiscales y contacto ────────────────────────────────────────────────
+  razon_social String?
+  telefono     String?
+  email        String?
+  web          String?
+
+  // ── Configuración operativa ──────────────────────────────────────────────────
+  moneda_default Moneda @default(ARS)
+  timezone       String @default("America/Argentina/Buenos_Aires")
+  updated_by     Int?
+
+  usuarios               Usuario[]
+  usuarioEmpresaAccesos  UsuarioEmpresaAcceso[]
+  eventos                Evento[]
+  proveedores            Proveedor[]
+  tabConfigs             TabConfig[]
+  categoriasStock        CategoriaStock[]
+  cuentasBancarias       CuentaBancaria[]
+  productos              Producto[]
+  facturas               Factura[]
+  auditoriaLogs          AuditoriaLog[]
+  empleados              Empleado[]
+  jornadas               Jornada[]
+  anticipos              Anticipo[]
+  liquidaciones          Liquidacion[]
+  camiones               Camion[]
+  cunas                  Cuna[]
+  panolItems             PanolItem[]
+  movimientosPanol       MovimientoPanol[]
+  activos                Activo[]
+  rubros                 Rubro[]
+  rubrosEvento           RubroEvento[]
+  partesDiario           ParteDiario[]
+  asignacionesDiarias    AsignacionDiaria[]
+  pedidosComida          PedidoComida[]
+  preMacros              PreMacro[]
+  cuentasCorrientes      CuentaCorriente[]
+  movimientosCCC         MovimientoCCC[]
+  acuerdosSueldo         AcuerdoSueldo[]
+  splitsEmpleados        EmpleadoEmpresaSplit[]
+  liquidacionesAdmin     LiquidacionAdmin[]
+  escalafonesAdmin       EscalafonAdmin[]
+  prestamosEmpleados     PrestamoEmpleado[]
+  segurosVehiculo        SeguroVehiculo[]
+  patentesVehiculo       PatenteVehiculo[]
+  gastosPeaje            GastoPeaje[]
+  serviciosTaller        ServicioTaller[]
+  cargasCombustible      CargaCombustible[]
+  planesAFIP             PlanAFIP[]
+  prestamosBancarios     PrestamoBancario[]
+  facturasEmitidas       FacturaEmitida[]
+  repartosFacturaEmitida RepartoFacturaEmitida[]
+  bitacoraViajes         BitacoraViaje[]
+  aliasEventoPlanilla    AliasEventoPlanilla[]
+  espaciosCompartidos    EspacioCompartido[]
+  partesEspacioEmpresa   ParteEspacio[]
+  registrosAsistencia    RegistroAsistencia[]
+  resumenesPresentismo   ResumenPresentismo[]
+  siniestrosEmpleado     SiniestroEmpleado[]
+  excedentesHoras        ExcedenteHoras[]
+  eventosEmpleadoMes     EventoEmpleadoMes[]
+  entregasUniforme       EntregaUniforme[]
+  siniestrosVehiculo     SiniestroVehiculo[]
+  sgrs                   SGR[]
+  cierresContables       CierreContable[]
+  cortesiasEvento        CortesiaEvento[]
+  tarjetasCorporativas   TarjetaCorporativa[]
+  materialesRental       MaterialRental[]
+  presupuestosEvento     PresupuestoEvento[]
+  cronogramasEvento      CronogramaEvento[]
+  espaciosEvento         EspacioEvento[]
+  puntosInternetEvento   PuntoInternetEvento[]
+  brandingEvento         BrandingEvento[]
+  comprasEvento          CompraEvento[]
+  remitosEvento          RemitoEvento[]
+  multas                 Multa[]
+  controlesSalida        ControlSalidaVehiculo[]
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model Usuario {
   id            Int       @id @default(autoincrement())
   email         String    @unique
   nombre        String
+  apodo         String?
+  telefono      String?
   password_hash String
   rol           Rol       @default(OPERADOR)
   activo        Boolean   @default(true)
+  // Empresa activa de la sesión — null solo para el admin global (rol=ADMIN
+  // sin fila en UsuarioEmpresaAcceso), que puede cambiar de empresa libremente.
+  empresa_id    Int?
+  empresa       Empresa?  @relation(fields: [empresa_id], references: [id])
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
 
-  eventoAccesos EventoAcceso[]
-  auditoriaLogs AuditoriaLog[]
+  // Vista Macro restringida por área — para usuarios ADMIN multi-empresa que
+  // no son el admin global (ej. Mayra, Gerente Administrativa) pero necesitan
+  // visibilidad cross-empresa acotada a ciertas áreas. Solo el admin global
+  // puede tocar estos dos campos (ver usuarios.controller.ts#update).
+  puede_ver_macro Boolean  @default(false)
+  areas_macro     String[] // subconjunto de ["FINANZAS","ADMIN","RRHH","STOCK"]
+
+  // Pantalla a la que redirige al hacer login (ver resolveHomeRoute en el
+  // frontend). null ⇒ usa el default según rol/empresa (admin global y
+  // puede_ver_macro van a /macro, el resto a /eventos).
+  home_route String?
+
+  // true ⇒ al ingresar se lo manda a cambiar la contraseña antes de usar el
+  // sistema. Lo prende el seed en producción (contraseña inicial generada) y
+  // un admin cuando resetea la contraseña desde Configuración → Usuarios.
+  debe_cambiar_password Boolean @default(false)
+
+  // Permisos de carga por responsable, además de lo que da el rol (ver
+  // lib/permisos.ts). Ej. un OPERADOR que importa la tarjeta corporativa.
+  permisos String[] @default([])
+
+  eventoAccesos          EventoAcceso[]
+  auditoriaLogs          AuditoriaLog[]
+  empresaAccesos         UsuarioEmpresaAcceso[]
+  // Empleado vinculado — permite que el usuario cargue sus propias jornadas
+  // (rol VIEWER + empleado no-null ⇒ vista de autoservicio RRHH).
+  empleado               Empleado?
+  movimientosResponsable Movimiento[]
+  cuentasResponsable     CuentaBancaria[]
+  responsablesTC         ResponsableTC[]
 }
 
-// ─── CONFIGURACIÓN GLOBAL DE PESTAÑAS ────────────────────────────────────────
-// 5 egresos + 5 ingresos. `nombre` es editable por el admin desde la UI.
-// `codigo` es inmutable y lo usa el importer Excel para mapear hojas.
+// Empresas a las que un usuario no-admin tiene acceso. Mismo patrón que
+// EventoAcceso. Si un usuario tiene 1 sola fila, entra directo a esa empresa
+// sin selector. Si tiene 2+, elige al login y queda fijo esa sesión.
+model UsuarioEmpresaAcceso {
+  id         Int      @id @default(autoincrement())
+  usuario_id Int
+  usuario    Usuario  @relation(fields: [usuario_id], references: [id])
+  empresa_id Int
+  empresa    Empresa  @relation(fields: [empresa_id], references: [id])
+  created_at DateTime @default(now())
+  created_by Int?
+
+  @@unique([usuario_id, empresa_id])
+}
+
+// ─── CONFIGURACIÓN DE PESTAÑAS (por empresa) ─────────────────────────────────
+// 5 egresos + 5 ingresos por empresa. `nombre` es editable por el admin desde
+// la UI. `codigo` es inmutable dentro de cada empresa y lo usa el importer
+// Excel para mapear hojas.
 
 model TabConfig {
   id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
   tipo       Tipo
-  numero     Int     // identificador estable — nunca reasignado
-  nombre     String  // editable
-  codigo     String  @unique // inmutable
-  orden      Int     // posición de visualización dentro del tipo (reordenable)
+  numero     Int // identificador estable dentro de la empresa — nunca reasignado
+  nombre     String // editable
+  codigo     String // inmutable dentro de la empresa
+  orden      Int // posición de visualización dentro del tipo (reordenable)
   activo     Boolean @default(true)
   es_sistema Boolean @default(false) // las 10 tabs originales no se pueden eliminar
 
-  @@unique([tipo, numero])
+  @@unique([tipo, numero, empresa_id])
+  @@unique([codigo, empresa_id])
 }
 
 // ─── EVENTOS ─────────────────────────────────────────────────────────────────
 
 model Evento {
-  id           Int              @id @default(autoincrement())
-  nombre       String
-  fecha_inicio DateTime?
-  fecha_fin    DateTime?
-  estado       EstadoEvento     @default(ACTIVO)
+  id              Int             @id @default(autoincrement())
+  empresa_id      Int
+  empresa         Empresa         @relation(fields: [empresa_id], references: [id])
+  nombre          String
+  fecha_inicio    DateTime?
+  fecha_fin       DateTime?
+  dias_montaje    Int             @default(0) // días de armado previos a fecha_inicio
+  dias_desmontaje Int             @default(0) // días de desarmado posteriores a fecha_fin
+  // Lugar del evento (texto libre: "Playa Norte - Estadio Kempes"). Lo usa la
+  // Ficha exportada ("Ubicación: ..."). El wizard Pre-Macro lo copia de lugar_nombre/ciudad.
+  lugar           String?
+  estado          EstadoEvento    @default(ACTIVO)
   // [{nombre: "Juan", porcentaje: 50}, ...] — N socios, porcentajes suman 100
-  socios       Json             @default("[]")
-  moneda_base  Moneda           @default(ARS)
-  created_at   DateTime         @default(now())
-  updated_at   DateTime         @updatedAt
-  deleted_at   DateTime?
-  created_by   Int?
-  updated_by   Int?
+  socios          Json            @default("[]")
+  moneda_base     Moneda          @default(ARS)
+  // Carga rápida sin presupuesto formal (ver Eventos/index.tsx "Carga rápida")
+  // — true = no requiere ficha/socios/rubros, sólo nombre+fecha+destino.
+  es_informal     Boolean         @default(false)
+  modalidad       ModalidadEvento @default(FLUJO_CAJA)
+  // null=sin decidir, true=sí, false=no — impulsa el flag de notificaciones
+  facturar        Boolean?
+  facturar_notas  String?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+  updated_by      Int?
 
   movimientos            Movimiento[]
   cuentas                CuentaBancaria[]
+  cuentas_vinculadas     EventoCuenta[]
+  movimientos_caja       MovimientoCaja[]
   echeqs                 Echeq[]
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
-  asignaciones_prestadas AsignacionStock[] @relation("StockPrestado")
+  asignaciones_prestadas AsignacionStock[]       @relation("StockPrestado")
   facturas               Factura[]
+  jornadas               Jornada[]
+  liquidaciones          Liquidacion[]
+  movimientosPanol       MovimientoPanol[]
+  rubros_evento          RubroEvento[]
+  cortesias              CortesiaEvento[]
+  asignaciones_diarias   AsignacionDiaria[]
+  pedidos_comida         PedidoComida[]
+  pre_macro              PreMacro?
+  extras                 ExtraEvento[]
+  lineas_costo_real      LineaCostoReal[]
+  movimientosCCC         MovimientoCCC[]
+  gastos_peaje           GastoPeaje[]
+  facturas_emitidas      FacturaEmitida[]
+  cargas_combustible     CargaCombustible[]
+  viajes_flota           BitacoraViaje[]
+  alias_planilla         AliasEventoPlanilla[]
+  presupuestos           PresupuestoEvento[]
+  remitos                RemitoEvento[]
+  siniestros_empleado    SiniestroEmpleado[]
+  eventos_empleado_mes   EventoEmpleadoMes[]
+  controles_salida       ControlSalidaVehiculo[]
+  // Producción (planilla de producción de Dani)
+  cronograma             CronogramaEvento[]
+  espacios               EspacioEvento[]
+  puntos_internet        PuntoInternetEvento[]
+  branding               BrandingEvento[]
+  compras                CompraEvento[]
+}
+
+// ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
+
+model Rubro {
+  id            Int           @id @default(autoincrement())
+  empresa_id    Int
+  empresa       Empresa       @relation(fields: [empresa_id], references: [id])
+  tipo          TipoRubro
+  nombre        String // "Sonido", "Iluminación", "Tickets", "Sponsors"
+  codigo        String? // código interno opcional/estable: "EG-IMP", "EG-EXTRA", "RRHH"
+  descripcion   String?
+  grupo         String? // agrupador visual opcional (ej: "INFRAESTRUCTURA Y MONTAJE"); null = sin agrupar
+  orden         Int // define el orden de visualización
+  activo        Boolean       @default(true)
+  es_sistema    Boolean       @default(false) // rubros predefinidos no borrables
+  // audit
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+  movimientos   Movimiento[]
+  facturas      Factura[]
+  rubros_evento RubroEvento[]
+
+  plantilla_tareas PlantillaTarea[]
+
+  @@unique([empresa_id, tipo, nombre])
+}
+
+// ─── FICHA DE EVENTO (Enjoy) ──────────────────────────────────────────────────
+// Instancia por evento del catálogo de Rubro: para este evento puntual, qué
+// proveedor cubre cada rubro, si está confirmado, quién coordina, y el pedido
+// técnico detallado. Reemplaza el armado manual de Festival_KM_-_Pedidos_de_
+// material.xlsx / Ficha_de_evento.xlsx / Planilla_Produccion_Expo_Village.xlsx.
+
+enum EstadoRubroEvento {
+  PENDIENTE // no asignado todavía
+  COTIZANDO // en negociación con proveedor
+  CONFIRMADO // proveedor confirmado
+  NO_VA // rubro no aplica a este evento
+  CANCELADO // se canceló después de confirmado
+}
+
+model RubroEvento {
+  id                 Int                @id @default(autoincrement())
+  evento_id          Int
+  evento             Evento             @relation(fields: [evento_id], references: [id])
+  rubro_id           Int
+  rubro              Rubro              @relation(fields: [rubro_id], references: [id])
+  empresa_id         Int
+  empresa            Empresa            @relation(fields: [empresa_id], references: [id])
+  // Asignación
+  proveedor_id       Int?
+  proveedor          Proveedor?         @relation(fields: [proveedor_id], references: [id])
+  estado             EstadoRubroEvento  @default(PENDIENTE)
+  // Contacto del proveedor para este evento (puede diferir del proveedor genérico)
+  contacto_nombre    String?
+  contacto_telefono  String?
+  contacto_cargo     String?
+  // Coordinación interna
+  coordina_nombre    String? // quién de Enjoy coordina este rubro
+  // Fechas clave
+  fecha_ingreso      DateTime? // cuándo entra el proveedor al evento
+  fecha_retiro       DateTime? // cuándo se va
+  // Presupuesto
+  presupuesto        Decimal?           @db.Decimal(12, 2)
+  moneda             Moneda             @default(ARS)
+  // Notas generales del rubro en este evento
+  notas              String?
+  // ── Fuentes mixtas (stock propio + proveedor externo) ────────────────────────
+  // Un rubro puede cubrirse con stock propio del depósito, con un proveedor
+  // externo, o ambos a la vez (ej: DOS57 con stock insuficiente completa con
+  // un proveedor externo). Ver AsignacionStock.rubro_evento_id.
+  usa_stock_propio   Boolean            @default(false)
+  cantidad_stock     Int? // suma de las AsignacionStock activas vinculadas
+  cantidad_proveedor Int? // cantidad cubierta por el proveedor externo
+  // audit
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+  updated_by         Int?
+  // Pedido técnico detallado (una o más líneas por rubro)
+  pedido_items       PedidoItem[]
+  asignaciones_stock AsignacionStock[]
+  // Línea(s) del centro de costos generadas desde este rubro (ver Movimiento.rubro_evento_id)
+  movimientos        Movimiento[]
+  // Tareas del rubro en la pestaña Operación (CronogramaEvento.rubro_evento_id)
+  tareas             CronogramaEvento[]
+
+  @@unique([evento_id, rubro_id])
+}
+
+model PedidoItem {
+  id                Int         @id @default(autoincrement())
+  rubro_evento_id   Int
+  rubro_evento      RubroEvento @relation(fields: [rubro_evento_id], references: [id])
+  // El pedido técnico: qué se le pide al proveedor
+  cantidad          Decimal?    @db.Decimal(10, 2)
+  descripcion       String // "Sistema de sonido line array", "Generador 100kva", etc.
+  dias_uso          Int?
+  horario_llegada   String? // texto libre: "08:00", "día anterior al evento"
+  horario_retiro    String?
+  observaciones     String?
+  orden             Int         @default(0)
+  // ── Esquema de personal por turno (seguridad, limpieza, etc.) ───────────────
+  // Si fecha_turno tiene valor, el ítem es una línea del esquema de dotación y
+  // NO un pedido de material: se exporta en la grilla "ESQUEMA DE ..." en vez
+  // de la tabla Cantidad/Material. `cantidad` = agentes en el turno.
+  // fecha_turno es calendario puro (medianoche UTC, ver fecha_offset_utc_fix).
+  fecha_turno       DateTime?
+  hora_inicio_turno String? // "08:00"
+  hora_fin_turno    String? // "20:00" — si es menor que el inicio, cruza medianoche
+  ubicacion_turno   String? // "Barrera playa Norte"
+  tipo_turno        String? // "Seguridad Diurna"
+  horas_por_agente  Decimal?    @db.Decimal(5, 2) // derivado de inicio/fin
+  total_horas_turno Decimal?    @db.Decimal(8, 2) // derivado: cantidad × horas_por_agente
+  // audit
+  created_at        DateTime    @default(now())
+  updated_at        DateTime    @updatedAt
+  deleted_at        DateTime?
+
+  @@index([rubro_evento_id, fecha_turno])
+}
+
+// ─── PRODUCCIÓN DEL EVENTO (Enjoy) ────────────────────────────────────────────
+// Las hojas de la planilla de producción de Dani que no son pedidos a
+// proveedores (docs/enjoy/dani/Planilla Produccion Expo Village.xlsx):
+// cronograma de montaje, espacios y lo que lleva cada uno, puntos de internet,
+// branding y compras del evento. Son listas de trabajo: los textos (proveedor,
+// responsable, estado) quedan como los escribe producción, sin vincular.
+
+model CronogramaEvento {
+  id              Int          @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento       @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa      @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime // calendario puro (medianoche UTC, ver fecha_offset_utc_fix)
+  hora            String? // "08:00"
+  actividad       String
+  proveedor       String? // "Dos57", "Enjoy", "Stands"
+  responsable     String? // "Dani + Agus"
+  observaciones   String?
+  orden           Int          @default(0)
+  // Tareas por rubro (DOS57, pestaña Operación): la actividad del cronograma
+  // atada a un rubro del evento, con su fase y estado. Las de Producción
+  // (Enjoy) quedan sin rubro ni fase.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+  fase            FaseEvento?
+  estado          EstadoTarea  @default(PENDIENTE)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+
+  @@index([evento_id, fecha])
+  @@index([rubro_evento_id])
+}
+
+// Fases operativas de un evento (como las columnas de la hoja STAFF COSTS de la
+// matriz de DOS57): se calculan con fecha_inicio/fecha_fin y los días de montaje
+// y desmontaje del evento — ver lib/fasesEvento.ts.
+enum FaseEvento {
+  VIAJE_IDA
+  MONTAJE
+  EVENTO
+  DESMONTAJE
+  VIAJE_VUELTA
+}
+
+enum EstadoTarea {
+  PENDIENTE
+  EN_CURSO
+  HECHA
+}
+
+// Tareas tipo de un rubro (ej. Layher: carga en depósito, traslado, montaje…).
+// Se cargan en el evento con "Cargar tareas tipo"; si el rubro no tiene
+// plantilla propia se usa la default de lib/fasesEvento.ts.
+model PlantillaTarea {
+  id         Int        @id @default(autoincrement())
+  empresa_id Int
+  rubro_id   Int
+  rubro      Rubro      @relation(fields: [rubro_id], references: [id])
+  orden      Int        @default(0)
+  actividad  String
+  fase       FaseEvento
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  created_by Int?
+
+  @@index([rubro_id])
+}
+
+model EspacioEvento {
+  id            Int                 @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento              @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa             @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  nombre        String // "PLAYON 1"
+  actividad     String? // "Premiación"
+  observaciones String?
+  orden         Int                 @default(0)
+  items         EspacioEventoItem[]
+  created_at    DateTime            @default(now())
+  updated_at    DateTime            @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+// Lo que lleva un espacio ("Escenario", "Generador 110KVA") y su estado.
+model EspacioEventoItem {
+  id            Int           @id @default(autoincrement())
+  espacio_id    Int
+  espacio       EspacioEvento @relation(fields: [espacio_id], references: [id])
+  elemento      String
+  estado        String? // "Confirmado"
+  responsable   String?
+  observaciones String?
+  orden         Int           @default(0)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  deleted_at    DateTime?
+
+  @@index([espacio_id])
+}
+
+model PuntoInternetEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  zona          String
+  uso           String?
+  tipo_conexion String? // "Exclusiva Cronómetro", "Punto wifi - Ethernet"
+  observaciones String?
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+model BrandingEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  tipo          String // "CUBRE VALLAS", "BANDERAS"
+  marca         String? // "LETAPE", "BANCOR"
+  cantidad      Decimal?  @db.Decimal(10, 2)
+  ubicacion     String?
+  estado        String?
+  observaciones String?
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
+}
+
+// Compras chicas del evento (hoja "Compras Letape"): quién pide, quién autoriza
+// y cómo se paga. No genera movimientos: lo que se paga con tarjeta o cuenta
+// corriente entra por la tarjeta corporativa o las facturas.
+model CompraEvento {
+  id            Int       @id @default(autoincrement())
+  evento_id     Int
+  evento        Evento    @relation(fields: [evento_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa   @relation(fields: [empresa_id], references: [id])
+  numero        Int?
+  fecha         DateTime? // calendario puro
+  pedido        String
+  cantidad      Decimal?  @db.Decimal(10, 2)
+  valor         Decimal?  @db.Decimal(14, 2) // null = "PENDIENTE"
+  proveedor     String?
+  forma_pago    String? // "Cuenta Corriente", "Tarjeta Corpo Dani"
+  solicita      String?
+  autoriza      String?
+  observaciones String?
+  cancelada     Boolean   @default(false)
+  orden         Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([evento_id])
 }
 
 // ─── MOVIMIENTOS (egresos e ingresos) ────────────────────────────────────────
 // Saldo calculado por el backend — el usuario nunca lo escribe directamente.
 
 model Movimiento {
-  id                    Int             @id @default(autoincrement())
+  id                    Int              @id @default(autoincrement())
   evento_id             Int
-  evento                Evento          @relation(fields: [evento_id], references: [id])
+  evento                Evento           @relation(fields: [evento_id], references: [id])
   tipo                  Tipo
-  tab_numero            Int             // 1–5 dentro de su tipo
+  tab_numero            Int? // legado — 1–5 dentro de su tipo. Nullable: los movimientos
+  // nuevos usan rubro_id; se mantiene sólo por compatibilidad
+  // con movimientos de RRHH (TabConfig codigo='RRHH').
+  rubro_id              Int?
+  rubro                 Rubro?           @relation(fields: [rubro_id], references: [id])
+  estado_movimiento     EstadoMovimiento @default(PENDIENTE)
+  presupuesto           Decimal?         @db.Decimal(15, 2)
+  costo_real            Decimal?         @db.Decimal(15, 2)
+  responsable_id        Int?
+  responsable           Usuario?         @relation(fields: [responsable_id], references: [id])
+  fecha_pago            DateTime?
+  avisado_proveedor     Boolean          @default(false)
   fecha                 DateTime?
-  concepto              String?         // opcional en ambos tipos
+  concepto              String? // opcional en ambos tipos
   descripcion           String?
-  debe                  Decimal         @default(0) @db.Decimal(15, 2)
-  haber                 Decimal         @default(0) @db.Decimal(15, 2)
-  saldo                 Decimal         @default(0) @db.Decimal(15, 2) // CALCULADO
-  moneda                Moneda          @default(ARS)
-  orden                 Int             // define la secuencia para recálculo de saldo
-  impuesto_subcategoria String?         // solo para EG-IMP (tipo=EGRESO, tab_numero=4)
+  debe                  Decimal          @default(0) @db.Decimal(15, 2)
+  haber                 Decimal          @default(0) @db.Decimal(15, 2)
+  saldo                 Decimal          @default(0) @db.Decimal(15, 2) // CALCULADO — en ARS (ver monto_ars)
+  moneda                Moneda           @default(ARS)
+  // Cotización a ARS al momento del movimiento — sólo aplica si moneda ≠ ARS.
+  tasa_cambio           Decimal?         @db.Decimal(10, 4)
+  // Equivalente en ARS de debe/haber (el que esté distinto de cero). Si
+  // moneda=ARS, monto_ars = debe o haber sin conversión. Se usa para calcular
+  // `saldo` de forma consistente aunque el rubro mezcle movimientos en
+  // distinta moneda — ver lib/recalcularSaldos.ts.
+  monto_ars             Decimal?         @db.Decimal(15, 2)
+  orden                 Int // define la secuencia para recálculo de saldo
+  impuesto_subcategoria String? // solo para EG-IMP (rubro.codigo = 'EG-IMP')
   proveedor_id          Int?
-  proveedor             Proveedor?      @relation(fields: [proveedor_id], references: [id])
+  proveedor             Proveedor?       @relation(fields: [proveedor_id], references: [id])
   // Vinculación opcional con un movimiento de caja
   movimiento_caja_id    Int?
-  movimiento_caja       MovimientoCaja? @relation("MovimientoOrigenCaja", fields: [movimiento_caja_id], references: [id])
-  created_at            DateTime        @default(now())
-  updated_at            DateTime        @updatedAt
+  movimiento_caja       MovimientoCaja?  @relation("MovimientoOrigenCaja", fields: [movimiento_caja_id], references: [id])
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
   deleted_at            DateTime?
   created_by            Int?
   updated_by            Int?
 
-  echeq        Echeq?       @relation("EcheqMovimiento")
-  pago_factura PagoFactura? @relation("PagoMovimiento")
+  // IVA contenido en debe/haber (no se suma aparte): neto = debe − iva. Sólo
+  // informativo/desglose para el centro de costos — los totales siguen saliendo
+  // de debe/haber, así que conciliatoria/saldos no cambian. null = sin desglose.
+  iva             Decimal?     @db.Decimal(15, 2)
+  // Línea de costo generada desde la Ficha (RubroEvento CONFIRMADO) — ver
+  // lib/lineaCostoFicha.ts. null = cargada a mano / importada / factura / RRHH.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+  // Plazo de pago en texto libre, como lo anota Male ("Pre evento", "08/05 - ",
+  // "50% antes del evento") — fecha_pago queda para la fecha real.
+  plazo_pago      String?
+  // Extra del centro de costos que cuenta como costo (a_cargo_cliente=false) — la
+  // línea la mantiene lib/extrasEvento.ts, no se edita a mano.
+  extra_evento    ExtraEvento?
+
+  echeq           Echeq?                  @relation("EcheqMovimiento")
+  pago_factura    PagoFactura?            @relation("PagoMovimiento")
+  liquidacion     Liquidacion?
+  pagos_parciales PagoParcialMovimiento[]
+
+  @@index([rubro_evento_id])
+}
+
+// Pagos parciales (señas, cuotas) de una línea de egreso — "Falta pagar" del
+// centro de costos = total (debe) − suma de pagos. Es un registro de lo pagado
+// al proveedor; NO genera movimiento de caja (eso sigue yendo por Caja/Facturas).
+// Cuando la suma cubre el total, el movimiento pasa a PAGADO.
+model PagoParcialMovimiento {
+  id            Int        @id @default(autoincrement())
+  movimiento_id Int
+  movimiento    Movimiento @relation(fields: [movimiento_id], references: [id])
+  fecha         DateTime
+  monto         Decimal    @db.Decimal(15, 2) // en la moneda del movimiento
+  nota          String?
+  created_at    DateTime   @default(now())
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@index([movimiento_id])
 }
 
 // ─── CAJA ─────────────────────────────────────────────────────────────────────
 
 model CuentaBancaria {
-  id            Int              @id @default(autoincrement())
-  evento_id     Int
-  evento        Evento           @relation(fields: [evento_id], references: [id])
-  nombre        String           // "Efectivo", "Banco Galicia", etc.
+  id            Int        @id @default(autoincrement())
+  empresa_id    Int
+  empresa       Empresa    @relation(fields: [empresa_id], references: [id])
+  // Nullable — una cuenta puede no pertenecer a ningún evento (caja chica por
+  // persona, caja de reserva, caja general mensual de empresa: caso DOS57).
+  evento_id     Int?
+  evento        Evento?    @relation(fields: [evento_id], references: [id])
+  nombre        String // "Efectivo", "Banco Galicia", etc.
   tipo          TipoCuenta
-  moneda        Moneda           @default(ARS)
-  saldo_inicial Decimal          @default(0) @db.Decimal(15, 2)
-  created_at    DateTime         @default(now())
-  updated_at    DateTime         @updatedAt
+  moneda        Moneda     @default(ARS)
+  saldo_inicial Decimal    @default(0) @db.Decimal(15, 2)
+  // Si el saldo actual cae por debajo de este valor → alerta (ej. Caja Reserva).
+  saldo_minimo  Decimal?   @db.Decimal(12, 2)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
   deleted_at    DateTime?
 
-  movimientos MovimientoCaja[]
+  // ── Estado de cuenta / rendición ─────────────────────────────────────────────
+  // Ciclo de vida de la caja de un viaje/evento: se abre operativa, al volver
+  // el responsable pasa a pendiente de rendición, y el admin cierra al
+  // confirmar la rendición. Ver PATCH /api/cuentas/:id/estado.
+  estado          EstadoCuenta @default(ABIERTA)
+  responsable_id  Int?
+  responsable     Usuario?     @relation(fields: [responsable_id], references: [id])
+  fecha_apertura  DateTime?
+  fecha_cierre    DateTime?
+  notas_rendicion String?
+
+  movimientos              MovimientoCaja[]
+  eventos_vinculados       EventoCuenta[]
+  cobros_facturas_emitidas CobroFacturaEmitida[]
+
+  // Permite upsert idempotente por nombre dentro de una empresa (ver seed.ts
+  // — cuentas de empresa DOS57 sin evento_id, ej. "Caja Pollo").
+  @@unique([nombre, empresa_id])
+}
+
+// Vínculo muchos-a-muchos: una cuenta de empresa (evento_id null, ej. "Caja
+// Pollo", "Caja Jazmín") puede además operarse desde uno o más eventos sin
+// dejar de aparecer en Caja Global — a diferencia de CuentaBancaria.evento_id
+// (dueño único, 1 evento). No se usa para cuentas ya propias de un evento.
+model EventoCuenta {
+  id         Int            @id @default(autoincrement())
+  evento_id  Int
+  evento     Evento         @relation(fields: [evento_id], references: [id])
+  cuenta_id  Int
+  cuenta     CuentaBancaria @relation(fields: [cuenta_id], references: [id])
+  created_at DateTime       @default(now())
+  created_by Int?
+
+  @@unique([evento_id, cuenta_id])
 }
 
 // Saldo corriente calculado por el backend — nunca editable directamente.
 
 model MovimientoCaja {
-  id              Int              @id @default(autoincrement())
-  cuenta_id       Int
-  cuenta          CuentaBancaria   @relation(fields: [cuenta_id], references: [id])
-  fecha           DateTime?
-  descripcion     String?
-  debe            Decimal          @default(0) @db.Decimal(15, 2)
-  haber           Decimal          @default(0) @db.Decimal(15, 2)
-  saldo_corriente Decimal          @default(0) @db.Decimal(15, 2) // CALCULADO
+  id                   Int            @id @default(autoincrement())
+  cuenta_id            Int
+  cuenta               CuentaBancaria @relation(fields: [cuenta_id], references: [id])
+  // Evento en cuyo contexto se cargó este movimiento — necesario porque una
+  // cuenta puede estar vinculada a varios eventos a la vez (ver EventoCuenta):
+  // sin esto, la tab Caja de un evento mostraría movimientos de otros
+  // eventos que comparten la misma cuenta. Null = movimiento cargado sin
+  // contexto de evento (ej. desde Caja Global, o histórico pre-EventoCuenta
+  // en una cuenta que hoy no pertenece a ningún evento).
+  evento_id            Int?
+  evento               Evento?        @relation(fields: [evento_id], references: [id])
+  fecha                DateTime?
+  descripcion          String?
+  debe                 Decimal        @default(0) @db.Decimal(15, 2)
+  haber                Decimal        @default(0) @db.Decimal(15, 2)
+  saldo_corriente      Decimal        @default(0) @db.Decimal(15, 2) // CALCULADO
+  // Reservado para uso futuro — hoy la moneda de un movimiento de caja es
+  // siempre la de su CuentaBancaria (no hace falta convertir para sumar
+  // saldo_corriente, que es por-cuenta). Ver lib/convertirARS.ts.
+  moneda               Moneda?
+  tasa_cambio          Decimal?       @db.Decimal(10, 4)
+  monto_ars            Decimal?       @db.Decimal(15, 2)
   orden                Int
   transferencia_par_id Int?
-  created_at           DateTime         @default(now())
-  updated_at           DateTime         @updatedAt
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
   deleted_at           DateTime?
   created_by           Int?
   updated_by           Int?
@@ -216,28 +954,74 @@ model MovimientoCaja {
   // Movimientos de egreso/ingreso que originaron este movimiento de caja
   movimientos_origen Movimiento[] @relation("MovimientoOrigenCaja")
   // Echeqs cobrados que liquidaron en este movimiento bancario
-  echeqs_cobrados    Echeq[]     @relation("EcheqCobradoCaja")
+  echeqs_cobrados    Echeq[]      @relation("EcheqCobradoCaja")
+
+  // Sueldo administrativo que generó este egreso — un empleado con split
+  // entre empresas genera varios MovimientoCaja (uno por empresa) a partir
+  // de una única LiquidacionAdmin. Null en cualquier otro movimiento de caja.
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation("LiquidacionAdminMovimientos", fields: [liquidacion_admin_id], references: [id])
+
+  // ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
+  // Columna del Excel real (CAJAS_JULIO-2026.xlsx) donde cae este movimiento de
+  // egreso: "COMBUSTIBLE" | "COMIDA" | "GASTOS_VARIOS" | "SERVICIOS" |
+  // "DEV_GASTOS" | "VALES". Null en un movimiento de ingreso (columna INGRESO
+  // del Excel) o en movimientos de otros módulos que no pasan por esta vista.
+  categoria_andrea   String?
+  responsable_nombre String?
+  // N° de comprobante — "N° COMP."/"N° COMPROBANTE"/"COMP.N°" del Excel real
+  // (ej. "FA 105053", "TICK 994934"). Distinto de comprobante_nombre (el
+  // archivo adjunto): esto es sólo el número/referencia de texto.
+  referencia         String?
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
 }
 
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
 
 model Proveedor {
-  id         Int       @id @default(autoincrement())
-  nombre     String
-  alias      String?
-  cuit       String?   @unique
-  categoria  String?
-  notas      String?
-  activo     Boolean   @default(true)
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
-  deleted_at DateTime?
-  created_by Int?
-  updated_by Int?
+  id                  Int       @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre              String
+  alias               String?
+  cuit                String?   @unique
+  categoria           String?
+  telefono            String?
+  notas               String?
+  activo              Boolean   @default(true)
+  // Datos del formulario de Google (Enjoy) — ver importarProveedoresFormulario.
+  // `alias` de arriba es el nombre corto comercial; el alias del CBU va en alias_bancario.
+  // `dni` es la clave de upsert cuando el CUIT del formulario no es válido (< 11 dígitos).
+  dni                 String?
+  email               String?
+  banco               String?
+  alias_bancario      String?
+  cbu                 String?
+  numero_cuenta       String?
+  titular_cuenta      String?
+  // null = el proveedor no respondió la pregunta "¿Podés presentar factura?"
+  puede_facturar      Boolean?
+  // "A" | "C" — null si no factura o si el formulario dice "A o C según el evento"
+  tipo_factura        String?
+  servicio            String?
+  // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
+  // participa del reparto. Ver POST /api/facturas-emitidas.
+  es_comisionista     Boolean   @default(false)
+  porcentaje_comision Decimal?  @db.Decimal(5, 2)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+  updated_by          Int?
 
-  movimientos Movimiento[]
-  echeqs      Echeq[]
-  facturas    Factura[]
+  movimientos       Movimiento[]
+  echeqs            Echeq[]
+  facturas          Factura[]
+  rubros_evento     RubroEvento[]
+  pedidos_comida    PedidoComida[]
+  cuentasCorrientes CuentaCorriente[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -256,15 +1040,24 @@ model Echeq {
   proveedor_id         Int?
   proveedor            Proveedor?      @relation(fields: [proveedor_id], references: [id])
   numero               String
-  razon_social         String?         // auto-filled from proveedor.nombre when proveedor_id is set
+  razon_social         String? // auto-filled from proveedor.nombre when proveedor_id is set
   detalle              String?
   importe              Decimal         @db.Decimal(15, 2)
   moneda               Moneda          @default(ARS)
+  // Cotización a ARS al momento de cargar el echeq — ver comentario en Movimiento.
+  tasa_cambio          Decimal?        @db.Decimal(10, 4)
+  monto_ars            Decimal?        @db.Decimal(15, 2)
   estado               EstadoEcheq     @default(PENDIENTE)
   motivo_rechazo       String?
   fecha_emision        DateTime?
   fecha_cobro_estimada DateTime?
   fecha_cobro_real     DateTime?
+  // Venta/descuento del echeq en el banco antes del vencimiento (estado VENDIDO).
+  fecha_venta          DateTime?
+  banco_descuento      String?
+  tasa_descuento       Decimal?        @db.Decimal(5, 2)
+  // El monto que efectivamente ingresó al banco (menor al valor nominal por el descuento).
+  monto_neto_recibido  Decimal?        @db.Decimal(15, 2)
   created_at           DateTime        @default(now())
   updated_at           DateTime        @updatedAt
   deleted_at           DateTime?
@@ -292,26 +1085,31 @@ model EventoAcceso {
 // ─── STOCK ───────────────────────────────────────────────────────────────────
 
 model CategoriaStock {
-  id          Int        @id @default(autoincrement())
-  nombre      String     @unique
+  id          Int       @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre      String
   descripcion String?
   color       String?
-  activo      Boolean    @default(true)
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
+  activo      Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
   deleted_at  DateTime?
   created_by  Int?
 
   productos Producto[]
+
+  @@unique([nombre, empresa_id])
 }
 
 model Producto {
   id           Int             @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa         @relation(fields: [empresa_id], references: [id])
   nombre       String
   descripcion  String?
   categoria_id Int?
   categoria    CategoriaStock? @relation(fields: [categoria_id], references: [id])
-  codigo       String?         @unique
   stock_total  Int
   stock_minimo Int             @default(0)
   unidad       String          @default("unidad")
@@ -323,8 +1121,32 @@ model Producto {
   created_by   Int?
   updated_by   Int?
 
+  // ── Stock madre completo (DOS57 / catálogo Layher) ──────────────────────────
+  codigo_interno  String? // código propio de la empresa ("PAR-001")
+  codigo_externo  String? // código del fabricante (ej: código Layher oficial)
+  nombre_tecnico  String? // nombre técnico formal
+  nombre_interno  String? // apodo interno ("torre" en lugar de "vertical")
+  foto_data       Bytes? // foto del producto guardada en DB
+  foto_nombre     String?
+  foto_mime       String?
+  valor_unitario  Decimal? @db.Decimal(10, 2) // para cálculo de amortización
+  es_critico      Boolean  @default(false) // sin esta pieza no se puede armar
+  catalogo_origen String? // "Layher", "Liger", "propio" — solo relevante para DOS57
+  peso_unitario   Decimal? @db.Decimal(8, 3) // kg por unidad — catálogo Layher (DOS57)
+  espacio         String? // ubicación física en depósito ("DEPO 1", "ALTILLO ENTREPISO") — solo Enjoy
+
+  // ── Stock Enjoy (importador de depósito por espacio) ─────────────────────────
+  // [{ periodo: "abr-23", cantidad: 14|null, fecha_aproximada: "2023-04-01" }, ...]
+  historial_stock   Json?
+  informe_situacion String? // Col H del Excel de Enjoy: "VER FALTANTE", "Reparar", "COMPRAR", etc.
+
   asignaciones AsignacionStock[]
   movimientos  MovimientoStock[]
+  cunas        CunaProducto[]
+
+  @@unique([codigo_interno, empresa_id])
+  @@unique([codigo_externo, empresa_id])
+  @@unique([empresa_id, nombre, espacio])
 }
 
 model AsignacionStock {
@@ -348,6 +1170,30 @@ model AsignacionStock {
   created_by       Int?
   updated_by       Int?
 
+  // ── Vínculo con la Ficha de Evento (fuentes mixtas: stock propio) ────────────
+  // Cuando esta asignación cubre (total o parcialmente) un rubro de la ficha,
+  // en vez de ser un movimiento de stock genérico del evento.
+  rubro_evento_id Int?
+  rubro_evento    RubroEvento? @relation(fields: [rubro_evento_id], references: [id])
+
+  // ── Logística DOS57 (camión / cuna) ──────────────────────────────────────────
+  camion_id          Int?
+  camion             Camion? @relation(fields: [camion_id], references: [id])
+  cuna_id            Int?
+  cuna               Cuna?   @relation(fields: [cuna_id], references: [id])
+  cantidad_excedente Int     @default(0) // material enviado de más
+
+  // ── Firmas digitales (irreversibles — no hay endpoint para "desfirmar") ─────
+  firmado_salida      Boolean   @default(false)
+  firmado_salida_at   DateTime?
+  firmado_salida_por  Int?
+  firmado_llegada     Boolean   @default(false)
+  firmado_llegada_at  DateTime?
+  firmado_llegada_por Int?
+  firmado_retorno     Boolean   @default(false)
+  firmado_retorno_at  DateTime?
+  firmado_retorno_por Int?
+
   movimientos MovimientoStock[]
 }
 
@@ -367,58 +1213,1498 @@ model MovimientoStock {
   created_by        Int?
 }
 
+// ─── CAMIONES / CUNAS (logística DOS57) ──────────────────────────────────────
+
+model Camion {
+  id          Int       @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  codigo      String // "C1", "C2", "C3", "Van1", etc.
+  descripcion String? // "Mercedes Sprinter blanca", "Camión Iveco"
+  patente     String?
+  tipo        String? // "camion", "camioneta", "van"
+  activo      Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  // ── Módulo Flota — identificación extendida ──────────────────────────────────
+  marca           String?
+  modelo          String?
+  anio            Int?
+  color           String?
+  titular         String? // nombre del titular registral
+  numero_telepase String?
+  en_servicio     Boolean   @default(true)
+  fecha_baja      DateTime?
+  motivo_baja     String?
+
+  // ── Importador de pizarra (Lorena, DOS57) ────────────────────────────────────
+  capacidad_combustible String? // texto libre de la pizarra: "75 lts", "315 lts + 35 UREA", "60/65 lts"
+  tipo_vehiculo         String? // "CAMIONETA" | "CAMION" | "TRAILER" | "AUTOELEVADOR"
+  notas                 String? // observaciones libres (antes también guardaba el texto "RTO 27/9/2026" de la pizarra)
+  // Revisión técnica obligatoria — columna ITU/RTO de la pizarra. tipo = "RTO"
+  // | "ITV" | "VTV" | "ITU"; el vencimiento alimenta calendario, notificaciones
+  // y el control de salida.
+  tipo_tecnica          String?
+  vencimiento_tecnica   DateTime?
+
+  // ── Módulo Combustible — odómetro actualizado en cada carga; tope mensual de
+  // la hoja "CARGAS AUTORIZADAS" de la planilla real (null = sin límite) ──────
+  km_actual                  Int?
+  limite_mensual_combustible Decimal? @db.Decimal(12, 2)
+
+  asignaciones         AsignacionStock[]
+  jornadas             Jornada[]
+  asignaciones_diarias AsignacionDiaria[]
+  seguros              SeguroVehiculo[]
+  patentes             PatenteVehiculo[]
+  gastos_peaje         GastoPeaje[]
+  servicios_taller     ServicioTaller[]
+  cargas_combustible   CargaCombustible[]
+  siniestros           SiniestroVehiculo[]
+  bitacora_viajes      BitacoraViaje[]
+  multas               Multa[]
+  controles_salida     ControlSalidaVehiculo[]
+
+  @@unique([codigo, empresa_id])
+}
+
+// ── Módulo Flota — seguros, patentes, peajes y taller ─────────────────────────
+
+enum EstadoSeguro {
+  VIGENTE
+  POR_VENCER // vence en los próximos 30 días
+  VENCIDO
+  CANCELADO
+}
+
+model SeguroVehiculo {
+  id                Int          @id @default(autoincrement())
+  camion_id         Int
+  camion            Camion       @relation(fields: [camion_id], references: [id])
+  empresa_id        Int
+  empresa           Empresa      @relation(fields: [empresa_id], references: [id])
+  aseguradora       String
+  numero_poliza     String?
+  tipo_cobertura    String?
+  fecha_inicio      DateTime
+  fecha_vencimiento DateTime
+  importe_anual     Decimal?     @db.Decimal(12, 2)
+  moneda            Moneda       @default(ARS)
+  estado            EstadoSeguro @default(VIGENTE)
+  documento_data    Bytes? // póliza en PDF — mismo patrón que Factura.pdf_data
+  documento_nombre  String?
+  documento_mime    String?
+  notas             String?
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+}
+
+enum TipoPatente {
+  MUNICIPAL
+  PROVINCIAL
+  NACIONAL
+}
+
+enum EstadoPatente {
+  PAGADA
+  PENDIENTE
+  VENCIDA
+}
+
+model PatenteVehiculo {
+  id                 Int           @id @default(autoincrement())
+  camion_id          Int
+  camion             Camion        @relation(fields: [camion_id], references: [id])
+  empresa_id         Int
+  empresa            Empresa       @relation(fields: [empresa_id], references: [id])
+  tipo               TipoPatente
+  anio               Int
+  cuota              Int? // 1, 2, 3... si se paga en cuotas
+  importe            Decimal       @db.Decimal(12, 2)
+  fecha_vencimiento  DateTime
+  fecha_pago         DateTime?
+  estado             EstadoPatente @default(PENDIENTE)
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+}
+
+model GastoPeaje {
+  id                  Int       @id @default(autoincrement())
+  camion_id           Int
+  camion              Camion    @relation(fields: [camion_id], references: [id])
+  empresa_id          Int
+  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha               DateTime
+  ruta                String?
+  importe             Decimal   @db.Decimal(10, 2)
+  evento_id           Int?
+  evento              Evento?   @relation(fields: [evento_id], references: [id])
+  es_carga_telepase   Boolean   @default(false)
+  saldo_telepase_post Decimal?  @db.Decimal(10, 2)
+  notas               String?
+  created_at          DateTime  @default(now())
+  deleted_at          DateTime?
+  created_by          Int?
+}
+
+enum TipoServicioTaller {
+  MANTENIMIENTO // service, aceite, filtros
+  REPARACION // falla específica
+  NEUMATICOS
+  CHAPERIA_PINTURA
+  ELECTRICIDAD
+  OTROS
+}
+
+enum EstadoServicioTaller {
+  PRESUPUESTADO
+  EN_PROCESO
+  FINALIZADO
+  CANCELADO
+}
+
+model ServicioTaller {
+  id                  Int                  @id @default(autoincrement())
+  camion_id           Int
+  camion              Camion               @relation(fields: [camion_id], references: [id])
+  empresa_id          Int
+  empresa             Empresa              @relation(fields: [empresa_id], references: [id])
+  taller_nombre       String?
+  tipo                TipoServicioTaller
+  descripcion         String
+  fecha_ingreso       DateTime
+  fecha_estimada      DateTime?
+  fecha_retiro        DateTime?
+  estado              EstadoServicioTaller @default(PRESUPUESTADO)
+  presupuesto         Decimal?             @db.Decimal(12, 2)
+  importe_final       Decimal?             @db.Decimal(12, 2)
+  saldo_pendiente     Decimal?             @db.Decimal(12, 2)
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente?     @relation(fields: [cuenta_corriente_id], references: [id])
+  notas               String?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+}
+
+// ─── COMBUSTIBLE (flota — pantalla de Santi/Nico) ────────────────────────────
+// Relevamiento: la carga real en la estación (YPF, cuenta corriente) NO
+// registra km/tipo de combustible — eso se pide acá como mejora nueva, no
+// como migración de un dato que ya existía. Ver [[combustible_flota_dos57]].
+
+enum TipoCombustible {
+  NAFTA_SUPER
+  NAFTA_PREMIUM
+  DIESEL
+  GNC
+}
+
+// AUTORIZADA: cargas de la cuenta corriente del proveedor de combustible
+// (YPF u otro) — el vehículo ya está habilitado en la estación, nace
+// autorizada. PENDIENTE_AUTORIZACION: "cargas extra" pagadas de la caja
+// chica de una persona cuando el vehículo no está habilitado en la
+// estación — control que agregó Pollo, requiere que ADMIN la autorice.
+enum EstadoCargaCombustible {
+  AUTORIZADA
+  PENDIENTE_AUTORIZACION
+  RECHAZADA
+}
+
+model CargaCombustible {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  // Nullable — las filas de PAGOS (TIPO=RE, transferencias) y NC (notas de
+  // crédito) del ledger real no tienen un vehículo real asociado ("TRANSF",
+  // "NOTA DE CREDITO" en la columna VEHICULO de la planilla). Sin esto, esas
+  // filas quedaban afuera del import y los totales de Pagos nunca se veían.
+  camion_id  Int?
+  camion     Camion? @relation(fields: [camion_id], references: [id])
+
+  // Datos de la carga
+  fecha            DateTime
+  tipo_combustible TipoCombustible @default(DIESEL)
+  litros           Decimal         @db.Decimal(10, 3) // 3 decimales, igual que la planilla real (ej. 781,103 L)
+  precio_por_litro Decimal?        @db.Decimal(10, 2)
+  monto_total      Decimal         @db.Decimal(12, 2)
+
+  // Ledger de la planilla real (columnas TIPO / N° FA/COMP / PAGOS / SALDO) —
+  // numero_comprobante es la clave real de deduplicación al importar: dos
+  // filas con el mismo número EN EL MISMO MES son la misma operación
+  // reimportada (skip), dos comprobantes distintos son siempre dos cargas
+  // reales aunque el resto de los valores coincida. El número NO es único en
+  // todo el año — la planilla real reutiliza números de comprobante entre
+  // meses distintos (verificado: "92-3509" aparece en ENERO y en AGOSTO como
+  // dos cargas reales distintas) — por eso el dedup compara además la fecha.
+  // pagos/saldo se guardan tal cual vienen del Excel, sólo informativos — no
+  // los recalculamos nosotros.
+  numero_comprobante String?
+  tipo_movimiento    String? // "FA" / "NC" tal cual la columna TIPO del Excel
+  pagos              Decimal? @db.Decimal(12, 2)
+  saldo              Decimal? @db.Decimal(15, 2)
+  // Posición de la fila dentro de la planilla importada — el Excel no tiene
+  // hora, sólo fecha, así que varias filas comparten el mismo DateTime; esto
+  // preserva su orden real dentro del día (necesario para "saldo más
+  // reciente"). Null en cargas manuales, donde no hay ambigüedad de fuente.
+  orden              Int?
+
+  // Estación de servicio
+  estacion_nombre String?
+  estacion_ciudad String?
+
+  // Kilómetros — no se registra hoy en la planilla real, campo nuevo
+  km_actual             Int?
+  km_anterior           Int?
+  km_recorridos         Int?
+  rendimiento_lts_100km Decimal? @db.Decimal(6, 2)
+
+  // Autorización
+  estado         EstadoCargaCombustible @default(AUTORIZADA)
+  autorizado_por Int? // usuario_id
+  autorizado_at  DateTime?
+
+  // Vínculo con evento (opcional — costo real por evento para Flor). Sólo
+  // texto libre "LUGAR + EVENTO" en la planilla real, hoy sin referencia
+  // estructurada — este campo prepara el terreno aunque el módulo de costo
+  // por evento de Flor todavía no esté implementado.
+  evento_id Int?
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+
+  // Cuenta corriente del proveedor de combustible (YPF u otro) — reutiliza
+  // CuentaCorriente/MovimientoCCC en vez de llevar un saldo propio (decisión
+  // confirmada: no duplicar saldo). Null = "carga extra" pagada de caja
+  // chica, no de la cuenta corriente del proveedor.
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente? @relation(fields: [cuenta_corriente_id], references: [id])
+
+  // Responsable de una "carga extra" (pagada de su caja chica) — columna
+  // RESPONSABLE de la planilla real. Null en cargas de cuenta corriente.
+  responsable_nombre String?
+
+  // Comprobante
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  @@index([empresa_id, numero_comprobante])
+}
+
+// Cuna/rack — unidad logística estandarizada de DOS57
+model Cuna {
+  id          Int       @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  codigo      String // "C-001", "R-045", etc.
+  descripcion String?
+  activo      Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  productos    CunaProducto[]
+  asignaciones AsignacionStock[]
+
+  @@unique([codigo, empresa_id])
+}
+
+// Contenido estandarizado de una cuna — delete físico (es una relación, no una entidad con historia propia)
+model CunaProducto {
+  id          Int      @id @default(autoincrement())
+  cuna_id     Int
+  cuna        Cuna     @relation(fields: [cuna_id], references: [id])
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id])
+  cantidad    Int // cantidad de este producto que va en esta cuna
+
+  @@unique([cuna_id, producto_id])
+}
+
+// ─── PAÑOL (herramientas y consumibles) ──────────────────────────────────────
+
+model PanolItem {
+  id               Int             @id @default(autoincrement())
+  empresa_id       Int
+  empresa          Empresa         @relation(fields: [empresa_id], references: [id])
+  nombre           String
+  descripcion      String?
+  tipo             TipoPanolItem
+  stock_total      Int
+  stock_disponible Int // stock_total - en_campo, mantenido transaccionalmente
+  valor            Decimal?        @db.Decimal(10, 2)
+  estado           EstadoPanolItem @default(DISPONIBLE)
+  notas            String?
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  deleted_at       DateTime?
+  created_by       Int?
+
+  movimientos MovimientoPanol[]
+}
+
+// Movimiento de pañol (salida / devolución / uso interno)
+model MovimientoPanol {
+  id                 Int          @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa      @relation(fields: [empresa_id], references: [id])
+  panol_item_id      Int
+  panol_item         PanolItem    @relation(fields: [panol_item_id], references: [id])
+  tipo               TipoMovPanol
+  cantidad           Int
+  evento_id          Int? // a qué evento va (null si es uso interno)
+  evento             Evento?      @relation(fields: [evento_id], references: [id])
+  responsable_id     Int? // quién se lo lleva (FK a Usuario o Empleado)
+  responsable_nombre String? // nombre libre si no está en el sistema
+  fecha              DateTime
+  descripcion        String?
+
+  // Para devolución
+  cantidad_devuelta Int?
+  cantidad_faltante Int?
+  motivo_faltante   String?
+  devolucion_at     DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+}
+
+// ─── ACTIVOS (bienes muebles de la empresa) ──────────────────────────────────
+
+model Activo {
+  id                   Int          @id @default(autoincrement())
+  empresa_id           Int
+  empresa              Empresa      @relation(fields: [empresa_id], references: [id])
+  nombre               String
+  descripcion          String?
+  categoria            String? // "Vehículo", "Informático", "Mobiliario", "Herramienta"
+  numero_serie         String?
+  fecha_compra         DateTime?
+  valor_compra         Decimal?     @db.Decimal(12, 2)
+  estado               EstadoActivo @default(BUENO)
+  // "DOS57 — Depósito Principal", "Enjoy — Depósito 1", etc. — string
+  // descriptivo por empresa, no nombre de persona (ver responsable_deposito).
+  ubicacion            String?
+  // Cantidad de unidades — sólo tiene sentido para activos fungibles (ej.
+  // stock de uniformes por talle); un activo individual (vehículo, notebook)
+  // lo deja en el default. Ver importador de stock de uniformes (Lorena).
+  cantidad             Int?         @default(0)
+  // Si cantidad <= cantidad_minima → alerta de quiebre (notificaciones +
+  // calendario, ver ACTIVO_STOCK_BAJO / STOCK_UNIFORME_BAJO).
+  cantidad_minima      Int?         @default(0)
+  // Responsable del depósito — texto libre (ej. "Sergio Bibiloni (Pollo)"),
+  // no reemplaza a `ubicacion`, que es el nombre del depósito en sí.
+  responsable_deposito String?
+  observaciones        String?
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+
+  @@unique([empresa_id, nombre, categoria, ubicacion])
+}
+
 // ─── FACTURAS (cuentas a pagar) ───────────────────────────────────────────────
 
 model Factura {
-  id                Int            @id @default(autoincrement())
-  numero_factura    String
-  tipo_factura      String         // "A", "B", "C", "X"
-  fecha_emision     DateTime
-  fecha_vencimiento DateTime?
-  proveedor_id      Int
-  proveedor         Proveedor      @relation(fields: [proveedor_id], references: [id])
-  evento_id         Int
-  evento            Evento         @relation(fields: [evento_id], references: [id])
-  tab_numero        Int?
-  tipo_movimiento   Tipo?
-  importe_total     Decimal        @db.Decimal(15, 2)
-  importe_pagado    Decimal        @default(0) @db.Decimal(15, 2)
-  importe_pendiente Decimal        @default(0) @db.Decimal(15, 2)
-  moneda            Moneda         @default(ARS)
-  condicion_pago    CondicionPago  @default(CONTADO)
-  estado            EstadoFactura  @default(RECIBIDA)
-  notas             String?
-  pdf_data          Bytes?
-  pdf_nombre        String?
-  pdf_mime_type     String?
-  pdf_tamanio       Int?
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
-  deleted_at        DateTime?
-  created_by        Int?
-  updated_by        Int?
+  id                       Int                     @id @default(autoincrement())
+  empresa_id               Int
+  empresa                  Empresa                 @relation(fields: [empresa_id], references: [id])
+  numero_factura           String
+  tipo_factura             String // "A", "B", "C", "X"
+  fecha_emision            DateTime
+  fecha_vencimiento        DateTime?
+  // Nullable: las facturas importadas del libro AFIP pueden llegar sin evento
+  // (se vincula a mano después) o de un vendedor sin CUIT válido.
+  proveedor_id             Int?
+  proveedor                Proveedor?              @relation(fields: [proveedor_id], references: [id])
+  evento_id                Int?
+  evento                   Evento?                 @relation(fields: [evento_id], references: [id])
+  tab_numero               Int?
+  tipo_movimiento          Tipo?
+  rubro_id                 Int?
+  rubro                    Rubro?                  @relation(fields: [rubro_id], references: [id])
+  importe_total            Decimal                 @db.Decimal(15, 2)
+  importe_pagado           Decimal                 @default(0) @db.Decimal(15, 2)
+  importe_pendiente        Decimal                 @default(0) @db.Decimal(15, 2)
+  moneda                   Moneda                  @default(ARS)
+  // Cotización a ARS al momento de cargar la factura — ver comentario en Movimiento.
+  tasa_cambio              Decimal?                @db.Decimal(10, 4)
+  monto_ars                Decimal?                @db.Decimal(15, 2)
+  condicion_pago           CondicionPago           @default(CONTADO)
+  estado                   EstadoFactura           @default(RECIBIDA)
+  notas                    String?
+  pdf_data                 Bytes?
+  pdf_nombre               String?
+  pdf_mime_type            String?
+  pdf_tamanio              Int?
+  // Libro de compras AFIP — ver importarLibroCompras en facturas.controller.ts
+  tipo_comprobante         TipoComprobanteEmitido?
+  neto_gravado             Decimal?                @db.Decimal(15, 2)
+  no_gravado               Decimal?                @db.Decimal(15, 2)
+  exento                   Decimal?                @db.Decimal(15, 2)
+  iva_importe              Decimal?                @db.Decimal(15, 2)
+  tiene_pdf                Boolean                 @default(false)
+  pdf_nombre_afip          String? // nombre del archivo en la descarga de AFIP
+  tiene_comprobante_fisico Boolean                 @default(false)
+  origen_import            String? // "AFIP", "MANUAL", etc.
+  created_at               DateTime                @default(now())
+  updated_at               DateTime                @updatedAt
+  deleted_at               DateTime?
+  created_by               Int?
+  updated_by               Int?
 
-  pagos PagoFactura[]
+  pagos          PagoFactura[]
+  movimientosCCC MovimientoCCC[]
 }
 
 model PagoFactura {
-  id             Int          @id @default(autoincrement())
-  factura_id     Int
-  factura        Factura      @relation(fields: [factura_id], references: [id])
-  fecha_pago     DateTime
-  importe        Decimal      @db.Decimal(15, 2)
-  moneda         Moneda       @default(ARS)
-  medio_pago     MedioPago
-  referencia     String?
-  notas          String?
-  movimiento_id  Int?         @unique
-  movimiento     Movimiento?  @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
-  echeq_id       Int?         @unique
-  echeq          Echeq?       @relation("PagoEcheq", fields: [echeq_id], references: [id])
-  created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
-  deleted_at     DateTime?
-  created_by     Int?
+  id            Int         @id @default(autoincrement())
+  factura_id    Int
+  factura       Factura     @relation(fields: [factura_id], references: [id])
+  fecha_pago    DateTime
+  importe       Decimal     @db.Decimal(15, 2)
+  moneda        Moneda      @default(ARS)
+  medio_pago    MedioPago
+  referencia    String?
+  notas         String?
+  movimiento_id Int?        @unique
+  movimiento    Movimiento? @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
+  echeq_id      Int?        @unique
+  echeq         Echeq?      @relation("PagoEcheq", fields: [echeq_id], references: [id])
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+}
+
+// ─── PARTE DIARIO DE PERSONAL (DOS57) ────────────────────────────────────────
+// Reemplaza la planilla "TAREAS PERSONAL DIARIO" que se arma a mano cada día.
+// Al cerrar el parte, genera las Jornada correspondientes (para su posterior
+// aprobación) — es la fuente de horas trabajadas y de despacho diario.
+
+enum EstadoAsignacionDiaria {
+  ASIGNADO
+  LIBRE // sin tarea ese día
+  VACACIONES
+  AUSENTE
+  NO_CITADO
+}
+
+model ParteDiario {
+  id         Int       @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha      DateTime // la fecha del parte (sin hora)
+  titulo     String? // ej: "Viernes 24/07/2026"
+  notas      String? // nota al pie (ej: "Modificaciones validar en grupo TODOS")
+  cerrado    Boolean   @default(false) // cuando está cerrado no se edita
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  asignaciones AsignacionDiaria[]
+
+  @@unique([empresa_id, fecha])
+}
+
+model AsignacionDiaria {
+  id               Int                    @id @default(autoincrement())
+  parte_diario_id  Int
+  parte_diario     ParteDiario            @relation(fields: [parte_diario_id], references: [id])
+  empleado_id      Int
+  empleado         Empleado               @relation(fields: [empleado_id], references: [id])
+  empresa_id       Int
+  empresa          Empresa                @relation(fields: [empresa_id], references: [id])
+  // Asignación del día
+  estado           EstadoAsignacionDiaria @default(ASIGNADO)
+  hora_ingreso     String? // "08:00", "09:00" — texto para flexibilidad
+  lugar            String? // "Polo", "Santiago del Estero", "Depósito"
+  tarea            String? // descripción libre de la tarea
+  seccion          String? // "Administración", "Depósito", "Eventos"
+  // Orden de despliegue dentro de la sección (drag & drop en el frontend) —
+  // no estaba en el pedido original pero es imprescindible para persistir el
+  // reordenamiento, igual que Movimiento.orden / PedidoItem.orden.
+  orden            Int                    @default(0)
+  // Vehículo asignado al grupo (puede ser el mismo para varios)
+  camion_id        Int?
+  camion           Camion?                @relation(fields: [camion_id], references: [id])
+  vehiculo_texto   String? // texto libre si no está en Camiones — ej: "Camioneta HLW 156", "Sprinter"
+  // Vínculo con evento formal (opcional)
+  evento_id        Int?
+  evento           Evento?                @relation(fields: [evento_id], references: [id])
+  // Hora de salida (se completa al final del día o la siguen)
+  hora_salida      String? // "***" en el Excel original significa voluntaria
+  hora_salida_fija Boolean                @default(false) // true = hora computada, false = voluntaria
+  // Al cerrar el parte → crear Jornada automáticamente
+  jornada_id       Int?                   @unique
+  jornada          Jornada?               @relation(fields: [jornada_id], references: [id])
+  // audit
+  created_at       DateTime               @default(now())
+  updated_at       DateTime               @updatedAt
+  deleted_at       DateTime?
+
+  @@unique([parte_diario_id, empleado_id])
+}
+
+// ─── COMIDAS (Enjoy y DOS57) ──────────────────────────────────────────────────
+// Registro operativo de viandas/comidas por día de evento: cuántos almuerzos y
+// cenas por área, con qué proveedor. Reemplaza las planillas manuales
+// (Planilla_Control_de_Viandas.xlsx, DOS57_RESUMEN_COMIDAS_2026.xlsx). Vive
+// dentro del evento — no crea movimientos automáticamente, es solo registro.
+
+enum TipoComida {
+  ALMUERZO
+  CENA
+  DESAYUNO
+  MERIENDA
+}
+
+model PedidoComida {
+  id              Int        @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento     @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa    @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime // fecha del día de comida
+  proveedor_id    Int?
+  proveedor       Proveedor? @relation(fields: [proveedor_id], references: [id])
+  proveedor_texto String? // nombre libre si no está en sistema
+  forma_pago      String? // "Cuenta corriente", "Efectivo", "Transferencia"
+  notas           String?
+  // audit
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+  updated_by      Int?
+
+  lineas LineaComida[]
+
+  @@unique([evento_id, fecha])
+}
+
+model LineaComida {
+  id               Int          @id @default(autoincrement())
+  pedido_comida_id Int
+  pedido_comida    PedidoComida @relation(fields: [pedido_comida_id], references: [id])
+  tipo             TipoComida
+  area             String // "Administración", "Depósito", "Eventos", "Staff"
+  cantidad         Int
+  valor_unitario   Decimal?     @db.Decimal(10, 2)
+  detalle          String? // descripción del menú o nombres de personas
+  // audit
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+  deleted_at       DateTime?
+
+  @@unique([pedido_comida_id, tipo, area])
+}
+
+// ─── RRHH ─────────────────────────────────────────────────────────────────────
+
+model Empleado {
+  id               Int               @id @default(autoincrement())
+  empresa_id       Int
+  empresa          Empresa           @relation(fields: [empresa_id], references: [id])
+  // Datos personales
+  nombre           String
+  apellido         String
+  // Nullable — el personal fijo de DOS57 se identifica por CUIL, no siempre
+  // tiene DNI cargado en el legajo. Sigue siendo obligatorio en el alta manual
+  // desde la UI (validación a nivel de Zod, no de schema).
+  dni              String?
+  cuit             String?
+  email            String?
+  telefono         String?
+  domicilio        String?
+  // Datos bancarios
+  cbu              String?
+  alias            String?
+  banco            String?
+  // Datos laborales
+  categoria        CategoriaEmpleado @default(OTRO)
+  valor_hora       Decimal           @default(0) @db.Decimal(10, 2)
+  valor_hora_extra Decimal           @default(0) @db.Decimal(10, 2)
+  estado           EstadoEmpleado    @default(ACTIVO)
+  notas            String?
+
+  // ── Modelo de liquidación ────────────────────────────────────────────────────
+  // LINEAL (Enjoy): horas_normales × valor_hora + horas_extras × valor_hora_extra.
+  // JORNADA (DOS57): tarifa por día con umbral de horas — ver calcularLiquidacion.ts.
+  tipo_liquidacion         TipoLiquidacion @default(LINEAL)
+  valor_jornada_completa   Decimal?        @db.Decimal(10, 2)
+  valor_media_jornada      Decimal?        @db.Decimal(10, 2)
+  umbral_horas_jornada     Decimal?        @db.Decimal(5, 2) // horas a partir de las cuales se cobra jornada completa
+  umbral_horas_media       Decimal?        @db.Decimal(5, 2) // horas mínimas para cobrar media jornada
+  valor_hora_extra_jornada Decimal?        @db.Decimal(10, 2) // valor de cada hora extra sobre umbral_horas_jornada
+  valor_viaje              Decimal?        @db.Decimal(10, 2) // adicional fijo por viaje (choferes)
+
+  // ── Legajo ────────────────────────────────────────────────────────────────────
+  apodo                      String? // distinto de `alias`, que es el alias bancario/CBU
+  fecha_nacimiento           DateTime?
+  grupo_sanguineo            String?
+  contacto_emergencia_nombre String?
+  contacto_emergencia_tel    String?
+  contacto_emergencia_tel2   String? // segundo teléfono de emergencia
+  escalafon                  Int? // nivel numérico — significado a confirmar con el cliente
+  art                        String? // aseguradora ART
+  tipo_contratacion          String? // "SANCOR", "ART", "FEDERAL PATRONAL (AP)", etc. — texto libre
+  licencia_conducir          Boolean   @default(false)
+  // Carnet de conducir — lo lleva Lorena desde Flota → Carnets (no desde RRHH,
+  // que es sólo ADMIN). El vencimiento alimenta el calendario y el control de
+  // salida de vehículos.
+  licencia_categoria         String? // "B1", "C", "E1"… texto libre
+  licencia_numero            String?
+  licencia_vencimiento       DateTime?
+  // Saldo de francos compensatorios previo a empezar a cargarlos en el sistema
+  // — el saldo actual = inicial + domingos trabajados − francos tomados.
+  francos_saldo_inicial      Int       @default(0)
+  equipamiento_asignado      String? // celular/notebook/etc.
+  talle_pantalon             String?
+  talle_remera               String?
+  talle_buzo                 String?
+  talle_calzado              String?
+  // Hora acordada de convocatoria para Control de Presentismo (distinta de
+  // Jornada.hora_convocatoria, que es puntual por día/evento) — texto libre
+  // tipo "08:00" contra la que se mide minutos_tardanza. Opcional: sin esto,
+  // TARDE se puede marcar igual pero sin calcular minutos automáticamente.
+  hora_convocatoria_default  String?
+
+  // Usuario del sistema (opcional — si el empleado carga sus propias jornadas)
+  usuario_id            Int?                    @unique
+  usuario               Usuario?                @relation(fields: [usuario_id], references: [id])
+  // audit
+  created_at            DateTime                @default(now())
+  updated_at            DateTime                @updatedAt
+  deleted_at            DateTime?
+  created_by            Int?
+  // relations
+  jornadas              Jornada[]
+  anticipos             Anticipo[]
+  liquidaciones         Liquidacion[]
+  asignaciones_diarias  AsignacionDiaria[]
+  // Sueldos administrativos (régimen mensual fijo, distinto de Jornada/Liquidacion)
+  acuerdo_sueldo        AcuerdoSueldo?
+  splits_empresa        EmpleadoEmpresaSplit[]
+  liquidaciones_admin   LiquidacionAdmin[]
+  prestamos             PrestamoEmpleado[]
+  bitacora_viajes       BitacoraViaje[]
+  registros_asistencia  RegistroAsistencia[]
+  resumenes_presentismo ResumenPresentismo[]
+  siniestros            SiniestroEmpleado[]
+  excedentes_horas      ExcedenteHoras[]
+  eventos_empleado_mes  EventoEmpleadoMes[]
+  entregas_uniforme     EntregaUniforme[]
+  siniestros_vehiculo   SiniestroVehiculo[]
+  multas                Multa[]
+  controles_salida      ControlSalidaVehiculo[]
+}
+
+model Jornada {
+  id                Int           @id @default(autoincrement())
+  empleado_id       Int
+  empleado          Empleado      @relation(fields: [empleado_id], references: [id])
+  evento_id         Int? // opcional — puede ser trabajo en depósito
+  evento            Evento?       @relation(fields: [evento_id], references: [id])
+  empresa_id        Int // desnormalizado para filtrar por tenant fácilmente
+  empresa           Empresa       @relation(fields: [empresa_id], references: [id])
+  fecha             DateTime
+  hora_convocatoria DateTime? // hora a la que se pidió que llegue
+  hora_ingreso      DateTime? // hora real de ingreso
+  hora_egreso       DateTime? // hora real de salida
+  horas_normales    Decimal       @default(0) @db.Decimal(5, 2) // calculado
+  horas_extras      Decimal       @default(0) @db.Decimal(5, 2) // calculado
+  descripcion       String?
+  estado            EstadoJornada @default(PENDIENTE)
+  motivo_rechazo    String?
+
+  // ── Despacho diario (relevamiento DOS57) ──────────────────────────────────────
+  cantidad_viajes Int? // para choferes: viajes realizados ese día
+  convocatoria    String? // nombre del evento/cliente ("SANTIAGO.E", "POLO", etc.) —
+  // puede no coincidir con un Evento formal del sistema
+  lugar_trabajo   String? // "Polo", "Santiago del Estero", "Depósito", etc.
+  camion_id       Int?
+  camion          Camion? @relation(fields: [camion_id], references: [id])
+
+  // audit
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+  created_by   Int?
+  aprobado_por Int?
+  aprobado_at  DateTime?
+
+  asignacion_diaria   AsignacionDiaria?
+  registro_asistencia RegistroAsistencia?
+
+  @@unique([empleado_id, fecha])
+}
+
+// ─── CONTROL DE PRESENTISMO (Lorena, DOS57) ───────────────────────────────────
+// Lectura diaria de las tarjetas de marcación física de DOS57 — reemplaza
+// "SEPTIEMBRE_Registro de Faltas.xlsx". Nutre ResumenPresentismo (cierre
+// mensual) y, a través de éste, el premio_presentismo de SueldosAdmin.
+// Complementario al Parte Diario de Jazmín (que distribuye tareas): esto sólo
+// registra quién vino, a qué hora y con qué estado.
+
+model RegistroAsistencia {
+  id                    Int              @id @default(autoincrement())
+  empresa_id            Int
+  empresa               Empresa          @relation(fields: [empresa_id], references: [id])
+  empleado_id           Int
+  empleado              Empleado         @relation(fields: [empleado_id], references: [id])
+  fecha                 DateTime // fecha del día
+  estado                EstadoAsistencia @default(PRESENTE)
+  hora_ingreso          String? // "08:45" — texto para flexibilidad
+  hora_egreso           String? // "18:00"
+  horas_trabajadas      Decimal?         @db.Decimal(5, 2)
+  // Si llegó tarde: cuántos minutos
+  minutos_tardanza      Int?
+  // Justificación para JUSTIFICADO/LICENCIA
+  motivo                String?
+  // Si impacta en el presentismo del mes
+  descuenta_presentismo Boolean          @default(false)
+  // Vínculo con Jornada (si ya existe una para este día)
+  jornada_id            Int?             @unique
+  jornada               Jornada?         @relation(fields: [jornada_id], references: [id])
+  // Importado del reloj biométrico (cuando se instale)
+  origen                String? // "MANUAL" | "RELOJ_ET7" | "IMPORTACION"
+  // Hora de citación de ESE día (columna CONVOCATORIA de la planilla) — varía
+  // día a día (8:00, 9:00, viaje a medianoche). Null ⇒ se usa
+  // Empleado.hora_convocatoria_default para calcular minutos_tardanza.
+  hora_convocatoria     String?
+
+  // ── Flujo de aprobación de tardanzas (Matías) ────────────────────────────────
+  tardanza_requiere_aprobacion Boolean   @default(false)
+  tardanza_aprobada            Boolean? // null=pendiente, true=aprobada, false=rechazada
+  tardanza_aprobada_por        Int? // usuario_id de Matías
+  tardanza_aprobada_at         DateTime?
+  tardanza_nota                String? // comentario de Matías al aprobar/rechazar
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  @@unique([empresa_id, empleado_id, fecha])
+}
+
+// Resumen mensual de presentismo por empleado — se calcula al cerrar el mes
+// (POST /presentismo/cerrar-mes) y es lo que consume SueldosAdmin para
+// pre-cargar el premio_presentismo del período.
+model ResumenPresentismo {
+  id                     Int                 @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa             @relation(fields: [empresa_id], references: [id])
+  empleado_id            Int
+  empleado               Empleado            @relation(fields: [empleado_id], references: [id])
+  periodo_mes            Int
+  periodo_anio           Int
+  // Conteos del mes
+  dias_habiles           Int                 @default(0)
+  dias_presente          Int                 @default(0)
+  dias_tarde             Int                 @default(0)
+  dias_media_jornada     Int                 @default(0)
+  dias_ausente           Int                 @default(0)
+  dias_justificado       Int                 @default(0)
+  dias_libre             Int                 @default(0)
+  dias_vacaciones        Int                 @default(0)
+  dias_demora            Int                 @default(0)
+  dias_franco            Int                 @default(0) // francos compensatorios tomados en el mes
+  francos_ganados        Int                 @default(0) // domingos trabajados en el mes
+  total_horas            Decimal             @default(0) @db.Decimal(8, 2)
+  total_tardanzas_min    Int                 @default(0)
+  // Semáforo del informe mensual de Lorena (demoras / llegadas tarde / faltas)
+  semaforo               SemaforoPresentismo @default(EXCELENTE)
+  // Premio presentismo: true si corresponde cobrarlo
+  cobra_presentismo      Boolean             @default(true)
+  // Criterio: cobra si ausentes < X días (configurable) — ver
+  // calcularResumenPresentismo() en presentismo.controller.ts.
+  motivo_sin_presentismo String?
+  // audit
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
+
+  @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
+}
+
+model Anticipo {
+  id                   Int               @id @default(autoincrement())
+  empleado_id          Int
+  empleado             Empleado          @relation(fields: [empleado_id], references: [id])
+  empresa_id           Int
+  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
+  tipo                 TipoAnticipo      @default(ADELANTO)
+  monto                Decimal           @db.Decimal(10, 2)
+  fecha                DateTime
+  motivo               String?
+  descontado           Boolean           @default(false) // true cuando se aplicó en una liquidación
+  liquidacion_id       Int?
+  liquidacion          Liquidacion?      @relation(fields: [liquidacion_id], references: [id])
+  // Régimen de Sueldos Administrativos (LiquidacionAdmin) — paralelo a
+  // liquidacion_id de arriba, que es del régimen de jornaleros (Liquidacion).
+  // Un Anticipo se vincula a lo sumo a una de las dos, nunca ambas.
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  // Multa que originó este descuento (Multa.anticipo_id), si la cargó Lorena
+  multa                Multa?
+  // audit
+  created_at           DateTime          @default(now())
+  created_by           Int?
+}
+
+model Liquidacion {
+  id               Int               @id @default(autoincrement())
+  empleado_id      Int
+  empleado         Empleado          @relation(fields: [empleado_id], references: [id])
+  empresa_id       Int
+  empresa          Empresa           @relation(fields: [empresa_id], references: [id])
+  evento_id        Int? // si la liquidación es por evento específico
+  evento           Evento?           @relation(fields: [evento_id], references: [id])
+  // Período
+  fecha_desde      DateTime
+  fecha_hasta      DateTime
+  // Cálculo
+  // Snapshot del tipo de cálculo usado — no cambia si luego se edita el
+  // empleado, para que el historial de liquidaciones ya aprobadas sea estable.
+  tipo_liquidacion TipoLiquidacion   @default(LINEAL)
+  horas_normales   Decimal           @db.Decimal(8, 2)
+  horas_extras     Decimal           @db.Decimal(8, 2)
+  valor_hora       Decimal           @db.Decimal(10, 2) // snapshot al momento de liquidar
+  valor_hora_extra Decimal           @db.Decimal(10, 2) // snapshot
+  subtotal_horas   Decimal           @db.Decimal(10, 2) // normales × valor + extras × valor_extra
+  total_anticipos  Decimal           @db.Decimal(10, 2) // suma de anticipos descontados
+  total_descuentos Decimal           @db.Decimal(10, 2) // otros descuentos
+  total_a_cobrar   Decimal           @db.Decimal(10, 2) // subtotal - anticipos - descuentos
+  estado           EstadoLiquidacion @default(BORRADOR)
+  observaciones    String?
+  // Al aprobar → genera Egreso automático
+  movimiento_id    Int?              @unique
+  movimiento       Movimiento?       @relation(fields: [movimiento_id], references: [id])
+  // audit
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+  aprobado_por     Int?
+  aprobado_at      DateTime?
+  anticipos        Anticipo[]
+}
+
+// ─── SUELDOS ADMINISTRATIVOS (DOS57) ─────────────────────────────────────────
+// Régimen distinto al de Jornada/Liquidacion (jornaleros por hora/día): sueldo
+// mensual fijo con conceptos variables, acordado individualmente con Matías, y
+// posible reparto de costo entre empresas cuando el empleado trabaja para más
+// de una (ej. Mayra: 32% Enjoy / 68% DOS57).
+
+// Split de costo entre empresas — configurable por empleado. La suma de
+// porcentajes de todos los splits de un empleado debe dar 100 (se valida en
+// el controller, mismo criterio que ParteCCC/Evento.socios).
+model EmpleadoEmpresaSplit {
+  id          Int      @id @default(autoincrement())
+  empleado_id Int
+  empleado    Empleado @relation(fields: [empleado_id], references: [id])
+  empresa_id  Int
+  empresa     Empresa  @relation(fields: [empresa_id], references: [id])
+  porcentaje  Decimal  @db.Decimal(5, 2)
+
+  @@unique([empleado_id, empresa_id])
+}
+
+// Acuerdo individual de sueldo — se fija al contratar/renegociar. Un empleado
+// tiene a lo sumo un acuerdo (1:1); renegociar implica editar este registro
+// (ver validación en updateAcuerdo: no se puede tocar si ya hay liquidaciones
+// APROBADAS, para no invalidar snapshots históricos).
+model AcuerdoSueldo {
+  id                      Int              @id @default(autoincrement())
+  empleado_id             Int              @unique
+  empleado                Empleado         @relation(fields: [empleado_id], references: [id])
+  empresa_id              Int // empresa principal del acuerdo
+  empresa                 Empresa          @relation(fields: [empresa_id], references: [id])
+  // Acuerdo
+  fecha_inicio            DateTime
+  vigencia_meses          Int? // null = indefinido
+  escalafon               String? // "ADM 1", "ADM 2", "ADM 3"
+  tipo_seguro             String? // "ART", "SANCOR", "FEDERAL PATRONAL"
+  // Sueldo base
+  sueldo_basico           Decimal          @db.Decimal(12, 2)
+  horas_acordadas_mes     Int              @default(200)
+  // Conceptos fijos (configurables por acuerdo)
+  premio_incentivo        Decimal?         @db.Decimal(12, 2)
+  viatico                 Decimal?         @db.Decimal(12, 2)
+  premio_presentismo      Decimal?         @db.Decimal(12, 2)
+  // Horas extras
+  valor_hora_extra        Decimal?         @db.Decimal(10, 2)
+  // Teléfono (algunos empleados lo tienen) — antigüedad NO vive acá: se
+  // recalcula siempre desde fecha_inicio con la tabla fija de
+  // calcularSueldoAdmin.ts, nunca se persiste en el acuerdo.
+  telefono                Decimal?         @db.Decimal(10, 2)
+  // Viático por tipo de recorrido (choferes con bitácora de viajes) — cuando
+  // están cargados, el viático efectivo de la liquidación se calcula desde
+  // BitacoraViaje en vez de usar el campo `viatico` fijo de arriba. Ver
+  // resolverValorPorVuelta() en bitacoraViajes.controller.ts.
+  viatico_provincial      Decimal?         @db.Decimal(10, 2)
+  viatico_nacional        Decimal?         @db.Decimal(10, 2)
+  viatico_nacional_1000   Decimal?         @db.Decimal(10, 2)
+  // % de aumento que representa este acuerdo sobre el básico del acuerdo
+  // anterior — sólo informativo/histórico, no participa del cálculo mensual
+  // (ese es LiquidacionAdmin.porcentaje_aumento_aplicado, que se define al
+  // generar cada liquidación, no al renegociar el acuerdo).
+  porcentaje_acuerdo      Decimal?         @db.Decimal(5, 2)
+  // GENERAL = administrativos normales (Mayra, Andre, etc.) — usan horas
+  // acordadas/extras para el cálculo. CHOFER = Luis y similares — el sueldo
+  // NO depende de horas trabajadas (se registran sólo para control/banco de
+  // horas); los premios de viaje salen de BitacoraViaje. Ver
+  // calcularSueldoAdmin.ts.
+  categoria_acuerdo       CategoriaAcuerdo @default(GENERAL)
+  // Banco de horas acumuladas (empleados CHOFER) — puede ser negativo (se le
+  // debe trabajar) o positivo (se le debe pagar/compensar). Se actualiza sólo
+  // al APROBAR una liquidación (ver aprobarLiquidacionAdmin), nunca al
+  // generar un borrador ni al editarlo.
+  horas_pendientes_acum   Decimal?         @db.Decimal(8, 2)
+  // Premio de producción — monto fijo por cada evento del mes en que
+  // participó el empleado (distinto del viático y del sueldo básico). Ver
+  // EventoEmpleadoMes y calcularSueldoAdmin.ts.
+  cobra_premio_produccion Boolean          @default(false)
+  valor_premio_produccion Decimal?         @db.Decimal(10, 2)
+  // Estado del acuerdo
+  activo                  Boolean          @default(true)
+  notas                   String?
+  // audit
+  created_at              DateTime         @default(now())
+  updated_at              DateTime         @updatedAt
+  deleted_at              DateTime?
+  created_by              Int?
+
+  liquidaciones LiquidacionAdmin[]
+}
+
+// Eventos del mes en que participó un empleado con premio de producción —
+// distinto de Jornada (que es para jornaleros por día). Cada fila es un
+// evento (del sistema o texto libre) con el monto del premio correspondiente;
+// calcularSueldoAdmin.ts suma todas las de un período para
+// premio_produccion_total. Ver AcuerdoSueldo.cobra_premio_produccion.
+model EventoEmpleadoMes {
+  id               Int      @id @default(autoincrement())
+  empresa_id       Int
+  empresa          Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id      Int
+  empleado         Empleado @relation(fields: [empleado_id], references: [id])
+  evento_id        Int?
+  evento           Evento?  @relation(fields: [evento_id], references: [id])
+  evento_nombre    String? // si el evento no está cargado en el sistema
+  periodo_mes      Int
+  periodo_anio     Int
+  cobra_premio     Boolean  @default(true)
+  monto_premio     Decimal? @db.Decimal(10, 2)
+  // Premio PAX (líderes Fofi/Nestoras): cantidad_pax × valor_por_pax ×
+  // dias_trabajados. valor_por_pax lo define Matías por evento (no es fijo).
+  // premio_pax_total se persiste calculado — se SUMA a monto_premio en el
+  // total del premio de producción (ver calcularPremioPax en calcularSueldoAdmin.ts).
+  cantidad_pax     Int?
+  valor_por_pax    Decimal? @db.Decimal(10, 2)
+  dias_trabajados  Int?     @default(1)
+  premio_pax_total Decimal? @db.Decimal(12, 2)
+  created_at       DateTime @default(now())
+  created_by       Int?
+
+  @@unique([empleado_id, evento_id, periodo_mes, periodo_anio])
+}
+
+enum EstadoLiquidacionAdmin {
+  BORRADOR
+  APROBADA
+  PAGADA
+  CANCELADA
+}
+
+enum CategoriaAcuerdo {
+  GENERAL // administrativos normales (Mayra, Andre, etc.)
+  CHOFER // Luis y similares — sin horas acordadas en el cálculo
+}
+
+enum TipoAumento {
+  MANUAL // % ingresado manualmente por Matías
+  IPC // % traído del INDEC
+  SIN_AUMENTO
+}
+
+// Liquidación mensual administrativa — un registro por empleado/mes/año.
+model LiquidacionAdmin {
+  id                          Int                    @id @default(autoincrement())
+  empleado_id                 Int
+  empleado                    Empleado               @relation(fields: [empleado_id], references: [id])
+  empresa_id                  Int // empresa principal (snapshot del acuerdo)
+  empresa                     Empresa                @relation(fields: [empresa_id], references: [id])
+  acuerdo_id                  Int
+  acuerdo                     AcuerdoSueldo          @relation(fields: [acuerdo_id], references: [id])
+  // Período
+  periodo_mes                 Int // 1-12
+  periodo_anio                Int
+  // Snapshots del acuerdo al momento de liquidar — estables aunque después se
+  // edite/renegocie el acuerdo (mismo criterio que Liquidacion.tipo_liquidacion).
+  sueldo_basico               Decimal                @db.Decimal(12, 2)
+  horas_acordadas             Int
+  escalafon                   String?
+  // Conceptos calculados
+  horas_trabajadas            Decimal                @db.Decimal(8, 2)
+  horas_extras                Decimal                @db.Decimal(8, 2)
+  valor_hora_extra            Decimal?               @db.Decimal(10, 2)
+  importe_horas_extras        Decimal                @default(0) @db.Decimal(12, 2)
+  premio_incentivo            Decimal                @default(0) @db.Decimal(12, 2)
+  // Viático fijo del acuerdo — para CHOFER con bitácora, YA NO se pisa con el
+  // total de la bitácora (ver premio_viaje abajo); es siempre el monto fijo.
+  viatico                     Decimal                @default(0) @db.Decimal(12, 2)
+  // Premio por vuelta (choferes con bitácora de viajes) — vueltas × valor por
+  // tipo de recorrido (Provincial/Nacional/Nacional+1000). Antes se sumaba
+  // dentro de `viatico`, confundiendo el viático fijo con este premio
+  // variable — ver calcularSueldoAdmin.ts y bitacoraViajes.controller.ts.
+  premio_viaje                Decimal                @default(0) @db.Decimal(12, 2)
+  premio_presentismo          Decimal                @default(0) @db.Decimal(12, 2)
+  // Premio de producción — suma de EventoEmpleadoMes.monto_premio del período
+  // (empleados con AcuerdoSueldo.cobra_premio_produccion=true). eventos_mes
+  // es el snapshot de qué eventos se incluyeron y su monto, estable aunque
+  // después se edite/elimine el EventoEmpleadoMes original.
+  premio_produccion_total     Decimal                @default(0) @db.Decimal(12, 2)
+  eventos_mes                 Json?
+  antiguedad_anios            Int                    @default(0)
+  importe_antiguedad          Decimal                @default(0) @db.Decimal(12, 2)
+  telefono                    Decimal                @default(0) @db.Decimal(12, 2)
+  vacaciones_aguinaldo        Decimal                @default(0) @db.Decimal(12, 2)
+  vales_descuentos            Decimal                @default(0) @db.Decimal(12, 2)
+  // Cuotas de PrestamoEmpleado descontadas al aprobar — separado de
+  // vales_descuentos porque cada una queda trazada en PagoPrestamoEmpleado
+  // (afecta cuotas_pagadas/saldado del préstamo), a diferencia de un
+  // descuento manual suelto. Ver aprobarLiquidacionAdmin.
+  prestamos_descontados       Decimal                @default(0) @db.Decimal(12, 2)
+  // Totales
+  subtotal_bruto              Decimal                @db.Decimal(12, 2)
+  total_a_cobrar              Decimal                @db.Decimal(12, 2)
+  // Split entre empresas (snapshot al momento de liquidar) —
+  // [{ empresa_id, empresa_nombre, porcentaje, monto }]
+  splits                      Json?
+  // Estado
+  estado                      EstadoLiquidacionAdmin @default(BORRADOR)
+  observaciones               String?
+  // Al aprobar → uno o más MovimientoCaja de egreso (uno por empresa del
+  // split, o uno solo si no hay split) — ver aprobarLiquidacionAdmin.
+  movimientos_caja            MovimientoCaja[]       @relation("LiquidacionAdminMovimientos")
+  // Cuotas de préstamo descontadas al aprobar esta liquidación.
+  pagos_prestamos             PagoPrestamoEmpleado[]
+  // Registros de bitácora de viajes (choferes) vinculados a esta liquidación
+  // — se vinculan al generar, si el empleado tiene bitácora en el período.
+  bitacora_viajes             BitacoraViaje[]
+  // Aumento aplicado sobre el básico al generar esta liquidación — snapshot,
+  // independiente de AcuerdoSueldo.porcentaje_acuerdo (que es histórico del
+  // acuerdo, no del período). Ver calcularSueldoAdmin.ts.
+  porcentaje_aumento_aplicado Decimal?               @db.Decimal(5, 2)
+  tipo_aumento                TipoAumento?
+  ipc_mes_referencia          String? // ej: "julio-2026" — mes real que devolvió el INDEC, no necesariamente periodo_mes/anio (hay rezago de publicación)
+  ipc_valor_aplicado          Decimal?               @db.Decimal(5, 2)
+  // Banco de horas (empleados CHOFER) — snapshot al generar; se persiste en
+  // AcuerdoSueldo.horas_pendientes_acum recién al APROBAR (ver
+  // aprobarLiquidacionAdmin), no al generar el borrador.
+  horas_pendientes_anterior   Decimal?               @db.Decimal(8, 2)
+  horas_pendientes_nuevo      Decimal?               @db.Decimal(8, 2)
+  // Vales/descuentos (Anticipo) aplicados a esta liquidación — ver
+  // vales_descuentos arriba, que es el total snapshot; acá quedan los
+  // registros individuales para trazabilidad (mismo criterio que
+  // pagos_prestamos/bitacora_viajes).
+  anticipos                   Anticipo[]
+  // Excedentes de horas (Fofi/Nestoras) pagados vinculando esta liquidación —
+  // ver ExcedenteHoras.liquidacion_admin_id.
+  excedentes_horas            ExcedenteHoras[]
+  // audit
+  created_at                  DateTime               @default(now())
+  updated_at                  DateTime               @updatedAt
+  aprobado_por                Int?
+  aprobado_at                 DateTime?
+
+  @@unique([empleado_id, periodo_mes, periodo_anio])
+}
+
+// ─── ESCALAFONES ADMINISTRATIVOS (valores por categoría, configurables) ──────
+// Los montos de Viático/Presentismo/Teléfono/Incentivo varían por escalafón
+// (ADM 1/2/3) y cambian con cada aumento negociado por Matías. Se configuran
+// acá y sirven para pre-cargar el paso 3 del wizard de AcuerdoSueldo — no hay
+// FK real entre AcuerdoSueldo.escalafon (texto libre, admite "otro" fuera de
+// tabla) y este modelo: el match es por nombre, sólo para pre-carga.
+model EscalafonAdmin {
+  id                         Int       @id @default(autoincrement())
+  empresa_id                 Int
+  empresa                    Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre                     String // "ADM 1", "ADM 2", "ADM 3"
+  orden                      Int // para ordenar en la UI
+  // Valores configurables
+  viatico                    Decimal?  @db.Decimal(12, 2)
+  premio_presentismo         Decimal?  @db.Decimal(12, 2)
+  telefono                   Decimal?  @db.Decimal(12, 2)
+  premio_incentivo           Decimal?  @db.Decimal(12, 2)
+  // Premios por viaje (choferes con bitácora) — pre-cargan Paso 3 del wizard
+  // de AcuerdoSueldo cuando categoria_acuerdo=CHOFER (ver AcuerdoSueldo.viatico_*).
+  premio_viaje_provincial    Decimal?  @db.Decimal(10, 2)
+  premio_viaje_nacional      Decimal?  @db.Decimal(10, 2)
+  premio_viaje_nacional_1000 Decimal?  @db.Decimal(10, 2)
+  // audit
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
+  deleted_at                 DateTime?
+  created_by                 Int?
+
+  @@unique([empresa_id, nombre])
+}
+
+// ─── PRÉSTAMOS A EMPLEADOS ────────────────────────────────────────────────────
+// Distinto de Anticipo (adelanto simple, se descuenta entero en la próxima
+// liquidación): un préstamo se paga en cuotas y puede quedar pendiente entre
+// varios meses. Sólo aplica al régimen de Sueldos Administrativos — se
+// descuenta explícitamente al aprobar una LiquidacionAdmin, no automático.
+model PrestamoEmpleado {
+  id              Int       @id @default(autoincrement())
+  empleado_id     Int
+  empleado        Empleado  @relation(fields: [empleado_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa   @relation(fields: [empresa_id], references: [id])
+  fecha           DateTime
+  detalle         String // "RECARGA MATAFUEGO", "Adelanto", etc.
+  monto_total     Decimal   @db.Decimal(12, 2)
+  // Pago en cuotas
+  cantidad_cuotas Int       @default(1)
+  cuotas_pagadas  Int       @default(0)
+  monto_cuota     Decimal   @db.Decimal(12, 2)
+  // Estado
+  saldado         Boolean   @default(false)
+  // audit
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+
+  pagos PagoPrestamoEmpleado[]
+}
+
+// Una cuota efectivamente descontada — vinculada a la LiquidacionAdmin que la
+// generó (null si en el futuro se registra un pago fuera de una liquidación).
+model PagoPrestamoEmpleado {
+  id                   Int               @id @default(autoincrement())
+  prestamo_id          Int
+  prestamo             PrestamoEmpleado  @relation(fields: [prestamo_id], references: [id])
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  monto                Decimal           @db.Decimal(12, 2)
+  fecha                DateTime
+  // audit
+  created_at           DateTime          @default(now())
+}
+
+// ─── BITÁCORA DE VIAJES (choferes) ────────────────────────────────────────────
+// Registro diario de viajes de choferes (ej. Luis) — determina el viático
+// mensual según tipo de recorrido. Reemplaza el Excel de bitácora manual.
+// Se vincula a una LiquidacionAdmin recién al generar la liquidación del mes
+// (mismo patrón que PagoPrestamoEmpleado.liquidacion_admin_id).
+
+enum TipoRecorrido {
+  PROVINCIAL // dentro de la provincia
+  NACIONAL // fuera de la provincia
+  NACIONAL_1000 // más de 1000km
+}
+
+// Origen del registro. RRHH = bitácora de viáticos de choferes (alta manual o
+// importador del Excel de sueldos de Mayra) — es la ÚNICA que alimenta el
+// viático de la liquidación (calcularResumenBitacora). FLOTA = viajes de
+// camiones de las planillas de campo de Flor (importador de Flota): traen km,
+// camión, caja entregada, pero NO cuentan para sueldos — si no, el chofer
+// cobraría el viático dos veces (el mismo viaje está en ambas planillas).
+enum OrigenBitacoraViaje {
+  RRHH
+  FLOTA
+}
+
+model BitacoraViaje {
+  id                Int                 @id @default(autoincrement())
+  origen            OrigenBitacoraViaje @default(RRHH)
+  // null sólo en origen FLOTA: chofer de la planilla que no matcheó ningún
+  // Empleado (el nombre queda en chofer_nombre). RRHH siempre lo tiene.
+  empleado_id       Int?
+  empleado          Empleado?           @relation(fields: [empleado_id], references: [id])
+  empresa_id        Int
+  empresa           Empresa             @relation(fields: [empresa_id], references: [id])
+  // Datos del viaje — fecha null sólo en origen FLOTA (filas de la planilla
+  // de Flor sin fecha cargada; no se inventa una heredando la fila anterior)
+  fecha             DateTime?
+  convocatoria      String? // nombre del evento/trabajo (en FLOTA: columna EVENTO / nombre de hoja)
+  dia_semana        String? // calculado automáticamente desde `fecha`
+  hora_inicio       String?
+  hora_fin          String?
+  horas_trabajadas  Decimal?            @db.Decimal(5, 2)
+  // Recorrido
+  ejido             String? // "Córdoba", "Buenos Aires", etc.
+  recorrido         String? // descripción del recorrido (en FLOTA: TRAMO / VIAJE)
+  tipo_recorrido    TipoRecorrido? // obligatorio en RRHH (lo valida el controller); null en FLOTA
+  cantidad_vueltas  Int                 @default(1)
+  // Viático calculado
+  valor_por_vuelta  Decimal?            @db.Decimal(10, 2) // snapshot del acuerdo al momento de cargar
+  viatico_calculado Decimal?            @db.Decimal(10, 2) // cantidad_vueltas × valor_por_vuelta
+  observaciones     String?
+  // Vínculo con un Evento real (Logística del evento). `convocatoria` sigue
+  // siendo el texto libre de la planilla; evento_id es opcional y lo setea el
+  // alta manual o el importador cuando el usuario confirma la sugerencia.
+  evento_id         Int?
+  evento            Evento?             @relation(fields: [evento_id], references: [id])
+
+  // ── Viajes de camiones (origen FLOTA, planillas de Flor) ─────────────────────
+  camion_id               Int?
+  camion                  Camion?   @relation(fields: [camion_id], references: [id])
+  patente_camion          String? // normalizada sin espacios ("HKQ258"), aunque no exista el Camion
+  alias_camion            String? // "C1", "C2"… de la planilla — n° de carga del evento, NO un vehículo
+  chofer_nombre           String? // nombre tal como vino en la planilla ("LUIS", "TATI")
+  km_iniciales            Int?
+  km_finales              Int?
+  km_recorridos           Int?
+  monto_combustible       Decimal?  @db.Decimal(14, 2) // $ de la carga en ruta (CARGA DE COMBUSTIBLE)
+  litros_cargados_ruta    Decimal?  @db.Decimal(10, 2) // litros cargados en el viaje (≠ CargaCombustible)
+  litros_consumidos       Decimal?  @db.Decimal(10, 2) // CANT. DE L. CONSUMIDOS (A) / CANTIDAD DE LITROS QUE CONSUMIO (B)
+  km_por_litro            Decimal?  @db.Decimal(6, 2) // CANT. DE KM x L de la planilla; si falta, km_recorridos / litros_consumidos
+  litros_iniciales_tanque Decimal?  @db.Decimal(10, 2) // fila COMB.INICIAL de la hoja por camión — sólo en el 1er viaje de la gira
+  monto_caja_entregada    Decimal?  @db.Decimal(14, 2) // plata que se le da al chofer para el viaje
+  horario_salida          DateTime?
+  horario_llegada         DateTime?
+
+  // Vínculo con liquidación — null hasta que se genera la liquidación del mes
+  liquidacion_admin_id Int?
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+  // audit
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+
+  @@index([empresa_id, origen])
+  @@index([evento_id])
+}
+
+// Nombre de evento tal como aparece en las planillas de viajes de Flor
+// ("SGO ANIVERSARIO", nombre de hoja o título de bloque) → Evento real que el
+// usuario confirmó al importar. La próxima importación lo propone directo,
+// aunque el nombre no se parezca. Clave normalizada: sin tildes, minúsculas,
+// signos → espacio (ver normNombreEvento en bitacoraFlota.controller).
+model AliasEventoPlanilla {
+  id                 Int      @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa  @relation(fields: [empresa_id], references: [id])
+  nombre_normalizado String
+  nombre_planilla    String // última variante vista, para mostrar
+  evento_id          Int
+  evento             Evento   @relation(fields: [evento_id], references: [id], onDelete: Cascade)
+  created_by         Int?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@unique([empresa_id, nombre_normalizado])
+  @@index([evento_id])
+}
+
+// ─── AFIP Y PRÉSTAMOS BANCARIOS ───────────────────────────────────────────────
+
+enum EstadoPlanAFIP {
+  ACTIVO
+  CANCELADO
+  FINALIZADO
+  CADUCADO
+}
+
+model PlanAFIP {
+  id                   Int            @id @default(autoincrement())
+  empresa_id           Int
+  empresa              Empresa        @relation(fields: [empresa_id], references: [id])
+  // Datos del plan
+  numero_plan          String? // N° asignado por AFIP
+  descripcion          String // "Moratoria 2024", "SIRADIG", etc.
+  fecha_inicio         DateTime
+  capital_original     Decimal        @db.Decimal(15, 2)
+  cantidad_cuotas      Int
+  valor_cuota_aprox    Decimal?       @db.Decimal(12, 2)
+  interes_financiero   Decimal?       @db.Decimal(5, 2) // % anual
+  interes_resarcitorio Decimal?       @db.Decimal(5, 2) // % punitorio
+  estado               EstadoPlanAFIP @default(ACTIVO)
+  notas                String?
+  // Titular (puede ser la empresa o un socio a título personal)
+  titular_nombre       String? // "DOS57 SRL" o "Sergio Bibiloni"
+  titular_cuit         String?
+  // audit
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+
+  cuotas     CuotaPlanAFIP[]
+  documentos DocumentoPlanAFIP[]
+}
+
+model CuotaPlanAFIP {
+  id              Int       @id @default(autoincrement())
+  plan_id         Int
+  plan            PlanAFIP  @relation(fields: [plan_id], references: [id])
+  numero_cuota    Int
+  fecha_debito    DateTime // fecha en que se debita
+  capital         Decimal?  @db.Decimal(12, 2)
+  interes         Decimal?  @db.Decimal(12, 2)
+  total_cuota     Decimal   @db.Decimal(12, 2)
+  fecha_pago_real DateTime? // null si no se pagó
+  pagada          Boolean   @default(false)
+  notas           String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+}
+
+model DocumentoPlanAFIP {
+  id           Int      @id @default(autoincrement())
+  plan_id      Int
+  plan         PlanAFIP @relation(fields: [plan_id], references: [id])
+  nombre       String
+  descripcion  String? // "Adhesión", "Comprobante cuota 3", etc.
+  archivo_data Bytes // PDF/imagen en DB (mismo patrón que Factura)
+  archivo_mime String
+  archivo_size Int
+  created_at   DateTime @default(now())
+  created_by   Int?
+}
+
+enum EstadoPrestamo {
+  ACTIVO
+  CANCELADO_ANTICIPADO
+  FINALIZADO
+}
+
+model PrestamoBancario {
+  id                  Int            @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa        @relation(fields: [empresa_id], references: [id])
+  // Datos del préstamo
+  entidad             String // "Bancor", "Galicia", "Nación"
+  numero_operacion    String?
+  tipo                String? // "Personal", "Hipotecario", "Prendario"
+  fecha_otorgamiento  DateTime
+  capital_original    Decimal        @db.Decimal(15, 2)
+  moneda              Moneda         @default(ARS)
+  tasa_nominal_anual  Decimal?       @db.Decimal(5, 2) // % TNA
+  tasa_efectiva_anual Decimal?       @db.Decimal(5, 2) // % TEA
+  cantidad_cuotas     Int
+  dia_debito          Int? // día del mes que se debita (ej: 10)
+  estado              EstadoPrestamo @default(ACTIVO)
+  notas               String?
+  // audit
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+
+  cuotas     CuotaPrestamo[]
+  documentos DocumentoPrestamo[]
+}
+
+model CuotaPrestamo {
+  id                Int              @id @default(autoincrement())
+  prestamo_id       Int
+  prestamo          PrestamoBancario @relation(fields: [prestamo_id], references: [id])
+  numero_cuota      Int
+  fecha_vencimiento DateTime
+  capital           Decimal?         @db.Decimal(12, 2)
+  interes           Decimal?         @db.Decimal(12, 2)
+  iva_interes       Decimal?         @db.Decimal(12, 2)
+  seguro            Decimal?         @db.Decimal(12, 2)
+  otros_impuestos   Decimal?         @db.Decimal(12, 2)
+  total_cuota       Decimal          @db.Decimal(12, 2)
+  fecha_pago_real   DateTime?
+  pagada            Boolean          @default(false)
+  notas             String?
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+}
+
+model DocumentoPrestamo {
+  id           Int              @id @default(autoincrement())
+  prestamo_id  Int
+  prestamo     PrestamoBancario @relation(fields: [prestamo_id], references: [id])
+  nombre       String
+  descripcion  String?
+  archivo_data Bytes
+  archivo_mime String
+  archivo_size Int
+  created_at   DateTime         @default(now())
+  created_by   Int?
+}
+
+// ─── SGR — seguimiento informativo de cupo y vinculación ────────────────────
+// Puramente informativo (confirmado por Mayra) — no dispara movimientos ni
+// afecta ningún cálculo, sólo alertas de vencimiento/cupo bajo.
+
+model SGR {
+  id                 Int       @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre             String // "Garantizar", "Acindar", etc.
+  estado_vinculacion String    @default("ACTIVO") // "ACTIVO" | "SUSPENDIDO" | "VENCIDO"
+  fecha_vinculacion  DateTime?
+  fecha_vencimiento  DateTime?
+  // Cupos
+  cupo_total         Decimal?  @db.Decimal(15, 2)
+  cupo_utilizado     Decimal?  @db.Decimal(15, 2)
+  // Persistido (no derivado en la query) — se recalcula en cada alta/baja,
+  // mismo criterio que CuentaCorriente.saldo_actual.
+  cupo_disponible    Decimal?  @db.Decimal(15, 2)
+  moneda             Moneda    @default(ARS)
+  // Contacto en la SGR
+  contacto_nombre    String?
+  contacto_tel       String?
+  notas              String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+}
+
+// ─── CIERRE CONTABLE — foto financiera para el estudio contable ─────────────
+// El estudio pide el mismo formulario todos los años a una fecha de corte
+// fija por empresa (DOS57: 31/05). No es un cálculo en vivo — se "genera" (se
+// congela) a pedido y se puede regenerar mientras esté en BORRADOR.
+
+model CierreContable {
+  id           Int      @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa  @relation(fields: [empresa_id], references: [id])
+  fecha_corte  DateTime // 31/05/2026 para DOS57
+  periodo_anio Int // 2026
+  estado       String   @default("BORRADOR") // BORRADOR / ENVIADO / APROBADO
+  // Snapshot calculado a la fecha de corte — ver generarCierreContable() en
+  // cierreContable.controller.ts para la forma exacta (cajas/bancos/
+  // inversiones/deudores/acreedores/mercaderias/creditos/deudas), y
+  // snapshot.notas_por_seccion para las aclaraciones libres de Mayra (no hay
+  // columna dedicada por sección, van dentro del mismo JSON).
+  snapshot     Json
+  notas        String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  created_by   Int?
+
+  @@unique([empresa_id, fecha_corte])
 }
 
 // ─── AUDITORÍA ────────────────────────────────────────────────────────────────
@@ -427,6 +2713,8 @@ model AuditoriaLog {
   id            Int      @id @default(autoincrement())
   usuario_id    Int?
   usuario       Usuario? @relation(fields: [usuario_id], references: [id])
+  empresa_id    Int?
+  empresa       Empresa? @relation(fields: [empresa_id], references: [id])
   accion        String
   entidad       String
   entidad_id    Int?
@@ -436,4 +2724,1168 @@ model AuditoriaLog {
   datos_despues Json?
   ip            String?
   created_at    DateTime @default(now())
+}
+
+// ─── PRE-MACRO (wizard de creación de evento) ────────────────────────────────
+// Punto de entrada para crear un evento nuevo: ayuda-memoria de 4 pasos que
+// termina en un resumen + selección de rubros preseleccionados. Aplica a
+// Enjoy y DOS57 por igual — la lógica de sugerencia de rubros difiere por
+// empresa (ver src/lib/sugerirRubros.ts).
+
+model PreMacro {
+  id          Int     @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa @relation(fields: [empresa_id], references: [id])
+  // Estado del wizard
+  paso_actual Int     @default(1)
+  completada  Boolean @default(false)
+  // Evento resultante (null hasta que se confirma)
+  evento_id   Int?    @unique
+  evento      Evento? @relation(fields: [evento_id], references: [id])
+
+  // PASO 1 — El evento
+  nombre_evento String?
+  tipo_evento   String? // "Festival", "Corporativo", "Privado", "Deportivo", otro
+  descripcion   String?
+  para_que_es   String? // texto libre: para qué es el evento
+  es_privado    Boolean         @default(false)
+  modalidad     ModalidadEvento @default(CENTRO_COSTOS) // se copia al Evento al confirmar
+
+  // PASO 2 — Dónde y cuándo
+  fecha_inicio    DateTime?
+  fecha_fin       DateTime?
+  hora_inicio     String? // "20:00"
+  hora_fin        String?
+  lugar_nombre    String? // "Estadio Mario Kempes"
+  lugar_ciudad    String?
+  lugar_provincia String?
+  lugar_direccion String?
+  dias_montaje    Int? // días de armado previos al evento
+  dias_desmontaje Int? // días de desarmado posteriores
+
+  // PASO 3 — Quién y cómo
+  cliente_nombre    String? // quién lo encarga
+  razon_social      String? // razón social que paga
+  cuit_pagador      String?
+  quien_lo_hace     String? // responsable interno de Enjoy/DOS57
+  contacto_cliente  String?
+  telefono_cliente  String?
+  presupuesto_total Decimal? @db.Decimal(12, 2)
+  moneda            Moneda   @default(ARS)
+
+  // PASO 4 — Personal y logística
+  lleva_empleados         Boolean @default(true)
+  cantidad_estimada_staff Int?
+  requiere_hospedaje      Boolean @default(false)
+  ciudad_hospedaje        String?
+  requiere_traslado       Boolean @default(false)
+  notas_traslado          String? // "2 camiones + 1 van"
+  requiere_comidas        Boolean @default(false)
+  cantidad_dias_comida    Int?
+  observaciones_generales String?
+
+  // Rubros sugeridos (JSON array de { rubro_id, rubro_nombre, razon, seleccionado })
+  rubros_sugeridos   Json?
+  rubros_confirmados Json?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  // Socios del evento (mismo modelo conceptual que Evento.socios)
+  socios SocioPreMacro[]
+}
+
+model SocioPreMacro {
+  id           Int      @id @default(autoincrement())
+  pre_macro_id Int
+  pre_macro    PreMacro @relation(fields: [pre_macro_id], references: [id])
+  nombre       String
+  porcentaje   Decimal  @db.Decimal(5, 2)
+}
+
+// ─── CUENTA CORRIENTE GENÉRICA ────────────────────────────────────────────────
+// Patrón recurrente detectado en las planillas de Mayra: tercero → movimientos
+// Debe/Haber → saldo acumulado, con soporte de moneda extranjera y reparto
+// porcentual entre partes (ej. clubes deportivos, proveedores especiales tipo
+// Airasca/Layher BB, socios de negocios compartidos tipo Nave 15).
+
+enum TipoTercero {
+  PROVEEDOR // proveedor ya registrado en el sistema (usa proveedor_id)
+  CLIENTE // cliente externo, sin ficha propia
+  SOCIO // socio de negocio compartido (ej. Nave 15, Coworking)
+  CLUB // club deportivo u organización
+  OTRO // cualquier otro tercero, texto libre
+}
+
+// Moneda propia del módulo — históricamente separada de Moneda porque ese
+// enum sólo tenía ARS/USD. Moneda ganó EUR con el soporte multi-moneda de
+// Movimiento/Factura/Echeq, así que hoy son equivalentes; se mantiene como
+// tipo aparte por prolijidad de dominio (este módulo es cuenta corriente,
+// no caja de eventos) y para no acoplar CCC a cambios futuros de Moneda.
+enum MonedaCCC {
+  ARS
+  USD
+  EUR
+}
+
+model CuentaCorriente {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+
+  // Tercero — o bien un Proveedor ya cargado, o bien datos libres
+  tipo_tercero   TipoTercero
+  proveedor_id   Int?
+  proveedor      Proveedor?  @relation(fields: [proveedor_id], references: [id])
+  tercero_nombre String?
+  tercero_cuit   String?
+
+  // Configuración
+  nombre      String // "Cta Cte Airasca", "Cta Cte Talleres"
+  moneda      MonedaCCC @default(ARS)
+  descripcion String?
+  activa      Boolean   @default(true)
+
+  // Saldo desnormalizado — se recalcula sumando los movimientos activos cada
+  // vez que uno se crea/edita/elimina (mismo criterio que Factura.importe_pagado
+  // vía recalcularFactura, en vez de acumular con +=, para no arrastrar drift).
+  // Positivo = a favor nuestro (nos deben) · Negativo = a favor del tercero
+  // (les debemos). Ver TipoMovCCC para la convención de signo por movimiento.
+  saldo_actual Decimal @default(0) @db.Decimal(15, 2)
+
+  // Reparto porcentual entre partes (ej. Nave 15 — DOS57/Jiménez 50/50)
+  tiene_reparto Boolean @default(false)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+
+  partes            ParteCCC[]
+  movimientos       MovimientoCCC[]
+  serviciosTaller   ServicioTaller[]
+  partesEspacio     ParteEspacio[]
+  cargasCombustible CargaCombustible[]
+}
+
+// Reparto porcentual entre partes de una cuenta corriente (ej: Nave 15 — 50/50).
+// La suma de porcentajes = 100 se valida en el controller, no en el schema.
+model ParteCCC {
+  id            Int             @id @default(autoincrement())
+  cuenta_ccc_id Int
+  cuenta_ccc    CuentaCorriente @relation(fields: [cuenta_ccc_id], references: [id])
+  nombre        String // "DOS57", "Jiménez", "Galera"
+  porcentaje    Decimal         @db.Decimal(5, 2)
+}
+
+// DEBE suma al saldo, HABER resta — saldo = Σ DEBE − Σ HABER (+ AJUSTE con su
+// propio signo). Positivo = el tercero nos debe, negativo = nosotros les debemos.
+enum TipoMovCCC {
+  DEBE // cargo al tercero — lo que nos debe, aumenta el saldo a favor nuestro
+  HABER // pago o abono al tercero — reduce el saldo a favor nuestro
+  AJUSTE // corrección manual; el monto lleva signo propio (+/-)
+}
+
+model MovimientoCCC {
+  id            Int             @id @default(autoincrement())
+  cuenta_ccc_id Int
+  cuenta_ccc    CuentaCorriente @relation(fields: [cuenta_ccc_id], references: [id])
+  empresa_id    Int
+  empresa       Empresa         @relation(fields: [empresa_id], references: [id])
+
+  tipo        TipoMovCCC
+  fecha       DateTime
+  concepto    String
+  descripcion String?
+  monto       Decimal    @db.Decimal(15, 2) // DEBE/HABER siempre positivo; AJUSTE lleva signo
+  moneda      MonedaCCC
+  tasa_cambio Decimal?   @db.Decimal(10, 4) // cotización a ARS al momento del movimiento
+  monto_ars   Decimal?   @db.Decimal(15, 2) // monto convertido a ARS con tasa_cambio
+  // Saldo acumulado de la cuenta después de este movimiento — persistido y
+  // recalculado en cada alta/baja (ver lib/recalcularSaldoCCC.ts), mismo
+  // criterio que Movimiento.saldo.
+  saldo       Decimal    @default(0) @db.Decimal(15, 2)
+
+  // Vínculo opcional con otros módulos
+  factura_id Int?
+  factura    Factura? @relation(fields: [factura_id], references: [id])
+  evento_id  Int?
+  evento     Evento?  @relation(fields: [evento_id], references: [id])
+
+  // Documento adjunto — mismo patrón que Factura.pdf_data (bytes en DB +
+  // endpoint de descarga dedicado, no hay storage externo en este proyecto)
+  documento_data    Bytes?
+  documento_nombre  String?
+  documento_mime    String?
+  documento_tamanio Int?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+  updated_by Int?
+
+  repartosLineaGasto RepartoLineaGasto[]
+}
+
+// ─── FACTURACIÓN EMITIDA A CLIENTES (cuentas a cobrar) ───────────────────────
+// Inverso de Factura (cuentas a pagar): acá nosotros facturamos a un cliente y
+// seguimos el cobro. Puede o no estar asociada a un evento (ej. DOS57
+// facturando el vallado de un partido, o alquiler de estructuras Layher sin
+// evento formal), y el cobro puede repartirse entre varias razones sociales
+// (ver RepartoFacturaEmitida — caso Talleres/Hockey).
+
+enum TipoComprobanteEmitido {
+  FACTURA_A
+  FACTURA_B
+  FACTURA_C
+  FACTURA_MIPYMES_FCE_A
+  FACTURA_MIPYMES_FCE_B
+  NOTA_CREDITO_A
+  NOTA_CREDITO_B
+  NOTA_CREDITO_C
+  NOTA_DEBITO_A
+  NOTA_DEBITO_B
+  NOTA_DEBITO_C
+  RECIBO
+  RECIBO_B
+  LIQUIDACION_A
+  TIQUE_FACTURA_A
+}
+
+enum EstadoFacturaEmitida {
+  EMITIDA // generada, pendiente de cobro
+  COBRADA_PARCIAL // cobro parcial registrado
+  COBRADA // cobro total confirmado
+  INCOBRABLE // se dio por perdida
+  ANULADA
+}
+
+enum CondicionCliente {
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTISTA
+  EXENTO
+  CONSUMIDOR_FINAL
+  EXTERIOR
+}
+
+model FacturaEmitida {
+  id                Int                    @id @default(autoincrement())
+  empresa_id        Int
+  empresa           Empresa                @relation(fields: [empresa_id], references: [id])
+  // Comprobante AFIP
+  tipo_comprobante  TipoComprobanteEmitido
+  punto_venta       Int                    @default(1)
+  numero            String? // número de factura
+  fecha_emision     DateTime
+  // Cliente
+  cliente_nombre    String
+  cliente_cuit      String?
+  condicion_cliente CondicionCliente?
+  // Montos
+  neto_gravado      Decimal?               @db.Decimal(15, 2)
+  iva               Decimal?               @db.Decimal(15, 2)
+  otros_impuestos   Decimal?               @db.Decimal(15, 2)
+  total             Decimal                @db.Decimal(15, 2)
+  moneda            Moneda                 @default(ARS)
+  tasa_cambio       Decimal?               @db.Decimal(10, 4)
+  total_ars         Decimal?               @db.Decimal(15, 2)
+  // Cobro
+  forma_pago        String? // "Transferencia", "Echeq", "Efectivo"
+  fecha_vencimiento DateTime?
+  estado            EstadoFacturaEmitida   @default(EMITIDA)
+  // Vínculo opcional con evento
+  evento_id         Int?
+  evento            Evento?                @relation(fields: [evento_id], references: [id])
+  // Descripción del servicio
+  concepto          String?
+  observaciones     String?
+  // Documento adjunto (PDF) — mismo patrón que Factura.pdf_data
+  pdf_data          Bytes?
+  pdf_nombre        String?
+  pdf_mime_type     String?
+  pdf_tamanio       Int?
+  // audit
+  created_at        DateTime               @default(now())
+  updated_at        DateTime               @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+  updated_by        Int?
+
+  // Cobros parciales o totales
+  cobros   CobroFacturaEmitida[]
+  // Reparto entre razones sociales (opcional)
+  repartos RepartoFacturaEmitida[]
+}
+
+// Cobros parciales o totales
+model CobroFacturaEmitida {
+  id                 Int             @id @default(autoincrement())
+  factura_emitida_id Int
+  factura_emitida    FacturaEmitida  @relation(fields: [factura_emitida_id], references: [id])
+  fecha              DateTime
+  monto              Decimal         @db.Decimal(15, 2)
+  moneda             Moneda          @default(ARS)
+  forma_cobro        String? // "Transferencia", "Echeq", "Efectivo"
+  cuenta_destino_id  Int? // CuentaBancaria donde ingresó
+  cuenta_destino     CuentaBancaria? @relation(fields: [cuenta_destino_id], references: [id])
+  referencia         String? // N° de transferencia, echeq, etc.
+  notas              String?
+  created_at         DateTime        @default(now())
+  created_by         Int?
+}
+
+// Reparto entre razones sociales (caso Talleres, Hockey, etc.)
+model RepartoFacturaEmitida {
+  id                 Int            @id @default(autoincrement())
+  factura_emitida_id Int
+  factura_emitida    FacturaEmitida @relation(fields: [factura_emitida_id], references: [id])
+  razon_social       String // "DOS57 SRL", "Sergio Bibiloni", "Enjoy"
+  cuit               String?
+  porcentaje         Decimal        @db.Decimal(5, 2)
+  monto              Decimal        @db.Decimal(15, 2)
+  // Si corresponde a una empresa del sistema
+  empresa_id         Int?
+  empresa            Empresa?       @relation(fields: [empresa_id], references: [id])
+}
+
+// ─── GASTOS RECURRENTES Y ESPACIOS COMPARTIDOS ───────────────────────────────
+// Espacios operativos compartidos entre partes (ej. Coworking: Galara 40% /
+// Juan Pablo 35% / Enjoy 25%; Nave 15: DOS57 50% / Jiménez 50%) con gastos
+// fijos mensuales (alquiler, servicios, impuestos) que se generan solos al
+// inicio de cada mes y se reparten porcentualmente entre las partes — mismo
+// patrón de reparto que CuentaCorriente/ParteCCC, pero anclado a un mes
+// calendario en vez de a movimientos sueltos.
+
+model EspacioCompartido {
+  id             Int       @id @default(autoincrement())
+  empresa_id     Int
+  empresa        Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre         String // "Coworking", "Nave 15"
+  descripcion    String?
+  direccion      String?
+  activo         Boolean   @default(true)
+  // Día del mes en que se generan las líneas automáticamente
+  dia_generacion Int       @default(1)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+
+  partes     ParteEspacio[]
+  gastosTipo GastoTipoEspacio[]
+  gastosMes  GastoMesEspacio[]
+
+  @@unique([empresa_id, nombre])
+}
+
+// Partes del espacio con su % de reparto — la suma de porcentajes = 100 se
+// valida en el controller, no en el schema (mismo criterio que ParteCCC).
+model ParteEspacio {
+  id                  Int               @id @default(autoincrement())
+  espacio_id          Int
+  espacio             EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  nombre              String // "Galara", "Juan Pablo", "Enjoy"
+  porcentaje          Decimal           @db.Decimal(5, 2)
+  // Si es una empresa del sistema → vincular
+  empresa_id          Int?
+  empresa             Empresa?          @relation(fields: [empresa_id], references: [id])
+  // Si tiene CuentaCorriente → el sistema carga ahí el cargo (DEBE) automáticamente
+  cuenta_corriente_id Int?
+  cuenta_corriente    CuentaCorriente?  @relation(fields: [cuenta_corriente_id], references: [id])
+
+  repartos RepartoLineaGasto[]
+
+  @@unique([espacio_id, nombre])
+}
+
+// Tipos de gasto fijo recurrente del espacio (alquiler, impuestos, servicios).
+model GastoTipoEspacio {
+  id              Int               @id @default(autoincrement())
+  espacio_id      Int
+  espacio         EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  nombre          String // "Alquiler", "Municipalidad", "Ecogas", "WiFi"
+  monto_estimado  Decimal           @db.Decimal(12, 2)
+  dia_vencimiento Int? // día del mes que vence
+  activo          Boolean           @default(true)
+  // false = gasto variable — no se genera solo, se carga a mano en el mes
+  es_fijo         Boolean           @default(true)
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+
+  lineas LineaGastoEspacio[]
+}
+
+// Instancia mensual de gastos del espacio.
+model GastoMesEspacio {
+  id            Int               @id @default(autoincrement())
+  espacio_id    Int
+  espacio       EspacioCompartido @relation(fields: [espacio_id], references: [id])
+  periodo_mes   Int // 1-12
+  periodo_anio  Int
+  generado_auto Boolean           @default(false)
+  cerrado       Boolean           @default(false)
+  // Total del mes — desnormalizado, recompute completo en cada alta/baja de
+  // línea (mismo criterio que CuentaCorriente.saldo_actual).
+  total_gastos  Decimal           @default(0) @db.Decimal(15, 2)
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+
+  lineas LineaGastoEspacio[]
+
+  @@unique([espacio_id, periodo_mes, periodo_anio])
+}
+
+enum EstadoLineaGasto {
+  PENDIENTE
+  PAGADO
+  ANULADO
+}
+
+// Línea individual de gasto del mes — generada sola desde GastoTipoEspacio o
+// cargada a mano (gasto variable, gasto_tipo_id null).
+model LineaGastoEspacio {
+  id                 Int               @id @default(autoincrement())
+  gasto_mes_id       Int
+  gasto_mes          GastoMesEspacio   @relation(fields: [gasto_mes_id], references: [id])
+  gasto_tipo_id      Int?
+  gasto_tipo         GastoTipoEspacio? @relation(fields: [gasto_tipo_id], references: [id])
+  nombre             String // descripción del gasto
+  monto_real         Decimal           @db.Decimal(12, 2)
+  fecha_vencimiento  DateTime?
+  estado             EstadoLineaGasto  @default(PENDIENTE)
+  fecha_pago         DateTime?
+  // Comprobante adjunto — mismo patrón que Factura.pdf_data (bytes en DB, sin storage externo)
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  notas              String?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+
+  // Reparto calculado por parte (snapshot al momento de generar/editar la línea)
+  repartos RepartoLineaGasto[]
+}
+
+// Reparto de cada línea entre las partes del espacio.
+model RepartoLineaGasto {
+  id                Int               @id @default(autoincrement())
+  linea_id          Int
+  linea             LineaGastoEspacio @relation(fields: [linea_id], references: [id])
+  parte_id          Int
+  parte             ParteEspacio      @relation(fields: [parte_id], references: [id])
+  porcentaje        Decimal           @db.Decimal(5, 2)
+  monto             Decimal           @db.Decimal(12, 2)
+  // Si la parte tiene CuentaCorriente → movimiento DEBE creado automáticamente
+  movimiento_ccc_id Int?
+  movimiento_ccc    MovimientoCCC?    @relation(fields: [movimiento_ccc_id], references: [id])
+}
+
+// ─── SINIESTROS DE EMPLEADOS (ART, DOS57 — pantalla de Andrea) ───────────────
+// Distinto de SeguroVehiculo/GastoPeaje (siniestros de la FLOTA, que lleva
+// otra persona) — ver relevamiento de Andrea: "tenemos dos siniestros,
+// siniestros de la flota y siniestros de los empleados". Este módulo es sólo
+// el segundo: accidentes de trabajo / ART.
+
+enum TipoSiniestro {
+  ACCIDENTE_TRABAJO
+  ENFERMEDAD_LABORAL
+  ACCIDENTE_IN_ITINERE // en el trayecto al trabajo
+  OTRO
+}
+
+enum EstadoSiniestro {
+  ABIERTO
+  EN_TRAMITE
+  CERRADO
+  RECHAZADO
+}
+
+model SiniestroEmpleado {
+  id                     Int       @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa   @relation(fields: [empresa_id], references: [id])
+  // Nullable — el importador de la planilla de Lorena crea el registro con
+  // empleado_nombre_manual cuando no encuentra un match en Empleado (personal
+  // eventual/extranjero que todavía no está cargado en RRHH).
+  empleado_id            Int?
+  empleado               Empleado? @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String? // nombre tal cual viene de la planilla, si empleado_id es null
+
+  // ── Datos del siniestro ──────────────────────────────────────────────────────
+  tipo             TipoSiniestro
+  fecha_ocurrencia DateTime
+  descripcion      String
+  lugar            String? // dónde ocurrió
+  evento_id        Int? // si ocurrió en un evento
+  evento           Evento?       @relation(fields: [evento_id], references: [id])
+
+  // ── ART ───────────────────────────────────────────────────────────────────────
+  art_nombre           String? // "SANCOR", "FEDERACION PATRONAL", etc.
+  art_numero_siniestro String? // número asignado por la ART — único por ART, clave del importador de Lorena
+  fecha_denuncia_art   DateTime?
+
+  // ── Datos de la planilla de Lorena (informe de siniestros de personal) ───────
+  diagnostico       String?
+  zona_afectada     String?
+  condicion_laboral String? // Fijo/Jornalero/Fofi/Extranjero/etc — texto libre de la planilla
+  zona_riesgo       String? // Polo-Montaje/Desmontaje/etc
+  plan_accion       String? // centro médico donde se atendió
+
+  // ── Estado y seguimiento ─────────────────────────────────────────────────────
+  estado            EstadoSiniestro @default(ABIERTO)
+  dias_baja         Int? // días que el empleado estuvo de baja
+  fecha_alta_medica DateTime?
+
+  gastos     GastoSiniestro[]
+  documentos DocumentoSiniestro[]
+
+  // audit
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+}
+
+model GastoSiniestro {
+  id           Int               @id @default(autoincrement())
+  siniestro_id Int
+  siniestro    SiniestroEmpleado @relation(fields: [siniestro_id], references: [id])
+  fecha        DateTime
+  descripcion  String // "Medicamentos", "Traslado", "Consulta médica"
+  monto        Decimal           @db.Decimal(12, 2)
+
+  cubierto_art   Boolean  @default(false)
+  monto_cubierto Decimal? @db.Decimal(12, 2)
+  monto_empresa  Decimal? @db.Decimal(12, 2)
+
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+
+  created_at DateTime @default(now())
+  created_by Int?
+}
+
+model DocumentoSiniestro {
+  id           Int               @id @default(autoincrement())
+  siniestro_id Int
+  siniestro    SiniestroEmpleado @relation(fields: [siniestro_id], references: [id])
+  nombre       String
+  descripcion  String?
+  archivo_data Bytes
+  archivo_mime String
+
+  created_at DateTime @default(now())
+  created_by Int?
+}
+
+// ─── EXCEDENTE DE HORAS (Fofi/Nestoras — pantalla de Andrea) ─────────────────
+// Horas trabajadas de más que quedan pendientes de pago, fuera de la
+// liquidación semanal normal (ver relevamiento de Andrea).
+model ExcedenteHoras {
+  id          Int      @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa  @relation(fields: [empresa_id], references: [id])
+  empleado_id Int
+  empleado    Empleado @relation(fields: [empleado_id], references: [id])
+
+  periodo_mes     Int
+  periodo_anio    Int
+  horas_excedente Decimal @db.Decimal(8, 2)
+  valor_hora      Decimal @db.Decimal(10, 2)
+  monto_total     Decimal @db.Decimal(12, 2)
+
+  // ── Estado de pago ───────────────────────────────────────────────────────────
+  pagado               Boolean           @default(false)
+  fecha_pago           DateTime?
+  liquidacion_admin_id Int? // si se pagó vinculado a una liquidación existente
+  liquidacion_admin    LiquidacionAdmin? @relation(fields: [liquidacion_admin_id], references: [id])
+
+  // audit
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  @@unique([empresa_id, empleado_id, periodo_mes, periodo_anio])
+}
+
+// ─── CORTESÍAS DE EVENTOS ────────────────────────────────────────────────────
+// Tickets de cortesía que se entregan a sponsors, contactos VIP, municipios,
+// tiendas amigas y casos especiales en eventos con inscripción (ej. L'Etape).
+// Espeja la planilla de asignación de Male (docs/especificaciones/Cortesias-  Male.xlsx):
+// una fila por beneficiario, con una cantidad por tipo de ticket.
+
+model CortesiaEvento {
+  id              Int            @id @default(autoincrement())
+  evento_id       Int
+  evento          Evento         @relation(fields: [evento_id], references: [id])
+  empresa_id      Int
+  empresa         Empresa        @relation(fields: [empresa_id], references: [id])
+  // Beneficiario
+  cliente_nombre  String // empresa o persona
+  contacto_nombre String? // quien lo gestiona / grupo ("MATIAS", "UCRA", "LA FALDA - MUNICIPIOS")
+  autorizado_por  String? // "MATIAS"
+  observacion     String? // categoría / motivo ("Sponsors", "Municipios", "Tiendas Amigas - Tourmalet")
+  // Estado
+  visado          Boolean        @default(false)
+  entregado       Boolean        @default(false)
+  // audit
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  deleted_at      DateTime?
+  created_by      Int?
+  items           CortesiaItem[]
+
+  @@index([evento_id, deleted_at])
+}
+
+model CortesiaItem {
+  id                 Int            @id @default(autoincrement())
+  cortesia_id        Int
+  cortesia           CortesiaEvento @relation(fields: [cortesia_id], references: [id])
+  // "Ruta Larga - Kit Estándar", "Ruta Larga - Kit Full", "Ruta Larga - Tourmalet", "Ruta Corta - …"
+  tipo_ticket        String
+  cantidad           Int
+  // Datos del inscripto (del sistema de inscripciones Njuko). Un ítem con datos de
+  // inscripto representa UN ticket concreto (cantidad = 1); son opcionales porque
+  // la asignación existe antes de que el corredor se inscriba.
+  bib_number         String?
+  nombre_inscripto   String?
+  apellido_inscripto String?
+  dni                String?
+  email              String?
+  created_at         DateTime       @default(now())
+
+  @@index([cortesia_id])
+}
+
+// ─── ENTREGA DE UNIFORMES (Lorena, DOS57) ────────────────────────────────────
+// Historial de prendas entregadas por empleado — importado de
+// docs/dos57/lorena/DOS57- PERSONAL ENTREGA UNIFORME 2024.xlsx. Distinto del
+// stock de depósito (Activo categoria=UNIFORME): esto es lo que se le dio a
+// cada persona, no lo que queda en el depósito.
+model EntregaUniforme {
+  id              Int       @id @default(autoincrement())
+  empresa_id      Int
+  empresa         Empresa   @relation(fields: [empresa_id], references: [id])
+  empleado_id     Int? // null si el empleado no está en el sistema
+  empleado        Empleado? @relation(fields: [empleado_id], references: [id])
+  empleado_nombre String // nombre tal cual aparece en el Excel
+  fecha_entrega   DateTime
+  // Prendas entregadas
+  borcegos        Int       @default(0)
+  remeras         Int       @default(0)
+  camperon        Int       @default(0)
+  chombas         Int       @default(0)
+  campera         Int       @default(0)
+  mochila         Int       @default(0)
+  buzo            Int       @default(0) // columna BUZO de la hoja PLANTA ESTABLE
+  pantalon        Int       @default(0)
+  bermuda         Int       @default(0)
+  gorra           Int       @default(0)
+  prot_lumbar     Int       @default(0)
+  guantes         Int       @default(0)
+  otros           String? // otros ítems (ej: "MARTILLO LAYHER", "CASCO x1")
+  // De qué hoja vino — "PLANTA ESTABLE", "DOS57_ENTREGA_2024", nombre de la
+  // hoja individual, o "MANUAL". Requerido (no nullable) porque es parte de
+  // la clave de upsert del importador.
+  origen_hoja     String    @default("MANUAL")
+  anio_resumen    Int? // si viene de una hoja de resumen anual
+  created_at      DateTime  @default(now())
+  created_by      Int?
+
+  @@unique([empresa_id, empleado_nombre, fecha_entrega, origen_hoja])
+  @@index([empleado_id])
+}
+
+// ─── SINIESTROS DE VEHÍCULOS (Lorena, DOS57) ─────────────────────────────────
+// Planilla docs/dos57/lorena/2026_Informe siniestros vehiculos.xlsx — análogo
+// a SiniestroEmpleado pero con vehículo y tercero involucrado.
+enum EstadoSiniestroVehiculo {
+  ABIERTO
+  EN_PROCESO
+  RESUELTO
+  SIN_NOVEDAD // "S/N" en el Excel
+}
+
+model SiniestroVehiculo {
+  id                     Int                     @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa                 @relation(fields: [empresa_id], references: [id])
+  camion_id              Int?
+  camion                 Camion?                 @relation(fields: [camion_id], references: [id])
+  patente_texto          String? // si el vehículo no está en el sistema
+  // Conductor
+  empleado_id            Int?
+  empleado               Empleado?               @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String?
+  // Seguro
+  aseguradora            String?
+  numero_siniestro       String?
+  fecha_denuncia         DateTime?
+  // Detalles del siniestro
+  fecha_ocurrencia       DateTime
+  lugar                  String?
+  descripcion            String?
+  danios                 String?
+  // Tercero involucrado
+  tercero_nombre         String?
+  tercero_vehiculo       String? // vehículo/patente del tercero
+  tercero_seguro         String?
+  // Estado y resolución
+  estado                 EstadoSiniestroVehiculo @default(ABIERTO)
+  observaciones          String?
+  // audit
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  deleted_at             DateTime?
+  created_by             Int?
+
+  @@unique([empresa_id, numero_siniestro])
+}
+
+// ─── TARJETA CORPORATIVA ──────────────────────────────────────────────────────
+// Tarjetas Galicia de DOS57 y Enjoy (Santi lleva el registro en el Drive).
+// Importador: docs/dos57/santi-nico/Tarjeta Corporativa {DOS57,ENJOY} 2026 (1).xlsx
+// — una hoja por mes, se importa sólo el bloque de detalle (el resumen del
+// Excel no es confiable); ver lib/tarjetaCorporativaImporter.ts.
+
+model TarjetaCorporativa {
+  id           Int             @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa         @relation(fields: [empresa_id], references: [id])
+  nombre       String // "TC DOS57 Galicia" / "TC Enjoy Galicia"
+  banco        String          @default("Galicia")
+  moneda_base  Moneda          @default(ARS)
+  activa       Boolean         @default(true)
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  responsables ResponsableTC[]
+  consumos     ConsumoTC[]
+
+  @@unique([empresa_id, nombre])
+}
+
+model ResponsableTC {
+  id         Int                @id @default(autoincrement())
+  tarjeta_id Int
+  tarjeta    TarjetaCorporativa @relation(fields: [tarjeta_id], references: [id])
+  nombre     String // "POLLO", "ANDRE", "MATI", etc.
+  // "PERSONAL" o "EMPRESA" — sólo ANDRE (DOS57) tiene los dos; el resto PERSONAL.
+  tipo       String             @default("PERSONAL")
+  usuario_id Int? // si está vinculado a un usuario del sistema
+  usuario    Usuario?           @relation(fields: [usuario_id], references: [id])
+  activo     Boolean            @default(true)
+  consumos   ConsumoTC[]
+
+  @@unique([tarjeta_id, nombre, tipo])
+}
+
+model ConsumoTC {
+  id             Int                @id @default(autoincrement())
+  tarjeta_id     Int
+  tarjeta        TarjetaCorporativa @relation(fields: [tarjeta_id], references: [id])
+  responsable_id Int
+  responsable    ResponsableTC      @relation(fields: [responsable_id], references: [id])
+  fecha          DateTime
+  periodo_mes    Int // mes al que imputa (puede diferir del mes de la fecha: la hoja de enero trae consumos del 30/12)
+  periodo_anio   Int
+  monto_ars      Decimal?           @db.Decimal(15, 2)
+  monto_usd      Decimal?           @db.Decimal(15, 2)
+  detalle        String? // descripción del consumo (texto del resumen del banco)
+  observaciones  String?
+  empresa_imputa String? // columna EMPRESA del Excel
+  // Si se descontó al responsable
+  descontado     Boolean            @default(false)
+  nota_descuento String?
+  // Clave de idempotencia del importador: período + responsable + fecha +
+  // detalle + montos + N° de aparición. [tarjeta, responsable, fecha, detalle]
+  // no alcanza — la planilla repite cargos idénticos legítimos (ej. 5 × NIC
+  // ARGENTINA $8.500 el mismo día). null en consumos cargados a mano.
+  import_key     String?
+  // audit
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+  created_by     Int?
+  deleted_at     DateTime?
+
+  @@unique([tarjeta_id, import_key])
+  @@index([tarjeta_id, periodo_anio, periodo_mes])
+}
+
+// ── Costo Real / Presupuestador (DOS57) ───────────────────────────────────────
+// Catálogo de materiales de rental (planilla DOS57_BASE MATRICES_RENTAL COST:
+// hojas RENTAL COSTS (NAC.) y (IMP.)) y presupuestos por evento con snapshot
+// de precios por línea.
+
+enum OrigenMaterialRental {
+  NAC // nacionales, precio en ARS, alquiler 2/4/6/8/10% o FULL
+  IMP // importados Layher AllRound, precio en USD pesificado, siempre 4%
+}
+
+enum EstadoPresupuesto {
+  BORRADOR
+  ENVIADO
+  APROBADO
+  CERRADO
+}
+
+model MaterialRental {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+
+  origen          OrigenMaterialRental
+  nro_item        Int?
+  codigo_oficial  String? // sólo IMP ("1752008"); en la planilla viene como número
+  detalle         String
+  medida          String?
+  peso_por_unidad Decimal?             @db.Decimal(10, 3) // sólo IMP, kg
+
+  // NAC: precio en ARS (null = la planilla no lo trae, ej. escaleras Wenge).
+  // IMP: costo_unitario_usd × tipo_cambio (se recalcula al editar USD/TC).
+  costo_unitario_ars Decimal? @db.Decimal(14, 2)
+  costo_unitario_usd Decimal? @db.Decimal(12, 2)
+  tipo_cambio        Decimal? @db.Decimal(10, 2) // IMP: TC de la pesificación (celda H5 de la planilla, 1700)
+
+  // Porcentajes de alquiler habilitados en la planilla NAC (la celda tiene
+  // fórmula). IMP: sólo porc_4. El cálculo los admite igual aunque estén en false.
+  porc_2    Boolean @default(false)
+  porc_4    Boolean @default(false)
+  porc_6    Boolean @default(false)
+  porc_8    Boolean @default(false)
+  porc_10   Boolean @default(false)
+  porc_full Boolean @default(false)
+
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  lineas PresupuestoLinea[]
+
+  @@index([empresa_id, origen])
+}
+
+model PresupuestoEvento {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+
+  evento_id Int?
+  evento    Evento? @relation(fields: [evento_id], references: [id])
+
+  nombre String // nombre del evento, o descripción libre si no hay evento formal
+  estado EstadoPresupuesto @default(BORRADOR)
+
+  // Aplica a los ítems NAC: "2" | "4" | "6" | "8" | "10" | "FULL" (FULL = 100%).
+  // Los IMP van siempre al 4%.
+  porcentaje_alquiler String
+  // TC del presupuesto: costo de las líneas IMP = USD × este TC
+  tipo_cambio_usd     Decimal @default(1700) @db.Decimal(10, 2)
+
+  notas String?
+
+  // "Nueva versión" de un presupuesto ya enviado/aprobado: copia con version+1
+  version       Int                 @default(1)
+  version_de_id Int?
+  version_de    PresupuestoEvento?  @relation("VersionesPresupuesto", fields: [version_de_id], references: [id])
+  versiones     PresupuestoEvento[] @relation("VersionesPresupuesto")
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by Int?
+
+  lineas PresupuestoLinea[]
+
+  @@index([empresa_id, estado])
+  @@index([evento_id])
+}
+
+model PresupuestoLinea {
+  id             Int               @id @default(autoincrement())
+  presupuesto_id Int
+  presupuesto    PresupuestoEvento @relation(fields: [presupuesto_id], references: [id], onDelete: Cascade)
+
+  material_id Int
+  material    MaterialRental @relation(fields: [material_id], references: [id])
+
+  cantidad Decimal @db.Decimal(12, 2)
+
+  // Snapshot al guardar: si el catálogo cambia después, el presupuesto no.
+  costo_unitario_snap Decimal  @db.Decimal(14, 2) // ARS (IMP: USD × TC del presupuesto); 0 si el ítem no tiene precio
+  tipo_cambio_snap    Decimal? @db.Decimal(10, 2) // sólo IMP
+  porcentaje_snap     Decimal  @db.Decimal(5, 2) // % aplicado (NAC: el del presupuesto, FULL = 100; IMP: 4)
+
+  costo_total_material Decimal  @db.Decimal(16, 2) // cantidad × costo_unitario_snap
+  valor_rental         Decimal  @db.Decimal(16, 2) // costo_total_material × porcentaje_snap / 100
+  // ALQUILER FULL negociado a mano (no hay regla fija: varía por evento/cliente).
+  // Sólo NAC con material.porc_full; null si no aplica o no se cargó.
+  valor_rental_full    Decimal? @db.Decimal(16, 2)
+
+  orden Int @default(0)
+
+  @@index([presupuesto_id])
+  @@index([material_id])
+}
+
+// ── Indicadores económicos (globales, sin empresa) ────────────────────────────
+// Dólar oficial/blue (dolarapi.com) e IPC mensual (INDEC, series de
+// datos.gob.ar). Cada actualización inserta una fila por tipo: queda historial.
+
+enum TipoIndicador {
+  DOLAR_OFICIAL
+  DOLAR_BLUE
+  IPC
+}
+
+model IndicadorEconomico {
+  id           Int           @id @default(autoincrement())
+  tipo         TipoIndicador
+  valor        Decimal       @db.Decimal(12, 4) // dólar: venta; IPC: % mensual (1.66)
+  compra       Decimal?      @db.Decimal(12, 2) // sólo dólar
+  venta        Decimal?      @db.Decimal(12, 2) // sólo dólar
+  periodo      String? // sólo IPC: "2026-08"
+  fuente_fecha DateTime? // dólar: fechaActualizacion de la API; IPC: primer día del mes del dato
+  created_at   DateTime      @default(now())
+
+  @@index([tipo, created_at])
+}
+
+// ── Remitos digitales (DOS57) ─────────────────────────────────────────────────
+// Reemplazan los 5 remitos físicos en Excel que acompañan cada viaje al evento.
+// El catálogo de ítems de cada tipo está hardcodeado en
+// src/data/remitosItemsCatalog.ts; acá sólo se guardan los ítems con cantidad > 0.
+
+enum TipoRemito {
+  LAYHER
+  NACIONAL
+  TECHOS
+  PANOL
+  LONAS_AFORO
+}
+
+enum EstadoRemito {
+  BORRADOR
+  EMITIDO // no editable — para corregir, clonar
+}
+
+model RemitoEvento {
+  id         Int     @id @default(autoincrement())
+  empresa_id Int
+  empresa    Empresa @relation(fields: [empresa_id], references: [id])
+  evento_id  Int
+  evento     Evento  @relation(fields: [evento_id], references: [id])
+
+  tipo   TipoRemito
+  numero Int // correlativo por evento + tipo (1, 2, 3...)
+  fecha  DateTime   @default(now())
+
+  // Encabezado
+  cliente           String?
+  domicilio         String?
+  localidad         String?
+  telefono          String?
+  chofer            String?
+  chasis_acoplado   String?
+  responsable_carga String?
+
+  // [{ codigo?, descripcion, cantidad }] — sólo ítems con cantidad > 0
+  items Json @default("[]")
+
+  estado EstadoRemito @default(BORRADOR)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  created_by Int?
+
+  @@unique([evento_id, tipo, numero])
+  @@index([empresa_id, evento_id])
+}
+
+// ── Multas (Lorena, DOS57) ───────────────────────────────────────────────────
+// De tránsito (con vehículo/patente) e internas (ej. vehículos sucios). Si se
+// descuenta al empleado, se crea un Anticipo tipo MULTA vinculado: así entra
+// solo a la próxima liquidación por el circuito de vales/descuentos existente.
+enum TipoMulta {
+  TRANSITO
+  INTERNA
+}
+
+enum EstadoMulta {
+  PENDIENTE
+  PAGADA
+  ANULADA
+}
+
+model Multa {
+  id                     Int         @id @default(autoincrement())
+  empresa_id             Int
+  empresa                Empresa     @relation(fields: [empresa_id], references: [id])
+  tipo                   TipoMulta   @default(TRANSITO)
+  fecha                  DateTime // fecha de la infracción
+  camion_id              Int?
+  camion                 Camion?     @relation(fields: [camion_id], references: [id])
+  patente_texto          String? // si el vehículo no está en el sistema
+  empleado_id            Int?
+  empleado               Empleado?   @relation(fields: [empleado_id], references: [id])
+  empleado_nombre_manual String?
+  lugar                  String?
+  motivo                 String
+  numero_acta            String?
+  fecha_vencimiento      DateTime? // vencimiento del pago de la multa
+  monto                  Decimal     @db.Decimal(12, 2)
+  estado                 EstadoMulta @default(PENDIENTE)
+  fecha_pago             DateTime?
+  medio_pago             String? // "Transferencia", "Tarjeta corporativa", "Efectivo"…
+  // Descuento al empleado → Anticipo MULTA (se crea/actualiza/borra junto con la multa)
+  descontar_empleado     Boolean     @default(false)
+  anticipo_id            Int?        @unique
+  anticipo               Anticipo?   @relation(fields: [anticipo_id], references: [id])
+  observaciones          String?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime    @updatedAt
+  deleted_at             DateTime?
+  created_by             Int?
+
+  @@index([empresa_id, fecha])
+}
+
+// ── Control de salida de vehículos (Lorena + David) ──────────────────────────
+// Antes de cada viaje se revisa la papelería del vehículo. El estado documental
+// (seguro / RTO / carnet del chofer / vehículo de baja) se calcula en vivo; al
+// marcarlo REVISADO u OBSERVADO se guarda la foto en `alertas_al_cerrar`.
+enum EstadoControlSalida {
+  PENDIENTE
+  REVISADO
+  OBSERVADO
+}
+
+model ControlSalidaVehiculo {
+  id                  Int                 @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa             @relation(fields: [empresa_id], references: [id])
+  camion_id           Int
+  camion              Camion              @relation(fields: [camion_id], references: [id])
+  fecha_salida        DateTime // fecha calendario (UTC 00:00)
+  chofer_id           Int?
+  chofer              Empleado?           @relation(fields: [chofer_id], references: [id])
+  chofer_nombre       String? // si el chofer no está como Empleado
+  evento_id           Int?
+  evento              Evento?             @relation(fields: [evento_id], references: [id])
+  destino             String?
+  // Lo que se vio físicamente en la carpeta del vehículo
+  check_tarjeta_verde Boolean             @default(false) // cédula / tarjeta verde
+  check_seguro        Boolean             @default(false) // póliza o certificado de cobertura
+  check_tecnica       Boolean             @default(false) // oblea / certificado RTO-ITV
+  check_carnet        Boolean             @default(false) // carnet del chofer
+  estado              EstadoControlSalida @default(PENDIENTE)
+  revisado_por        String? // texto libre: "Lore", "David"
+  revisado_at         DateTime?
+  alertas_al_cerrar   Json? // snapshot de alertas documentales al revisar
+  observaciones       String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+
+  @@index([empresa_id, fecha_salida])
+}
+
+// Extras del centro de costos (hoja "Extras" de la planilla de Male): lo que
+// surge en el evento fuera de lo presupuestado. Por defecto lo paga el cliente
+// directo y NO suma al costo del evento; con a_cargo_cliente=false se genera una
+// línea de egreso en el rubro Gastos Extra (movimiento_id) — ver lib/extrasEvento.ts.
+model ExtraEvento {
+  id                 Int         @id @default(autoincrement())
+  empresa_id         Int
+  evento_id          Int
+  evento             Evento      @relation(fields: [evento_id], references: [id])
+  orden              Int
+  descripcion        String
+  responsable        String? // proveedor / persona (texto libre, como en la planilla)
+  moneda             Moneda      @default(ARS)
+  neto               Decimal     @default(0) @db.Decimal(15, 2)
+  iva                Decimal     @default(0) @db.Decimal(15, 2) // total = neto + iva
+  pagado             Boolean     @default(false)
+  plazo_pago         String? // "Fecha de pago a proveedores" (texto libre)
+  datos_cuenta       String? // titular / CUIT / CBU / alias
+  factura            String? // estado de la factura: "Con FC", "Deben factura"...
+  notas              String?
+  a_cargo_cliente    Boolean     @default(true)
+  movimiento_id      Int?        @unique
+  movimiento         Movimiento? @relation(fields: [movimiento_id], references: [id])
+  comprobante_data   Bytes?
+  comprobante_nombre String?
+  comprobante_mime   String?
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+  updated_by         Int?
+
+  @@index([evento_id])
+}
+
+// ── Costo real del evento (DOS57, matriz de Flor) ──────────────────────────────
+// Réplica de la planilla por evento (docs/dos57/jazmin/DOS57_NORTE ROCK_2026.xlsx)
+// que Flor completa antes y después del evento para Matías y Pollo. Cada bloque
+// es una hoja/sección de esa matriz. Las líneas vienen de tres lados: cargadas a
+// mano, importadas de la planilla, o generadas desde lo que ya está en el sistema
+// (jornadas, comidas, combustible, remitos, pañol). Re-sincronizar o re-importar
+// reemplaza sólo las líneas de ese origen; las manuales no se tocan.
+enum BloqueCostoReal {
+  STAFF
+  ALOJAMIENTO
+  COMIDAS
+  COMBUSTIBLE_PERSONAL
+  COMBUSTIBLE_MATERIAL
+  PANOL
+  VARIOS
+  RENTAL_NAC
+  RENTAL_IMP
+  PERDIDAS
+}
+
+// CAMPO = planillas de campo (horas, viandas, alojamiento, pañol, combustible)
+// que se imprimen precargadas y se completan sin señal — ver lib/planillasCampo.ts.
+enum OrigenLineaCostoReal {
+  MANUAL
+  PLANILLA
+  SISTEMA
+  CAMPO
+}
+
+model LineaCostoReal {
+  id             Int                  @id @default(autoincrement())
+  empresa_id     Int
+  evento_id      Int
+  evento         Evento               @relation(fields: [evento_id], references: [id])
+  bloque         BloqueCostoReal
+  origen         OrigenLineaCostoReal @default(MANUAL)
+  orden          Int                  @default(0)
+  concepto       String // "STAFF EXTRANJEROS", "PINTURA PARA PISO", "AR Vertical LW 2.00m"
+  detalle        String? // "5 TACHOS SINTETICO", "560 KM", medida del material
+  codigo         String? // código oficial Layher (rental importado)
+  cantidad       Decimal              @default(1) @db.Decimal(14, 3) // turnos, menús, noches, litros, unidades
+  valor_unitario Decimal              @default(0) @db.Decimal(16, 2)
+  porcentaje     Decimal?             @db.Decimal(6, 2) // rental (4%) o pérdidas (10%); null = 100%
+  // Total guardado: en las líneas de la planilla es el valor que calculó el Excel
+  // (algunas fórmulas no son cantidad × valor); en el resto se recalcula al guardar.
+  total          Decimal              @default(0) @db.Decimal(16, 2)
+  fecha_desde    DateTime? // alojamiento: check-in
+  fecha_hasta    DateTime? // alojamiento: check-out
+  notas          String?
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+  deleted_at     DateTime?
+  created_by     Int?
+  updated_by     Int?
+
+  @@index([evento_id, bloque])
 }

@@ -1,26 +1,63 @@
 // Espejo de los enums del schema Prisma
 
-export type Rol           = 'ADMIN' | 'OPERADOR' | 'VIEWER';
+// 'PANOLERO' (sin Ñ) — así representa Prisma Client el valor Rol.PAÑOLERO en
+// JS/TS (el @map de schema.prisma sólo afecta el nombre en la columna de
+// Postgres). "Pañolero" con Ñ se usa únicamente como texto de UI.
+export type Rol           = 'ADMIN' | 'OPERADOR' | 'VIEWER' | 'JORNALERO' | 'PANOLERO';
 export type EstadoFactura = 'RECIBIDA' | 'APROBADA' | 'PAGADA' | 'ANULADA';
 export type MedioPago     = 'TRANSFERENCIA' | 'ECHEQ' | 'EFECTIVO' | 'CHEQUE';
 export type CondicionPago = 'CONTADO' | 'DIAS_30' | 'DIAS_60' | 'DIAS_90' | 'ECHEQ' | 'OTRO';
 export type Tipo         = 'EGRESO' | 'INGRESO';
 export type EstadoEvento = 'ACTIVO' | 'CERRADO' | 'IMPORTADO';
-export type TipoCuenta   = 'EFECTIVO' | 'BANCO';
-export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO';
-export type Moneda       = 'ARS' | 'USD';
+export type TipoCuenta   = 'EFECTIVO' | 'BANCO' | 'FIMA';
+export type EstadoCuenta = 'ABIERTA' | 'PENDIENTE_RENDICION' | 'CERRADA';
+export type EstadoEcheq  = 'PENDIENTE' | 'COBRADO' | 'RECHAZADO' | 'VENDIDO';
+export type Moneda       = 'ARS' | 'USD' | 'EUR';
+export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATIVO' | 'TECNICO'
+  | 'JORNALERO' | 'FOFI' | 'NESTORAS' | 'EXTRANJERO' | 'SERENO' | 'OTRO';
+export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
+export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+export type TipoLiquidacion   = 'LINEAL' | 'JORNADA';
+export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO' | 'MULTA';
+export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
+export type TipoRecorrido     = 'PROVINCIAL' | 'NACIONAL' | 'NACIONAL_1000';
+export type CategoriaAcuerdo  = 'GENERAL' | 'CHOFER';
+export type TipoAumento       = 'MANUAL' | 'IPC' | 'SIN_AUMENTO';
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
+
+// Áreas asignables de la Macro restringida — Logística queda deliberadamente
+// afuera del set (ver backend usuarios.controller.ts#AREAS_MACRO).
+export type AreaMacro = 'FINANZAS' | 'ADMIN' | 'RRHH' | 'STOCK';
 
 export interface Usuario {
   id:         number;
   email:      string;
   nombre:     string;
+  apodo:      string | null;
+  telefono:   string | null;
   rol:        Rol;
   activo:     boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  puede_ver_macro: boolean;
+  areas_macro:     AreaMacro[];
+  home_route:      string | null;
+  debe_cambiar_password: boolean;
+  permisos:        Permiso[];
+}
+
+// Espejo de backend/src/lib/permisos.ts
+export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES' | 'COSTO_REAL';
+
+export interface UsuarioEmpresaAcceso {
+  id:         number;
+  usuario_id: number;
+  empresa_id: number;
+  empresa:    { id: number; nombre: string; nombre_corto: string | null };
+  created_at: string;
 }
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
@@ -31,13 +68,89 @@ export interface Proveedor {
   alias:      string | null;
   cuit:       string | null;
   categoria:  string | null;
+  telefono:   string | null;
   notas:      string | null;
   activo:     boolean;
+  // Datos del formulario de Google — ver POST /api/importar/proveedores-formulario.
+  // `alias` es el nombre corto; el alias del CBU es `alias_bancario`.
+  dni:            string | null;
+  email:          string | null;
+  banco:          string | null;
+  alias_bancario: string | null;
+  cbu:            string | null;
+  numero_cuenta:  string | null;
+  titular_cuenta: string | null;
+  puede_facturar: boolean | null; // null = no respondió
+  tipo_factura:   string | null;  // "A" | "C"
+  servicio:       string | null;
+  // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
+  // participa del reparto. Ver POST /api/facturas-emitidas.
+  es_comisionista:     boolean;
+  porcentaje_comision: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
   created_by: number | null;
   updated_by: number | null;
+}
+
+// ── SGR — seguimiento informativo de cupo y vinculación ──────────────────────
+
+export type EstadoVinculacionSGR = 'ACTIVO' | 'SUSPENDIDO' | 'VENCIDO';
+
+export interface SGR {
+  id:                 number;
+  empresa_id:         number;
+  empresa?:           EmpresaMini;
+  nombre:             string;
+  estado_vinculacion: EstadoVinculacionSGR;
+  fecha_vinculacion:  string | null;
+  fecha_vencimiento:  string | null;
+  cupo_total:         number | null;
+  cupo_utilizado:     number | null;
+  cupo_disponible:    number | null;
+  moneda:             Moneda;
+  contacto_nombre:    string | null;
+  contacto_tel:       string | null;
+  notas:              string | null;
+  created_at:         string;
+  updated_at:         string;
+  deleted_at:         string | null;
+}
+
+// ── Cierre Contable — foto financiera a fecha de corte ───────────────────────
+
+export type EstadoCierreContable = 'BORRADOR' | 'ENVIADO' | 'APROBADO';
+
+export interface CierreContableSeccionCuenta { cuenta: string; saldo: number; }
+export interface CierreContableTercero { cuit: string | null; nombre: string; importe: number; }
+export interface CierreContableCreditoDeuda { tipo: string; descripcion: string; importe: number; }
+export interface CierreContableProducto { producto_id: number; nombre: string; stock_total: number; unidad: string; }
+
+export interface CierreContableSnapshot {
+  cajas:       CierreContableSeccionCuenta[];
+  bancos:      CierreContableSeccionCuenta[];
+  inversiones: CierreContableSeccionCuenta[];
+  deudores:    CierreContableTercero[];
+  acreedores:  CierreContableTercero[];
+  mercaderias: { cantidad_items: number; total_unidades: number; valor_estimado: number | null; productos: CierreContableProducto[] };
+  creditos:    CierreContableCreditoDeuda[];
+  deudas:      CierreContableCreditoDeuda[];
+  notas_por_seccion: Record<string, string | null>;
+}
+
+export interface CierreContable {
+  id:           number;
+  empresa_id:   number;
+  empresa?:     EmpresaMini;
+  fecha_corte:  string;
+  periodo_anio: number;
+  estado:       EstadoCierreContable;
+  snapshot:     CierreContableSnapshot;
+  notas:        string | null;
+  created_at:   string;
+  updated_at:   string;
+  created_by:   number | null;
 }
 
 export interface ProveedorBusqueda {
@@ -46,6 +159,7 @@ export interface ProveedorBusqueda {
   alias:     string | null;
   cuit:      string | null;
   categoria: string | null;
+  telefono?: string | null;
 }
 
 // ── Configuración de pestañas ─────────────────────────────────────────────────
@@ -61,6 +175,105 @@ export interface TabConfig {
   es_sistema: boolean;
 }
 
+// ── Rubros (categorías configurables de egresos/ingresos) ─────────────────────
+
+export interface Rubro {
+  id:          number;
+  tipo:        Tipo;
+  nombre:      string;
+  codigo:      string | null;
+  descripcion: string | null;
+  grupo:       string | null;
+  orden:       number;
+  activo:      boolean;
+  es_sistema:  boolean;
+  created_at:  string;
+  updated_at:  string;
+}
+
+// ── Ficha de Evento (Enjoy) ────────────────────────────────────────────────────
+
+export type EstadoRubroEvento = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'NO_VA' | 'CANCELADO';
+
+export interface PedidoItem {
+  id:              number;
+  rubro_evento_id: number;
+  cantidad:        number | null;
+  descripcion:     string;
+  dias_uso:        number | null;
+  horario_llegada: string | null;
+  horario_retiro:  string | null;
+  observaciones:   string | null;
+  orden:           number;
+  // Esquema de personal por turno — con fecha_turno el ítem es una línea de la
+  // grilla de dotación (seguridad, limpieza…) y no un pedido de material.
+  fecha_turno:       string | null; // ISO, medianoche UTC
+  hora_inicio_turno: string | null; // "08:00"
+  hora_fin_turno:    string | null;
+  ubicacion_turno:   string | null;
+  tipo_turno:        string | null;
+  horas_por_agente:  number | null; // derivado en el backend
+  total_horas_turno: number | null; // derivado: cantidad × horas_por_agente
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+}
+
+// Stock propio vinculado a un rubro de la ficha (fuentes mixtas)
+export interface RubroEventoAsignacionStock {
+  id:               number;
+  producto_id:      number;
+  producto_nombre:  string | null;
+  cantidad:         number;
+  fecha_salida:     string;
+  fecha_retorno:    string | null;
+  ubicacion:        UbicacionStock;
+  estado:           EstadoAsignacion;
+  disponibilidad:   { disponible: number; comprometido: number } | null;
+}
+
+export interface RubroEvento {
+  id:         number;
+  evento_id:  number;
+  rubro_id:   number;
+  empresa_id: number;
+  proveedor_id: number | null;
+  estado:       EstadoRubroEvento;
+  contacto_nombre:   string | null;
+  contacto_telefono: string | null;
+  contacto_cargo:    string | null;
+  coordina_nombre:   string | null;
+  fecha_ingreso: string | null;
+  fecha_retiro:  string | null;
+  presupuesto:   number | null;
+  moneda:        Moneda;
+  notas:         string | null;
+  // Fuentes mixtas (stock propio + proveedor externo)
+  usa_stock_propio:   boolean;
+  cantidad_stock:     number | null;
+  cantidad_proveedor: number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  rubro:        { id: number; nombre: string; orden: number };
+  proveedor:    ProveedorBusqueda | null;
+  pedido_items: PedidoItem[];
+  asignaciones_stock: RubroEventoAsignacionStock[];
+  // Lo cargado en Egresos para este rubro (sin cancelados); null = sin líneas
+  costos: { lineas: number; real: number; falta_pagar: number } | null;
+}
+
+// Vista liviana de GET /ficha/resumen — sin pedido_items
+export interface RubroEventoResumen {
+  id: number;
+  estado: EstadoRubroEvento;
+  coordina_nombre: string | null;
+  contacto_nombre: string | null;
+  contacto_telefono: string | null;
+  rubro:     { id: number; nombre: string; orden: number };
+  proveedor: { id: number; nombre: string } | null;
+}
+
 // ── Eventos ───────────────────────────────────────────────────────────────────
 
 export interface Socio {
@@ -68,19 +281,31 @@ export interface Socio {
   porcentaje: number;
 }
 
+// Enjoy: FLUJO_CAJA | CENTRO_COSTOS. DOS57: FLUJO_CAJA | OPERATIVA (costo real).
+export type ModalidadEvento = 'FLUJO_CAJA' | 'CENTRO_COSTOS' | 'OPERATIVA';
+
 export interface Evento {
-  id:           number;
-  nombre:       string;
-  fecha_inicio: string | null;
-  fecha_fin:    string | null;
-  estado:       EstadoEvento;
-  socios:       Socio[];
-  moneda_base:  Moneda;
-  created_at:   string;
-  updated_at:   string;
-  deleted_at:   string | null;
-  created_by:   number | null;
-  updated_by:   number | null;
+  id:              number;
+  nombre:          string;
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  dias_montaje:    number;
+  dias_desmontaje: number;
+  lugar:           string | null;
+  estado:          EstadoEvento;
+  socios:          Socio[];
+  moneda_base:     Moneda;
+  es_informal:     boolean;
+  // Sólo Enjoy: FLUJO_CAJA = planilla completa (eventos grandes), CENTRO_COSTOS =
+  // pestaña Centro de costos en lugar de Egresos/Ingresos/Caja/Conciliatoria/Echeqs
+  modalidad:       ModalidadEvento;
+  facturar:        boolean | null;
+  facturar_notas:  string | null;
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+  created_by:      number | null;
+  updated_by:      number | null;
 }
 
 export interface EventoWithCount extends Evento {
@@ -88,12 +313,118 @@ export interface EventoWithCount extends Evento {
 }
 
 export interface EventoPayload {
-  nombre:       string;
-  fecha_inicio: string | null;
-  fecha_fin:    string | null;
-  socios:       Socio[];
-  moneda_base:  Moneda;
+  nombre:          string;
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  dias_montaje?:   number;
+  dias_desmontaje?: number;
+  lugar?:          string | null;
+  socios:          Socio[];
+  moneda_base:     Moneda;
+  es_informal?:    boolean;
+  modalidad?:      ModalidadEvento;
+  facturar?:       boolean | null;
+  facturar_notas?: string | null;
 }
+
+export interface CargaRapidaPayload {
+  nombre:          string;
+  fecha_inicio:    string;
+  tipo_trabajo?:   string | null;
+  cliente?:        string | null;
+  referente_id?:   number | null;
+  facturar:        boolean | null;
+  observaciones?:  string | null;
+}
+
+// ── Pre-Macro (wizard de creación de evento) ──────────────────────────────────
+
+export type TipoEventoPreMacro = 'Festival' | 'Corporativo' | 'Privado' | 'Deportivo' | 'Otro';
+
+export interface RubroSugerido {
+  rubro_id:     number;
+  rubro_nombre: string;
+  razon:        string | null;
+  seleccionado: boolean;
+}
+
+export interface RubroConfirmado {
+  rubro_id:     number;
+  seleccionado: boolean;
+}
+
+export interface SocioPreMacro {
+  id:         number;
+  nombre:     string;
+  porcentaje: number;
+}
+
+export interface PreMacro {
+  id:          number;
+  empresa_id:  number;
+  paso_actual: number;
+  completada:  boolean;
+  evento_id:   number | null;
+
+  // Paso 1
+  nombre_evento: string | null;
+  tipo_evento:   string | null;
+  descripcion:   string | null;
+  para_que_es:   string | null;
+  es_privado:    boolean;
+  modalidad:     ModalidadEvento;
+
+  // Paso 2
+  fecha_inicio:    string | null;
+  fecha_fin:       string | null;
+  hora_inicio:     string | null;
+  hora_fin:        string | null;
+  lugar_nombre:    string | null;
+  lugar_ciudad:    string | null;
+  lugar_provincia: string | null;
+  lugar_direccion: string | null;
+  dias_montaje:    number | null;
+  dias_desmontaje: number | null;
+
+  // Paso 3
+  cliente_nombre:    string | null;
+  razon_social:      string | null;
+  cuit_pagador:      string | null;
+  quien_lo_hace:     string | null;
+  contacto_cliente:  string | null;
+  telefono_cliente:  string | null;
+  presupuesto_total: number | null;
+  moneda:            Moneda;
+  socios:            SocioPreMacro[];
+
+  // Paso 4
+  lleva_empleados:         boolean;
+  cantidad_estimada_staff: number | null;
+  requiere_hospedaje:      boolean;
+  ciudad_hospedaje:        string | null;
+  requiere_traslado:       boolean;
+  notas_traslado:          string | null;
+  requiere_comidas:        boolean;
+  cantidad_dias_comida:    number | null;
+  observaciones_generales: string | null;
+
+  rubros_sugeridos:   RubroSugerido[] | null;
+  rubros_confirmados: RubroConfirmado[] | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PreMacroBorrador {
+  id:            number;
+  nombre_evento: string | null;
+  updated_at:    string;
+}
+
+export type PreMacroPayload = Partial<Omit<PreMacro,
+  | 'id' | 'empresa_id' | 'completada' | 'evento_id' | 'socios'
+  | 'rubros_sugeridos' | 'rubros_confirmados' | 'created_at' | 'updated_at'
+>> & { socios?: Array<{ nombre: string; porcentaje: number }> };
 
 // ── Movimientos ───────────────────────────────────────────────────────────────
 
@@ -101,19 +432,43 @@ export interface Movimiento {
   id:                    number;
   evento_id:             number;
   tipo:                  Tipo;
-  tab_numero:            number;
+  tab_numero:            number | null; // legado — RRHH / Facturas
+  rubro_id:              number | null;
+  rubro:                 { id: number; nombre: string; tipo: Tipo; codigo: string | null } | null;
+  estado_movimiento:     EstadoMovimiento;
+  presupuesto:           number | null;
+  costo_real:            number | null;
+  responsable_id:        number | null;
+  responsable:           { id: number; nombre: string; email: string } | null;
+  fecha_pago:            string | null;
+  avisado_proveedor:     boolean;
   fecha:                 string | null;
   concepto:              string | null;
   descripcion:           string | null;
   debe:                  number;
   haber:                 number;
-  saldo:                 number; // calculado por el backend
+  saldo:                 number; // calculado por el backend, en ARS (ver monto_ars)
   moneda:                Moneda;
+  tasa_cambio:           number | null;
+  monto_ars:             number | null;
   orden:                 number;
   impuesto_subcategoria: string | null;
   proveedor_id:          number | null;
   proveedor:             ProveedorBusqueda | null;
   movimiento_caja_id:    number | null;
+  // IVA contenido en debe/haber (neto = monto − iva); null = sin desglose
+  iva:                   number | null;
+  // Línea generada desde la Ficha (rubro confirmado); null = cargada a mano
+  rubro_evento_id:       number | null;
+  // Línea espejo de un Extra a cargo de la empresa — se edita desde Extras
+  extra_evento_id:       number | null;
+  // Plazo de pago en texto libre ("Pre evento", "08/05 - ")
+  plazo_pago:            string | null;
+  // Centro de costos — vienen en GET /eventos/:id/movimientos (no en la vista Macro)
+  pagos_parciales?:      PagoParcialMovimiento[];
+  total_pagado?:         number;
+  falta_pagar?:          number;
+  falta_pagar_sobre_presupuesto?: boolean;
   created_at:            string;
   updated_at:            string;
   deleted_at:            string | null;
@@ -121,36 +476,186 @@ export interface Movimiento {
   updated_by:            number | null;
 }
 
+export interface PagoParcialMovimiento {
+  id:            number;
+  movimiento_id: number;
+  fecha:         string;
+  monto:         number;
+  nota:          string | null;
+  created_at:    string;
+}
+
+export interface ResumenRubro {
+  rubro_id:             number;
+  rubro_nombre:         string;
+  tipo:                 Tipo;
+  presupuesto_total:    number;
+  costo_real_total:     number;
+  diferencia:           number;
+  diferencia_pct:       number;
+  cantidad_movimientos: number;
+  estados:              Record<EstadoMovimiento, number>;
+}
+
+export interface ResumenMovimientos {
+  por_rubro:      ResumenRubro[];
+  total_ingresos: number;
+  total_egresos:  number;
+  saldo:          number;
+}
+
+// ── Vista Macro (cross-evento, cross-empresa) ──────────────────────────────────
+
+export interface MovimientoMacro {
+  id:                 number;
+  evento_id:          number;
+  evento_nombre:      string | null;
+  evento_estado:      EstadoEvento | null;
+  empresa_id:         number | null;
+  empresa_nombre:     string | null;
+  tipo:               Tipo;
+  rubro_id:           number | null;
+  rubro_nombre:       string | null;
+  fecha:              string | null;
+  concepto:           string | null;
+  descripcion:        string | null;
+  debe:               number;
+  haber:              number;
+  saldo:              number;
+  presupuesto:        number | null;
+  costo_real:         number | null;
+  estado_movimiento:  EstadoMovimiento;
+  responsable_id:     number | null;
+  responsable_nombre: string | null;
+  proveedor_id:       number | null;
+  proveedor_nombre:   string | null;
+  avisado_proveedor:  boolean;
+  fecha_pago:         string | null;
+  moneda:             Moneda;
+  created_at:         string;
+}
+
+export interface MacroTotalPorEmpresa {
+  empresa_id:         number;
+  empresa_nombre:     string;
+  total_debe:         number;
+  total_haber:        number;
+  total_egresos:      number;
+  total_ingresos:     number;
+  total_presupuesto:  number;
+  saldo:              number;
+}
+
+export interface MacroTotalPorRubro {
+  rubro_id:     number;
+  rubro_nombre: string;
+  total_debe:   number;
+  total_haber:  number;
+}
+
+export interface MacroTotales {
+  total_debe:        number;
+  total_haber:       number;
+  total_egresos:     number;
+  total_ingresos:    number;
+  saldo:             number;
+  total_presupuesto: number;
+  total_costo_real:  number;
+  por_empresa:       MacroTotalPorEmpresa[];
+  por_rubro:         MacroTotalPorRubro[];
+  por_estado:        Record<EstadoMovimiento, number>;
+}
+
+export interface MacroResponse {
+  data:       MovimientoMacro[];
+  pagination: { total: number; page: number; limit: number; totalPages: number };
+  totales:    MacroTotales;
+}
+
+export interface MacroFiltros {
+  empresa_id?:         number;
+  evento_id?:          number;
+  rubro_id?:           number;
+  tipo?:               Tipo;
+  estado?:             EstadoMovimiento;
+  responsable_id?:     number;
+  proveedor_id?:       number;
+  desde?:              string;
+  hasta?:              string;
+  con_presupuesto?:    boolean;
+  avisado_proveedor?:  boolean;
+  page?:               number;
+  limit?:              number;
+  sort?:               'fecha' | 'monto' | 'rubro';
+  order?:              'asc' | 'desc';
+}
+
 // ── Caja ──────────────────────────────────────────────────────────────────────
 
 export interface CuentaBancaria {
   id:            number;
-  evento_id:     number;
+  // Nullable — cuenta de empresa (caja chica, reserva, etc.) sin evento asociado.
+  evento_id:     number | null;
+  evento?:       { id: number; nombre: string } | null;
   nombre:        string;
   tipo:          TipoCuenta;
   moneda:        Moneda;
   saldo_inicial: number;
+  // Si el saldo actual cae por debajo de este valor → alerta (ej. Caja Reserva).
+  saldo_minimo:  number | null;
+  // Solo presente en /api/cuentas y GET /api/cuentas/:id — saldo actual calculado.
+  saldo_actual?: number;
+  // Solo presente en /api/cuentas y GET /api/cuentas/:id — true si saldo_actual < saldo_minimo.
+  alerta_saldo_minimo?: boolean;
+  // Solo presente en GET /api/eventos/:id/cuentas — true si la cuenta es de
+  // empresa (evento_id null) vinculada vía EventoCuenta, no propia del evento.
+  vinculada?:    boolean;
+  // ── Estado de cuenta / rendición ─────────────────────────────────────────────
+  estado:          EstadoCuenta;
+  responsable_id:  number | null;
+  responsable?:    { id: number; nombre: string } | null;
+  fecha_apertura:  string | null;
+  fecha_cierre:    string | null;
+  notas_rendicion: string | null;
   created_at:    string;
   updated_at:    string;
   deleted_at:    string | null;
 }
 
 export interface MovimientoOrigen {
-  id:         number;
-  tipo:       Tipo;
-  tab_numero: number;
-  tab_codigo: string | null;
-  concepto:   string | null;
+  id:                number;
+  tipo:              Tipo;
+  tab_numero:        number | null;
+  tab_codigo:        string | null;
+  concepto:          string | null;
+  rubro_id:          number | null;
+  rubro_nombre:      string | null;
+  estado_movimiento: EstadoMovimiento | null;
 }
+
+export type CategoriaAndrea = 'COMBUSTIBLE' | 'COMIDA' | 'GASTOS_VARIOS' | 'SERVICIOS' | 'DEV_GASTOS' | 'VALES';
 
 export interface MovimientoCaja {
   id:                   number;
   cuenta_id:            number;
+  // Evento en cuyo contexto se cargó — null si no está atado a ningún evento
+  // (ej. movimiento cargado desde el detalle de cuenta en Caja Global).
+  evento_id?:           number | null;
+  evento?:              { id: number; nombre: string } | null;
   fecha:                string | null;
   descripcion:          string | null;
   debe:                 number;
   haber:                number;
   saldo_corriente:      number; // calculado por el backend
+  // Columna del libro diario de Andrea (Caja del mes, DOS57) — null en un
+  // ingreso o en un movimiento de otro módulo que no pasa por esa vista.
+  categoria_andrea:     CategoriaAndrea | null;
+  responsable_nombre:   string | null;
+  // N° de comprobante importado del Excel (ej. "FA 105053") o cargado a mano.
+  referencia:           string | null;
+  comprobante_nombre:   string | null;
+  tiene_comprobante:    boolean;
+  liquidacion_admin_id?: number | null;
   orden:                number;
   transferencia_par_id: number | null;
   movimiento_origen:    MovimientoOrigen | null;
@@ -159,6 +664,117 @@ export interface MovimientoCaja {
   deleted_at:           string | null;
   created_by:           number | null;
   updated_by:           number | null;
+}
+
+// ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
+
+export interface ResumenAndrea {
+  cuenta: { id: number; nombre: string; moneda: Moneda; saldo_actual: number };
+  saldo_anterior: number;
+  movimientos: (MovimientoCaja & { saldo_acumulado: number })[];
+  totales: {
+    ingreso:       number;
+    combustible:   number;
+    comida:        number;
+    gastos_varios: number;
+    servicios:     number;
+    dev_gastos:    number;
+    vales:         number;
+    saldo_final:   number;
+  };
+}
+
+export interface ImportAndreaResultado {
+  hojas_procesadas: number;
+  hojas_omitidas:   string[];
+  cuentas_creadas:  string[];
+  creados:          number;
+  omitidos:         number;
+  errores:          string[];
+}
+
+// ── Siniestros de empleados (ART, DOS57) ──────────────────────────────────────
+
+export type TipoSiniestro    = 'ACCIDENTE_TRABAJO' | 'ENFERMEDAD_LABORAL' | 'ACCIDENTE_IN_ITINERE' | 'OTRO';
+export type EstadoSiniestro  = 'ABIERTO' | 'EN_TRAMITE' | 'CERRADO' | 'RECHAZADO';
+
+export interface GastoSiniestro {
+  id:                 number;
+  siniestro_id:       number;
+  fecha:              string;
+  descripcion:        string;
+  monto:              number;
+  cubierto_art:       boolean;
+  monto_cubierto:     number | null;
+  monto_empresa:      number | null;
+  comprobante_nombre: string | null;
+  tiene_comprobante:  boolean;
+  created_at:         string;
+  created_by:         number | null;
+}
+
+export interface DocumentoSiniestro {
+  id:           number;
+  siniestro_id: number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  created_at:   string;
+  created_by:   number | null;
+}
+
+export interface SiniestroEmpleado {
+  id:                   number;
+  empresa_id:           number;
+  empleado_id:          number | null;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado } | null;
+  empleado_nombre_manual: string | null;
+  tipo:                 TipoSiniestro;
+  fecha_ocurrencia:     string;
+  descripcion:          string;
+  lugar:                string | null;
+  evento_id:            number | null;
+  evento?:              { id: number; nombre: string } | null;
+  art_nombre:           string | null;
+  art_numero_siniestro: string | null;
+  fecha_denuncia_art:   string | null;
+  diagnostico:          string | null;
+  zona_afectada:        string | null;
+  condicion_laboral:    string | null;
+  zona_riesgo:          string | null;
+  plan_accion:          string | null;
+  estado:               EstadoSiniestro;
+  dias_baja:            number | null;
+  fecha_alta_medica:    string | null;
+  gastos?:              GastoSiniestro[];
+  documentos?:          DocumentoSiniestro[];
+  total_gastos:          number;
+  total_cubierto_art:    number;
+  total_a_cargo_empresa: number;
+  created_at:           string;
+  updated_at:           string;
+  deleted_at:           string | null;
+  created_by:           number | null;
+}
+
+// ── Excedente de horas (Fofi/Nestoras) ────────────────────────────────────────
+
+export interface ExcedenteHoras {
+  id:                   number;
+  empresa_id:           number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  periodo_mes:          number;
+  periodo_anio:         number;
+  horas_excedente:      number;
+  valor_hora:           number;
+  monto_total:          number;
+  pagado:               boolean;
+  fecha_pago:           string | null;
+  liquidacion_admin_id: number | null;
+  created_at:           string;
+  updated_at:           string;
+  created_by:           number | null;
 }
 
 export interface PosicionCuenta {
@@ -197,11 +813,17 @@ export interface Echeq {
   detalle:               string | null;
   importe:               number;
   moneda:                Moneda;
+  tasa_cambio:           number | null;
+  monto_ars:             number | null;
   estado:                EstadoEcheq;
   motivo_rechazo:        string | null;
   fecha_emision:         string | null;
   fecha_cobro_estimada:  string | null;
   fecha_cobro_real:      string | null;
+  fecha_venta:           string | null;
+  banco_descuento:       string | null;
+  tasa_descuento:        number | null;
+  monto_neto_recibido:   number | null;
   dias_para_vencimiento: number | null;
   created_at:            string;
   updated_at:            string;
@@ -217,7 +839,7 @@ export interface AlertasEcheqs {
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
-export type UbicacionStock   = 'DEPOSITO' | 'EN_EVENTO' | 'EN_TRANSITO' | 'BAJA';
+export type UbicacionStock   = 'DEPOSITO' | 'EN_TRANSITO' | 'EN_EVENTO' | 'EXCEDENTE' | 'ALQUILADO' | 'BAJA';
 export type EstadoAsignacion = 'ACTIVA' | 'TRANSFERIDA' | 'DEVUELTA' | 'CANCELADA';
 export type OrigenTransfer   = 'DEPOSITO' | 'EVENTO';
 export type TipoAlertaStock  = 'QUIEBRE_ACTUAL' | 'QUIEBRE_PROYECTADO';
@@ -236,44 +858,590 @@ export interface CategoriaStock {
 }
 
 export interface Producto {
-  id:           number;
-  nombre:       string;
-  descripcion:  string | null;
-  categoria_id: number | null;
-  categoria:    CategoriaStock | null;
-  codigo:       string | null;
-  stock_total:  number;
-  stock_minimo: number;
-  unidad:       string;
-  notas:        string | null;
-  activo:       boolean;
-  created_at:   string;
-  updated_at:   string;
-  deleted_at:   string | null;
+  id:              number;
+  nombre:          string;
+  descripcion:     string | null;
+  categoria_id:    number | null;
+  categoria:       CategoriaStock | null;
+  codigo_interno:  string | null;
+  codigo_externo:  string | null;
+  nombre_tecnico:  string | null;
+  nombre_interno:  string | null;
+  tiene_foto:      boolean;
+  valor_unitario:  string | null;
+  es_critico:      boolean;
+  catalogo_origen: string | null;
+  stock_total:     number;
+  stock_minimo:    number;
+  unidad:          string;
+  notas:           string | null;
+  activo:          boolean;
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
   // augmented by listProductos
   comprometido_hoy?: number;
   disponible_hoy?:   number;
+  // included in getProducto detail
+  asignaciones?: AsignacionStock[];
+  movimientos?:  MovimientoStock[];
+  cunas?:        { cantidad: number; cuna: { id: number; codigo: string; descripcion: string | null } }[];
 }
 
 export interface AsignacionStock {
+  id:                  number;
+  producto_id:         number;
+  evento_id:           number;
+  cantidad:            number;
+  fecha_salida:        string;
+  fecha_retorno:       string | null;
+  ubicacion:           UbicacionStock;
+  estado:              EstadoAsignacion;
+  origen:              OrigenTransfer;
+  evento_origen_id:    number | null;
+  notas:               string | null;
+  camion_id:           number | null;
+  cuna_id:             number | null;
+  cantidad_excedente:  number;
+  // Vínculo con la Ficha de Evento (fuentes mixtas) — solo en GET /eventos/:id/stock
+  rubro_evento_id?:    number | null;
+  rubro_nombre?:       string | null;
+  firmado_salida:      boolean;
+  firmado_salida_at:   string | null;
+  firmado_llegada:     boolean;
+  firmado_llegada_at:  string | null;
+  firmado_retorno:     boolean;
+  firmado_retorno_at:  string | null;
+  created_at:          string;
+  updated_at:          string;
+  deleted_at:          string | null;
+  // joined
+  producto?:      { id: number; nombre: string; codigo_interno: string | null; codigo_externo?: string | null; categoria: CategoriaStock | null; unidad: string };
+  evento_origen?: { id: number; nombre: string } | null;
+  evento?:        { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+  camion?:        { id: number; codigo: string; descripcion: string | null } | null;
+  cuna?:          { id: number; codigo: string; descripcion: string | null } | null;
+}
+
+// ── Camiones / Cunas (logística DOS57) ────────────────────────────────────────
+
+export interface Camion {
+  id:          number;
+  empresa_id:  number;
+  codigo:      string;
+  descripcion: string | null;
+  patente:     string | null;
+  tipo:        string | null;
+  activo:      boolean;
+  created_at:  string;
+  updated_at:  string;
+  // ── Módulo Flota ──────────────────────────────────────────────────────────
+  marca?:            string | null;
+  modelo?:           string | null;
+  anio?:             number | null;
+  color?:            string | null;
+  titular?:          string | null;
+  numero_telepase?:  string | null;
+  en_servicio?:      boolean;
+  fecha_baja?:       string | null;
+  motivo_baja?:      string | null;
+  // ── Módulo Combustible ────────────────────────────────────────────────────
+  km_actual?:                  number | null;
+  limite_mensual_combustible?: number | null;
+  // ── Importador de pizarra (Lorena) ────────────────────────────────────────
+  capacidad_combustible?: string | null;
+  tipo_vehiculo?:         string | null;
+  notas?:                 string | null;
+  // ── Revisión técnica (RTO/ITV) ────────────────────────────────────────────
+  tipo_tecnica?:          'RTO' | 'ITV' | 'VTV' | 'ITU' | null;
+  vencimiento_tecnica?:   string | null;
+  // Calculados por el backend en /flota/vehiculos
+  requiere_tecnica?:      boolean;
+  estado_tecnica?:        EstadoVencimiento | null;
+}
+
+export type EstadoVencimiento = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO';
+
+// ── Flota — seguros, patentes, peajes, taller ─────────────────────────────────
+
+export type EstadoSeguro = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'CANCELADO';
+export type TipoPatente = 'MUNICIPAL' | 'PROVINCIAL' | 'NACIONAL';
+export type EstadoPatente = 'PAGADA' | 'PENDIENTE' | 'VENCIDA';
+export type TipoServicioTaller = 'MANTENIMIENTO' | 'REPARACION' | 'NEUMATICOS' | 'CHAPERIA_PINTURA' | 'ELECTRICIDAD' | 'OTROS';
+export type EstadoServicioTaller = 'PRESUPUESTADO' | 'EN_PROCESO' | 'FINALIZADO' | 'CANCELADO';
+
+export interface VehiculoFlota extends Camion {
+  seguro_vigente?:  SeguroVehiculo | null;
+  proxima_patente?: PatenteVehiculo | null;
+  en_taller?:       ServicioTaller | null;
+}
+
+export interface VehiculoFlotaDetalle extends Camion {
+  seguros:          SeguroVehiculo[];
+  patentes:         PatenteVehiculo[];
+  gastos_peaje:     GastoPeaje[];
+  servicios_taller: ServicioTaller[];
+}
+
+export interface SeguroVehiculo {
+  id:                number;
+  camion_id:         number;
+  camion?:           { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  aseguradora:       string;
+  numero_poliza:     string | null;
+  tipo_cobertura:    string | null;
+  fecha_inicio:      string;
+  fecha_vencimiento: string;
+  importe_anual:     number | null;
+  moneda:            Moneda;
+  estado:            EstadoSeguro;
+  documento_nombre:  string | null;
+  notas:             string | null;
+  created_at?:       string;
+}
+
+export interface PatenteVehiculo {
+  id:                 number;
+  camion_id:          number;
+  camion?:            { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  tipo:               TipoPatente;
+  anio:               number;
+  cuota:              number | null;
+  importe:            number;
+  fecha_vencimiento:  string;
+  fecha_pago:         string | null;
+  estado:             EstadoPatente;
+  comprobante_nombre: string | null;
+  notas:              string | null;
+}
+
+export interface GastoPeaje {
+  id:                   number;
+  camion_id:            number;
+  camion?:              { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  fecha:                string;
+  ruta:                 string | null;
+  importe:              number;
+  evento_id:            number | null;
+  evento?:              { id: number; nombre: string } | null;
+  es_carga_telepase:    boolean;
+  saldo_telepase_post:  number | null;
+  notas:                string | null;
+}
+
+export interface ServicioTaller {
+  id:                  number;
+  camion_id:           number;
+  camion?:             { id: number; codigo: string; descripcion: string | null; patente: string | null };
+  taller_nombre:       string | null;
+  tipo:                TipoServicioTaller;
+  descripcion:         string;
+  fecha_ingreso:       string;
+  fecha_estimada:      string | null;
+  fecha_retiro:        string | null;
+  estado:              EstadoServicioTaller;
+  presupuesto:         number | null;
+  importe_final:       number | null;
+  saldo_pendiente:     number | null;
+  cuenta_corriente_id: number | null;
+  notas:               string | null;
+}
+
+export interface AlertaFlotaItem {
+  id:       string;
+  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO' | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE';
+  titulo:   string;
+  fecha:    string;
+  color:    string;
+  urgencia: UrgenciaCalendario;
+  metadata: Record<string, unknown>;
+}
+
+// ── Documentación de flota (Lorena) — carnets, control de salida, multas ──────
+
+export type EstadoCarnet = EstadoVencimiento | 'SIN_VENCIMIENTO' | 'SIN_CARNET';
+
+export interface CarnetEmpleado {
+  id: number; nombre: string; apellido: string; apodo: string | null; categoria: CategoriaEmpleado;
+  licencia_conducir:    boolean;
+  licencia_categoria:   string | null;
+  licencia_numero:      string | null;
+  licencia_vencimiento: string | null;
+  estado_carnet:        EstadoCarnet;
+}
+
+export type EstadoControlSalida = 'PENDIENTE' | 'REVISADO' | 'OBSERVADO';
+
+export interface AlertaDocumental {
+  tipo:    'BAJA' | 'SEGURO' | 'TECNICA' | 'CARNET' | 'CHOFER';
+  nivel:   'rojo' | 'amarillo';
+  mensaje: string;
+}
+
+export interface ControlSalidaVehiculo {
+  id:                  number;
+  camion_id:           number;
+  camion:              { id: number; codigo: string; patente: string | null; descripcion: string | null; tipo_vehiculo: string | null; en_servicio: boolean };
+  fecha_salida:        string;
+  chofer_id:           number | null;
+  chofer:              { id: number; nombre: string; apellido: string; apodo: string | null } | null;
+  chofer_nombre:       string | null;
+  evento_id:           number | null;
+  evento:              { id: number; nombre: string } | null;
+  destino:             string | null;
+  check_tarjeta_verde: boolean;
+  check_seguro:        boolean;
+  check_tecnica:       boolean;
+  check_carnet:        boolean;
+  estado:              EstadoControlSalida;
+  revisado_por:        string | null;
+  revisado_at:         string | null;
+  observaciones:       string | null;
+  alertas:             AlertaDocumental[];
+  semaforo:            'verde' | 'amarillo' | 'rojo';
+}
+
+export interface SugerenciaControlSalida {
+  camion_id:     number;
+  camion:        { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  chofer_id:     number | null;
+  chofer_nombre: string | null;
+  evento:        { id: number; nombre: string } | null;
+  destino:       string | null;
+  origen:        string;
+}
+
+export interface OpcionesControlSalida {
+  vehiculos: { id: number; codigo: string; patente: string | null; descripcion: string | null; en_servicio: boolean }[];
+  empleados: { id: number; nombre: string; apellido: string; apodo: string | null; licencia_conducir: boolean }[];
+  eventos:   { id: number; nombre: string; fecha_inicio: string | null }[];
+}
+
+export type TipoMulta   = 'TRANSITO' | 'INTERNA';
+export type EstadoMulta = 'PENDIENTE' | 'PAGADA' | 'ANULADA';
+
+export interface Multa {
+  id:                     number;
+  tipo:                   TipoMulta;
+  fecha:                  string;
+  camion_id:              number | null;
+  camion:                 { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_texto:          string | null;
+  empleado_id:            number | null;
+  empleado:               { id: number; nombre: string; apellido: string; apodo: string | null } | null;
+  empleado_nombre_manual: string | null;
+  lugar:                  string | null;
+  motivo:                 string;
+  numero_acta:            string | null;
+  fecha_vencimiento:      string | null;
+  monto:                  number;
+  estado:                 EstadoMulta;
+  fecha_pago:             string | null;
+  medio_pago:             string | null;
+  descontar_empleado:     boolean;
+  anticipo:               { id: number; descontado: boolean } | null;
+  observaciones:          string | null;
+  estado_vencimiento:     EstadoVencimiento | null;
+  descontada:             boolean;
+}
+
+export interface ResumenMultas {
+  por_empleado: { empleado_id: number | null; nombre: string; cantidad: number; monto_total: number; monto_descontado: number; pendientes_pago: number }[];
+  por_vehiculo: { camion_id: number | null; vehiculo: string; cantidad: number; monto_total: number; pendientes_pago: number }[];
+  total:        { cantidad: number; monto: number };
+}
+
+// ── Combustible (flota — pantalla de Santi/Nico) ──────────────────────────────
+
+export type TipoCombustible = 'NAFTA_SUPER' | 'NAFTA_PREMIUM' | 'DIESEL' | 'GNC';
+export type EstadoCargaCombustible = 'AUTORIZADA' | 'PENDIENTE_AUTORIZACION' | 'RECHAZADA';
+
+export interface CargaCombustible {
+  id:                   number;
+  // Nullable — los movimientos de cuenta corriente sin vehículo (TIPO=RE/NC:
+  // pago o nota de crédito, importados desde el ledger real) no tienen camión.
+  camion_id:            number | null;
+  camion:               { id: number; codigo: string; descripcion: string | null; patente: string | null } | null;
+  fecha:                string;
+  tipo_combustible:     TipoCombustible;
+  litros:               number;
+  precio_por_litro:     number | null;
+  monto_total:          number;
+  estacion_nombre:      string | null;
+  estacion_ciudad:      string | null;
+  km_actual:            number | null;
+  km_anterior:          number | null;
+  km_recorridos:        number | null;
+  rendimiento_lts_100km: number | null;
+  estado:               EstadoCargaCombustible;
+  autorizado_por:       number | null;
+  autorizado_at:        string | null;
+  evento_id:            number | null;
+  evento:               { id: number; nombre: string } | null;
+  cuenta_corriente_id:  number | null;
+  responsable_nombre:   string | null;
+  numero_comprobante:   string | null;
+  tipo_movimiento:      string | null;
+  pagos:                number | null;
+  saldo:                number | null;
+  comprobante_nombre:   string | null;
+  notas:                string | null;
+}
+
+export interface ResumenMensualCombustibleItem {
+  camion_id:             number;
+  camion_codigo:         string;
+  camion_patente:        string | null;
+  total_litros:          number;
+  total_monto:           number;
+  promedio_precio_litro: number | null;
+  rendimiento_promedio:  number | null;
+  cantidad_cargas:       number;
+  por_evento:            { evento_id: number; evento_nombre: string; litros: number; monto: number }[];
+}
+
+export interface ResumenSemanalCombustible {
+  semana_key:           string;
+  numero:               number;
+  semana_inicio:        string;
+  semana_fin:           string;
+  label:                string;
+  total_litros:         number;
+  total_monto:          number;
+  total_pagos:          number;
+  variacion_litros_pct: number | null;
+  por_vehiculo:         { camion_id: number; codigo: string; patente: string | null; litros: number; monto: number }[];
+}
+
+export interface AnalisisAnualCombustible {
+  anio:               number;
+  total_litros_anual: number;
+  total_monto_anual:  number;
+  por_mes:            { mes: number; label: string; litros: number; monto: number; variacion_pct: number | null }[];
+  por_vehiculo:       { camion_id: number; codigo: string; total_anual: number; por_mes: number[]; total_anual_monto: number; por_mes_monto: number[] }[];
+  forecast:           { mes: number; label: string; litros_proyectados: number; monto_proyectado: number }[];
+}
+
+// ── AFIP y Préstamos Bancarios ───────────────────────────────────────────────
+
+export type EstadoPlanAFIP = 'ACTIVO' | 'CANCELADO' | 'FINALIZADO' | 'CADUCADO';
+export type EstadoPrestamo = 'ACTIVO' | 'CANCELADO_ANTICIPADO' | 'FINALIZADO';
+
+export interface CuotaPlanAFIP {
+  id:              number;
+  plan_id:         number;
+  numero_cuota:    number;
+  fecha_debito:    string;
+  capital:         number | null;
+  interes:         number | null;
+  total_cuota:     number;
+  fecha_pago_real: string | null;
+  pagada:          boolean;
+  notas:           string | null;
+}
+
+export interface DocumentoPlanAFIP {
+  id:           number;
+  plan_id:      number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  archivo_size: number;
+  created_at:   string;
+}
+
+export interface PlanAFIP {
+  id:                   number;
+  empresa_id:           number;
+  empresa?:             { id: number; nombre: string; nombre_corto: string | null };
+  numero_plan:          string | null;
+  descripcion:          string;
+  fecha_inicio:         string;
+  capital_original:     number;
+  cantidad_cuotas:      number;
+  valor_cuota_aprox:    number | null;
+  interes_financiero:   number | null;
+  interes_resarcitorio: number | null;
+  estado:               EstadoPlanAFIP;
+  notas:                string | null;
+  titular_nombre:       string | null;
+  titular_cuit:         string | null;
+  created_at:           string;
+  // Resumen calculado (siempre presente en list/detail)
+  cuotas_pagadas:       number;
+  cuotas_pendientes:    number;
+  proxima_cuota:        CuotaPlanAFIP | null;
+  total_pagado:         number;
+  saldo_pendiente:      number;
+  // Solo en detail
+  cuotas?:              CuotaPlanAFIP[];
+  documentos?:          DocumentoPlanAFIP[];
+}
+
+export interface CuotaPrestamo {
+  id:                number;
+  prestamo_id:       number;
+  numero_cuota:      number;
+  fecha_vencimiento: string;
+  capital:           number | null;
+  interes:           number | null;
+  iva_interes:       number | null;
+  seguro:            number | null;
+  otros_impuestos:   number | null;
+  total_cuota:       number;
+  fecha_pago_real:   string | null;
+  pagada:            boolean;
+  notas:             string | null;
+}
+
+export interface DocumentoPrestamo {
+  id:           number;
+  prestamo_id:  number;
+  nombre:       string;
+  descripcion:  string | null;
+  archivo_mime: string;
+  archivo_size: number;
+  created_at:   string;
+}
+
+export interface PrestamoBancario {
+  id:                  number;
+  empresa_id:          number;
+  empresa?:            { id: number; nombre: string; nombre_corto: string | null };
+  entidad:             string;
+  numero_operacion:    string | null;
+  tipo:                string | null;
+  fecha_otorgamiento:  string;
+  capital_original:    number;
+  moneda:              Moneda;
+  tasa_nominal_anual:  number | null;
+  tasa_efectiva_anual: number | null;
+  cantidad_cuotas:     number;
+  dia_debito:          number | null;
+  estado:              EstadoPrestamo;
+  notas:               string | null;
+  created_at:          string;
+  // Resumen calculado (siempre presente en list/detail)
+  cuotas_pagadas:          number;
+  cuotas_pendientes:       number;
+  proxima_cuota:           CuotaPrestamo | null;
+  saldo_capital_pendiente: number;
+  // Solo en detail
+  cuotas?:      CuotaPrestamo[];
+  documentos?:  DocumentoPrestamo[];
+}
+
+export interface CunaProducto {
+  id:          number;
+  cuna_id:     number;
+  producto_id: number;
+  cantidad:    number;
+  producto?:   { id: number; nombre: string; unidad: string; codigo_interno?: string | null };
+}
+
+export interface Cuna {
+  id:                  number;
+  empresa_id:          number;
+  codigo:              string;
+  descripcion:         string | null;
+  activo:              boolean;
+  created_at:          string;
+  updated_at:          string;
+  productos?:          CunaProducto[];
+  productos_distintos?: number;
+  total_unidades?:     number;
+}
+
+// ── Pañol ─────────────────────────────────────────────────────────────────────
+
+export type TipoPanolItem   = 'HERRAMIENTA' | 'CONSUMIBLE';
+export type EstadoPanolItem = 'DISPONIBLE' | 'FUERA_DE_SERVICIO' | 'BAJA';
+export type TipoMovPanol    = 'SALIDA' | 'DEVOLUCION' | 'USO_INTERNO' | 'BAJA';
+
+export interface PanolItem {
   id:               number;
-  producto_id:      number;
-  evento_id:        number;
-  cantidad:         number;
-  fecha_salida:     string;
-  fecha_retorno:    string | null;
-  ubicacion:        UbicacionStock;
-  estado:           EstadoAsignacion;
-  origen:           OrigenTransfer;
-  evento_origen_id: number | null;
+  empresa_id:       number;
+  nombre:           string;
+  descripcion:      string | null;
+  tipo:             TipoPanolItem;
+  stock_total:      number;
+  stock_disponible: number;
+  valor:            string | null;
+  estado:           EstadoPanolItem;
   notas:            string | null;
   created_at:       string;
   updated_at:       string;
-  deleted_at:       string | null;
+  movimientos?:     MovimientoPanol[];
+}
+
+export interface MovimientoPanol {
+  id:                  number;
+  empresa_id:          number;
+  panol_item_id:       number;
+  tipo:                TipoMovPanol;
+  cantidad:            number;
+  evento_id:           number | null;
+  responsable_id:      number | null;
+  responsable_nombre:  string | null;
+  fecha:               string;
+  descripcion:         string | null;
+  cantidad_devuelta:   number | null;
+  cantidad_faltante:   number | null;
+  motivo_faltante:     string | null;
+  devolucion_at:       string | null;
+  created_at:          string;
+  updated_at:          string;
   // joined
-  producto?:      { id: number; nombre: string; codigo: string | null; categoria: CategoriaStock | null; unidad: string };
-  evento_origen?: { id: number; nombre: string } | null;
-  evento?:        { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+  panol_item?: { id: number; nombre: string; tipo: TipoPanolItem };
+  evento?:     { id: number; nombre: string; estado: EstadoEvento } | null;
+}
+
+export interface AlertaPanol {
+  movimiento_id:      number;
+  panol_item_id:      number;
+  panol_item_nombre:  string;
+  evento_id:          number | null;
+  evento_nombre?:     string;
+  dias_finalizado:    number | null;
+  responsable_id:     number | null;
+  responsable_nombre: string | null;
+  cantidad_pendiente: number;
+  fecha_salida:       string;
+}
+
+// ── Activos ───────────────────────────────────────────────────────────────────
+
+export type EstadoActivo = 'BUENO' | 'REGULAR' | 'DETERIORADO' | 'BAJA';
+
+export interface Activo {
+  id:            number;
+  empresa_id:    number;
+  nombre:        string;
+  descripcion:   string | null;
+  categoria:     string | null;
+  numero_serie:  string | null;
+  fecha_compra:  string | null;
+  valor_compra:  string | null;
+  estado:        EstadoActivo;
+  ubicacion:     string | null;
+  observaciones: string | null;
+  // Activos contables por unidad (ej. uniformes del depósito por talle)
+  cantidad?:        number | null;
+  cantidad_minima?: number | null;
+  created_at:    string;
+  updated_at:    string;
+}
+
+// POST /uniformes/importar-stock — stock del depósito por talle
+export interface ImportarStockUniformesResultado {
+  hoja:           string;
+  hojas:          string[];
+  fecha_revision: string | null;
+  creados:        number;
+  actualizados:   number;
+  sin_cambios:    number;
+  con_stock_bajo: number;
+  filas: { nombre: string; ubicacion: string; cantidad: number; anterior: number | null }[];
 }
 
 export interface MovimientoStock {
@@ -394,20 +1562,34 @@ export interface Factura {
   tipo_factura:      string;
   fecha_emision:     string;
   fecha_vencimiento: string | null;
-  proveedor_id:      number;
-  proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null };
-  evento_id:         number;
-  evento?:           { id: number; nombre: string };
+  proveedor_id:      number | null;
+  proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null } | null;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
   tab_numero:        number | null;
+  rubro_id:          number | null;
+  rubro?:            { id: number; nombre: string } | null;
   importe_total:     number;
   importe_pagado:    number;
   importe_pendiente: number;
   moneda:            Moneda;
+  tasa_cambio:       number | null;
+  monto_ars:         number | null;
   condicion_pago:    CondicionPago;
   estado:            EstadoFactura;
   notas:             string | null;
   pdf_nombre:        string | null;
   pdf_tamanio:       number | null;
+  // Libro de compras AFIP
+  tipo_comprobante?:         TipoComprobanteEmitido | null;
+  neto_gravado?:             number | string | null;
+  no_gravado?:               number | string | null;
+  exento?:                   number | string | null;
+  iva_importe?:              number | string | null;
+  tiene_pdf?:                boolean;
+  pdf_nombre_afip?:          string | null;
+  tiene_comprobante_fisico?: boolean;
+  origen_import?:            string | null;
   created_at:        string;
   updated_at:        string;
   deleted_at:        string | null;
@@ -427,12 +1609,119 @@ export interface PagoFactura {
   echeq_id:      number | null;
   created_at:    string;
   deleted_at:    string | null;
-  movimiento?:   { id: number; tipo: Tipo; tab_numero: number } | null;
+  movimiento?:   { id: number; tipo: Tipo; tab_numero: number; rubro_id: number | null; rubro?: { id: number; nombre: string } | null } | null;
   echeq?:        { id: number; estado: EstadoEcheq; numero: string } | null;
+}
+
+// ── Facturación emitida a clientes (cuentas a cobrar) ────────────────────────
+
+export type TipoComprobanteEmitido =
+  | 'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C' | 'FACTURA_MIPYMES_FCE_A' | 'FACTURA_MIPYMES_FCE_B'
+  | 'NOTA_CREDITO_A' | 'NOTA_CREDITO_B' | 'NOTA_CREDITO_C' | 'NOTA_DEBITO_A' | 'NOTA_DEBITO_B' | 'NOTA_DEBITO_C'
+  | 'RECIBO' | 'RECIBO_B' | 'LIQUIDACION_A' | 'TIQUE_FACTURA_A';
+
+export type EstadoFacturaEmitida = 'EMITIDA' | 'COBRADA_PARCIAL' | 'COBRADA' | 'INCOBRABLE' | 'ANULADA';
+
+export type CondicionCliente = 'RESPONSABLE_INSCRIPTO' | 'MONOTRIBUTISTA' | 'EXENTO' | 'CONSUMIDOR_FINAL' | 'EXTERIOR';
+
+export interface CobroFacturaEmitida {
+  id:                 number;
+  factura_emitida_id: number;
+  fecha:              string;
+  monto:              number;
+  moneda:             Moneda;
+  forma_cobro:        string | null;
+  cuenta_destino_id:  number | null;
+  cuenta_destino?:    { id: number; nombre: string } | null;
+  referencia:         string | null;
+  notas:              string | null;
+  created_at:         string;
+}
+
+export interface RepartoFacturaEmitida {
+  id:                 number;
+  factura_emitida_id: number;
+  razon_social:       string;
+  cuit:               string | null;
+  porcentaje:         number;
+  monto:              number;
+  empresa_id:         number | null;
+}
+
+export interface FacturaEmitida {
+  id:                number;
+  empresa_id:        number;
+  tipo_comprobante:  TipoComprobanteEmitido;
+  punto_venta:       number;
+  numero:            string | null;
+  fecha_emision:     string;
+  cliente_nombre:    string;
+  cliente_cuit:      string | null;
+  condicion_cliente: CondicionCliente | null;
+  neto_gravado:      number | null;
+  iva:               number | null;
+  otros_impuestos:   number | null;
+  total:             number;
+  moneda:            Moneda;
+  tasa_cambio:       number | null;
+  total_ars:         number | null;
+  forma_pago:        string | null;
+  fecha_vencimiento: string | null;
+  estado:            EstadoFacturaEmitida;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
+  concepto:          string | null;
+  observaciones:     string | null;
+  pdf_nombre:        string | null;
+  pdf_mime_type:      string | null;
+  pdf_tamanio:        number | null;
+  created_at:        string;
+  updated_at:        string;
+  deleted_at:        string | null;
+  // Resumen calculado — siempre presente en list/detail
+  total_cobrado:     number;
+  saldo_pendiente:   number;
+  cantidad_cobros:   number;
+  // Solo en detail (y en la respuesta de create/update)
+  cobros?:           CobroFacturaEmitida[];
+  repartos?:         RepartoFacturaEmitida[];
+}
+
+export interface ClienteFacturacionBusqueda {
+  cliente_nombre:    string;
+  cliente_cuit:      string | null;
+  condicion_cliente: CondicionCliente | null;
+}
+
+export interface FacturasEmitidasResponse {
+  items:      FacturaEmitida[];
+  total:      number;
+  page:       number;
+  limit:      number;
+  totalPages: number;
+}
+
+export interface ResumenFacturasEmitidas {
+  total_emitido:              number;
+  total_cobrado:               number;
+  total_pendiente:              number;
+  vencidas_sin_cobrar:          number;
+  vencidas_sin_cobrar_monto:    number;
+  por_estado:                   Record<EstadoFacturaEmitida, number>;
+  por_mes:                      { mes: string; total_emitido: number; total_cobrado: number }[];
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 // Subconjunto devuelto por GET /api/auth/me y POST /api/auth/login
+
+export type EmpresaResumen = {
+  id:             number;
+  nombre:         string;
+  nombre_corto:   string | null;
+  color_primario: string | null;
+  logo_url:       string | null;
+  tiene_logo:     boolean;
+};
 
 export type MeResponse = {
   id:      number;
@@ -441,6 +1730,26 @@ export type MeResponse = {
   rol:     Rol;
   activo:  boolean;
   accesos: { evento_id: number; rol: Rol }[];
+  // Multitenancy — empresaId es null mientras hay una selección de empresa
+  // pendiente (usuario con acceso a 2+ empresas que todavía no eligió).
+  empresaId:            number | null;
+  empresa:              EmpresaResumen | null;
+  empresasDisponibles?: EmpresaResumen[];
+  puedeCambiarEmpresa:  boolean;
+  // Macro restringida por área (ej. Mayra) — distinto de puedeCambiarEmpresa
+  // (admin global): ve varias empresas pero solo sus areasMacro.
+  puedeVerMacro:        boolean;
+  areasMacro:           AreaMacro[];
+  // Pantalla a la que redirige al hacer login (ver resolveHomeRoute en
+  // lib/homeRoute.ts) — null usa el default por rol/empresa.
+  homeRoute:            string | null;
+  // Empleado de RRHH vinculado a este usuario (rol VIEWER + empleado ⇒
+  // autoservicio: sólo ve/carga sus propias jornadas).
+  empleadoId:           number | null;
+  // true ⇒ tiene que cambiar la contraseña antes de usar el sistema
+  debeCambiarPassword:  boolean;
+  // Permisos de carga por responsable, además del rol (ver lib/permisos.ts)
+  permisos:             Permiso[];
 };
 
 // ── Respuestas API ────────────────────────────────────────────────────────────
@@ -456,3 +1765,1551 @@ export interface PaginatedResponse<T> {
   page:  number;
   limit: number;
 }
+
+// ── Empresa (Configuración de empresa) ────────────────────────────────────────
+
+export interface Empresa {
+  id:               number;
+  nombre:           string;
+  nombre_corto:     string | null;
+  razon_social:     string | null;
+  cuit:             string | null;
+  domicilio:        string | null;
+  telefono:         string | null;
+  email:            string | null;
+  web:              string | null;
+  logo_nombre:      string | null;
+  logo_mime:        string | null;
+  color_primario:   string | null;
+  color_secundario: string | null;
+  moneda_default:   Moneda;
+  timezone:         string;
+  activo:           boolean;
+  created_at:       string;
+  updated_at:       string;
+}
+
+export interface EmpresaActual extends Empresa {
+  usuarios_activos_count: number;
+  eventos_count:          number;
+}
+
+export interface EmpresaUpdatePayload {
+  nombre?:           string;
+  nombre_corto?:     string | null;
+  razon_social?:     string | null;
+  cuit?:             string | null;
+  domicilio?:        string | null;
+  telefono?:         string | null;
+  email?:            string | null;
+  web?:              string | null;
+  color_primario?:   string | null;
+  color_secundario?: string | null;
+  moneda_default?:   Moneda;
+  timezone?:         string;
+}
+
+// ── RRHH ──────────────────────────────────────────────────────────────────────
+
+export interface Empleado {
+  id:               number;
+  nombre:           string;
+  apellido:         string;
+  // Nullable — el personal fijo importado desde Excel a veces sólo tiene
+  // CUIL, no DNI. El alta manual desde la UI lo sigue exigiendo.
+  dni:              string | null;
+  cuit:             string | null;
+  email:            string | null;
+  telefono:         string | null;
+  domicilio:        string | null;
+  cbu:              string | null;
+  alias:            string | null;
+  banco:            string | null;
+  categoria:        CategoriaEmpleado;
+  valor_hora:       number;
+  valor_hora_extra: number;
+  estado:           EstadoEmpleado;
+  notas:            string | null;
+  usuario_id:       number | null;
+
+  // ── Modelo de liquidación ────────────────────────────────────────────────────
+  tipo_liquidacion:         TipoLiquidacion;
+  valor_jornada_completa:   number | null;
+  valor_media_jornada:      number | null;
+  umbral_horas_jornada:     number | null;
+  umbral_horas_media:       number | null;
+  valor_hora_extra_jornada: number | null;
+  valor_viaje:              number | null;
+
+  // ── Legajo ────────────────────────────────────────────────────────────────────
+  apodo:                      string | null;
+  fecha_nacimiento:           string | null;
+  grupo_sanguineo:            string | null;
+  contacto_emergencia_nombre: string | null;
+  contacto_emergencia_tel:    string | null;
+  contacto_emergencia_tel2:   string | null;
+  escalafon:                  number | null;
+  art:                        string | null;
+  tipo_contratacion:          string | null;
+  licencia_conducir:          boolean;
+  licencia_categoria?:        string | null;
+  licencia_numero?:           string | null;
+  licencia_vencimiento?:      string | null;
+  equipamiento_asignado:      string | null;
+  talle_pantalon:             string | null;
+  talle_remera:               string | null;
+  talle_buzo:                 string | null;
+  talle_calzado:              string | null;
+
+  created_at:       string;
+  updated_at:       string;
+  deleted_at:       string | null;
+}
+
+export interface EmpleadoConStats extends Empleado {
+  stats: {
+    horas_normales_totales:     number;
+    horas_extras_totales:       number;
+    anticipos_pendientes:       number;
+    anticipos_pendientes_count: number;
+    ultima_jornada:             Jornada | null;
+  };
+}
+
+export interface Jornada {
+  id:                number;
+  empleado_id:       number;
+  evento_id:         number | null;
+  fecha:             string;
+  hora_convocatoria: string | null;
+  hora_ingreso:      string | null;
+  hora_egreso:       string | null;
+  horas_normales:    number;
+  horas_extras:      number;
+  descripcion:       string | null;
+  estado:            EstadoJornada;
+  motivo_rechazo:    string | null;
+  cantidad_viajes:   number | null;
+  convocatoria:      string | null;
+  lugar_trabajo:     string | null;
+  camion_id:         number | null;
+  aprobado_por:      number | null;
+  aprobado_at:       string | null;
+  empleado?: {
+    id: number; nombre: string; apellido: string;
+    tipo_liquidacion?:     TipoLiquidacion;
+    umbral_horas_jornada?: number | null;
+    umbral_horas_media?:   number | null;
+  };
+  evento?:   { id: number; nombre: string } | null;
+  camion?:   { id: number; codigo: string; descripcion: string | null } | null;
+}
+
+export interface Anticipo {
+  id:             number;
+  empleado_id:    number;
+  tipo:           TipoAnticipo;
+  monto:          number;
+  fecha:          string;
+  motivo:         string | null;
+  descontado:     boolean;
+  liquidacion_id: number | null;
+  liquidacion_admin_id: number | null;
+  created_at:     string;
+}
+
+export interface Liquidacion {
+  id:               number;
+  empleado_id:      number;
+  evento_id:        number | null;
+  fecha_desde:      string;
+  fecha_hasta:      string;
+  tipo_liquidacion: TipoLiquidacion;
+  horas_normales:   number;
+  horas_extras:     number;
+  valor_hora:       number;
+  valor_hora_extra: number;
+  subtotal_horas:   number;
+  total_anticipos:  number;
+  total_descuentos: number;
+  total_a_cobrar:   number;
+  estado:           EstadoLiquidacion;
+  observaciones:    string | null;
+  movimiento_id:    number | null;
+  aprobado_por:     number | null;
+  aprobado_at:      string | null;
+  created_at:       string;
+  empleado?: { id: number; nombre: string; apellido: string };
+  evento?:   { id: number; nombre: string } | null;
+}
+
+export interface DesgloseJornadaLiquidacion {
+  jornada_id:       number;
+  fecha:            string;
+  convocatoria:     string | null;
+  tipo_calculo:     TipoLiquidacion;
+  horas_trabajadas: number;
+  horas_normales:   number;
+  horas_extras:     number;
+  monto_base:       number;
+  monto_extras:     number;
+  monto_viaje:      number;
+  dif_hs_jornal:    number;
+  total:            number;
+}
+
+export interface LiquidacionPreview {
+  tipo_liquidacion: TipoLiquidacion;
+  horas_normales:   number;
+  horas_extras:     number;
+  subtotal_horas:   number;
+  jornadas:         DesgloseJornadaLiquidacion[];
+}
+
+export interface LiquidacionDetalle extends Liquidacion {
+  empleado:  Empleado;
+  anticipos: Anticipo[];
+  jornadas:  Jornada[];
+  movimiento?: { id: number; tipo: Tipo; tab_numero: number; evento_id: number } | null;
+}
+
+// ── Sueldos Administrativos (DOS57) ───────────────────────────────────────────
+// Régimen distinto de Jornada/Liquidacion: sueldo mensual fijo con conceptos
+// variables, acuerdo individual, y posible split de costo entre empresas.
+
+export type EstadoLiquidacionAdmin = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+
+export interface EmpresaMini {
+  id:           number;
+  nombre:       string;
+  nombre_corto: string | null;
+}
+
+export interface CuentaMini {
+  id:     number;
+  nombre: string;
+  tipo:   TipoCuenta;
+  moneda: Moneda;
+}
+
+export interface SplitEmpresa {
+  empresa_id:     number;
+  empresa_nombre: string;
+  porcentaje:     number;
+  monto?:         number; // presente cuando viene de un cálculo/snapshot
+}
+
+export interface AcuerdoSueldo {
+  id:                  number;
+  empleado_id:         number;
+  empleado?:           { id: number; nombre: string; apellido: string; dni: string | null; categoria: CategoriaEmpleado };
+  empresa_id:          number;
+  empresa?:            EmpresaMini;
+  fecha_inicio:        string;
+  vigencia_meses:      number | null;
+  escalafon:           string | null;
+  tipo_seguro:         string | null;
+  sueldo_basico:       number;
+  horas_acordadas_mes: number;
+  premio_incentivo:    number | null;
+  viatico:             number | null;
+  premio_presentismo:  number | null;
+  valor_hora_extra:    number | null;
+  telefono:            number | null;
+  // Choferes con bitácora de viajes — viático por tipo de recorrido, en vez
+  // del monto fijo `viatico` de arriba (ver BitacoraViaje).
+  viatico_provincial:    number | null;
+  viatico_nacional:      number | null;
+  viatico_nacional_1000: number | null;
+  // % de aumento que representó este acuerdo sobre el anterior — informativo.
+  porcentaje_acuerdo:    number | null;
+  categoria_acuerdo:     CategoriaAcuerdo;
+  // Banco de horas acumuladas (CHOFER) — null si no aplica.
+  horas_pendientes_acum: number | null;
+  // Premio de producción — monto fijo por evento del mes en que participó
+  // (distinto del viático y del sueldo básico). Ver EventoEmpleadoMes.
+  cobra_premio_produccion: boolean;
+  valor_premio_produccion: number | null;
+  activo:              boolean;
+  notas:               string | null;
+  created_at:          string;
+  updated_at:          string;
+  splits?:             SplitEmpresa[];
+  preview?: {
+    horas_extras:         number;
+    importe_horas_extras: number;
+    premio_incentivo:     number;
+    viatico:              number;
+    premio_viaje:         number;
+    premio_produccion:    number;
+    premio_presentismo:   number;
+    antiguedad_anios:     number;
+    importe_antiguedad:   number;
+    telefono:             number;
+    subtotal_bruto:       number;
+    total_a_cobrar:       number;
+  };
+}
+
+// ── Premio de producción — eventos del mes por empleado ───────────────────────
+
+export interface EventoEmpleadoMes {
+  id:            number;
+  empresa_id:    number;
+  empleado_id:   number;
+  evento_id:     number | null;
+  evento?:       { id: number; nombre: string; fecha_inicio: string | null } | null;
+  evento_nombre: string | null;
+  periodo_mes:   number;
+  periodo_anio:  number;
+  cobra_premio:  boolean;
+  monto_premio:  number | null;
+  // Premio PAX (Fofi/Nestoras): cantidad_pax × valor_por_pax × dias_trabajados
+  cantidad_pax:     number | null;
+  valor_por_pax:    number | null;
+  dias_trabajados:  number | null;
+  premio_pax_total: number | null;
+  created_at:    string;
+  created_by:    number | null;
+}
+
+export interface ResumenEventosMes {
+  total:     number; // monto_premio + premio_pax_total de las filas con cobra_premio
+  total_pax: number;
+  eventos:   EventoEmpleadoMes[];
+}
+
+export interface LiquidacionAdminMovimientoCaja {
+  id:            number;
+  cuenta_id:     number;
+  cuenta_nombre: string;
+  empresa_id:    number;
+  monto:         number;
+  descripcion:   string | null;
+}
+
+export interface LiquidacionAdmin {
+  id:                   number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; dni: string | null; categoria: CategoriaEmpleado };
+  empresa_id:           number;
+  acuerdo_id:           number;
+  acuerdo?:             AcuerdoSueldo;
+  periodo_mes:          number;
+  periodo_anio:         number;
+  sueldo_basico:        number;
+  horas_acordadas:      number;
+  escalafon:            string | null;
+  horas_trabajadas:     number;
+  horas_extras:         number;
+  valor_hora_extra:     number | null;
+  importe_horas_extras: number;
+  premio_incentivo:     number;
+  viatico:              number;
+  premio_viaje:         number;
+  premio_produccion_total: number;
+  eventos_mes:          EventoEmpleadoMes[] | null;
+  premio_presentismo:   number;
+  antiguedad_anios:     number;
+  importe_antiguedad:   number;
+  telefono:             number;
+  vacaciones_aguinaldo: number;
+  vales_descuentos:     number;
+  subtotal_bruto:       number;
+  total_a_cobrar:       number;
+  splits:               SplitEmpresa[] | null;
+  prestamos_descontados: number;
+  estado:               EstadoLiquidacionAdmin;
+  observaciones:        string | null;
+  created_at:           string;
+  updated_at:           string;
+  aprobado_por:         number | null;
+  aprobado_at:          string | null;
+  movimientos_caja?:    LiquidacionAdminMovimientoCaja[];
+  // Presente sólo en la respuesta de generar/get (BORRADOR) — informativo,
+  // la selección real se envía en prestamos_a_descontar al aprobar.
+  prestamos_pendientes?: PrestamoPendiente[];
+  // Anticipos (vales/descuentos/multas) vinculados a esta liquidación al
+  // generarla — ver GET /rrhh/sueldos-admin/liquidaciones/:id.
+  anticipos?: Anticipo[];
+  // Presente sólo en la respuesta de generar, si el empleado tiene registros
+  // de BitacoraViaje en el período (choferes).
+  bitacora_resumen?:     ResumenBitacora;
+  // Presente sólo en la respuesta de generar, si el acuerdo tiene
+  // cobra_premio_produccion=true.
+  eventos_mes_resumen?:  ResumenEventosMes;
+  // Aumento aplicado al generar — snapshot, independiente de
+  // AcuerdoSueldo.porcentaje_acuerdo.
+  porcentaje_aumento_aplicado: number | null;
+  tipo_aumento:                TipoAumento | null;
+  ipc_mes_referencia:          string | null;
+  ipc_valor_aplicado:          number | null;
+  // Banco de horas (CHOFER) — null si el acuerdo no es CHOFER.
+  horas_pendientes_anterior:   number | null;
+  horas_pendientes_nuevo:      number | null;
+}
+
+// ── Bitácora de viajes (choferes) ─────────────────────────────────────────────
+
+export interface BitacoraViaje {
+  id:                   number;
+  empleado_id:          number;
+  empleado?:            { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado };
+  empresa_id:           number;
+  fecha:                string;
+  convocatoria:         string | null;
+  dia_semana:           string | null;
+  hora_inicio:          string | null;
+  hora_fin:             string | null;
+  horas_trabajadas:     number | null;
+  ejido:                string | null;
+  recorrido:            string | null;
+  tipo_recorrido:       TipoRecorrido;
+  cantidad_vueltas:     number;
+  valor_por_vuelta:     number | null;
+  viatico_calculado:    number | null;
+  observaciones:        string | null;
+  liquidacion_admin_id: number | null;
+  created_at:           string;
+  updated_at:           string;
+}
+
+export interface ResumenBitacora {
+  mes:  number;
+  anio: number;
+  total_vueltas: { provincial: number; nacional: number; nacional_1000: number };
+  total_horas:   number;
+  total_viatico: number;
+  registros:     BitacoraViaje[];
+}
+
+// ── Escalafones administrativos (valores por categoría) ──────────────────────
+
+export interface EscalafonAdmin {
+  id:                 number;
+  empresa_id:         number;
+  nombre:             string;
+  orden:              number;
+  viatico:            number | null;
+  premio_presentismo: number | null;
+  telefono:           number | null;
+  premio_incentivo:   number | null;
+  // Premios por viaje (choferes) — pre-cargan Paso 3 del wizard de AcuerdoSueldo.
+  premio_viaje_provincial:    number | null;
+  premio_viaje_nacional:      number | null;
+  premio_viaje_nacional_1000: number | null;
+  created_at:         string;
+  updated_at:         string;
+}
+
+// ── Préstamos a empleados (distinto de Anticipo — se paga en cuotas) ─────────
+
+export interface PrestamoPendiente {
+  id:              number;
+  detalle:         string;
+  monto_cuota:     number;
+  cuotas_pagadas:  number;
+  cantidad_cuotas: number;
+}
+
+export interface PrestamoEmpleado {
+  id:                number;
+  empleado_id:       number;
+  empresa_id:        number;
+  fecha:             string;
+  detalle:           string;
+  monto_total:       number;
+  cantidad_cuotas:   number;
+  cuotas_pagadas:    number;
+  monto_cuota:       number;
+  saldado:           boolean;
+  saldo_pendiente:   number;
+  cuotas_pendientes: number;
+  created_at:        string;
+}
+
+// ── Parte Diario de Personal (DOS57) ──────────────────────────────────────────
+
+export type EstadoAsignacionDiaria = 'ASIGNADO' | 'LIBRE' | 'VACACIONES' | 'AUSENTE' | 'NO_CITADO';
+
+export interface AsignacionDiaria {
+  id:              number;
+  parte_diario_id: number;
+  empleado_id:     number;
+  estado:          EstadoAsignacionDiaria;
+  hora_ingreso:    string | null;
+  lugar:           string | null;
+  tarea:           string | null;
+  seccion:         string | null;
+  orden:           number;
+  camion_id:       number | null;
+  vehiculo_texto:  string | null;
+  evento_id:       number | null;
+  hora_salida:      string | null;
+  hora_salida_fija: boolean;
+  jornada_id:       number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  empleado: { id: number; nombre: string; apellido: string; apodo: string | null };
+  camion:   { id: number; codigo: string; descripcion: string | null } | null;
+  evento:   { id: number; nombre: string } | null;
+}
+
+export interface PedidoComidaSugerido {
+  por_seccion: { seccion: string; cantidad: number }[];
+}
+
+// ─── PRESENTISMO (Control de Presentismo — Lorena, DOS57) ─────────────────────
+
+export type EstadoAsistencia =
+  | 'PRESENTE' | 'DEMORA' | 'TARDE' | 'MEDIA_JORNADA' | 'AUSENTE' | 'JUSTIFICADO' | 'LIBRE' | 'VACACIONES' | 'LICENCIA' | 'FRANCO';
+
+export type SemaforoPresentismo = 'EXCELENTE' | 'SEGUIMIENTO' | 'ATENCION';
+
+export interface EmpleadoMiniPresentismo {
+  id: number; nombre: string; apellido: string; apodo: string | null; categoria: CategoriaEmpleado;
+  hora_convocatoria_default?: string | null;
+}
+
+export interface RegistroAsistencia {
+  id:                    number;
+  empleado_id:           number;
+  fecha:                 string;
+  estado:                EstadoAsistencia;
+  hora_ingreso:          string | null;
+  hora_egreso:           string | null;
+  hora_convocatoria:     string | null;
+  horas_trabajadas:      number | null;
+  minutos_tardanza:      number | null;
+  motivo:                string | null;
+  descuenta_presentismo: boolean;
+  jornada_id:            number | null;
+  origen:                string | null;
+  tardanza_requiere_aprobacion: boolean;
+  tardanza_aprobada:            boolean | null;
+  tardanza_aprobada_por:        number | null;
+  tardanza_aprobada_at:         string | null;
+  tardanza_nota:                string | null;
+  created_at: string;
+  updated_at: string;
+  empleado?: EmpleadoMiniPresentismo;
+  jornada?:  { id: number; estado: EstadoJornada; horas_normales: number; horas_extras: number } | null;
+}
+
+export interface PresentismoHoyItem {
+  empleado: EmpleadoMiniPresentismo;
+  registro: RegistroAsistencia | null;
+}
+
+export interface PresentismoHoyResponse {
+  fecha: string;
+  items: PresentismoHoyItem[];
+}
+
+export interface ResumenPresentismoItem {
+  empleado:               EmpleadoMiniPresentismo;
+  dias_habiles:           number;
+  dias_presente:          number;
+  dias_demora:            number;
+  dias_tarde:             number;
+  dias_media_jornada:     number;
+  dias_ausente:           number;
+  dias_justificado:       number;
+  dias_libre:             number;
+  dias_vacaciones:        number;
+  dias_franco:            number;
+  francos_ganados:        number;
+  saldo_francos?:         number;
+  total_horas:            number;
+  total_tardanzas_min:    number;
+  semaforo:               SemaforoPresentismo;
+  cobra_presentismo:      boolean;
+  motivo_sin_presentismo: string | null;
+  cerrado:                boolean;
+}
+
+export interface FrancosEmpleado {
+  empleado: EmpleadoMiniPresentismo;
+  inicial:  number;
+  ganados:  number;
+  tomados:  number;
+  saldo:    number;
+}
+
+export interface ImportPlanillaPresentismoResultado {
+  preview: boolean;
+  hojas: {
+    hoja: string; nombre: string;
+    empleado: { id: number; label: string } | null;
+    dias: number; nuevos: number; cambian: number; por_horario: number;
+    por_estado: Partial<Record<EstadoAsistencia, number>>;
+  }[];
+  creados:      number;
+  actualizados: number;
+  sin_cambios:  number;
+  advertencias: string[];
+}
+
+export interface ResumenMesResponse {
+  periodo: { mes: number; anio: number; dias_habiles: number };
+  periodo_cerrado: boolean;
+  items: ResumenPresentismoItem[];
+}
+
+export interface ResumenMesEmpleadoResponse {
+  empleado: EmpleadoMiniPresentismo;
+  dias: { fecha: string; es_no_laborable: boolean; registro: RegistroAsistencia | null }[];
+  conteo: Omit<ResumenPresentismoItem, 'empleado' | 'dias_habiles' | 'cerrado'>;
+  cerrado: boolean;
+  resumen_persistido: (Omit<ResumenPresentismoItem, 'empleado' | 'cerrado'> & { periodo_mes: number; periodo_anio: number }) | null;
+}
+
+export interface CerrarMesPresentismoResultado {
+  periodo: { mes: number; anio: number };
+  empleados_procesados: number;
+  cobran_presentismo: number;
+  no_cobran_presentismo: number;
+}
+
+export interface ParteDiario {
+  id:         number;
+  empresa_id: number;
+  fecha:      string;
+  titulo:     string | null;
+  notas:      string | null;
+  cerrado:    boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  asignaciones: AsignacionDiaria[];
+  pedido_comida_sugerido: PedidoComidaSugerido;
+}
+
+// Vista liviana de GET /parte-diario (lista/historial) — sin asignaciones
+export interface ParteDiarioResumen {
+  id:               number;
+  fecha:            string;
+  titulo:           string | null;
+  cerrado:          boolean;
+  total_personas:   number;
+  jornadas_creadas: number;
+  created_at:       string;
+}
+
+export interface CerrarParteResultado {
+  jornadas_creadas:    number;
+  jornadas_vinculadas: number;
+  omitidas:            number;
+}
+
+// ── Comidas ───────────────────────────────────────────────────────────────────
+
+export type TipoComida = 'ALMUERZO' | 'CENA' | 'DESAYUNO' | 'MERIENDA';
+
+export interface LineaComida {
+  id:               number;
+  pedido_comida_id: number;
+  tipo:             TipoComida;
+  area:             string;
+  cantidad:         number;
+  valor_unitario:   number | null;
+  detalle:          string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface PedidoComida {
+  id:              number;
+  evento_id:       number;
+  empresa_id:      number;
+  fecha:           string;
+  proveedor_id:    number | null;
+  proveedor:       { id: number; nombre: string; alias: string | null; cuit: string | null; categoria: string | null; telefono: string | null } | null;
+  proveedor_texto: string | null;
+  forma_pago:      string | null;
+  notas:           string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  created_by: number | null;
+  updated_by: number | null;
+  lineas: LineaComida[];
+}
+
+export interface ResumenComidaFecha {
+  fecha:           string;
+  total_almuerzos: number;
+  total_cenas:     number;
+  total_personas:  number;
+  costo_total:     number;
+  por_area: { area: string; almuerzo: number; cena: number }[];
+}
+
+// ── Calendario ────────────────────────────────────────────────────────────────
+// Sin tabla propia — agrega fechas de los modelos existentes en una sola vista.
+
+export type TipoCalendario =
+  | 'EVENTO' | 'FACTURA_VENCE' | 'ECHEQ_COBRO' | 'JORNADA'
+  | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
+  | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
+  | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO'
+  | 'SINIESTRO_VEHICULO_PENDIENTE'
+  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA';
+
+export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
+
+export interface CalendarioItem {
+  id:             string;
+  tipo:           TipoCalendario;
+  titulo:         string;
+  fecha:          string;
+  fecha_fin?:     string | null;
+  empresa_id:     number;
+  empresa_nombre: string;
+  color:          string;
+  urgencia:       UrgenciaCalendario;
+  metadata:       Record<string, unknown>;
+}
+
+export interface CalendarioResponse {
+  items:            CalendarioItem[];
+  totales_por_tipo: Partial<Record<TipoCalendario, number>>;
+}
+
+// ── Cuenta Corriente Genérica ────────────────────────────────────────────────
+
+export type TipoTercero = 'PROVEEDOR' | 'CLIENTE' | 'SOCIO' | 'CLUB' | 'OTRO';
+export type TipoMovCCC  = 'DEBE' | 'HABER' | 'AJUSTE';
+// Moneda propia del módulo (incluye EUR) — separada de Moneda (ARS/USD) que
+// usan Evento/Factura/Movimiento/Echeq.
+export type MonedaCCC   = 'ARS' | 'USD' | 'EUR';
+
+export interface ParteCCC {
+  id:         number;
+  nombre:     string;
+  porcentaje: number;
+}
+
+export interface CuentaCorriente {
+  id:              number;
+  nombre:          string;
+  tipo_tercero:    TipoTercero;
+  proveedor_id:    number | null;
+  proveedor?:      { id: number; nombre: string; cuit?: string | null } | null;
+  tercero_nombre:  string | null;
+  tercero_cuit:    string | null;
+  moneda:          MonedaCCC;
+  descripcion:     string | null;
+  activa:          boolean;
+  saldo_actual:    number;
+  tiene_reparto:   boolean;
+  partes?:         ParteCCC[];
+  ultimo_movimiento?: { fecha: string; concepto: string; tipo: TipoMovCCC; monto: number } | null;
+  movimientos?:    MovimientoCCC[];
+  created_at:      string;
+  updated_at:      string;
+  deleted_at:      string | null;
+}
+
+export interface MovimientoCCC {
+  id:                number;
+  cuenta_ccc_id:     number;
+  tipo:              TipoMovCCC;
+  fecha:             string;
+  concepto:          string;
+  descripcion:       string | null;
+  monto:             number;
+  moneda:            MonedaCCC;
+  tasa_cambio:       number | null;
+  monto_ars:         number | null;
+  saldo:             number;
+  factura_id:        number | null;
+  factura?:          { id: number; numero_factura: string } | null;
+  evento_id:         number | null;
+  evento?:           { id: number; nombre: string } | null;
+  documento_nombre:  string | null;
+  documento_mime:    string | null;
+  documento_tamanio: number | null;
+  created_at:        string;
+  deleted_at:        string | null;
+}
+
+export interface MovimientosCCCResponse {
+  total:       number;
+  movimientos: MovimientoCCC[];
+}
+
+// ─── GASTOS RECURRENTES Y ESPACIOS COMPARTIDOS ───────────────────────────────
+
+export type EstadoLineaGasto = 'PENDIENTE' | 'PAGADO' | 'ANULADO';
+
+export interface ParteEspacio {
+  id:                  number;
+  espacio_id:          number;
+  nombre:              string;
+  porcentaje:          number;
+  empresa_id:          number | null;
+  cuenta_corriente_id: number | null;
+  cuenta_corriente?:   { id: number; nombre: string } | null;
+}
+
+export interface GastoTipoEspacio {
+  id:              number;
+  espacio_id:      number;
+  nombre:          string;
+  monto_estimado:  number;
+  dia_vencimiento: number | null;
+  activo:          boolean;
+  es_fijo:         boolean;
+}
+
+export interface RepartoLineaGasto {
+  id:                number;
+  linea_id:          number;
+  parte_id:          number;
+  parte?:            { id: number; nombre: string };
+  porcentaje:        number;
+  monto:             number;
+  movimiento_ccc_id: number | null;
+}
+
+export interface LineaGastoEspacio {
+  id:                 number;
+  gasto_mes_id:       number;
+  gasto_tipo_id:      number | null;
+  nombre:             string;
+  monto_real:         number;
+  fecha_vencimiento:  string | null;
+  estado:             EstadoLineaGasto;
+  fecha_pago:         string | null;
+  tiene_comprobante:  boolean;
+  notas:              string | null;
+  repartos?:          RepartoLineaGasto[];
+  created_at:         string;
+}
+
+export interface GastoMesEspacioResumen {
+  id:            number;
+  periodo_mes:   number;
+  periodo_anio:  number;
+  cerrado:       boolean;
+  generado_auto: boolean;
+  total_gastos:  number;
+  pagados:       number;
+  pendientes:    number;
+}
+
+export interface GastoMesEspacio extends GastoMesEspacioResumen {
+  espacio_id: number;
+  lineas:     LineaGastoEspacio[];
+}
+
+export interface EspacioCompartido {
+  id:              number;
+  empresa_id:      number;
+  nombre:          string;
+  descripcion:     string | null;
+  direccion:       string | null;
+  activo:          boolean;
+  dia_generacion:  number;
+  partes:          ParteEspacio[];
+  gastosTipo?:     GastoTipoEspacio[];
+  mes_actual?:     { id: number; total_gastos: number; cerrado: boolean; pagados: number; pendientes: number } | null;
+  created_at:      string;
+}
+
+// ── Siniestros de vehículos (Lorena, flota) ───────────────────────────────────
+
+export type EstadoSiniestroVehiculo = 'ABIERTO' | 'EN_PROCESO' | 'RESUELTO' | 'SIN_NOVEDAD';
+
+export interface SiniestroVehiculo {
+  id:                     number;
+  empresa_id:             number;
+  camion_id:              number | null;
+  camion?:                { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_texto:          string | null;
+  empleado_id:            number | null;
+  empleado?:              { id: number; nombre: string; apellido: string } | null;
+  empleado_nombre_manual: string | null;
+  aseguradora:            string | null;
+  numero_siniestro:       string | null;
+  fecha_denuncia:         string | null;
+  fecha_ocurrencia:       string;
+  lugar:                  string | null;
+  descripcion:            string | null;
+  danios:                 string | null;
+  tercero_nombre:         string | null;
+  tercero_vehiculo:       string | null;
+  tercero_seguro:         string | null;
+  estado:                 EstadoSiniestroVehiculo;
+  observaciones:          string | null;
+  created_at:             string;
+  updated_at:             string;
+}
+
+export interface ImportarSiniestrosVehiculoResultado {
+  filas_procesadas:       number;
+  creados:                number;
+  actualizados:           number;
+  omitidos:               number;
+  sin_empleado:           string[];
+  sin_vehiculo:           string[];
+  estados_no_reconocidos: string[];
+  errores:                string[];
+}
+
+// ── Entregas de uniformes (Lorena, DOS57) ─────────────────────────────────────
+
+// Orden de columnas: PRENDAS_UNIFORME en hooks/useUniformes.ts
+export type PrendaUniforme =
+  | 'borcegos' | 'remeras' | 'camperon' | 'chombas' | 'campera' | 'mochila'
+  | 'buzo' | 'pantalon' | 'bermuda' | 'gorra' | 'prot_lumbar' | 'guantes';
+export type TotalesUniforme = Record<PrendaUniforme, number>;
+
+export interface EntregaUniforme extends TotalesUniforme {
+  id:              number;
+  empresa_id:      number;
+  empleado_id:     number | null;
+  empleado_nombre: string;
+  fecha_entrega:   string;
+  otros:           string | null;
+  origen_hoja:     string;
+  anio_resumen:    number | null;
+  // false = no suma al acumulado (fila de resumen anual o duplicado de PLANTA ESTABLE)
+  cuenta_en_total: boolean;
+}
+
+export interface HistorialUniformesResponse {
+  empleado:        { id: number; nombre: string; apellido: string } | null; // null = persona sin legajo en RRHH
+  empleado_nombre: string;
+  entregas: EntregaUniforme[];
+  totales:  TotalesUniforme;
+}
+
+export interface ResumenUniformesFila extends TotalesUniforme {
+  empleado_id:     number | null;
+  empleado_nombre: string;
+  empleado_estado: EstadoEmpleado | null;
+  fuente:          'RESUMEN' | 'DETALLE';
+  entregas:        number;
+  otros:           string | null;
+}
+
+export interface ResumenUniformesResponse {
+  anio:              number;
+  empresa_id:        number;
+  filas:             ResumenUniformesFila[];
+  totales:           TotalesUniforme;
+  anios_disponibles: number[];
+}
+
+export type ModoImportUniformes = 'HISTORIAL' | 'RESUMEN' | 'TODO';
+
+export interface ImportarUniformesResultado {
+  preview:                  boolean;
+  modo:                     ModoImportUniformes;
+  hojas_procesadas:         string[];
+  entregas_creadas:         number;
+  entregas_actualizadas:    number;
+  empleados_dados_baja:     { nombre: string; empleado_id: number; hoja: string }[];
+  bajas_ambiguas:           { nombre: string; hoja: string; motivo: string }[];
+  empleados_no_encontrados: { nombre: string }[];
+  errores:                  { hoja: string; motivo: string }[];
+}
+
+// ── Tarjeta Corporativa (DOS57 / Enjoy) ──────────────────────────────────────
+
+export type TipoResponsableTC = 'PERSONAL' | 'EMPRESA';
+
+export interface ResponsableTC {
+  id:         number;
+  tarjeta_id: number;
+  nombre:     string;
+  tipo:       TipoResponsableTC;
+  usuario_id: number | null;
+  usuario?:   { id: number; nombre: string } | null;
+  activo:     boolean;
+}
+
+export interface TarjetaCorporativa {
+  id:           number;
+  empresa_id:   number;
+  empresa:      { id: number; nombre: string; nombre_corto: string | null };
+  nombre:       string;
+  banco:        string;
+  moneda_base:  Moneda;
+  activa:       boolean;
+  responsables: ResponsableTC[];
+  _count:       { consumos: number };
+}
+
+export interface TarjetasCorporativasResponse {
+  empresas: { id: number; nombre: string; nombre_corto: string | null }[];
+  tarjetas: TarjetaCorporativa[];
+}
+
+export interface ConsumoTC {
+  id:             number;
+  tarjeta_id:     number;
+  responsable_id: number;
+  responsable:    { id: number; nombre: string; tipo: TipoResponsableTC; usuario_id: number | null };
+  fecha:          string;
+  periodo_mes:    number;
+  periodo_anio:   number;
+  monto_ars:      number | null;
+  monto_usd:      number | null;
+  detalle:        string | null;
+  observaciones:  string | null;
+  empresa_imputa: string | null;
+  descontado:     boolean;
+  nota_descuento: string | null;
+  import_key:     string | null;
+}
+
+export interface TotalResponsableTC {
+  responsable_id: number;
+  nombre:         string;
+  tipo:           TipoResponsableTC;
+  consumos:       number;
+  total_ars:      number;
+  total_usd:      number;
+}
+
+export interface ResumenTC {
+  por_responsable: TotalResponsableTC[];
+  total_ars:       number;
+  total_usd:       number;
+}
+
+export interface ConsumosTCResponse extends ResumenTC {
+  consumos: ConsumoTC[];
+}
+
+export interface ImportarTCResultado {
+  preview:          boolean;
+  tarjeta:          { id: number | null; nombre: string };
+  hojas: {
+    hoja: string; mes: number | null; anio: number | null; consumos: number;
+    total_ars: number; total_usd: number; mixtos: number;
+    por_responsable: { responsable: string; tipo: TipoResponsableTC; consumos: number; total_ars: number; total_usd: number }[];
+    advertencias: string[];
+  }[];
+  meses_detectados:    number;
+  meses_con_datos:     number;
+  total_consumos:      number;
+  creados:             number;
+  actualizados:        number;
+  eliminados:          number;
+  responsables_nuevos: string[];
+}
+
+export interface ConsumoTCPayload {
+  responsable_id?:     number;
+  responsable_nombre?: string;
+  responsable_tipo?:   TipoResponsableTC;
+  fecha:               string; // YYYY-MM-DD
+  periodo_mes?:        number;
+  periodo_anio?:       number;
+  monto_ars?:          number | null;
+  monto_usd?:          number | null;
+  detalle?:            string | null;
+  observaciones?:      string | null;
+  empresa_imputa?:     string | null;
+  descontado?:         boolean;
+}
+
+// ── Bitácora de viajes de camiones (Flota, planillas de Flor) ─────────────────
+// Misma tabla que BitacoraViaje (RRHH) pero origen FLOTA: no entra en sueldos.
+
+export interface ViajeFlota {
+  id:                   number;
+  fecha:                string | null; // null = la planilla no traía fecha
+  dia_semana:           string | null;
+  convocatoria:         string | null; // evento (texto libre de la planilla)
+  evento_id:            number | null; // Evento real vinculado (opcional)
+  evento:               { id: number; nombre: string } | null;
+  recorrido:            string | null; // tramo
+  camion_id:            number | null;
+  camion:               { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+  patente_camion:       string | null;
+  alias_camion:         string | null; // C1, C2… = n° de carga del evento
+  empleado_id:          number | null;
+  empleado:             { id: number; nombre: string; apellido: string } | null;
+  chofer_nombre:        string | null;
+  km_iniciales:         number | null;
+  km_finales:           number | null;
+  km_recorridos:        number | null;
+  monto_combustible:    number | null;
+  litros_cargados_ruta: number | null;
+  litros_consumidos:    number | null;
+  km_por_litro:         number | null;
+  litros_iniciales_tanque: number | null; // saldo de tanque al arrancar la gira (fila COMB.INICIAL), sólo en el 1er viaje
+  monto_caja_entregada: number | null;
+  horario_salida:       string | null;
+  horario_llegada:      string | null;
+  observaciones:        string | null;
+}
+
+// Filtro de evento combinado: eventos reales vinculados + textos libres de
+// viajes sin vínculo (un texto ya vinculado no se repite)
+export type OpcionEventoBitacora =
+  | { tipo: 'evento'; evento_id: number; valor: string }
+  | { tipo: 'texto'; evento_id: null; valor: string };
+
+export interface OpcionesBitacoraFlota {
+  eventos:       OpcionEventoBitacora[];
+  convocatorias: string[]; // todos los textos libres (sugerencias del alta manual)
+  camiones: { value: string; label: string }[];
+  choferes: { value: string; label: string }[];
+}
+
+type EventoVinculable = { id: number; nombre: string; fecha_inicio: string | null; fecha_fin: string | null };
+
+// Un grupo por nombre de evento de la planilla (normalizado: sin tildes,
+// mayúsculas ni signos). candidato.motivo: recordado = alias confirmado en una
+// importación anterior; vinculado = ya estaban todos vinculados; nombre = parecido.
+export interface VinculacionEventoPlanilla {
+  clave:         string;
+  convocatoria:  string;
+  variantes:     string[]; // otras formas en que aparece escrito en la planilla
+  viajes:        number;
+  vinculados:    number; // cuántos quedan/quedarían vinculados a evento_actual
+  fecha_desde:   string | null;
+  fecha_hasta:   string | null;
+  evento_actual: EventoVinculable | null;
+  candidato:     (EventoVinculable & {
+    similitud: number;
+    motivo:    'recordado' | 'vinculado' | 'nombre';
+    fechas:    'coincide' | 'no_coincide' | 'sin_datos';
+  }) | null;
+}
+
+export interface ImportarBitacoraFlotaResultado {
+  preview:              boolean;
+  bloques:              { hoja: string; titulo: string | null; tipo: 'A' | 'B' | 'C'; fila_encabezado: number; viajes: number }[];
+  hojas_no_reconocidas: string[];
+  filas_leidas:         number;
+  viajes:               number;
+  creados:              number;
+  actualizados:         number;
+  fusionados:           { tramo: string; fecha: string | null; fuentes: { hoja: string; fila: number }[] }[];
+  sin_fecha:            number;
+  camiones: {
+    resueltos:      { valor: string; viajes: number; camion: { id: number; codigo: string; patente: string | null } }[];
+    no_encontrados: { valor: string; patente: string | null; alias: string | null; viajes: number; motivo: string }[];
+  };
+  choferes: {
+    encontrados:    { nombre: string; viajes: number; empleado: { id: number; nombre: string; apellido: string; categoria: CategoriaEmpleado } }[];
+    no_encontrados: { nombre: string; viajes: number }[];
+  };
+  saldos_iniciales: { hoja: string; fila: number; litros: number | null; km_inicial: number | null; chofer: string | null }[];
+  // Un grupo por nombre de evento de la planilla, con el Evento real sugerido (≥ 60% de similitud)
+  vinculaciones: VinculacionEventoPlanilla[];
+  ignoradas:    { hoja: string; fila: number; motivo: string }[];
+  advertencias: { hoja: string; fila: number; mensaje: string }[];
+  totales:      { km: number; litros: number; litros_consumidos: number; combustible: number; caja: number };
+}
+
+// GET /eventos/:id/logistica — tab Logística del evento
+export interface CargaCombustibleLogistica {
+  id:              number;
+  fecha:           string;
+  litros:          number;
+  monto_total:     number;
+  estacion_nombre: string | null;
+  estacion_ciudad: string | null;
+  estado:          EstadoCargaCombustible;
+  camion:          { id: number; codigo: string; patente: string | null; descripcion: string | null } | null;
+}
+
+export interface LogisticaEvento {
+  evento: { id: number; nombre: string };
+  viajes: ViajeFlota[];
+  cargas: CargaCombustibleLogistica[];
+  resumen: {
+    total_km:                    number;
+    total_litros_viajes:         number;
+    total_litros_consumidos:     number;
+    total_litros_cargas:         number;
+    total_combustible_viajes:    number;
+    total_combustible_cargas:    number;
+    total_combustible:           number;
+    total_caja:                  number;
+    litros_iniciales_declarados: number | null;
+    litros_iniciales_detalle:    { viaje_id: number; chofer: string | null; patente: string | null; litros: number }[];
+  };
+}
+
+// ── Costo Real / Presupuestador (DOS57) ───────────────────────────────────────
+
+export type OrigenMaterialRental = 'NAC' | 'IMP';
+export type EstadoPresupuesto = 'BORRADOR' | 'ENVIADO' | 'APROBADO' | 'CERRADO';
+export type PorcentajeAlquiler = '2' | '4' | '6' | '8' | '10' | 'FULL';
+
+export interface MaterialRental {
+  id:                 number;
+  origen:             OrigenMaterialRental;
+  nro_item:           number | null;
+  codigo_oficial:     string | null;
+  detalle:            string;
+  medida:             string | null;
+  peso_por_unidad:    number | null;
+  costo_unitario_ars: number | null; // null = la planilla no trae precio
+  costo_unitario_usd: number | null;
+  tipo_cambio:        number | null;
+  porc_2: boolean; porc_4: boolean; porc_6: boolean; porc_8: boolean; porc_10: boolean; porc_full: boolean;
+  activo:             boolean;
+}
+
+export interface ImportarMaterialesResultado {
+  preview:      boolean;
+  creados:      number;
+  actualizados: number;
+  errores:      { hoja: string; fila: number; mensaje: string }[];
+  advertencias: { hoja: string; fila: number; mensaje: string }[];
+  hojas:        { hoja: string; origen: OrigenMaterialRental; items: number }[];
+  tipo_cambio:  number | null;          // TC con el que se pesificaron los IMP
+  tipo_cambio_planilla: number | null; // TC escrito en la planilla (celda H5)
+  sin_precio:   { origen: OrigenMaterialRental; nro_item: number; detalle: string }[];
+}
+
+export interface TotalesPresupuesto {
+  nac_material: number; nac_rental: number;
+  imp_material: number; imp_rental: number;
+  total_material: number; total_rental: number;
+  total_full: number | null; // suma de los FULL cargados a mano; null si no hay ninguno
+}
+
+export interface PresupuestoLinea {
+  id:                   number;
+  material_id:          number;
+  material:             Omit<MaterialRental, 'peso_por_unidad'>;
+  cantidad:             number;
+  costo_unitario_snap:  number;
+  tipo_cambio_snap:     number | null;
+  porcentaje_snap:      number;
+  costo_total_material: number;
+  valor_rental:         number;
+  valor_rental_full:    number | null; // FULL negociado a mano (sólo NAC con porc_full)
+  orden:                number;
+}
+
+export interface PresupuestoResumen {
+  id:                  number;
+  evento_id:           number | null;
+  evento:              { id: number; nombre: string } | null;
+  nombre:              string;
+  estado:              EstadoPresupuesto;
+  porcentaje_alquiler: PorcentajeAlquiler;
+  tipo_cambio_usd:     number;
+  notas:               string | null;
+  version:             number;
+  version_de_id:       number | null;
+  created_at:          string;
+  updated_at:          string;
+  totales:             TotalesPresupuesto;
+  cantidad_lineas?:    number;
+}
+
+export interface Presupuesto extends PresupuestoResumen {
+  lineas: PresupuestoLinea[];
+}
+
+// ── Indicadores económicos (globales) ─────────────────────────────────────────
+
+export type TipoIndicador = 'DOLAR_OFICIAL' | 'DOLAR_BLUE' | 'IPC';
+
+export interface CotizacionDolar {
+  compra:      number;
+  venta:       number;
+  fecha:       string | null; // fechaActualizacion de dolarapi
+  guardado_en: string;
+}
+
+export interface IndicadoresActuales {
+  dolar_oficial:  CotizacionDolar | null;
+  dolar_blue:     CotizacionDolar | null;
+  ipc:            { valor: number; periodo: string | null; fecha: string | null; guardado_en: string } | null;
+  actualizado_en: string | null;
+}
+
+// ── Remitos digitales (DOS57) ─────────────────────────────────────────────────
+
+export type TipoRemito   = 'LAYHER' | 'NACIONAL' | 'TECHOS' | 'PANOL' | 'LONAS_AFORO';
+export type EstadoRemito = 'BORRADOR' | 'EMITIDO';
+
+export interface ItemCatalogoRemito { codigo?: string; descripcion: string }
+
+export interface TipoRemitoInfo {
+  tipo:       TipoRemito;
+  nombre:     string;
+  titulo:     string;
+  conCodigo:  boolean;
+  categorias: { categoria: string; items: ItemCatalogoRemito[] }[];
+}
+
+export interface ItemRemito { codigo?: string; descripcion: string; cantidad: number }
+
+export interface EncabezadoRemito {
+  cliente:           string | null;
+  domicilio:         string | null;
+  localidad:         string | null;
+  telefono:          string | null;
+  chofer:            string | null;
+  chasis_acoplado:   string | null;
+  responsable_carga: string | null;
+}
+
+export interface Remito extends EncabezadoRemito {
+  id:         number;
+  empresa_id: number;
+  evento_id:  number;
+  evento:     { id: number; nombre: string };
+  tipo:       TipoRemito;
+  numero:     number;
+  fecha:      string;
+  items:      ItemRemito[];
+  estado:     EstadoRemito;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SugerenciasRemito extends EncabezadoRemito { evento: string }
+
+export interface RemitoPayload extends Partial<EncabezadoRemito> {
+  fecha: string; // YYYY-MM-DD
+  items: ItemRemito[];
+}
+
+// ── Movimiento Diario (DOS57, Flor) ───────────────────────────────────────────
+
+export interface MovimientoDiarioFila {
+  id:              number;
+  vehiculo:        string | null;
+  patente:         string | null;
+  carga:           string | null; // "C1"… — n° de carga del evento, no un vehículo
+  chofer:          string | null;
+  evento:          string;
+  evento_id:       number | null;
+  tramo:           string | null;
+  km_recorridos:   number | null;
+  horario_salida:  string | null;
+  horario_llegada: string | null;
+  observaciones:   string | null;
+  origen:          'RRHH' | 'FLOTA';
+}
+
+export interface MovimientoDiario {
+  fecha:      string;
+  camiones:   MovimientoDiarioFila[];
+  camionetas: MovimientoDiarioFila[];
+}
+
+// ── Centro de costos (GET /eventos/:id/centro-costos) ────────────────────────
+
+export interface ExtraEvento {
+  id:                 number;
+  evento_id:          number;
+  orden:              number;
+  descripcion:        string;
+  responsable:        string | null;
+  moneda:             Moneda;
+  neto:               number;
+  iva:                number;
+  total:              number;
+  falta_pagar:        number;
+  pagado:             boolean;
+  plazo_pago:         string | null;
+  datos_cuenta:       string | null;
+  factura:            string | null;
+  notas:              string | null;
+  // true (default) = lo paga el cliente, no suma al costo del evento
+  a_cargo_cliente:    boolean;
+  movimiento_id:      number | null;
+  comprobante_nombre: string | null;
+  tiene_comprobante:  boolean;
+}
+
+export interface TotalCentroCostos {
+  total:         number;
+  iva:           number;
+  falta_pagar:   number;
+  otras_monedas: number; // líneas en otra moneda, no sumadas
+}
+
+export interface CentroCostos {
+  evento:  Pick<Evento, 'id' | 'nombre' | 'modalidad' | 'moneda_base'>;
+  costos:  Movimiento[];
+  rrhh:    Movimiento[];
+  extras:  ExtraEvento[];
+  totales: {
+    costos:         TotalCentroCostos;
+    rrhh:           TotalCentroCostos;
+    extras_cliente: TotalCentroCostos;
+    extras_empresa: TotalCentroCostos;
+    costo_evento:   number;
+    falta_pagar:    number;
+    moneda:         Moneda;
+  };
+}
+
+// ── Costo real del evento (DOS57, matriz de Flor) ──────────────────────────────
+export type BloqueCostoReal =
+  | 'STAFF' | 'ALOJAMIENTO' | 'COMIDAS' | 'COMBUSTIBLE_PERSONAL' | 'COMBUSTIBLE_MATERIAL'
+  | 'PANOL' | 'VARIOS' | 'RENTAL_NAC' | 'RENTAL_IMP' | 'PERDIDAS';
+export type OrigenLineaCostoReal = 'MANUAL' | 'PLANILLA' | 'SISTEMA' | 'CAMPO';
+
+export interface ImportarCampoResultado {
+  preview: boolean;
+  hojas:   { hoja: string; tipo: string; filas: number }[];
+  avisos:  string[];
+  total:   number;
+  bloques: { bloque: BloqueCostoReal; label: string; lineas: number; total: number; reemplaza: number; otras_lineas: number }[];
+  creadas?:      number;
+  reemplazadas?: number;
+}
+
+export interface LineaCostoReal {
+  id:             number;
+  evento_id:      number;
+  bloque:         BloqueCostoReal;
+  origen:         OrigenLineaCostoReal;
+  orden:          number;
+  concepto:       string;
+  detalle:        string | null;
+  codigo:         string | null;
+  cantidad:       number;
+  valor_unitario: number;
+  porcentaje:     number | null;
+  total:          number;
+  fecha_desde:    string | null;
+  fecha_hasta:    string | null;
+  notas:          string | null;
+  updated_at:     string;
+}
+
+export interface BloqueCostoRealData {
+  bloque:             BloqueCostoReal;
+  label:              string;
+  cc:                 string;
+  unidad:             string;
+  valor:              string;
+  fuente:             string | null;
+  porcentaje_default: number | null;
+  total:              number;
+  lineas:             LineaCostoReal[];
+}
+
+export interface PresupuestoRef {
+  id:                  number;
+  nombre:              string;
+  estado:              string;
+  version:             number;
+  porcentaje_alquiler: string;
+  total_rental:        number;
+}
+
+export interface CostoReal {
+  evento:      { id: number; nombre: string; modalidad: ModalidadEvento; fecha_inicio: string | null; fecha_fin: string | null; lugar: string | null };
+  bloques:     BloqueCostoRealData[];
+  total:       number;
+  presupuesto: PresupuestoRef | null;
+  actualizado: string | null;
+}
+
+export interface CostoRealEventoFila {
+  id:           number;
+  nombre:       string;
+  fecha_inicio: string | null;
+  fecha_fin:    string | null;
+  lugar:        string | null;
+  estado:       string;
+  modalidad:    ModalidadEvento;
+  costo_real:   number;
+  lineas:       number;
+  actualizado:  string | null;
+  presupuesto:  { estado: string; total_rental: number } | null;
+}
+
+export interface ImportarMatrizResultado {
+  preview:        boolean;
+  titulo:         string | null;
+  total_planilla: number | null;
+  total:          number;
+  omitidas:       number;
+  hojas:          string[];
+  avisos:         string[];
+  bloques: {
+    bloque: BloqueCostoReal; label: string; lineas: number; total: number;
+    reemplaza: number; otras_lineas: number;
+  }[];
+  creadas?:      number;
+  reemplazadas?: number;
+}
+
+// ── Operación del evento (DOS57): cuadrilla por fase y tareas por rubro ────────
+export type FaseEvento = 'VIAJE_IDA' | 'MONTAJE' | 'EVENTO' | 'DESMONTAJE' | 'VIAJE_VUELTA';
+export type EstadoTarea = 'PENDIENTE' | 'EN_CURSO' | 'HECHA';
+
+export interface TareaEvento {
+  id:              number;
+  rubro_evento_id: number | null;
+  fecha:           string;
+  hora:            string | null;
+  actividad:       string;
+  responsable:     string | null;
+  observaciones:   string | null;
+  fase:            FaseEvento | null;
+  estado:          EstadoTarea;
+  orden:           number;
+}
+
+export interface RangoFase { fase: FaseEvento; label: string; desde: string | null; hasta: string | null; dias: number | null }
+
+export interface PersonaCuadrilla {
+  empleado_id:     number;
+  nombre:          string;
+  categoria:       string;
+  categoria_label: string;
+  dias:            Record<FaseEvento, number>;
+  total:           number;
+  trabajados:      number;
+  planificados:    number;
+}
+
+export interface RubroOperacion {
+  id:                 number;
+  rubro:              { id: number; nombre: string };
+  estado:             EstadoRubroEvento;
+  proveedor:          { id: number; nombre: string } | null;
+  usa_stock_propio:   boolean;
+  cantidad_stock:     number | null;
+  cantidad_proveedor: number | null;
+  coordina_nombre:    string | null;
+  material:           { id: number; producto: string; cantidad: number; ubicacion: string }[];
+  tareas:             TareaEvento[];
+  hechas:             number;
+}
+
+export interface Operacion {
+  evento:    { id: number; nombre: string; lugar: string | null; fecha_inicio: string | null; fecha_fin: string | null; dias_montaje: number; dias_desmontaje: number };
+  fases:     RangoFase[];
+  cuadrilla: {
+    personas:      PersonaCuadrilla[];
+    por_categoria: { categoria: string; label: string; personas: number; dias: Record<FaseEvento, number>; total: number }[];
+    sin_fechas:    boolean;
+  };
+  rubros:    RubroOperacion[];
+  generales: TareaEvento[];
+  remitos:   { id: number; tipo: string; numero: number; estado: string; fecha: string; chofer: string | null; items: number; unidades: number }[];
+}
+
+export interface PlantillaTareas {
+  rubro:      { id: number; nombre: string };
+  es_default: boolean;
+  tareas:     { actividad: string; fase: FaseEvento }[];
+}
+

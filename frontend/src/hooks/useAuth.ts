@@ -1,6 +1,10 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { applyEmpresaTheme } from '@/lib/empresaTheme';
+import { resolveHomeRoute } from '@/lib/homeRoute';
+import { useEmpresaActual } from '@/hooks/useEmpresas';
 import type { MeResponse, Rol } from '@/types';
 
 export const ME_QUERY_KEY = ['auth', 'me'] as const;
@@ -22,13 +26,27 @@ export function useAuth() {
     staleTime: 5 * 60 * 1000, // 5 minutos en caché
   });
 
+  // ── Tema visual de la empresa activa ─────────────────────────────────────
+  // Se pide por separado (no viene en /auth/me) porque incluye color_secundario
+  // y el resto de la config de Módulo A que no hace falta en cada request.
+  const { data: empresaActual } = useEmpresaActual(user?.empresaId != null);
+
+  useEffect(() => {
+    if (empresaActual) applyEmpresaTheme(
+      empresaActual.color_primario,
+      empresaActual.color_secundario,
+      empresaActual.logo_mime ? { empresaId: empresaActual.id, version: empresaActual.updated_at } : null,
+    );
+    else if (user && user.empresaId == null) applyEmpresaTheme(null, null);
+  }, [empresaActual, user]);
+
   // ── Login ─────────────────────────────────────────────────────────────────
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
       api.post<MeResponse>('/auth/login', { email, password }).then(r => r.data),
     onSuccess: (data) => {
       queryClient.setQueryData(ME_QUERY_KEY, data);
-      navigate('/eventos', { replace: true });
+      navigate(resolveHomeRoute(data), { replace: true });
     },
   });
 
@@ -39,6 +57,19 @@ export function useAuth() {
       // Limpia el caché y redirige independientemente del resultado del server
       queryClient.clear();
       navigate('/login', { replace: true });
+    },
+  });
+
+  // ── Cambio de empresa activa ──────────────────────────────────────────────
+  const switchEmpresaMutation = useMutation({
+    mutationFn: (empresaId: number) =>
+      api.post<MeResponse>('/auth/switch-empresa', { empresaId }).then(r => r.data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(ME_QUERY_KEY, data);
+      // Todos los datos cacheados pertenecen a la empresa anterior — se
+      // invalidan para que se vuelvan a pedir con la empresa nueva.
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'auth' });
+      navigate(resolveHomeRoute(data), { replace: true });
     },
   });
 
@@ -63,6 +94,9 @@ export function useAuth() {
     logout:           logoutMutation.mutate,
     loginError:       loginMutation.error,
     isLoginLoading:   loginMutation.isPending,
+    switchEmpresa:    switchEmpresaMutation.mutateAsync,
+    isSwitchingEmpresa: switchEmpresaMutation.isPending,
+    switchEmpresaError: switchEmpresaMutation.error,
     hasEventoAcceso,
     getEventoRol,
   };

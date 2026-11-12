@@ -1,14 +1,15 @@
 import ExcelJS from 'exceljs';
 import { prisma } from './prisma';
+import { RUBROS_SISTEMA } from './rubrosConstants';
 
 // ── Style constants ───────────────────────────────────────────────────────────
 
 const BLUE_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0070C0' } };
 const BOLD_WHITE: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-const BOLD: Partial<ExcelJS.Font>       = { bold: true };
-const NUM_FMT = '#,##0.00';
+export const BOLD: Partial<ExcelJS.Font> = { bold: true };
+export const NUM_FMT = '#,##0.00';
 
-function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
+export function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
   for (let c = 1; c <= cols; c++) {
     const cell = row.getCell(c);
     cell.fill = BLUE_FILL;
@@ -19,16 +20,20 @@ function applyHeaderStyle(row: ExcelJS.Row, cols: number) {
   row.height = 18;
 }
 
-function fmtDate(d: Date | string | null | undefined): string {
+// Las fechas de negocio (fecha_inicio, fecha_emision, etc.) son calendario puro,
+// guardadas como medianoche UTC. Leerlas con getters locales las corre un día
+// para atrás en cualquier timezone negativo (ej. Argentina, UTC-3) — por eso
+// siempre se leen los componentes en UTC, sin importar la timezone del server.
+export function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return '';
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${date.getFullYear()}`;
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${date.getUTCFullYear()}`;
 }
 
-function safeName(s: string): string {
+export function safeName(s: string): string {
   return s.replace(/[/\\?*[\]:]/g, '-').substring(0, 31);
 }
 
@@ -231,17 +236,18 @@ function addConcilSheet(wb: ExcelJS.Workbook, data: ConcilData) {
 // ── Main export function ──────────────────────────────────────────────────────
 
 export async function generateExcel(
-  eventoId:  number,
-  tabCodigo: string | undefined,
+  eventoId:      number,
+  rubroIdOrConc: string | undefined,
 ): Promise<{ buffer: Buffer; filename: string }> {
-  const [evento, tabs, movimientos, echeqs, cuentas] = await Promise.all([
-    prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } }),
-    prisma.tabConfig.findMany({ orderBy: [{ tipo: 'asc' }, { numero: 'asc' }] }),
+  const evento = await prisma.evento.findFirstOrThrow({ where: { id: eventoId, deleted_at: null } });
+
+  const [rubros, movimientos, echeqs, cuentas] = await Promise.all([
+    prisma.rubro.findMany({ where: { empresa_id: evento.empresa_id, activo: true, deleted_at: null }, orderBy: [{ tipo: 'asc' }, { orden: 'asc' }] }),
     prisma.movimiento.findMany({
       where:   { evento_id: eventoId, deleted_at: null },
       orderBy: { orden: 'asc' },
       select:  {
-        tipo: true, tab_numero: true, fecha: true, concepto: true,
+        tipo: true, rubro_id: true, fecha: true, concepto: true,
         descripcion: true, debe: true, haber: true, saldo: true,
         moneda: true, impuesto_subcategoria: true,
       },
@@ -263,9 +269,9 @@ export async function generateExcel(
   ]);
 
   // Helpers
-  const getMovs = (tipo: string, numero: number): MovRow[] =>
+  const getMovs = (rubroId: number): MovRow[] =>
     movimientos
-      .filter(m => m.tipo === tipo && m.tab_numero === numero)
+      .filter(m => m.rubro_id === rubroId)
       .map(m => ({
         fecha:                 m.fecha,
         concepto:              m.concepto,
@@ -291,25 +297,25 @@ export async function generateExcel(
   const buildConcilData = (): ConcilData => {
     const monedasSet = new Set(movimientos.map(m => m.moneda as string));
     if (monedasSet.size === 0) monedasSet.add(evento.moneda_base);
-    const ingresoTabs = tabs.filter(t => t.tipo === 'INGRESO');
-    const egresoTabs  = tabs.filter(t => t.tipo === 'EGRESO');
+    const ingresoRubros = rubros.filter(r => r.tipo === 'INGRESO');
+    const egresoRubros  = rubros.filter(r => r.tipo === 'EGRESO');
     const socios = (evento.socios as { nombre: string; porcentaje: number }[]);
 
     const por_moneda = [...monedasSet].map(moneda => {
       const forMoneda = movimientos.filter(m => m.moneda === moneda);
-      const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoTabs) =>
-        list.map(t => {
-          const rows = forMoneda.filter(m => m.tipo === tipo && m.tab_numero === t.numero);
+      const buildRows = (tipo: 'INGRESO' | 'EGRESO', list: typeof ingresoRubros) =>
+        list.map(r => {
+          const rows = forMoneda.filter(m => m.tipo === tipo && m.rubro_id === r.id);
           const total_debe  = rows.reduce((a, m) => a + Number(m.debe),  0);
           const total_haber = rows.reduce((a, m) => a + Number(m.haber), 0);
           const saldo = tipo === 'INGRESO'
             ? parseFloat((total_haber - total_debe).toFixed(2))
             : parseFloat((total_debe  - total_haber).toFixed(2));
-          return { nombre: t.nombre, total_debe, total_haber, saldo };
+          return { nombre: r.nombre, total_debe, total_haber, saldo };
         });
 
-      const ingresos       = buildRows('INGRESO', ingresoTabs);
-      const egresos        = buildRows('EGRESO',  egresoTabs);
+      const ingresos       = buildRows('INGRESO', ingresoRubros);
+      const egresos        = buildRows('EGRESO',  egresoRubros);
       const total_ingresos = parseFloat(ingresos.reduce((a, t) => a + t.saldo, 0).toFixed(2));
       const total_egresos  = parseFloat(egresos.reduce((a,  t) => a + t.saldo, 0).toFixed(2));
       const saldo_final    = parseFloat((total_ingresos - total_egresos).toFixed(2));
@@ -360,7 +366,7 @@ export async function generateExcel(
   wb.modified = new Date();
 
   // Single conciliatoria export
-  if (tabCodigo === 'CONCILIATORIA') {
+  if (rubroIdOrConc === 'CONCILIATORIA') {
     addConcilSheet(wb, buildConcilData());
     return {
       buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
@@ -368,29 +374,290 @@ export async function generateExcel(
     };
   }
 
-  // Single tab export
-  if (tabCodigo) {
-    const tab = tabs.find(t => t.codigo === tabCodigo);
-    if (!tab) throw Object.assign(new Error(`Tab no encontrado: ${tabCodigo}`), { status: 400 });
-    const isIMP   = tab.codigo === 'EG-IMP';
-    const isEXTRA = tab.codigo === 'EG-EXTRA';
-    addMovSheet(wb, tab.nombre, getMovs(tab.tipo, tab.numero), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
+  // Single rubro export
+  if (rubroIdOrConc) {
+    const rubro = rubros.find(r => String(r.id) === rubroIdOrConc);
+    if (!rubro) throw Object.assign(new Error(`Rubro no encontrado: ${rubroIdOrConc}`), { status: 400 });
+    const isIMP   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
+    const isEXTRA = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
+    addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
     return {
       buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
-      filename: `${nameSlug}-${tab.codigo}-${dateStr}.xlsx`,
+      filename: `${nameSlug}-${rubro.nombre.replace(/[^a-zA-Z0-9]/g, '-')}-${dateStr}.xlsx`,
     };
   }
 
-  // Full export: all 10 tabs + conciliatoria
-  for (const tab of tabs) {
-    const isIMP   = tab.codigo === 'EG-IMP';
-    const isEXTRA = tab.codigo === 'EG-EXTRA';
-    addMovSheet(wb, tab.nombre, getMovs(tab.tipo, tab.numero), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
+  // Full export: una hoja por rubro activo + conciliatoria
+  for (const rubro of rubros) {
+    const isIMP   = rubro.codigo === RUBROS_SISTEMA.IMPUESTOS;
+    const isEXTRA = rubro.codigo === RUBROS_SISTEMA.GASTOS_EXTRA;
+    addMovSheet(wb, rubro.nombre, getMovs(rubro.id), isIMP, isEXTRA, isEXTRA ? echeqRows : []);
   }
   addConcilSheet(wb, buildConcilData());
 
   return {
     buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
     filename: `${nameSlug}-${dateStr}.xlsx`,
+  };
+}
+
+// ── Vista Macro (cross-evento, cross-empresa) ─────────────────────────────────
+
+export interface MacroExcelRow {
+  empresa_nombre:     string | null;
+  evento_nombre:      string | null;
+  rubro_nombre:        string | null;
+  tipo:                string;
+  fecha:               Date | string | null;
+  concepto:            string | null;
+  debe:                number;
+  haber:               number;
+  presupuesto:         number | null;
+  moneda:              string;
+  estado_movimiento:   string;
+  responsable_nombre:  string | null;
+  avisado_proveedor:   boolean;
+  fecha_pago:          Date | string | null;
+}
+
+function addMacroSheet(wb: ExcelJS.Workbook, name: string, rows: MacroExcelRow[]) {
+  const ws = wb.addWorksheet(safeName(name));
+  ws.columns = [
+    { width: 26 }, { width: 18 }, { width: 12 }, { width: 12 }, { width: 30 },
+    { width: 16 }, { width: 16 }, { width: 16 }, { width: 8 }, { width: 14 },
+    { width: 20 }, { width: 10 }, { width: 14 },
+  ];
+  const headers = [
+    'EVENTO', 'RUBRO', 'TIPO', 'FECHA', 'CONCEPTO',
+    'DEBE', 'HABER', 'PRESUPUESTO', 'MONEDA', 'ESTADO',
+    'RESPONSABLE', 'AVISADO', 'FECHA PAGO',
+  ];
+  applyHeaderStyle(ws.addRow(headers), headers.length);
+
+  let totalDebe = 0, totalHaber = 0, totalPresupuesto = 0;
+  for (const r of rows) {
+    totalDebe        += r.debe;
+    totalHaber       += r.haber;
+    totalPresupuesto += r.presupuesto ?? 0;
+    const row = ws.addRow([
+      r.evento_nombre ?? '', r.rubro_nombre ?? '', r.tipo, fmtDate(r.fecha), r.concepto ?? '',
+      r.debe, r.haber, r.presupuesto ?? '', r.moneda, r.estado_movimiento,
+      r.responsable_nombre ?? '', r.avisado_proveedor ? 'Sí' : 'No', fmtDate(r.fecha_pago),
+    ]);
+    for (const c of [6, 7, 8]) row.getCell(c).numFmt = NUM_FMT;
+  }
+
+  const totalsRow = ws.addRow(['TOTAL', '', '', '', '', totalDebe, totalHaber, totalPresupuesto, '', '', '', '', '']);
+  totalsRow.font = BOLD;
+  for (const c of [6, 7, 8]) totalsRow.getCell(c).numFmt = NUM_FMT;
+}
+
+// ── Cuenta Corriente Genérica — extracto ──────────────────────────────────────
+// Mismo formato que las cuentas corrientes en las planillas de Mayra: FECHA,
+// CONCEPTO/DETALLE, DEBE, HABER, SALDO.
+
+export async function generateCuentaCorrienteExcel(cuentaId: number): Promise<{ buffer: Buffer; filename: string }> {
+  const cuenta = await prisma.cuentaCorriente.findFirstOrThrow({
+    where:   { id: cuentaId },
+    include: {
+      proveedor:   { select: { nombre: true, cuit: true } },
+      partes:      true,
+      movimientos: { where: { deleted_at: null }, orderBy: [{ fecha: 'asc' }, { id: 'asc' }] },
+    },
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const terceroNombre = cuenta.proveedor?.nombre ?? cuenta.tercero_nombre ?? '—';
+  const terceroCuit    = cuenta.proveedor?.cuit ?? cuenta.tercero_cuit ?? '';
+
+  // Hoja 1 — datos
+  const wsDatos = wb.addWorksheet('DATOS');
+  wsDatos.columns = [{ width: 24 }, { width: 30 }];
+  wsDatos.addRow(['CUENTA CORRIENTE', cuenta.nombre]).font = BOLD;
+  wsDatos.addRow(['Tercero', terceroNombre]);
+  wsDatos.addRow(['CUIT', terceroCuit]);
+  wsDatos.addRow(['Tipo', cuenta.tipo_tercero]);
+  wsDatos.addRow(['Moneda', cuenta.moneda]);
+  const saldoRow = wsDatos.addRow(['Saldo actual', Number(cuenta.saldo_actual)]);
+  saldoRow.font = { bold: true, size: 12 };
+  saldoRow.getCell(2).numFmt = NUM_FMT;
+
+  if (cuenta.tiene_reparto && cuenta.partes.length > 0) {
+    wsDatos.addRow([]);
+    const partesTitle = wsDatos.addRow(['REPARTO POR PARTE']);
+    partesTitle.font = BOLD;
+    applyHeaderStyle(wsDatos.addRow(['PARTE', '%', 'MONTO']), 3);
+    for (const p of cuenta.partes) {
+      const monto = parseFloat((Number(cuenta.saldo_actual) * Number(p.porcentaje) / 100).toFixed(2));
+      const row = wsDatos.addRow([p.nombre, `${Number(p.porcentaje)}%`, monto]);
+      row.getCell(3).numFmt = NUM_FMT;
+    }
+  }
+
+  // Hoja 2 — movimientos
+  const wsMov = wb.addWorksheet('MOVIMIENTOS');
+  wsMov.columns = [
+    { width: 13 }, { width: 30 }, { width: 40 },
+    { width: 16 }, { width: 16 }, { width: 16 },
+  ];
+  applyHeaderStyle(wsMov.addRow(['FECHA', 'CONCEPTO', 'DESCRIPCIÓN', 'DEBE', 'HABER', 'SALDO']), 6);
+
+  let totalDebe = 0, totalHaber = 0;
+  for (const m of cuenta.movimientos) {
+    const monto = Number(m.monto);
+    // AJUSTE se vuelca a la columna que corresponda según su signo (mismo
+    // criterio que recalcularSaldoCCC: positivo suma como DEBE, negativo
+    // resta como HABER).
+    const debe  = m.tipo === 'DEBE'  ? monto : (m.tipo === 'AJUSTE' && monto >= 0 ? monto  : 0);
+    const haber = m.tipo === 'HABER' ? monto : (m.tipo === 'AJUSTE' && monto < 0  ? -monto : 0);
+    totalDebe  += debe;
+    totalHaber += haber;
+    const row = wsMov.addRow([fmtDate(m.fecha), m.concepto, m.descripcion ?? '', debe, haber, Number(m.saldo)]);
+    for (const c of [4, 5, 6]) row.getCell(c).numFmt = NUM_FMT;
+  }
+  const totalsRow = wsMov.addRow(['TOTAL', '', '', totalDebe, totalHaber, Number(cuenta.saldo_actual)]);
+  totalsRow.font = BOLD;
+  for (const c of [4, 5, 6]) totalsRow.getCell(c).numFmt = NUM_FMT;
+
+  const today   = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  const nameSlug = cuenta.nombre.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 40);
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `${nameSlug}-${dateStr}.xlsx`,
+  };
+}
+
+export async function generateMacroExcel(rows: MacroExcelRow[]): Promise<{ buffer: Buffer; filename: string }> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const empresas = [...new Set(rows.map(r => r.empresa_nombre).filter((n): n is string => !!n))];
+
+  if (empresas.length > 1) {
+    for (const empresa of empresas) {
+      addMacroSheet(wb, empresa, rows.filter(r => r.empresa_nombre === empresa));
+    }
+  } else {
+    addMacroSheet(wb, 'MOVIMIENTOS', rows);
+  }
+
+  const today   = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `macro-${dateStr}.xlsx`,
+  };
+}
+
+// ── Cierre contable — formulario del estudio contable, una hoja por sección ──
+
+interface CierreContableExport {
+  id:           number;
+  periodo_anio: number;
+  fecha_corte:  Date;
+  estado:       string;
+  empresa:      { nombre: string };
+  snapshot:     any;
+}
+
+function addSeccionCuentasSheet(wb: ExcelJS.Workbook, nombre: string, filas: { cuenta: string; saldo: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 34 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['CUENTA', 'SALDO']), 2);
+  let total = 0;
+  for (const f of filas) {
+    total += f.saldo;
+    const row = ws.addRow([f.cuenta, f.saldo]);
+    row.getCell(2).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(2).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+function addTercerosSheet(wb: ExcelJS.Workbook, nombre: string, filas: { cuit: string | null; nombre: string; importe: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 18 }, { width: 34 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['CUIT', 'NOMBRE', 'IMPORTE']), 3);
+  let total = 0;
+  for (const f of filas) {
+    total += f.importe;
+    const row = ws.addRow([f.cuit ?? '', f.nombre, f.importe]);
+    row.getCell(3).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['', 'TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(3).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+function addCreditoDeudaSheet(wb: ExcelJS.Workbook, nombre: string, filas: { tipo: string; descripcion: string; importe: number }[], nota: string | null) {
+  const ws = wb.addWorksheet(safeName(nombre));
+  ws.columns = [{ width: 20 }, { width: 40 }, { width: 20 }];
+  applyHeaderStyle(ws.addRow(['TIPO', 'DESCRIPCIÓN', 'IMPORTE']), 3);
+  let total = 0;
+  for (const f of filas) {
+    total += f.importe;
+    const row = ws.addRow([f.tipo, f.descripcion, f.importe]);
+    row.getCell(3).numFmt = NUM_FMT;
+  }
+  const totalRow = ws.addRow(['', 'TOTAL', total]);
+  totalRow.font = BOLD;
+  totalRow.getCell(3).numFmt = NUM_FMT;
+  if (nota) { ws.addRow([]); ws.addRow(['Notas', nota]).font = BOLD; }
+}
+
+export async function generateCierreContableExcel(cierre: CierreContableExport): Promise<{ buffer: Buffer; filename: string }> {
+  const s = cierre.snapshot ?? {};
+  const notas = s.notas_por_seccion ?? {};
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator  = 'Admin Portal';
+  wb.created  = new Date();
+  wb.modified = new Date();
+
+  const wsDatos = wb.addWorksheet('DATOS');
+  wsDatos.columns = [{ width: 22 }, { width: 30 }];
+  wsDatos.addRow(['CIERRE CONTABLE', cierre.empresa.nombre]).font = BOLD;
+  wsDatos.addRow(['Fecha de corte', fmtDate(cierre.fecha_corte)]);
+  wsDatos.addRow(['Período', cierre.periodo_anio]);
+  wsDatos.addRow(['Estado', cierre.estado]);
+
+  addSeccionCuentasSheet(wb, 'Cajas',       s.cajas       ?? [], notas.cajas       ?? null);
+  addSeccionCuentasSheet(wb, 'Bancos',      s.bancos      ?? [], notas.bancos      ?? null);
+  addSeccionCuentasSheet(wb, 'Inversiones', s.inversiones ?? [], notas.inversiones ?? null);
+  addTercerosSheet(wb, 'Deudores',   s.deudores   ?? [], notas.deudores   ?? null);
+  addTercerosSheet(wb, 'Acreedores', s.acreedores ?? [], notas.acreedores ?? null);
+  addCreditoDeudaSheet(wb, 'Creditos', s.creditos ?? [], notas.creditos ?? null);
+  addCreditoDeudaSheet(wb, 'Deudas',   s.deudas   ?? [], notas.deudas   ?? null);
+
+  const wsMercaderias = wb.addWorksheet('Mercaderias');
+  wsMercaderias.columns = [{ width: 34 }, { width: 16 }, { width: 12 }];
+  applyHeaderStyle(wsMercaderias.addRow(['PRODUCTO', 'STOCK', 'UNIDAD']), 3);
+  for (const p of s.mercaderias?.productos ?? []) {
+    wsMercaderias.addRow([p.nombre, p.stock_total, p.unidad]);
+  }
+  const totalRow = wsMercaderias.addRow(['TOTAL ÍTEMS', s.mercaderias?.cantidad_items ?? 0, '']);
+  totalRow.font = BOLD;
+  wsMercaderias.addRow(['Total unidades', s.mercaderias?.total_unidades ?? 0, '']).font = BOLD;
+  wsMercaderias.addRow(['Valor estimado', 'Sin valorizar — a cargo del estudio contable', '']);
+  if (notas.mercaderias) { wsMercaderias.addRow([]); wsMercaderias.addRow(['Notas', notas.mercaderias]).font = BOLD; }
+
+  const dateStr = `${cierre.fecha_corte.getUTCFullYear()}${String(cierre.fecha_corte.getUTCMonth() + 1).padStart(2, '0')}${String(cierre.fecha_corte.getUTCDate()).padStart(2, '0')}`;
+  const empresaSlug = cierre.empresa.nombre.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 30);
+
+  return {
+    buffer:   Buffer.from(await wb.xlsx.writeBuffer()),
+    filename: `cierre-contable-${empresaSlug}-${dateStr}.xlsx`,
   };
 }

@@ -9,6 +9,7 @@ export interface ProveedorFilters {
   q?:        string;
   categoria?: string;
   activo?:   'true' | 'false' | 'all';
+  es_comisionista?: boolean;
 }
 
 export function useProveedores(filters: ProveedorFilters = {}) {
@@ -16,6 +17,7 @@ export function useProveedores(filters: ProveedorFilters = {}) {
   if (filters.q)         params.set('q',         filters.q);
   if (filters.categoria) params.set('categoria',  filters.categoria);
   if (filters.activo)    params.set('activo',     filters.activo);
+  if (filters.es_comisionista) params.set('es_comisionista', 'true');
 
   return useQuery<Proveedor[]>({
     queryKey:  [...KEY, filters],
@@ -71,6 +73,40 @@ export function useDeleteProveedor() {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/proveedores/${id}`).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+// ── Importar desde el formulario de Google ─────────────────────────────────────
+// Un solo endpoint crea Proveedores y Empleados (jornaleros); se usa desde
+// Proveedores y desde RRHH → Empleados.
+
+export interface ImportarFormularioResultado {
+  preview:                  boolean;
+  total_filas:              number;
+  proveedores_creados:      number;
+  proveedores_actualizados: number;
+  empleados_creados:        number;
+  empleados_actualizados:   number;
+  omitidos:                 number;
+  duplicados_en_archivo:    number;
+  errores:                  { fila: number; motivo: string }[];
+}
+
+export function useImportarProveedoresFormulario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, preview }: { file: File; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<ImportarFormularioResultado>(
+        `/importar/proveedores-formulario?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data);
+    },
+    onSuccess: (data) => {
+      if (data.preview) return;
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ['rrhh', 'empleados'] });
+    },
   });
 }
 

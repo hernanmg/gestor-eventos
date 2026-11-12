@@ -1,18 +1,31 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth';
-import { requireRole } from '../middleware/requireRole';
-import { requireEventoAcceso, requireEventoRole, byMovimientoId } from '../middleware/requireEventoAcceso';
+import { tenantMiddleware } from '../middleware/tenant';
+import { requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
-import { update, remove, reordenar, vincularProveedor } from '../controllers/movimientos.controller';
+import {
+  update, remove, reordenar, vincularProveedor, listMacro, exportarMacro, addPagoParcial, removePagoParcial,
+} from '../controllers/movimientos.controller';
 
 const router = Router();
 
 router.use(auth);
 
-router.post('/vincular-proveedor', requireRole('OPERADOR'), asyncHandler(vincularProveedor));
+// Vista Macro — cross-evento y, para el admin global, cross-empresa. No lleva
+// tenantMiddleware: resolveMacroWhere() en el controller resuelve el alcance
+// de empresa por su cuenta (admin global puede no tener empresa activa de
+// sesión todavía y aun así necesita ver "todas las empresas").
+router.get('/exportar', asyncHandler(exportarMacro));
+router.get('/',         asyncHandler(listMacro));
 
-router.put('/:id',         requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(update));
-router.delete('/:id',      requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(remove));
-router.patch('/:id/orden', requireEventoAcceso(byMovimientoId), requireEventoRole('OPERADOR'), asyncHandler(reordenar));
+router.post('/vincular-proveedor', tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(vincularProveedor));
+
+// Escritura por rol global — cada controller ya valida tenant/existencia con
+// withTenant(), así que no hace falta el ACL puntual de EventoAcceso acá.
+router.put('/:id',         tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(update));
+router.delete('/:id',      tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(remove));
+router.patch('/:id/orden', tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(reordenar));
+router.post('/:id/pagos',            tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(addPagoParcial));
+router.delete('/:id/pagos/:pagoId',  tenantMiddleware, requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(removePagoParcial));
 
 export default router;

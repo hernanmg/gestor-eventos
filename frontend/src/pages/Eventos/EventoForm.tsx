@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCreateEvento, useUpdateEvento } from '@/hooks/useEvento';
+import { useAuth } from '@/hooks/useAuth';
+import { modalidadesDe } from '@/lib/modalidades';
 import { getApiErrorMessage } from '@/lib/utils';
 import type { Evento } from '@/types';
 
@@ -17,10 +19,14 @@ const socioSchema = z.object({
 });
 
 const schema = z.object({
-  nombre:       z.string().min(1, 'El nombre es requerido'),
-  fecha_inicio: z.string().optional(),
-  fecha_fin:    z.string().optional(),
-  moneda_base:  z.enum(['ARS', 'USD']),
+  nombre:          z.string().min(1, 'El nombre es requerido'),
+  lugar:           z.string().optional(),
+  fecha_inicio:    z.string().optional(),
+  fecha_fin:       z.string().optional(),
+  dias_montaje:    z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
+  dias_desmontaje: z.coerce.number({ invalid_type_error: 'Número requerido' }).int().nonnegative().default(0),
+  moneda_base:  z.enum(['ARS', 'USD', 'EUR']),
+  modalidad:    z.enum(['FLUJO_CAJA', 'CENTRO_COSTOS', 'OPERATIVA']),
   socios:       z.array(socioSchema).default([]),
 }).refine(data => {
   if (!data.socios || data.socios.length === 0) return true;
@@ -45,6 +51,10 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
   const createEvento = useCreateEvento();
   const updateEvento = useUpdateEvento();
   const isEdit       = !!evento;
+  const { user }     = useAuth();
+  // Modalidad flujo de caja / centro de costos: sólo Enjoy (DOS57 siempre flujo completo)
+  const opcionesModalidad = modalidadesDe(user?.empresaId);
+  const eligeModalidad = !!opcionesModalidad;
   const isPending    = createEvento.isPending || updateEvento.isPending;
   const mutationError = createEvento.error || updateEvento.error;
 
@@ -56,10 +66,14 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      nombre:       evento?.nombre       ?? '',
-      fecha_inicio: toDateInputValue(evento?.fecha_inicio),
-      fecha_fin:    toDateInputValue(evento?.fecha_fin),
+      nombre:          evento?.nombre          ?? '',
+      lugar:           evento?.lugar           ?? '',
+      fecha_inicio:    toDateInputValue(evento?.fecha_inicio),
+      fecha_fin:       toDateInputValue(evento?.fecha_fin),
+      dias_montaje:    evento?.dias_montaje    ?? 0,
+      dias_desmontaje: evento?.dias_desmontaje ?? 0,
       moneda_base:  evento?.moneda_base  ?? 'ARS',
+      modalidad:    evento?.modalidad    ?? opcionesModalidad?.[0].value ?? 'FLUJO_CAJA',
       socios:       (evento?.socios as FormData['socios']) ?? [],
     },
   });
@@ -70,11 +84,15 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
 
   const onSubmit = async (data: FormData) => {
     const payload = {
-      nombre:       data.nombre,
-      fecha_inicio: data.fecha_inicio || null,
-      fecha_fin:    data.fecha_fin    || null,
-      moneda_base:  data.moneda_base  as 'ARS' | 'USD',
+      nombre:          data.nombre,
+      lugar:           data.lugar?.trim() || null,
+      fecha_inicio:    data.fecha_inicio || null,
+      fecha_fin:       data.fecha_fin    || null,
+      dias_montaje:    data.dias_montaje,
+      dias_desmontaje: data.dias_desmontaje,
+      moneda_base:  data.moneda_base,
       socios:       data.socios,
+      ...(eligeModalidad && { modalidad: data.modalidad }),
     };
     try {
       if (isEdit) {
@@ -102,6 +120,12 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
         {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
       </div>
 
+      {/* Lugar — se imprime como "Ubicación" en la Ficha exportada */}
+      <div className="space-y-1">
+        <Label htmlFor="lugar">Lugar</Label>
+        <Input id="lugar" placeholder="Ej: Playa Norte - Estadio Kempes" disabled={isPending} {...register('lugar')} />
+      </div>
+
       {/* Fechas */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
@@ -111,6 +135,36 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
         <div className="space-y-1">
           <Label htmlFor="fecha_fin">Fecha fin</Label>
           <Input id="fecha_fin" type="date" disabled={isPending} {...register('fecha_fin')} />
+        </div>
+      </div>
+
+      {/* Días de montaje / desmontaje */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="dias_montaje">Días de montaje</Label>
+          <Input
+            id="dias_montaje"
+            type="number"
+            min={0}
+            step={1}
+            disabled={isPending}
+            {...register('dias_montaje')}
+            className={errors.dias_montaje ? 'border-destructive' : ''}
+          />
+          {errors.dias_montaje && <p className="text-xs text-destructive">{errors.dias_montaje.message}</p>}
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="dias_desmontaje">Días de desmontaje</Label>
+          <Input
+            id="dias_desmontaje"
+            type="number"
+            min={0}
+            step={1}
+            disabled={isPending}
+            {...register('dias_desmontaje')}
+            className={errors.dias_desmontaje ? 'border-destructive' : ''}
+          />
+          {errors.dias_desmontaje && <p className="text-xs text-destructive">{errors.dias_desmontaje.message}</p>}
         </div>
       </div>
 
@@ -125,8 +179,27 @@ export default function EventoForm({ evento, onSuccess, onCancel }: Props) {
         >
           <option value="ARS">ARS — Peso argentino</option>
           <option value="USD">USD — Dólar</option>
+          <option value="EUR">EUR — Euro</option>
         </select>
       </div>
+
+      {/* Modalidad — Enjoy y DOS57 (ver lib/modalidades.ts) */}
+      {opcionesModalidad && (
+        <div className="space-y-1">
+          <Label htmlFor="modalidad">Cómo se lleva el evento</Label>
+          <select
+            id="modalidad"
+            disabled={isPending}
+            {...register('modalidad')}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {opcionesModalidad.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {opcionesModalidad[0].detalle} Se puede cambiar después sin perder datos.
+          </p>
+        </div>
+      )}
 
       {/* Socios */}
       <div className="space-y-2">

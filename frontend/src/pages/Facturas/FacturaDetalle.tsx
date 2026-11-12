@@ -14,14 +14,17 @@ import {
   usePagarFactura,
   useAnularPago,
   useUploadPDF,
+  useUpdateFactura,
   type PagoPayload,
 } from '@/hooks/useFacturas';
-import { useTabConfig } from '@/hooks/useTabConfig';
+import { useEventos } from '@/hooks/useEvento';
 import { Button } from '@/components/ui/button';
+import MoneyInput from '@/components/ui/MoneyInput';
 import api from '@/lib/api';
 import type { EstadoFactura, MedioPago, PagoFactura } from '@/types';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import BaseTable from '@/components/ui/BaseTable';
 
 // ── Estado badge ───────────────────────────────────────────────────────────────
 
@@ -110,7 +113,7 @@ function PagarDialog({ facturaId, importePendiente, moneda, onClose }: PagarDial
           </div>
           <div>
             <label className={label}>Importe *</label>
-            <input type="number" min={0.01} step={0.01} value={form.importe} onChange={e => setForm(f => ({ ...f, importe: e.target.value }))} className={input} />
+            <MoneyInput value={form.importe} onChange={v => setForm(f => ({ ...f, importe: v }))} className={input} />
           </div>
           <div className="col-span-2">
             <label className={label}>Medio de pago *</label>
@@ -172,6 +175,7 @@ function FilaPago({ pago, moneda }: { pago: PagoFactura; moneda: string }) {
       <td className="py-2 px-3 font-medium">{formatCurrency(pago.importe, moneda as any)}</td>
       <td className="py-2 px-3">{MEDIO_LABEL[pago.medio_pago] ?? pago.medio_pago}</td>
       <td className="py-2 px-3 text-muted-foreground">{pago.referencia ?? '—'}</td>
+      <td className="py-2 px-3 text-muted-foreground">{pago.movimiento?.rubro?.nombre ?? '—'}</td>
       <td className="py-2 px-3">
         {pago.echeq ? (
           <span className={cn('inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 font-medium',
@@ -229,6 +233,28 @@ async function fetchPdfBlob(facturaId: number): Promise<Blob> {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Facturas importadas del libro AFIP pueden quedar sin evento — se vinculan a mano.
+function VincularEvento({ facturaId }: { facturaId: number }) {
+  const { data: eventos = [] } = useEventos();
+  const update = useUpdateFactura(facturaId);
+  const [eventoId, setEventoId] = useState('');
+  return (
+    <div className="col-span-2">
+      <p className="text-xs text-muted-foreground mb-1">Evento</p>
+      <div className="flex items-center gap-2">
+        <select value={eventoId} onChange={e => setEventoId(e.target.value)} className="flex-1 border rounded px-2 py-1.5 text-sm bg-white">
+          <option value="">Sin evento — elegir para vincular…</option>
+          {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}</option>)}
+        </select>
+        <Button size="sm" disabled={!eventoId || update.isPending} onClick={() => update.mutate({ evento_id: Number(eventoId) })}>
+          {update.isPending ? 'Vinculando…' : 'Vincular'}
+        </Button>
+      </div>
+      {update.isError && <p className="text-xs text-destructive mt-1">No se pudo vincular el evento.</p>}
+    </div>
+  );
+}
+
 export default function FacturaDetalle() {
   const { id }      = useParams<{ id: string }>();
   const navigate    = useNavigate();
@@ -239,7 +265,6 @@ export default function FacturaDetalle() {
   const [pdfError,    setPdfError]    = useState<string | null>(null);
 
   const { data: factura, isLoading, error } = useFactura(facturaId);
-  const { data: tabs = [] }                 = useTabConfig();
   const aprobarMut  = useAprobarFactura();
   const anularMut   = useAnularFactura();
   const uploadPDF   = useUploadPDF(facturaId);
@@ -250,9 +275,7 @@ export default function FacturaDetalle() {
   const meta    = ESTADO_META[factura.estado];
   const hasPdf  = !!factura.pdf_nombre;
 
-  const tabNombre = factura.tab_numero
-    ? (tabs.find(t => t.tipo === 'EGRESO' && t.numero === factura.tab_numero)?.nombre ?? `Tab ${factura.tab_numero}`)
-    : '— (sin egreso automático)';
+  const rubroNombre = factura.rubro?.nombre ?? '— (sin egreso automático)';
 
   const canApprove = factura.estado === 'RECIBIDA';
   const canPagar   = factura.estado === 'APROBADA' && factura.importe_pendiente > 0;
@@ -312,11 +335,16 @@ export default function FacturaDetalle() {
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold">
+          <h1 className="page-title">
             Factura {factura.tipo_factura} {factura.numero_factura}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {factura.proveedor?.nombre} — {factura.evento?.nombre}
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
+            {factura.proveedor?.nombre ?? 'Sin proveedor'} — {factura.evento?.nombre ?? 'Sin evento'}
+            {factura.rubro && (
+              <span className="inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 bg-secondary text-secondary-foreground">
+                {factura.rubro.nombre}
+              </span>
+            )}
           </p>
         </div>
         <span className={cn('inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1', meta.cls)}>
@@ -360,14 +388,16 @@ export default function FacturaDetalle() {
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <Row label="Proveedor"   value={factura.proveedor?.nombre} />
-            <Row label="Evento"      value={factura.evento?.nombre} />
+            {factura.evento
+              ? <Row label="Evento" value={factura.evento.nombre} />
+              : <VincularEvento facturaId={factura.id} />}
             <Row label="Tipo"        value={`Tipo ${factura.tipo_factura}`} />
             <Row label="N° factura"  value={factura.numero_factura} />
             <Row label="Emisión"     value={fmt(factura.fecha_emision)} />
             <Row label="Vencimiento" value={fmt(factura.fecha_vencimiento)} />
             <Row label="Moneda"      value={factura.moneda} />
             <Row label="Condición"   value={factura.condicion_pago} />
-            <Row label="Tab egreso"  value={tabNombre} />
+            <Row label="Rubro"       value={rubroNombre} />
           </div>
 
           {/* Importes */}
@@ -387,6 +417,17 @@ export default function FacturaDetalle() {
               </span>
             </div>
           </div>
+
+          {factura.origen_import === 'AFIP' && (
+            <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <Row label="Neto gravado" value={factura.neto_gravado != null ? formatCurrency(Number(factura.neto_gravado), factura.moneda) : undefined} />
+              <Row label="IVA"          value={factura.iva_importe  != null ? formatCurrency(Number(factura.iva_importe),  factura.moneda) : undefined} />
+              <Row label="No gravado"   value={factura.no_gravado   != null ? formatCurrency(Number(factura.no_gravado),   factura.moneda) : undefined} />
+              <Row label="Exento"       value={factura.exento       != null ? formatCurrency(Number(factura.exento),       factura.moneda) : undefined} />
+              <Row label="PDF (AFIP)"   value={factura.pdf_nombre_afip ?? (factura.tiene_pdf ? 'Sí' : 'Sin PDF')} />
+              <Row label="Comprobante físico" value={factura.tiene_comprobante_fisico ? 'Sí' : 'No'} />
+            </div>
+          )}
 
           {factura.notas && (
             <div className="bg-muted/30 rounded p-3 text-sm">
@@ -483,13 +524,14 @@ export default function FacturaDetalle() {
         {pagosActivos.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">Sin pagos registrados.</p>
         ) : (
-          <table className="w-full">
+          <BaseTable className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
                 <th className="text-left py-2 px-3">Fecha</th>
                 <th className="text-left py-2 px-3">Importe</th>
                 <th className="text-left py-2 px-3">Medio</th>
                 <th className="text-left py-2 px-3">Referencia</th>
+                <th className="text-left py-2 px-3">Rubro</th>
                 <th className="text-left py-2 px-3">Echeq</th>
                 <th className="py-2 px-3" />
               </tr>
@@ -497,7 +539,7 @@ export default function FacturaDetalle() {
             <tbody>
               {pagosActivos.map(p => <FilaPago key={p.id} pago={p} moneda={factura.moneda} />)}
             </tbody>
-          </table>
+          </BaseTable>
         )}
       </div>
 

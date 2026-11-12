@@ -29,6 +29,7 @@ export interface EcheqsResumen {
   proximos_a_vencer:  number;
   total_expuesto_ars: number;
   total_expuesto_usd: number;
+  total_expuesto_eur: number;
 }
 
 export interface EventoReciente {
@@ -48,7 +49,7 @@ export interface ResumenDashboard {
 }
 
 export interface TabKPI {
-  tab_numero:           number;
+  rubro_id:             number;
   nombre:               string;
   saldo:                number;
   porcentaje_del_total: number;
@@ -95,6 +96,7 @@ export interface KPIsEvento {
     pendientes:         number;
     total_expuesto_ars: number;
     total_expuesto_usd: number;
+    total_expuesto_eur: number;
   };
 }
 

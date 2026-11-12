@@ -2,13 +2,17 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { useProveedorDetalle, useUpdateProveedor } from '@/hooks/useProveedores';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import CuitInput from '@/components/ui/CuitInput';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
+import TabStrip from '@/components/ui/TabStrip';
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +21,40 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-lg border border-border p-4">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <p className="text-xl font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+// ── Datos de contacto y bancarios (import del formulario de Google) ───────────
+
+function Dato({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn('text-sm break-words', mono && 'font-mono text-xs')}>{value}</p>
+    </div>
+  );
+}
+
+function DatosProveedor({ p }: { p: Proveedor }) {
+  const factura = p.puede_facturar === null ? null
+    : !p.puede_facturar ? 'No'
+    : p.tipo_factura ? `Sí, tipo ${p.tipo_factura}` : 'Sí';
+  const hayDatos = [p.servicio, factura, p.email, p.telefono, p.dni, p.banco, p.alias_bancario, p.cbu, p.numero_cuenta, p.titular_cuenta].some(Boolean);
+  if (!hayDatos) return null;
+  return (
+    <div className="rounded-lg border border-border p-4 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
+      <Dato label="Servicio" value={p.servicio} />
+      <Dato label="Puede facturar" value={factura} />
+      <Dato label="Email" value={p.email} />
+      <Dato label="Teléfono" value={p.telefono} />
+      <Dato label="DNI" value={p.dni} />
+      <Dato label="Banco" value={p.banco} />
+      <Dato label="Alias bancario" value={p.alias_bancario} />
+      <Dato label="CBU" value={p.cbu} mono />
+      <Dato label="N° de cuenta" value={p.numero_cuenta} />
+      <Dato label="Titular de la cuenta" value={p.titular_cuenta} />
     </div>
   );
 }
@@ -76,7 +114,7 @@ function EditDialog({ proveedor, open, onClose }: { proveedor: Proveedor; open: 
             </div>
             <div>
               <label className={label}>CUIT</label>
-              <input {...f('cuit')} className={input} placeholder="30-12345678-9" />
+              <CuitInput value={form.cuit} onChange={v => setForm(p => ({ ...p, cuit: v }))} className={input} />
             </div>
           </div>
           <div>
@@ -108,6 +146,8 @@ export default function ProveedorDetallePage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
   const provId     = Number(id);
+  const { user }   = useAuth();
+  const isAdmin    = user?.rol === 'ADMIN'; // ABM de proveedores es exclusivo de ADMIN (matriz de permisos)
   const [histTab,  setHistTab]  = useState<HistorialTab>('movimientos');
   const [editOpen, setEditOpen] = useState(false);
 
@@ -145,7 +185,7 @@ export default function ProveedorDetallePage() {
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-semibold">
+            <h1 className="page-title">
               {proveedor.nombre}
               {proveedor.alias && (
                 <span className="text-muted-foreground font-normal text-lg ml-2">({proveedor.alias})</span>
@@ -170,14 +210,18 @@ export default function ProveedorDetallePage() {
             <p className="text-sm text-muted-foreground mt-1">{proveedor.notas}</p>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-          <Pencil size={13} className="mr-1.5" /> Editar
-        </Button>
+        {isAdmin && (
+          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+            <Pencil size={13} className="mr-1.5" /> Editar
+          </Button>
+        )}
       </div>
+
+      <DatosProveedor p={proveedor} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Movimientos"  value={stats.total_movimientos} />
+        <StatCard label="Movimientos" value={stats.total_movimientos} />
         <StatCard label="Eventos"      value={stats.total_eventos} />
         <StatCard label="Facturado ARS" value={formatCurrency(stats.total_facturado_ars, 'ARS')} />
         <StatCard label="Facturado USD" value={formatCurrency(stats.total_facturado_usd, 'USD')} />
@@ -190,29 +234,19 @@ export default function ProveedorDetallePage() {
 
       {/* Historial tabs */}
       <div>
-        <div className="flex border-b border-border mb-4">
-          {([
+        <TabStrip<HistorialTab>
+          className="mb-4"
+          value={histTab}
+          onChange={setHistTab}
+          items={[
             { key: 'movimientos', label: 'Movimientos' },
             { key: 'echeqs',      label: 'Echeqs' },
-          ] as { key: HistorialTab; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setHistTab(key)}
-              className={cn(
-                'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-                histTab === key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
 
         {histTab === 'movimientos' && (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className={th}>Evento</th>
@@ -249,7 +283,7 @@ export default function ProveedorDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
             {historial.movimientos.length === 20 && (
               <p className="px-3 py-2 text-xs text-muted-foreground border-t border-border">
                 Mostrando los últimos 20 movimientos.
@@ -259,8 +293,8 @@ export default function ProveedorDetallePage() {
         )}
 
         {histTab === 'echeqs' && (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto">
+            <BaseTable className="w-full">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
                   <th className={th}>Evento</th>
@@ -304,7 +338,7 @@ export default function ProveedorDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </BaseTable>
           </div>
         )}
       </div>

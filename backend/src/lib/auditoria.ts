@@ -10,6 +10,7 @@ export interface AuditoriaParams {
   entidad:       string;
   entidadId?:    number;
   eventoId?:     number;
+  empresaId?:    number | null;
   descripcion:   string;
   datosAntes?:   object;
   datosDespues?: object;
@@ -26,6 +27,7 @@ export async function registrarAuditoria(p: AuditoriaParams): Promise<void> {
         entidad:       p.entidad,
         entidad_id:    p.entidadId    ?? null,
         evento_id:     p.eventoId     ?? null,
+        empresa_id:    p.empresaId    ?? null,
         descripcion:   p.descripcion,
         datos_antes:   (p.datosAntes   as any) ?? undefined,
         datos_despues: (p.datosDespues as any) ?? undefined,

@@ -1,0 +1,109 @@
+import { Router } from 'express';
+import { auth } from '../middleware/auth';
+import { tenantMiddleware } from '../middleware/tenant';
+import { requireRole } from '../middleware/requireRole';
+import { asyncHandler } from '../lib/asyncHandler';
+import {
+  uploadDoc,
+  listVehiculos, detalleVehiculo, createVehiculo, updateVehiculo, darDeBajaVehiculo,
+  listSegurosVehiculo, listSegurosEmpresa, createSeguroVehiculo, updateSeguroVehiculo, deleteSeguroVehiculo, getPolizaSeguro,
+  listPatentesVehiculo, listPatentesEmpresa, createPatenteVehiculo, updatePatenteVehiculo,
+  listPeajes, listPeajesVehiculo, createPeaje, deletePeaje,
+  listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
+  alertasFlota, importarPizarra, plantillaPizarra, updateTecnicaVehiculo,
+} from '../controllers/flota.controller';
+import {
+  listCarnets, updateCarnet,
+  listControlesSalida, sugeridosControlSalida, opcionesControlSalida,
+  createControlSalida, updateControlSalida, deleteControlSalida,
+} from '../controllers/flotaDocumentacion.controller';
+import { upload as uploadXlsx } from '../controllers/importer.controller';
+import {
+  listBitacoraFlota, opcionesBitacoraFlota, createViajeFlota, updateViajeFlota, deleteViajeFlota,
+} from '../controllers/bitacoraFlota.controller';
+
+function docMiddleware(field: string) {
+  return (req: any, res: any, next: any) => {
+    uploadDoc.single(field)(req, res, (err: any) => {
+      if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+      next();
+    });
+  };
+}
+
+// Planilla de la pizarra (.xlsx, campo `file`)
+function xlsxMiddleware(req: any, res: any, next: any) {
+  uploadXlsx.single('file')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
+
+const router = Router();
+router.use(auth);
+router.use(tenantMiddleware);
+router.use(requireRole('OPERADOR')); // Flota visible para ADMIN y OPERADOR (matriz de permisos)
+
+// ── Vehículos ─────────────────────────────────────────────────────────────────
+router.get('/vehiculos',           asyncHandler(listVehiculos));
+router.get('/vehiculos/:id',       asyncHandler(detalleVehiculo));
+router.post('/vehiculos',          requireRole('ADMIN'), asyncHandler(createVehiculo));
+router.put('/vehiculos/:id',       requireRole('ADMIN'), asyncHandler(updateVehiculo));
+router.delete('/vehiculos/:id',    requireRole('ADMIN'), asyncHandler(darDeBajaVehiculo));
+// RTO/ITV — OPERADOR (Lorena la mantiene junto con los seguros)
+router.put('/vehiculos/:id/tecnica', asyncHandler(updateTecnicaVehiculo));
+
+// ── Carnets de conducir (Lorena — RRHH es sólo ADMIN) ─────────────────────────
+router.get('/carnets',              asyncHandler(listCarnets));
+router.put('/carnets/:empleadoId',  asyncHandler(updateCarnet));
+
+// ── Control de salida de vehículos ────────────────────────────────────────────
+router.get('/controles-salida/sugeridos', asyncHandler(sugeridosControlSalida));
+router.get('/controles-salida/opciones',  asyncHandler(opcionesControlSalida));
+router.get('/controles-salida',           asyncHandler(listControlesSalida));
+router.post('/controles-salida',          asyncHandler(createControlSalida));
+router.put('/controles-salida/:id',       asyncHandler(updateControlSalida));
+router.delete('/controles-salida/:id',    asyncHandler(deleteControlSalida));
+
+// ── Bitácora de viajes de camiones (planillas de Flor) — import en /api/importar/bitacora-viajes
+router.get('/bitacora-viajes/opciones', asyncHandler(opcionesBitacoraFlota));
+router.get('/bitacora-viajes',          asyncHandler(listBitacoraFlota));
+router.post('/bitacora-viajes',         requireRole('ADMIN'), asyncHandler(createViajeFlota));
+router.put('/bitacora-viajes/:id',      requireRole('ADMIN'), asyncHandler(updateViajeFlota));
+router.delete('/bitacora-viajes/:id',   requireRole('ADMIN'), asyncHandler(deleteViajeFlota));
+
+// ── Seguros ───────────────────────────────────────────────────────────────────
+router.get('/seguros',                 asyncHandler(listSegurosEmpresa));
+router.get('/seguros/:id/poliza',      asyncHandler(getPolizaSeguro));
+router.get('/vehiculos/:id/seguros',   asyncHandler(listSegurosVehiculo));
+router.post('/vehiculos/:id/seguros',  requireRole('ADMIN'), docMiddleware('poliza'), asyncHandler(createSeguroVehiculo));
+router.put('/seguros/:id',             requireRole('ADMIN'), docMiddleware('poliza'), asyncHandler(updateSeguroVehiculo));
+router.delete('/seguros/:id',          requireRole('ADMIN'), asyncHandler(deleteSeguroVehiculo));
+
+// ── Patentes ──────────────────────────────────────────────────────────────────
+router.get('/patentes',                 asyncHandler(listPatentesEmpresa));
+router.get('/vehiculos/:id/patentes',   asyncHandler(listPatentesVehiculo));
+router.post('/vehiculos/:id/patentes',  requireRole('ADMIN'), asyncHandler(createPatenteVehiculo));
+router.put('/patentes/:id',             requireRole('ADMIN'), docMiddleware('comprobante'), asyncHandler(updatePatenteVehiculo));
+
+// ── Peajes ────────────────────────────────────────────────────────────────────
+router.get('/peajes',                  asyncHandler(listPeajes));
+router.get('/vehiculos/:id/peajes',    asyncHandler(listPeajesVehiculo));
+router.post('/peajes',                 asyncHandler(createPeaje));
+router.delete('/peajes/:id',           requireRole('ADMIN'), asyncHandler(deletePeaje));
+
+// ── Taller ────────────────────────────────────────────────────────────────────
+router.get('/taller',                  asyncHandler(listTaller));
+router.get('/vehiculos/:id/taller',    asyncHandler(listTallerVehiculo));
+router.post('/taller',                 asyncHandler(createServicioTaller));
+router.put('/taller/:id',              asyncHandler(updateServicioTaller));
+router.delete('/taller/:id',           requireRole('ADMIN'), asyncHandler(deleteServicioTaller));
+
+// ── Alertas ───────────────────────────────────────────────────────────────────
+router.get('/alertas', asyncHandler(alertasFlota));
+
+// ── Importador de pizarra (Lorena) — plantilla Excel + import del archivo ─────
+router.get('/pizarra-plantilla',  asyncHandler(plantillaPizarra));
+router.post('/importar-pizarra', xlsxMiddleware, asyncHandler(importarPizarra));
+
+export default router;

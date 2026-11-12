@@ -4,7 +4,25 @@ import { z } from 'zod';
 import { EstadoEvento, Tipo, Moneda } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseExcelFile } from '../lib/excelParser';
-import { recalcularSaldos } from '../lib/recalcularSaldos';
+import { recalcularSaldos, recalcularSaldosRubro } from '../lib/recalcularSaldos';
+import { withTenant } from '../lib/tenant';
+
+// Mapeo de códigos de hoja del Excel histórico del cliente (10 hojas fijas) a
+// nombres de rubro en el nuevo modelo configurable. Configurable: si el admin
+// renombra u organiza distinto sus rubros, ajustar este mapa para que el
+// importer siga encontrando el rubro correcto por nombre.
+export const SHEET_CODE_TO_RUBRO_NOMBRE: Record<string, string> = {
+  'EG-TC':           'Producción General',
+  'EG-RET-SOC':      'Producción General',
+  'EG-EXTRA':        'Gastos Extraordinarios',
+  'EG-IMP':          'Impuestos',
+  'EG-PREST':        'Préstamos',
+  'ING-TICKETS':     'Tickets',
+  'ING-SPON':        'Sponsors',
+  'ING-CORP':        'Corporativo',
+  'ING-GASTRO':      'Gastronomía',
+  'ING-SERV-CHARGE': 'Service Charge',
+};
 
 // ── Multer ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +46,7 @@ export async function preview(req: Request, res: Response) {
   }
   try {
     const tabs = await prisma.tabConfig.findMany({
-      where:   { activo: true },
+      where:   { activo: true, ...withTenant(req.empresaId!) },
       orderBy: [{ tipo: 'asc' }, { orden: 'asc' }],
       select:  { codigo: true, tipo: true, numero: true },
     });
@@ -101,6 +119,7 @@ export async function confirmar(req: Request, res: Response) {
   const eventoId = await prisma.$transaction(async tx => {
     const evento = await tx.evento.create({
       data: {
+        ...withTenant(req.empresaId!),
         nombre:       eventoData.nombre,
         estado:       EstadoEvento.IMPORTADO,
         moneda_base:  eventoData.moneda_base as Moneda,
@@ -116,6 +135,13 @@ export async function confirmar(req: Request, res: Response) {
       const importables = hoja.movimientos.filter(m => m.errores.length === 0);
       filasOmitidas += hoja.movimientos.filter(m => m.errores.length > 0).length;
 
+      const rubroNombre = SHEET_CODE_TO_RUBRO_NOMBRE[hoja.codigo];
+      const rubro = rubroNombre
+        ? await tx.rubro.findFirst({
+            where: { ...withTenant(req.empresaId!), tipo: hoja.tipo as Tipo, nombre: rubroNombre, deleted_at: null },
+          })
+        : null;
+
       for (let idx = 0; idx < importables.length; idx++) {
         const m = importables[idx];
         await tx.movimiento.create({
@@ -123,6 +149,7 @@ export async function confirmar(req: Request, res: Response) {
             evento_id:             evento.id,
             tipo:                  hoja.tipo as Tipo,
             tab_numero:            hoja.tab_numero,
+            rubro_id:              rubro?.id ?? null,
             fecha:                 m.fecha       ? new Date(m.fecha)       : null,
             concepto:              m.concepto,
             descripcion:           m.descripcion,
@@ -140,7 +167,11 @@ export async function confirmar(req: Request, res: Response) {
       }
 
       if (importables.length > 0) {
-        await recalcularSaldos(evento.id, hoja.tipo as Tipo, hoja.tab_numero, tx);
+        if (rubro) {
+          await recalcularSaldosRubro(evento.id, hoja.tipo as Tipo, rubro.id, tx);
+        } else {
+          await recalcularSaldos(evento.id, hoja.tipo as Tipo, hoja.tab_numero, tx);
+        }
       }
     }
 

@@ -1,10 +1,14 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { Moneda, EstadoEcheq } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
+import { withTenant } from '../lib/tenant';
+import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
+import { resolveCuentaIdsEvento } from './caja.controller';
+import { convertirARS } from '../lib/convertirARS';
 
 function mapEcheq(e: any) {
   return { ...e, importe: Number(e.importe) };
@@ -28,7 +32,8 @@ const createEcheqSchema = z.object({
   razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
   importe:              z.number().positive(),
-  moneda:               z.enum(['ARS', 'USD']).default('ARS'),
+  moneda:               z.enum(['ARS', 'USD', 'EUR']).default('ARS'),
+  tasa_cambio:          z.number().positive().nullable().optional(),
   fecha_emision:        z.string().nullable().optional(),
   fecha_cobro_estimada: z.string().nullable().optional(),
 }).refine(
@@ -42,7 +47,8 @@ const updateEcheqSchema = z.object({
   razon_social:         z.string().min(1).optional(),
   detalle:              z.string().nullable().optional(),
   importe:              z.number().positive().optional(),
-  moneda:               z.enum(['ARS', 'USD']).optional(),
+  moneda:               z.enum(['ARS', 'USD', 'EUR']).optional(),
+  tasa_cambio:          z.number().positive().nullable().optional(),
   fecha_emision:        z.string().nullable().optional(),
   fecha_cobro_estimada: z.string().nullable().optional(),
 });
@@ -56,9 +62,19 @@ const rechazarSchema = z.object({
   motivo_rechazo: z.string().nullable().optional(),
 });
 
+const venderSchema = z.object({
+  fecha_venta:         z.string().min(1),
+  banco_descuento:     z.string().nullable().optional(),
+  tasa_descuento:      z.number().min(0).max(100).nullable().optional(),
+  monto_neto_recibido: z.number().positive().nullable().optional(),
+});
+
 export async function listEcheqs(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
   const { estado, moneda, desde, hasta, razon_social, vencen_en_dias } = req.query;
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const where: Prisma.EcheqWhereInput = { evento_id: eventoId, deleted_at: null };
 
@@ -95,12 +111,12 @@ export async function createEcheq(req: Request, res: Response) {
     return;
   }
 
-  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null } });
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   let razonSocial = parsed.data.razon_social ?? null;
   if (parsed.data.proveedor_id) {
-    const prov = await prisma.proveedor.findFirst({ where: { id: parsed.data.proveedor_id, activo: true, deleted_at: null } });
+    const prov = await prisma.proveedor.findFirst({ where: { id: parsed.data.proveedor_id, activo: true, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!prov) { res.status(400).json({ error: 'Proveedor no encontrado o inactivo' }); return; }
     if (!razonSocial) razonSocial = prov.nombre;
   }
@@ -108,13 +124,14 @@ export async function createEcheq(req: Request, res: Response) {
 
   if (parsed.data.movimiento_id) {
     const mov = await prisma.movimiento.findFirst({
-      where: { id: parsed.data.movimiento_id, evento_id: eventoId, deleted_at: null },
+      where:   { id: parsed.data.movimiento_id, evento_id: eventoId, deleted_at: null },
+      include: { rubro: { select: { codigo: true } } },
     });
     if (!mov) {
       res.status(400).json({ error: 'Movimiento no encontrado en este evento' }); return;
     }
-    if (mov.tipo !== 'EGRESO' || mov.tab_numero !== 3) {
-      res.status(400).json({ error: 'Los echeqs solo se pueden crear desde EG-EXTRA (Egresos tab 3)' }); return;
+    if (mov.tipo !== 'EGRESO' || mov.rubro?.codigo !== RUBROS_SISTEMA.GASTOS_EXTRA) {
+      res.status(400).json({ error: 'Los echeqs solo se pueden crear desde el rubro de Gastos Extraordinarios' }); return;
     }
     const existing = await prisma.echeq.findFirst({
       where: { movimiento_id: parsed.data.movimiento_id, deleted_at: null },
@@ -134,6 +151,8 @@ export async function createEcheq(req: Request, res: Response) {
       detalle:              parsed.data.detalle        ?? null,
       importe:              parsed.data.importe,
       moneda:               parsed.data.moneda                as Moneda,
+      tasa_cambio:          parsed.data.tasa_cambio           ?? null,
+      monto_ars:            convertirARS(parsed.data.importe, parsed.data.moneda as Moneda, parsed.data.tasa_cambio ?? null),
       fecha_emision:        parsed.data.fecha_emision        ? new Date(parsed.data.fecha_emision)        : null,
       fecha_cobro_estimada: parsed.data.fecha_cobro_estimada ? new Date(parsed.data.fecha_cobro_estimada) : null,
       created_by:           req.user!.id,
@@ -143,6 +162,7 @@ export async function createEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'CREATE',
     entidad:      'Echeq',
     entidadId:    echeq.id,
@@ -164,11 +184,18 @@ export async function updateEcheq(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
-  if (existing.estado === EstadoEcheq.COBRADO) {
-    res.status(400).json({ error: 'No se puede modificar un echeq cobrado' }); return;
+  if (existing.estado === EstadoEcheq.COBRADO || existing.estado === EstadoEcheq.VENDIDO) {
+    res.status(400).json({ error: 'No se puede modificar un echeq cobrado o vendido' }); return;
   }
+
+  // Recalcular monto_ars si cambió algo que lo afecta.
+  const importeFinal   = parsed.data.importe !== undefined ? parsed.data.importe : Number(existing.importe);
+  const monedaFinal    = (parsed.data.moneda ?? existing.moneda) as Moneda;
+  const tasaFinal       = parsed.data.tasa_cambio !== undefined ? parsed.data.tasa_cambio : (existing.tasa_cambio !== null ? Number(existing.tasa_cambio) : null);
+  const recomputarArs   = parsed.data.importe !== undefined || parsed.data.moneda !== undefined || parsed.data.tasa_cambio !== undefined;
+  const montoArsFinal   = recomputarArs ? convertirARS(importeFinal, monedaFinal, tasaFinal) : undefined;
 
   const updated = await prisma.echeq.update({
     where: { id },
@@ -179,6 +206,8 @@ export async function updateEcheq(req: Request, res: Response) {
       ...(parsed.data.detalle              !== undefined && { detalle: parsed.data.detalle }),
       ...(parsed.data.importe              !== undefined && { importe: parsed.data.importe }),
       ...(parsed.data.moneda               !== undefined && { moneda: parsed.data.moneda as Moneda }),
+      ...(parsed.data.tasa_cambio          !== undefined && { tasa_cambio: parsed.data.tasa_cambio }),
+      ...(montoArsFinal                    !== undefined && { monto_ars: montoArsFinal }),
       ...(parsed.data.fecha_emision        !== undefined && {
         fecha_emision: parsed.data.fecha_emision ? new Date(parsed.data.fecha_emision) : null,
       }),
@@ -191,6 +220,7 @@ export async function updateEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
@@ -207,10 +237,10 @@ export async function updateEcheq(req: Request, res: Response) {
 
 export async function deleteEcheq(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
-  if (existing.estado === EstadoEcheq.COBRADO) {
-    res.status(400).json({ error: 'No se puede eliminar un echeq cobrado' }); return;
+  if (existing.estado === EstadoEcheq.COBRADO || existing.estado === EstadoEcheq.VENDIDO) {
+    res.status(400).json({ error: 'No se puede eliminar un echeq cobrado o vendido' }); return;
   }
 
   await prisma.echeq.update({
@@ -220,6 +250,7 @@ export async function deleteEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:  req.user!.id,
+    empresaId:  req.empresaId,
     accion:     'DELETE',
     entidad:    'Echeq',
     entidadId:  id,
@@ -240,15 +271,16 @@ export async function cobrarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'cuenta_id es requerido' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden cobrar echeqs en estado PENDIENTE' }); return;
   }
 
-  const cuenta = await prisma.cuentaBancaria.findFirst({
-    where: { id: parsed.data.cuenta_id, evento_id: echeq.evento_id, deleted_at: null },
-  });
+  const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(echeq.evento_id);
+  const cuenta = [...propiasIds, ...vinculadaIds].includes(parsed.data.cuenta_id)
+    ? await prisma.cuentaBancaria.findFirst({ where: { id: parsed.data.cuenta_id, deleted_at: null } })
+    : null;
   if (!cuenta) { res.status(400).json({ error: 'Cuenta bancaria no encontrada en este evento' }); return; }
 
   await prisma.$transaction(async tx => {
@@ -261,6 +293,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
     const cajaMov = await tx.movimientoCaja.create({
       data: {
         cuenta_id:   parsed.data.cuenta_id,
+        evento_id:   echeq.evento_id,
         fecha:       parsed.data.fecha_cobro_real ? new Date(parsed.data.fecha_cobro_real) : new Date(),
         descripcion: `Cobro echeq ${echeq.numero} — ${echeq.razon_social}`,
         debe:        Number(echeq.importe),
@@ -285,6 +318,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
 
     await registrarAuditoria({
       usuarioId:    req.user!.id,
+      empresaId:    req.empresaId,
       accion:       'UPDATE',
       entidad:      'Echeq',
       entidadId:    id,
@@ -308,7 +342,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden rechazar echeqs en estado PENDIENTE' }); return;
@@ -325,6 +359,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
 
   await registrarAuditoria({
     usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
@@ -339,12 +374,58 @@ export async function rechazarEcheq(req: Request, res: Response) {
   res.json(mapEcheqFull(updated));
 }
 
+export async function venderEcheq(req: Request, res: Response) {
+  const id     = Number(req.params.id);
+  const parsed = venderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
+  if (echeq.estado !== EstadoEcheq.PENDIENTE) {
+    res.status(400).json({ error: 'Solo se pueden vender echeqs en estado PENDIENTE' }); return;
+  }
+
+  const updated = await prisma.echeq.update({
+    where: { id },
+    data: {
+      estado:              EstadoEcheq.VENDIDO,
+      fecha_venta:         new Date(parsed.data.fecha_venta),
+      banco_descuento:     parsed.data.banco_descuento     ?? null,
+      tasa_descuento:      parsed.data.tasa_descuento      ?? null,
+      monto_neto_recibido: parsed.data.monto_neto_recibido ?? null,
+      updated_by:          req.user!.id,
+    },
+  });
+
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
+    accion:       'UPDATE',
+    entidad:      'Echeq',
+    entidadId:    id,
+    eventoId:     echeq.evento_id,
+    descripcion:  `Vendió (descontó) echeq #${echeq.numero} — ${echeq.razon_social}`,
+    datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
+    datosDespues: { estado: 'VENDIDO', ...parsed.data },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+
+  res.json(mapEcheqFull(updated));
+}
+
 export async function alertasEcheqs(req: Request, res: Response) {
   const eventoId = Number(req.params.id);
   const today    = new Date();
   today.setHours(0, 0, 0, 0);
   const en7Dias  = new Date(today);
   en7Dias.setDate(en7Dias.getDate() + 7);
+
+  const evento = await prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
 
   const [vencidos, vencen_pronto] = await Promise.all([
     prisma.echeq.findMany({

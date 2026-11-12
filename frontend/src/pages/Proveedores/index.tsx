@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useProveedores, useCreateProveedor, useUpdateProveedor,
@@ -10,8 +10,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import CuitInput from '@/components/ui/CuitInput';
+import ImportarFormularioDialog from '@/components/domain/ImportarFormularioDialog';
 import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
+import BaseTable from '@/components/ui/BaseTable';
+import PageHeader from '@/components/ui/PageHeader';
 
 // ── CUIT formatter ────────────────────────────────────────────────────────────
 
@@ -108,7 +112,7 @@ function ProveedorDialog({
             </div>
             <div>
               <label className={label}>CUIT</label>
-              <input {...f('cuit')} className={input} placeholder="30-12345678-9" />
+              <CuitInput value={form.cuit} onChange={v => setForm(p => ({ ...p, cuit: v }))} className={input} />
             </div>
           </div>
           <div>
@@ -148,6 +152,7 @@ export default function ProveedoresPage() {
   const [showInactivo, setShowInactivo] = useState(false);
   const [dialogOpen,  setDialogOpen]  = useState(false);
   const [editing,     setEditing]     = useState<Proveedor | null>(null);
+  const [importarOpen, setImportarOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search
@@ -183,14 +188,20 @@ export default function ProveedoresPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Proveedores</h1>
-        {(user?.rol === 'ADMIN' || user?.rol === 'OPERADOR') && (
-          <Button size="sm" onClick={openNew}>
-            <Plus size={14} className="mr-1.5" /> Nuevo proveedor
-          </Button>
+      <PageHeader
+        title="Proveedores"
+        className="mb-6"
+        actions={user?.rol === 'ADMIN' && (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setImportarOpen(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar desde formulario
+            </Button>
+            <Button size="sm" onClick={openNew}>
+              <Plus size={14} className="mr-1.5" /> Nuevo proveedor
+            </Button>
+          </>
         )}
-      </div>
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -225,8 +236,8 @@ export default function ProveedoresPage() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full">
+        <div className="overflow-x-auto">
+          <BaseTable className="w-full">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className={th}>Nombre</th>
@@ -250,7 +261,14 @@ export default function ProveedoresPage() {
                   className={cn('group cursor-pointer hover:bg-accent/30 transition-colors', !p.activo && 'opacity-60')}
                   onClick={() => navigate(`/proveedores/${p.id}`)}
                 >
-                  <td className={cn(td, 'font-medium')}>{p.nombre}</td>
+                  <td className={cn(td, 'font-medium')}>
+                    {p.nombre}
+                    {p.es_comisionista && (
+                      <span className="ml-2 text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
+                        Comisionista{p.porcentaje_comision !== null ? ` ${p.porcentaje_comision}%` : ''}
+                      </span>
+                    )}
+                  </td>
                   <td className={cn(td, 'text-muted-foreground')}>{p.alias ?? '—'}</td>
                   <td className={cn(td, 'font-mono text-xs text-muted-foreground')}>{formatCuit(p.cuit)}</td>
                   <td className={td}>
@@ -273,7 +291,7 @@ export default function ProveedoresPage() {
                       className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition"
                       onClick={e => e.stopPropagation()}
                     >
-                      {(user?.rol === 'ADMIN' || user?.rol === 'OPERADOR') && (
+                      {user?.rol === 'ADMIN' && (
                         <>
                           <button
                             onClick={() => openEdit(p)}
@@ -305,7 +323,7 @@ export default function ProveedoresPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </BaseTable>
         </div>
       )}
 
@@ -314,6 +332,7 @@ export default function ProveedoresPage() {
         proveedor={editing}
         onClose={closeDialog}
       />
+      {importarOpen && <ImportarFormularioDialog onClose={() => setImportarOpen(false)} />}
     </div>
   );
 }
