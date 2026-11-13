@@ -55,6 +55,7 @@ import siniestrosVehiculoRouter from './routes/siniestrosVehiculo';
 import uniformesRouter from './routes/uniformes';
 import tarjetaCorporativaRouter from './routes/tarjetaCorporativa';
 import excedenteHorasRouter from './routes/excedenteHoras';
+import resumenPagosRouter from './routes/resumenPagos';
 
 const app = express();
 
@@ -161,6 +162,7 @@ app.use('/api/siniestros-vehiculos', siniestrosVehiculoRouter);
 app.use('/api/uniformes',           uniformesRouter);
 app.use('/api/tarjeta-corporativa', tarjetaCorporativaRouter);
 app.use('/api/excedente-horas',     excedenteHorasRouter);
+app.use('/api/resumen-pagos',       resumenPagosRouter);
 
 app.use(errorHandler);
 

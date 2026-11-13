@@ -297,6 +297,7 @@ model Empresa {
   resumenesPresentismo   ResumenPresentismo[]
   siniestrosEmpleado     SiniestroEmpleado[]
   excedentesHoras        ExcedenteHoras[]
+  resumenesPago          ResumenPagoSemanal[]
   eventosEmpleadoMes     EventoEmpleadoMes[]
   entregasUniforme       EntregaUniforme[]
   siniestrosVehiculo     SiniestroVehiculo[]
@@ -965,7 +966,8 @@ model MovimientoCaja {
   // ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
   // Columna del Excel real (CAJAS_JULIO-2026.xlsx) donde cae este movimiento de
   // egreso: "COMBUSTIBLE" | "COMIDA" | "GASTOS_VARIOS" | "SERVICIOS" |
-  // "DEV_GASTOS" | "VALES". Null en un movimiento de ingreso (columna INGRESO
+  // "DEV_GASTOS" | "VALES" | "VIATICO_EXTRANJEROS" (cena y desayuno de los
+  // extranjeros: Andrea lo paga de caja por semana, no va en la liquidación). Null en un movimiento de ingreso (columna INGRESO
   // del Excel) o en movimientos de otros módulos que no pasan por esta vista.
   categoria_andrea   String?
   responsable_nombre String?
@@ -3888,4 +3890,98 @@ model LineaCostoReal {
   updated_by     Int?
 
   @@index([evento_id, bloque])
+}
+
+// ─── RESUMEN SEMANAL DE PAGOS (Andrea → Matías, DOS57) ───────────────────────
+// Espeja la planilla "PAGOS+CAJAS 2026 (SOLICITUD MATIAS)": cada semana Andrea
+// arma lo que hay que pagar (grupos de jornaleros, adelantos, viáticos, cajas
+// chicas, reposición de la caja de reserva) y Matías lo revisa LÍNEA POR LÍNEA:
+// tilde de aprobado o un comentario con el cambio que pide (respuesta de
+// Andrea, nov 2026). Debajo del total, la planilla anota cómo se cubre esa
+// plata (entregas de Matías/Mayra, transferencias, saldo anterior) — con signos
+// inconsistentes entre semanas, así que se guarda como sección COBERTURA
+// informativa, sin aprobación y sin saldo calculado.
+
+enum EstadoResumenPagos {
+  BORRADOR // lo está armando Andrea
+  ENVIADO // listo para que Matías lo revise
+  REVISADO // todas las líneas de caja tienen decisión
+  HISTORICO // importado de la planilla: se aprobó fuera del sistema
+}
+
+enum SeccionLineaPago {
+  CAJA_SEMANAL // suma al "TOTAL CAJA SEMANAL" y se aprueba
+  COBERTURA // cómo se cubre: entregas, transferencias, saldo anterior
+}
+
+enum TipoLineaPago {
+  JORNALEROS
+  ADELANTO
+  VIATICO
+  CAJA_CHICA
+  REPOSICION_CAJA
+  PROVEEDOR
+  OTRO
+}
+
+enum EstadoLineaPago {
+  PENDIENTE
+  APROBADA
+  OBSERVADA // Matías pide un cambio (comentario y/o importe corregido)
+  RECHAZADA
+}
+
+model ResumenPagoSemanal {
+  id           Int                @id @default(autoincrement())
+  empresa_id   Int
+  empresa      Empresa            @relation(fields: [empresa_id], references: [id])
+  // Fechas de calendario (medianoche UTC)
+  semana_desde DateTime
+  semana_hasta DateTime
+  titulo       String? // rótulo de la planilla, ej. "JUNIO-JULIO ( Sem.29 AL 05) 2026"
+  estado       EstadoResumenPagos @default(BORRADOR)
+  notas        String?
+  enviado_at   DateTime?
+  enviado_por  Int?
+  revisado_at  DateTime?
+  revisado_por Int?
+  // Reimportar la misma planilla no duplica: "<desde>_<hasta>"
+  import_key   String?
+  lineas       LineaResumenPago[]
+  created_at   DateTime           @default(now())
+  updated_at   DateTime           @updatedAt
+  deleted_at   DateTime?
+  created_by   Int?
+  updated_by   Int?
+
+  @@unique([empresa_id, import_key])
+  @@index([empresa_id, semana_desde])
+}
+
+model LineaResumenPago {
+  id                  Int                @id @default(autoincrement())
+  resumen_id          Int
+  resumen             ResumenPagoSemanal @relation(fields: [resumen_id], references: [id])
+  orden               Int                @default(0)
+  seccion             SeccionLineaPago   @default(CAJA_SEMANAL)
+  tipo                TipoLineaPago      @default(OTRO)
+  detalle             String
+  importe             Decimal            @db.Decimal(15, 2)
+  observacion         String?
+  // De dónde salió la sugerencia ("liq:12,15", "caja:7:2026-11-03") — evita
+  // sugerir dos veces lo mismo. Null si se cargó a mano o se importó.
+  origen_ref          String?
+  // Revisión de Matías
+  estado              EstadoLineaPago    @default(PENDIENTE)
+  importe_aprobado    Decimal?           @db.Decimal(15, 2) // si corrige el monto
+  comentario_revision String?
+  revisado_por        Int?
+  revisado_at         DateTime?
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+  updated_by          Int?
+
+  @@index([resumen_id, seccion, orden])
 }

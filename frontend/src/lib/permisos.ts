@@ -10,6 +10,7 @@ export const PERMISOS: { key: Permiso; label: string; detalle: string }[] = [
   { key: 'PADRON_EMPLEADOS',    label: 'Padrón de empleados', detalle: 'Importar la planilla de datos personales (sin acceso a sueldos).' },
   { key: 'UNIFORMES',           label: 'Uniformes',           detalle: 'Entregas y stock del depósito.' },
   { key: 'COSTO_REAL',          label: 'Costo real de eventos', detalle: 'Cargar, importar y exportar la matriz de costo real (DOS57).' },
+  { key: 'APROBAR_PAGOS',       label: 'Aprobar pagos semanales', detalle: 'Revisar y aprobar línea por línea el resumen semanal de pagos (además del administrador general).' },
 ];
 
 export function tienePermiso(user: Pick<MeResponse, 'rol' | 'permisos'> | null | undefined, permiso: Permiso): boolean {

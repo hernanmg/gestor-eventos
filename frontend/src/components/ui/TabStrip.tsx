@@ -3,9 +3,11 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Tira de pestañas común. Scrollea de costado cuando no entra (mobile) y
-// lleva la pestaña activa a la vista. El activo es neutro (texto + subrayado
-// en el color de texto), no azul: funciona con cualquier color de empresa.
-// - variant "underline": pestañas de página.
+// lleva la pestaña activa a la vista. Cada pestaña es una card (clases
+// .tab-card / .tab-pill en index.css); la activa se levanta y lleva una barra
+// con el color de la empresa.
+// - variant "underline": pestañas de página (el nombre quedó de cuando eran
+//   subrayadas; se mantiene para no tocar los 28 usos).
 // - variant "pill": sub-pestañas dentro de una pestaña.
 export interface TabItem<K extends string> {
   key:    K;
@@ -54,7 +56,7 @@ export default function TabStrip<K extends string>({ items, value, onChange, var
       role="tablist"
       className={cn(
         'no-print flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        variant === 'underline' ? 'gap-1 border-b border-border' : 'gap-1.5',
+        variant === 'underline' ? 'gap-2 px-0.5 pt-1 pb-2' : 'gap-1.5 px-0.5 py-1',
         className,
       )}
     >
@@ -71,12 +73,12 @@ export default function TabStrip<K extends string>({ items, value, onChange, var
               'relative flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm transition-colors',
               variant === 'underline'
                 ? cn(
-                    'px-3 py-2.5 -mb-px border-b-2',
-                    active ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
+                    'tab-card rounded-xl px-3.5 py-2',
+                    active ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground hover:text-foreground',
                   )
                 : cn(
-                    'h-8 rounded-full px-3 font-medium',
-                    active ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground hover:text-foreground',
+                    'tab-pill h-8 rounded-full px-3 font-medium',
+                    !active && 'text-muted-foreground hover:text-foreground',
                   ),
             )}
           >

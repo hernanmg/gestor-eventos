@@ -28,6 +28,7 @@ const TIPO_OPTIONS: { value: TipoMovimiento; label: string; columna: string }[] 
   { value: 'SERVICIOS',     label: 'Servicios',      columna: 'servicios' },
   { value: 'DEV_GASTOS',    label: 'Dev.Gastos',     columna: 'dev_gastos' },
   { value: 'VALES',         label: 'Vales',          columna: 'vales' },
+  { value: 'VIATICO_EXTRANJEROS', label: 'Viático extranjeros', columna: 'viatico_extranjeros' },
 ];
 
 const COLUMNAS = [
@@ -38,14 +39,15 @@ const COLUMNAS = [
   { key: 'servicios',     label: 'Servicios' },
   { key: 'dev_gastos',    label: 'Dev.Gastos' },
   { key: 'vales',         label: 'Vales' },
+  { key: 'viatico_extranjeros', label: 'Viático Extr.' },
 ] as const;
 
 type ColumnaKey = (typeof COLUMNAS)[number]['key'];
 
-// Fecha + Concepto + 7 columnas de importe (Ingreso + 6 egresos) + Saldo —
+// Fecha + Concepto + 8 columnas de importe (Ingreso + 7 egresos) + Saldo —
 // grid compartido por el header, cada fila y el total, para que las
 // columnas queden alineadas entre sí.
-const GRID_TEMPLATE = 'grid-cols-[100px_1fr_repeat(7,80px)_100px]';
+const GRID_TEMPLATE = 'grid-cols-[100px_1fr_repeat(8,80px)_100px]';
 
 // Categoría del movimiento → columna donde cae. Un egreso sin categoría
 // (movimiento importado de otro módulo, o cargado sin tipo) cae en Gastos
@@ -57,13 +59,14 @@ function columnaDe(m: MovimientoCaja): ColumnaKey | null {
   if (m.categoria_andrea === 'SERVICIOS') return 'servicios';
   if (m.categoria_andrea === 'DEV_GASTOS') return 'dev_gastos';
   if (m.categoria_andrea === 'VALES') return 'vales';
+  if (m.categoria_andrea === 'VIATICO_EXTRANJEROS') return 'viatico_extranjeros';
   if (Number(m.haber) > 0) return 'gastos_varios';
   return null;
 }
 
 const ICONO_COLUMNA: Record<ColumnaKey, string> = {
   ingreso: '💰', combustible: '⛽', comida: '🍽️', gastos_varios: '📦',
-  servicios: '🔧', dev_gastos: '🔄', vales: '💳',
+  servicios: '🔧', dev_gastos: '🔄', vales: '💳', viatico_extranjeros: '🌎',
 };
 
 function iconoDe(m: MovimientoCaja): string {
@@ -400,7 +403,7 @@ export default function CajaDelMesTab() {
               </div>
 
               {/* Saldo anterior */}
-              <div className={cn('grid gap-2 items-center px-4 py-3 bg-[#F9FAFB] rounded-lg italic text-sm text-muted-foreground', GRID_TEMPLATE)}>
+              <div className={cn('grid gap-2 items-center px-4 py-3 bg-[var(--bg-secondary)] rounded-lg italic text-sm text-muted-foreground', GRID_TEMPLATE)}>
                 <span>—</span>
                 <span>📋 SALDO ANTERIOR</span>
                 {COLUMNAS.map(c => <span key={c.key} />)}

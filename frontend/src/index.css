@@ -192,6 +192,60 @@ html:not(.dark) .app-main [class~='bg-white']:not(input, select, textarea, [role
   background-color: color-mix(in srgb, var(--color-empresa) 26%, transparent);
 }
 
+/* ── Pestañas con estilo card (TabStrip) ──────────────────────────────────────
+   Cada pestaña es una card chica (borde, fondo de card, sombra) para que se
+   distingan una de otra. La activa se levanta más y lleva una barra abajo con
+   el color de la empresa (como .nav-active), así se ve en Enjoy y en DOS57.
+   La tira tiene padding para que el overflow-x no corte las sombras. */
+.tab-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  transition: box-shadow 150ms ease, transform 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+.tab-card:hover {
+  box-shadow: 0 3px 8px -2px var(--shadow), 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  transform: translateY(-1px);
+}
+.tab-card[aria-selected='true'] {
+  background-color: var(--bg-card);
+  border-color: color-mix(in srgb, var(--color-empresa) 45%, var(--border-color));
+  box-shadow: 0 6px 14px -4px var(--shadow), 0 2px 4px -1px rgb(0 0 0 / 0.08);
+  transform: translateY(-1px);
+}
+.tab-card[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background-color: var(--color-empresa);
+}
+.dark .tab-card[aria-selected='true']::after {
+  background-color: color-mix(in srgb, var(--color-empresa) 70%, white);
+}
+.dark .tab-card[aria-selected='true'] {
+  background-color: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--color-empresa) 55%, var(--border-color));
+}
+
+/* Sub-pestañas (variant "pill"): mismas cards, más chicas; la activa invertida. */
+.tab-pill {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: box-shadow 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+.tab-pill:hover { box-shadow: 0 2px 6px -1px var(--shadow); }
+.tab-pill[aria-selected='true'] {
+  background-color: hsl(var(--foreground));
+  border-color: hsl(var(--foreground));
+  color: hsl(var(--background));
+  box-shadow: 0 3px 8px -2px var(--shadow);
+}
+
 /* ── Desplegables con estilo card ─────────────────────────────────────────────
    Selects nativos (más de 200, cada uno con sus clases): select:not([multiple])
    tiene especificidad (0,1,1) y le gana a rounded/rounded-md (0,1,0) sin tocar

@@ -591,6 +591,30 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── Gastos del mes (Andrea, DOS57) ──────────────────────────────────────────
+  '/gastos-operativos': {
+    titulo: 'Gastos del mes',
+    descripcion: 'La caja general de DOS57 con sus columnas, el resumen semanal de pagos para aprobar, los siniestros de empleados y el excedente de horas.',
+    secciones: [
+      {
+        titulo: 'Caja del mes',
+        contenido: 'El libro diario de cada caja de la empresa, con una columna por tipo de gasto: combustible, comida, gastos varios, servicios, devolución de gastos, vales y viático de extranjeros. El viático de extranjeros es la cena y el desayuno que se les paga cada semana: va como gasto de la caja, no en la liquidación, y se carga sólo cuando corresponde (si el evento ya les da la cena, no se carga).',
+      },
+      {
+        titulo: 'Pagos semanales: armar la semana',
+        contenido: '"Nueva semana" crea el resumen (de lunes a domingo) y puede copiar las líneas de la semana anterior con el importe en cero, porque los grupos se repiten. "Traer del sistema" sugiere lo que ya está cargado: liquidaciones de jornaleros agrupadas por equipo, adelantos, viáticos de extranjeros y los gastos de cada caja para reponerla. Lo que ya entró en otro resumen no se vuelve a sugerir.\nDebajo del total está "Cómo se cubre": las entregas de efectivo, transferencias o saldo anterior con que se paga la semana. Es informativo y no se aprueba. Cuando está completo, "Enviar a revisar" le manda el aviso a quien aprueba.',
+      },
+      {
+        titulo: 'Pagos semanales: aprobar línea por línea',
+        contenido: 'Aprueba el administrador general, o quien tenga el permiso "Aprobar pagos semanales" (Configuración → Usuarios). Con el tilde se aprueba la línea. Con el globito se pide un cambio (con un comentario y, si hace falta, el importe que debería ser), se aprueba por otro importe o se marca que no se paga. "Aprobar las pendientes" tilda de una vez lo que quedó sin revisar.\nSi quien armó el resumen corrige una línea que ya se había revisado, esa línea vuelve a pendiente para que la vuelvan a mirar, y el comentario queda a la vista. El total aprobado suma sólo las líneas aprobadas.',
+      },
+      {
+        titulo: 'Importar la planilla de pagos',
+        contenido: '"Importar planilla" lee la planilla PAGOS+CAJAS (una hoja por mes, varios bloques semanales por hoja). Cada semana entra como "De la planilla": se aprobó fuera del sistema, así que no tiene revisión por línea. La vista previa compara cada semana contra el TOTAL CAJA SEMANAL de la planilla y avisa si no coincide. Reimportar no duplica y no toca las semanas que ya se trabajan en el sistema.',
+      },
+    ],
+  },
+
   // ── Uniformes ───────────────────────────────────────────────────────────────
   '/uniformes': {
     titulo: 'Uniformes',

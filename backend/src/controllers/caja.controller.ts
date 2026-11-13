@@ -101,7 +101,7 @@ const estadoCuentaSchema = z.object({
 // Categorías de la vista de Andrea (Caja del mes, DOS57) — columnas del libro
 // diario real (CAJAS_JULIO-2026.xlsx). Null = movimiento de ingreso, o
 // movimiento cargado desde otro módulo que no pasa por esa vista.
-const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES'] as const;
+const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES', 'VIATICO_EXTRANJEROS'] as const;
 
 // z.coerce.number() acepta tanto number (JSON) como string (multipart, cuando
 // el request trae un comprobante adjunto) — ver uploadComprobanteMovCaja.

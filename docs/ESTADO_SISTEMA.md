@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-04 · **Primera versión completa** (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-12 · Respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -22,12 +22,12 @@
 
 | # | Pilar | Responsables | DOS57 | Enjoy |
 |---|---|---|---|---|
-| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 87% | 83% |
-| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 72% | 74% |
+| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 88% | 83% |
+| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 76% | 70% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 82% |
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 73% | 71% |
 | 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 78%* | 82% |
-| 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino (Enjoy) | 86% | 86% |
+| 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
 | 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 61% | 50% |
 | 08 | Marketing | Vicky | pendiente de relevar | |
 | 09 | Comunicación | Vicky | pendiente de relevar | |
@@ -39,7 +39,7 @@
 
 ## 01 · RRHH
 
-**DOS57: 87% construido (26 de 30) · Enjoy: 83% construido (15 de 18) · En uso: 0%, arranca con la prueba en producción**
+**DOS57: 88% construido (26,5 de 30) · Enjoy: 83% construido (15 de 18) · En uso: 0%, arranca con la prueba en producción**
 
 Responsables: Mayra cierra sueldos de las dos empresas. En DOS57 la alimentan Lorena (presentismo, padrón, siniestros, uniformes), Andrea (jornaleros, adelantos, gastos del mes), Jazmín (parte diario) y Santi. En Enjoy: Male (jornaleros) y Daniel (personal técnico).
 
@@ -79,7 +79,7 @@ Se conecta con: Depósito (parte diario y pañol cargan horas a la gente que est
 | 18 | Planilla de adelantos (semana del 20) para imprimir y hacer firmar | 🟡 | — | Relevamiento Andrea | El adelanto se carga, falta la planilla de firma |
 | 19 | Sueldos administrativos: acuerdos, escalafones, aumento manual o por IPC, premio presentismo, premio producción, vacaciones y aguinaldo, préstamos | ✅ | ✅ | SUELDO DOS57 Julio 2026 (Mayra) | RRHH → Sueldos Admin |
 | 20 | Viático automático de los choferes según la bitácora de viajes | ✅ | — | Excel de viajes de Luis | RRHH → Sueldos Admin |
-| 21 | Extranjeros: alta como empleado (categoría Extranjero), jornadas, liquidación y costo real del evento ("Staff Extranjeros") | 🟡 | — | EQUIPO EXTRANJEROS (Andrea) · Relevamiento Jazmín | RRHH → Empleados · Falta el viático por persona y por jornal: hoy solo se puede cargar como "gastos varios" en la caja del mes |
+| 21 | Extranjeros: alta como empleado (categoría Extranjero), jornadas, liquidación, costo real del evento ("Staff Extranjeros") y su viático de cena y desayuno, que Andrea paga de la caja cada semana (no va en la liquidación) | ✅ | — | EQUIPO EXTRANJEROS (Andrea) · Relevamiento Jazmín · Respuesta de Andrea (nov 2026) | RRHH → Empleados · Gastos del mes → tipo "Viático extranjeros" |
 | 22 | Premio PAX / premio de equipo | ✅ | — | Relevamiento Andrea | RRHH → Sueldos Admin |
 | 23 | Recibos y liquidaciones en PDF | 🟡 | 🟡 | Prueba en producción | Funciona local; en Render falta Chromium y el botón da error |
 | 24 | Resumen mensual para el cierre de Mayra, exportable | ✅ | ✅ | Planilla madre de sueldos (Mayra) | Sueldos Admin → Resumen |
@@ -114,13 +114,12 @@ También confirma cosas que ya están: ítems fijos del acuerdo (básico, incent
 - **Escalafón:** el número de nivel existe, falta confirmar qué significa.
 - **Choferes:** el presentismo no se pierde por horas. Es una decisión nuestra, falta confirmarla.
 - **Escalafones de julio 2026:** confirmar con Mayra si siguen vigentes o hubo aumento.
-- **Viáticos de extranjeros** (punto 21): ¿van en la liquidación (monto fijo por jornal) o siguen saliendo de la caja de Andrea con un tipo propio?
 
 ---
 
 ## 02 · Finanzas
 
-**DOS57: 72% construido (16,5 de 23) · Enjoy: 74% construido (15,5 de 21) · En uso: 0%**
+**DOS57: 76% construido (17,5 de 23) · Enjoy: 70% construido (15,5 de 22) · En uso: 0%**
 
 Responsables: Mayra cierra las dos empresas y maneja los bancos (Galicia, Francés, Nación y Rebanking en Enjoy; Galicia, Nación y Rebanking en DOS57). Chino lleva Bancor de Enjoy. En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
 
@@ -135,7 +134,7 @@ No se cuentan acá: órdenes de compra y comparativos de proveedores (Proveedore
 | 1 | Caja Global: cuentas de la empresa (efectivo, banco, FIMA), con o sin evento, y saldo consolidado | ✅ | ✅ | CAJAS JULIO-2026 (Andrea) · BANCOS (Mayra) | Caja Global |
 | 2 | Cajas chicas por persona (Pollo, Jazmín, David, Daniel, Vicky, coworking…), con rendición y cierre; importador | ✅ | ✅ | CAJAS 2026 (Enjoy) · CAJAS JULIO-2026 (Andrea) · Caja Chica COWORKING (Mayra) | Caja Global |
 | 3 | Caja del mes de Andrea con sus categorías (combustible, comida, servicios, vales, varios) | ✅ | — | CAJAS JULIO-2026 (Andrea) | Gastos del mes |
-| 4 | Resumen semanal de pagos para que Matías apruebe (grupos de jornaleros, reposición de cajas chicas y de la caja de reserva, pagos a proveedores) | ⬜ | — | PAGOS+CAJAS 2026 (SOLICITUD MATIAS) (Andrea) | Los datos están en el sistema; falta armar el resumen y la aprobación |
+| 4 | Resumen semanal de pagos para que Matías apruebe (grupos de jornaleros, reposición de cajas chicas y de la caja de reserva, pagos a proveedores). Matías lo revisa línea por línea: un tilde de aprobado en cada una y al lado el cambio que pide (sacar o sumar un premio, corregir un monto). Trae del sistema lo que ya está cargado e importa la planilla histórica | ✅ | ❓ | PAGOS+CAJAS 2026 (SOLICITUD MATIAS) (Andrea) · Respuesta de Andrea (nov 2026) | Gastos del mes → Pagos semanales. En DOS57 lo arma Andrea; en Enjoy lo haría Male (a confirmar) |
 | 5 | Saldos en varias monedas, con dólar e IPC actualizados | ✅ | ✅ | Entrevista Mayra | Caja Global · Indicadores |
 
 ### Cheques
@@ -177,7 +176,7 @@ La especificación de Enjoy (§44) las deja fuera de la primera etapa: conciliac
 
 ### Para definir con el cliente
 
-- **Resumen semanal de pagos** (punto 4): ¿Matías lo aprueba línea por línea o en bloque? ¿Lo arma solo Andrea o también Mayra para Enjoy?
+- **Resumen semanal de pagos en Enjoy** (punto 4): Andrea cree que lo arma Male. Confirmar con ella si lo hace y si Matías lo aprueba igual, línea por línea.
 - **Cheques de la empresa** (punto 8): ¿se llevan todos en el sistema, también los de Bancor que hace Chino?
 - **Aviso de los jueves** (punto 9): ¿a quién le llega, solo a Mayra o también a Matías?
 - **Leasings** (punto 13): ¿cuántos hay y con quién?
@@ -349,11 +348,11 @@ No se cuentan acá, para no contar dos veces: remitos y comidas (Logística), pr
 
 ## 06 · Logística
 
-**DOS57: 86% construido (15,5 de 18) · Enjoy: 86% construido (9,5 de 11) · En uso: 0%**
+**DOS57: 86% construido (15,5 de 18) · Enjoy: 68% construido (9,5 de 14) · En uso: 0%**
 
-Enjoy tiene flota propia: 4 vehículos operativos según "Info Flotas - Dos57_Enjoy" (Mayra), más una hoja de bajas y ventas. El módulo de Flota ya funciona para las dos empresas, pero los vehículos de Enjoy todavía no están cargados. Bitácora, combustible y movimiento diario hoy son solo de DOS57.
+Enjoy tiene flota propia: 4 vehículos operativos según "Info Flotas - Dos57_Enjoy" (Mayra), más una hoja de bajas y ventas. El módulo de Flota ya funciona para las dos empresas, pero los vehículos de Enjoy todavía no están cargados. Hoy en Enjoy nadie lleva la flota: los papeles los tiene Mayra y la nafta se carga cuando hace falta y se paga de la caja chica. A futuro quieren llevar también bitácora y combustible, a cargo de Male y Chino. El movimiento diario sigue siendo solo de DOS57.
 
-Responsables: en DOS57, Florencia (costo y logística de cada evento), Lorena (papeles de la flota), Santi y Nico (combustible y taller), Jazmín (comidas) y los choferes (bitácora). En Enjoy, Daniel y Chino.
+Responsables: en DOS57, Florencia (costo y logística de cada evento), Lorena (papeles de la flota), Santi y Nico (combustible y taller), Jazmín (comidas) y los choferes (bitácora). En Enjoy, Daniel y Chino; la flota, Mayra (papeles) y a futuro Male y Chino.
 
 Se conecta con: RRHH (choferes, viático por bitácora, carnets, multas, parte diario), Depósito (carga por camión, pañol), Administración (todo termina en el costo real del evento), Seguros (pólizas y siniestros de vehículos), Calendario (RTO, patentes, taller, controles de salida).
 
@@ -376,10 +375,10 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 9 | Bitácora de viajes: choferes y planillas de camiones de Flor en un solo lugar, sin pagar dos veces el viático | ✅ | — | Excel de viajes de Luis · Planilla_Viajes_Camiones (Flor) | Bitácora |
+| 9 | Bitácora de viajes: choferes y planillas de camiones de Flor en un solo lugar, sin pagar dos veces el viático | ✅ | ⬜ | Excel de viajes de Luis · Planilla_Viajes_Camiones (Flor) · Respuesta de Male (nov 2026) | Bitácora · Enjoy: lo quieren a futuro, hoy no se lleva |
 | 10 | Movimiento diario: camiones y camionetas por separado | ✅ | — | Relevamiento Flor | Movimiento Diario |
-| 11 | Combustible: importador de la planilla de la estación (cuenta corriente YPF), cargas por vehículo, km por litro | ✅ | — | Planilla de Combustible (Santi) · DETALLE TECNICO CONSUMO CAMIONES (Flor) | Combustible |
-| 12 | Combustible pagado de la caja (fuera de la cuenta YPF), atado al vehículo y al evento | 🟡 | — | Relevamiento Santi y Flor | Entra como gasto de combustible en la caja, pero sin vehículo |
+| 11 | Combustible: importador de la planilla de la estación (cuenta corriente YPF), cargas por vehículo, km por litro | ✅ | ⬜ | Planilla de Combustible (Santi) · DETALLE TECNICO CONSUMO CAMIONES (Flor) · Respuesta de Male (nov 2026) | Combustible · Enjoy: lo quieren a futuro, hoy no se lleva |
+| 12 | Combustible pagado de la caja (fuera de la cuenta YPF), atado al vehículo y al evento | 🟡 | ⬜ | Relevamiento Santi y Flor · Respuesta de Male (nov 2026) | DOS57: entra como gasto de combustible en la caja, pero sin vehículo · Enjoy: hoy se paga de la caja chica sin registrar el vehículo |
 | 13 | Logística del evento: viajes y combustible de cada evento, con sugerencia de a qué evento corresponde cada viaje | ✅ | — | Relevamiento Flor | Evento → Logística |
 | 14 | Cajas de los choferes por evento ("caja Luis, caja Tati…") | 🟡 | — | Matriz de costo real (Flor) | Se cargan a mano en el costo real; no salen de la caja de cada chofer |
 
@@ -396,7 +395,7 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 
 ### Para definir con el cliente
 
-- **Flota de Enjoy:** ¿quién lleva sus papeles, combustible y viajes? ¿Hace falta bitácora y combustible también para Enjoy?
+- **Flota de Enjoy** (puntos 9, 11 y 12): ¿desde cuándo quieren llevar bitácora y combustible? ¿Cargan en una estación con cuenta corriente o siempre de caja chica?
 - **Service por km** (punto 6): ¿cada cuántos km se hace el service de cada vehículo? ¿De dónde sale el km actual (bitácora, combustible, foto del tablero)?
 - **Cajas de los choferes** (punto 14): ¿cada chofer tiene una caja propia que rinde por evento, o es plata de la caja de Santi o de Andrea?
 - **Combustible de caja** (punto 12): ¿alcanza con elegir el vehículo y el evento al cargar el gasto en la caja?
@@ -451,22 +450,24 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 
 Qué es: el registro de lo que pasa y hay que dejar asentado en cada evento y en la operación. Por ejemplo, un choque, un accidente, una rotura, un faltante o un problema con un proveedor. Hoy esto viaja por los grupos de WhatsApp y se pierde.
 
+Una novedad es cualquier cosa que pasa: un choque, algo que faltó, un camión que se rompió, una goma pinchada. Se ve todo junto, a nivel general, pero separado por tipo y con una gravedad que ordene qué atender primero (respuesta de Male, nov 2026).
+
 Responsables: todos cargan. Santi lleva las novedades de la flota y Florencia la bitácora de cada evento. Matías y Mayra tienen que enterarse de las graves.
 
 Se conecta con: Seguros (un siniestro es una novedad), Logística (roturas y pendientes de la flota, taller), RRHH (accidentes, faltas), Depósito (faltantes y roturas de material), Calendario.
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 1 | Libro de novedades por evento: qué pasó, cuándo, quién, gravedad, fotos, resolución y estado | ⬜ | ⬜ | Pedido del cliente (Kick-off, pilar 10) | — |
+| 1 | Libro de novedades general, ligado al evento o al vehículo cuando corresponde: qué pasó, cuándo, quién, tipo (flota, material, personal, proveedor…), gravedad, fotos, resolución y estado | ⬜ | ⬜ | Pedido del cliente (Kick-off, pilar 10) · Respuesta de Male (nov 2026) | — |
 | 2 | Novedades de la flota: pendientes de reparación con resolución y estado | 🟡 | 🟡 | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hoja NOVEDADES IMPORTANTE (Santi) | El taller registra lo que entra al taller; los pendientes que todavía no entraron no quedan registrados |
 | 3 | Bitácora diaria del armado (qué se armó cada día, con fotos), que hoy sale de los grupos de WhatsApp | ⬜ | ❓ | Carpeta del evento (Flor) | — |
 | 4 | Siniestros de vehículos y del personal ligados al evento donde ocurrieron | 🟡 | 🟡 | Relevamiento Lorena | Los siniestros existen, pero no se los liga a un evento |
 | 5 | Aviso inmediato a quien corresponde cuando se carga una novedad grave | ⬜ | ⬜ | — | — |
-| 6 | Novedades a la vista en el resumen del evento y en el calendario | ⬜ | ⬜ | — | — |
+| 6 | Novedades a la vista en una pantalla general (filtrada por tipo y ordenada por gravedad), en el resumen del evento y en el calendario | ⬜ | ⬜ | Respuesta de Male (nov 2026) | — |
 
 ### Para definir con el cliente
 
-- **Qué es una novedad:** ¿hay categorías (accidente, rotura, faltante, proveedor, clima…) y niveles de gravedad?
+- **Tipos y gravedad:** confirmar la lista de tipos (flota, material, personal, proveedor, clima…) y cuántos niveles de gravedad (por ejemplo leve, media, grave).
 - **Quién se entera:** ¿quién recibe el aviso de cada tipo de novedad?
 - **Enjoy** (punto 3): ¿también lleva una bitácora diaria del armado?
 

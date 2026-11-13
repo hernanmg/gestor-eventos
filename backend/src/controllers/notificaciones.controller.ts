@@ -640,6 +640,53 @@ async function resolveFacturasSinPdf(req: Request): Promise<NotificacionItem[]> 
 // Jazmín (parte diario) no los ven en la campanita — sí en Flota y Calendario.
 const HOME_RESPONSABLE_FLOTA = ['/presentismo'];
 
+// Resumen semanal de pagos: a quien revisa (admin global o permiso
+// APROBAR_PAGOS) le llega lo que Andrea
+// envió y tiene líneas sin revisar; a quien armó el resumen, las líneas en
+// que Matías pidió un cambio (se van cuando las corrige).
+async function resolveResumenPagosParaRevisar(req: Request): Promise<NotificacionItem[]> {
+  const usuario = await prisma.usuario.findFirst({ where: { id: req.user!.id, deleted_at: null }, select: { rol: true, empresa_id: true, permisos: true } });
+  if (!usuario) return [];
+  const revisa = (usuario.rol === 'ADMIN' && usuario.empresa_id === null) || usuario.permisos.includes('APROBAR_PAGOS');
+  if (!revisa) return [];
+
+  const resumenes = await prisma.resumenPagoSemanal.findMany({
+    where: { empresa_id: req.empresaId!, deleted_at: null, estado: 'ENVIADO' },
+    include: { lineas: { where: { deleted_at: null, seccion: 'CAJA_SEMANAL', estado: 'PENDIENTE' }, select: { importe: true } } },
+    orderBy: { semana_desde: 'asc' },
+  });
+  return resumenes.filter(r => r.lineas.length > 0).map(r => ({
+    id:          `resumen-pagos-${r.id}`,
+    tipo:        'RESUMEN_PAGOS_PARA_REVISAR',
+    titulo:      `Pagos de la semana ${r.semana_desde.toLocaleDateString('es-AR', { timeZone: 'UTC' })} para aprobar`,
+    descripcion: `${r.lineas.length} línea(s) sin revisar por $${r.lineas.reduce((a, l) => a + Number(l.importe), 0).toLocaleString('es-AR')}`,
+    urgencia:    'warning' as Urgencia,
+    link:        `/gastos-operativos?tab=pagos-semanales&resumen=${r.id}`,
+    fecha:       r.enviado_at ?? r.updated_at,
+  }));
+}
+
+async function resolveResumenPagosObservados(req: Request): Promise<NotificacionItem[]> {
+  const lineas = await prisma.lineaResumenPago.findMany({
+    where: {
+      deleted_at: null, estado: 'OBSERVADA',
+      resumen: { deleted_at: null, empresa_id: req.empresaId!, created_by: req.user!.id },
+    },
+    include: { resumen: { select: { id: true, semana_desde: true } } },
+  });
+  const porResumen = new Map<number, typeof lineas>();
+  for (const l of lineas) porResumen.set(l.resumen.id, [...(porResumen.get(l.resumen.id) ?? []), l]);
+  return [...porResumen.values()].map(ls => ({
+    id:          `resumen-pagos-obs-${ls[0].resumen.id}`,
+    tipo:        'RESUMEN_PAGOS_OBSERVADO',
+    titulo:      `Hay cambios pedidos en los pagos de la semana ${ls[0].resumen.semana_desde.toLocaleDateString('es-AR', { timeZone: 'UTC' })}`,
+    descripcion: ls.map(l => `${l.detalle}${l.comentario_revision ? `: ${l.comentario_revision}` : ''}`).join(' · ').slice(0, 240),
+    urgencia:    'warning' as Urgencia,
+    link:        `/gastos-operativos?tab=pagos-semanales&resumen=${ls[0].resumen.id}`,
+    fecha:       ls[0].revisado_at ?? ls[0].updated_at,
+  }));
+}
+
 async function esResponsableDocumentacionFlota(req: Request): Promise<boolean> {
   if (req.user!.rol === 'ADMIN') return true;
   if (req.user!.rol !== 'OPERADOR') return false;
@@ -752,6 +799,8 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveExcedentesAtrasados(empresaId, hace60Dias),
     resolveFacturasSinPdf(req),
     resolveDocumentacionFlota(req),
+    resolveResumenPagosParaRevisar(req),
+    resolveResumenPagosObservados(req),
   ]);
 
   const items = resultados

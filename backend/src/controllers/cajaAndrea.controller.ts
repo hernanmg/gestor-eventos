@@ -14,10 +14,10 @@ export const uploadExcelAndrea = multer({
   },
 });
 
-const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES'] as const;
+const CATEGORIAS_ANDREA = ['COMBUSTIBLE', 'COMIDA', 'GASTOS_VARIOS', 'SERVICIOS', 'DEV_GASTOS', 'VALES', 'VIATICO_EXTRANJEROS'] as const;
 
 function totalesVacios() {
-  return { ingreso: 0, combustible: 0, comida: 0, gastos_varios: 0, servicios: 0, dev_gastos: 0, vales: 0 };
+  return { ingreso: 0, combustible: 0, comida: 0, gastos_varios: 0, servicios: 0, dev_gastos: 0, vales: 0, viatico_extranjeros: 0 };
 }
 
 const CATEGORIA_A_CAMPO: Record<(typeof CATEGORIAS_ANDREA)[number], keyof ReturnType<typeof totalesVacios>> = {
@@ -27,6 +27,7 @@ const CATEGORIA_A_CAMPO: Record<(typeof CATEGORIAS_ANDREA)[number], keyof Return
   SERVICIOS:     'servicios',
   DEV_GASTOS:    'dev_gastos',
   VALES:         'vales',
+  VIATICO_EXTRANJEROS: 'viatico_extranjeros',
 };
 
 // GET /api/caja/resumen-andrea?mes=&anio=&cuenta_id= — la tabla estilo Excel

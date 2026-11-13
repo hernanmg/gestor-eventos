@@ -50,7 +50,7 @@ export interface Usuario {
 }
 
 // Espejo de backend/src/lib/permisos.ts
-export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES' | 'COSTO_REAL';
+export type Permiso = 'TARJETA_CORPORATIVA' | 'FACTURAS' | 'PADRON_EMPLEADOS' | 'UNIFORMES' | 'COSTO_REAL' | 'APROBAR_PAGOS';
 
 export interface UsuarioEmpresaAcceso {
   id:         number;
@@ -633,7 +633,7 @@ export interface MovimientoOrigen {
   estado_movimiento: EstadoMovimiento | null;
 }
 
-export type CategoriaAndrea = 'COMBUSTIBLE' | 'COMIDA' | 'GASTOS_VARIOS' | 'SERVICIOS' | 'DEV_GASTOS' | 'VALES';
+export type CategoriaAndrea = 'COMBUSTIBLE' | 'COMIDA' | 'GASTOS_VARIOS' | 'SERVICIOS' | 'DEV_GASTOS' | 'VALES' | 'VIATICO_EXTRANJEROS';
 
 export interface MovimientoCaja {
   id:                   number;
@@ -680,6 +680,7 @@ export interface ResumenAndrea {
     servicios:     number;
     dev_gastos:    number;
     vales:         number;
+    viatico_extranjeros: number;
     saldo_final:   number;
   };
 }
@@ -691,6 +692,99 @@ export interface ImportAndreaResultado {
   creados:          number;
   omitidos:         number;
   errores:          string[];
+}
+
+// ── Resumen semanal de pagos (Andrea arma, Matías aprueba por línea) ─────────
+// Espejo de ResumenPagoSemanal / LineaResumenPago (schema.prisma).
+
+export type EstadoResumenPagos = 'BORRADOR' | 'ENVIADO' | 'REVISADO' | 'HISTORICO';
+export type SeccionLineaPago   = 'CAJA_SEMANAL' | 'COBERTURA';
+export type TipoLineaPago      = 'JORNALEROS' | 'ADELANTO' | 'VIATICO' | 'CAJA_CHICA' | 'REPOSICION_CAJA' | 'PROVEEDOR' | 'OTRO';
+export type EstadoLineaPago    = 'PENDIENTE' | 'APROBADA' | 'OBSERVADA' | 'RECHAZADA';
+
+export interface TotalesResumenPagos {
+  total_pedido:    number;
+  total_aprobado:  number;
+  lineas:          number;
+  pendientes:      number;
+  aprobadas:       number;
+  observadas:      number;
+  rechazadas:      number;
+  total_cobertura: number;
+}
+
+export interface LineaResumenPago {
+  id:                  number;
+  resumen_id:          number;
+  orden:               number;
+  seccion:             SeccionLineaPago;
+  tipo:                TipoLineaPago;
+  detalle:             string;
+  importe:             number;
+  observacion:         string | null;
+  origen_ref:          string | null;
+  estado:              EstadoLineaPago;
+  importe_aprobado:    number | null;
+  comentario_revision: string | null;
+  revisado_por:        number | null;
+  revisado_por_nombre?: string | null;
+  revisado_at:         string | null;
+}
+
+export interface ResumenPagoSemanal {
+  id:           number;
+  empresa_id:   number;
+  semana_desde: string;
+  semana_hasta: string;
+  titulo:       string | null;
+  estado:       EstadoResumenPagos;
+  notas:        string | null;
+  enviado_at:   string | null;
+  revisado_at:  string | null;
+  created_at:   string;
+  updated_at:   string;
+  totales:      TotalesResumenPagos;
+}
+
+export interface ResumenPagoSemanalDetalle extends ResumenPagoSemanal {
+  lineas:              LineaResumenPago[];
+  creado_por_nombre:   string | null;
+  enviado_por_nombre:  string | null;
+  revisado_por_nombre: string | null;
+  puede_revisar?:      boolean; // sólo en GET /:id
+}
+
+export interface SugerenciaLineaPago {
+  tipo:        TipoLineaPago;
+  detalle:     string;
+  importe:     number;
+  observacion: string | null;
+  origen_ref:  string;
+  fuente:      string;
+}
+
+export interface PreviewResumenPagos {
+  bloques: {
+    hoja:           string;
+    titulo:         string;
+    semana_desde:   string;
+    semana_hasta:   string;
+    import_key:     string;
+    lineas:         { seccion: SeccionLineaPago; tipo: TipoLineaPago; detalle: string; importe: number; observacion: string | null }[];
+    total_caja:     number;
+    total_planilla: number | null;
+    advertencias:   string[];
+    existe:         'NUEVO' | 'REIMPORTA' | 'EN_USO';
+  }[];
+  advertencias: string[];
+}
+
+export interface ResultadoImportResumenPagos {
+  creados:      number;
+  actualizados: number;
+  omitidos:     number;
+  lineas:       number;
+  advertencias: string[];
 }
 
 // ── Siniestros de empleados (ART, DOS57) ──────────────────────────────────────

@@ -11,6 +11,7 @@ export const PERMISOS = {
   PADRON_EMPLEADOS:    'Padrón de empleados (importar la planilla de datos personales)',
   UNIFORMES:           'Uniformes (entregas y stock del depósito)',
   COSTO_REAL:          'Costo real de eventos (matriz: cargar, importar y exportar)',
+  APROBAR_PAGOS:       'Aprobar el resumen semanal de pagos, línea por línea',
 } as const;
 
 export type Permiso = keyof typeof PERMISOS;
