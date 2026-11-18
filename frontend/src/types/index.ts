@@ -2551,7 +2551,8 @@ export type TipoCalendario =
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
-  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA';
+  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
+  | 'NOVEDAD';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 
@@ -3407,3 +3408,75 @@ export interface PlantillaTareas {
   tareas:     { actividad: string; fase: FaseEvento }[];
 }
 
+// ── Libro de novedades (pilar 10) ────────────────────────────────────────────
+
+export type GravedadNovedad = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+export type EstadoNovedad = 'ABIERTA' | 'EN_CURSO' | 'RESUELTA';
+
+export interface TipoNovedad {
+  id:                 number;
+  empresa_id:         number;
+  nombre:             string;
+  color:              string | null;
+  orden:              number;
+  activo:             boolean;
+  avisar_usuario_ids: number[];
+}
+
+export interface AdjuntoNovedad {
+  id:         number;
+  nombre:     string;
+  mime:       string;
+  tamanio:    number;
+  created_at: string;
+}
+
+export interface Novedad {
+  id:             number;
+  empresa_id:     number;
+  tipo_id:        number;
+  tipo:           { id: number; nombre: string; color: string | null };
+  fecha:          string;
+  hora:           string | null;
+  titulo:         string;
+  descripcion:    string | null;
+  lugar:          string | null;
+  gravedad:       GravedadNovedad;
+  estado:         EstadoNovedad;
+  reportado_por:  string | null;
+  responsable_id: number | null;
+  responsable_nombre: string | null;
+  evento_id:      number | null;
+  evento:         { id: number; nombre: string } | null;
+  camion_id:      number | null;
+  camion:         { id: number; codigo: string; patente: string | null } | null;
+  empleado_id:    number | null;
+  empleado:       { id: number; nombre: string; apellido: string } | null;
+  proveedor_id:   number | null;
+  proveedor:      { id: number; nombre: string } | null;
+  resolucion:     string | null;
+  resuelta_at:    string | null;
+  resuelta_por:   number | null;
+  resuelta_por_nombre: string | null;
+  adjuntos:       AdjuntoNovedad[];
+  created_at:     string;
+  created_by:     number | null;
+  creado_por_nombre: string | null;
+  puede_editar:   boolean;
+}
+
+export interface ListaNovedades {
+  items:        Novedad[];
+  por_gravedad: Partial<Record<GravedadNovedad, number>>;
+  por_tipo:     Record<string, number>;
+  recortado:    boolean;
+}
+
+export interface OpcionesNovedad {
+  tipos:       TipoNovedad[];
+  eventos:     { id: number; nombre: string; fecha_inicio: string | null }[];
+  camiones:    { id: number; codigo: string; patente: string | null; tipo_vehiculo: string | null }[];
+  empleados:   { id: number; nombre: string; apellido: string }[];
+  proveedores: { id: number; nombre: string }[];
+  usuarios:    { id: number; nombre: string; rol: string; empresa_id: number | null }[];
+}

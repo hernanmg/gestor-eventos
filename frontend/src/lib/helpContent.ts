@@ -1,3 +1,5 @@
+import { GUIA_INTRO, GUIA_PASOS } from './guiaCargaEnjoy';
+
 export interface HelpLink {
   label:   string;
   ruta?:   string;   // navegar con useNavigate
@@ -283,6 +285,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Centro de costos: Costos, RRHH y Extras',
         contenido: 'Costos tiene una línea por cada rubro confirmado en la Ficha (aparecen solas), más las que agregues a mano: descripción, responsable, consumido, IVA, total, falta pagar, fecha de pago y si se le avisó al proveedor. Hacé clic en el IVA para cargar neto + IVA, y en Falta pagar para registrar señas o pagos parciales. RRHH muestra las líneas de personal del evento.\nExtras es lo que surge fuera de lo presupuestado. Por defecto lo paga el cliente y no suma al costo del evento; si lo paga la empresa, editalo y elegí "La empresa": pasa a sumar como Gastos Extra. Cada extra puede llevar los datos de cuenta, el estado de la factura y el comprobante adjunto.\n"Exportar Excel" baja la planilla con las hojas Costos, RRHH y Extras; "Exportar extras" baja sólo la hoja Extras, para mandársela al cliente.',
+      },
+      {
+        titulo: 'Importar la planilla de centro de costos',
+        contenido: '"Importar planilla" sube la planilla de centro de costos del evento (formato KM) con vista previa. Se leen las hojas Costos, RRHH y Extras; las de Acciones no se importan.\nCada línea de Costos va al rubro que se reconoce por la descripción (Sonido, Luces, Carpas…). Las que no se reconocen hay que asignarlas: una por una o todas a un mismo rubro, o marcarlas para no importar. Si la Ficha ya había generado la línea de ese rubro, se completa esa misma línea.\n"PAGADO" en cualquier columna deja la línea pagada; si falta pagar menos que el total, la diferencia entra como seña. Los montos con texto ("Arregla Matías") entran en 0 con una nota, y el responsable que no está dado de alta como proveedor queda en la descripción. Reimportar el mismo archivo actualiza las mismas líneas, no las duplica.',
       },
       {
         titulo: 'Operación (DOS57)',
@@ -687,6 +693,34 @@ const help: Record<string, HelpContent> = {
   },
 
   // ── Calendario ───────────────────────────────────────────────────────────────
+  // ── Libro de novedades (pilar 10) ───────────────────────────────────────────
+  '/novedades': {
+    titulo: 'Novedades',
+    descripcion: 'El libro de todo lo que pasa y hay que dejar asentado: un choque, algo que faltó, un camión que se rompió, una goma pinchada. Reemplaza los avisos sueltos por WhatsApp.',
+    secciones: [
+      {
+        titulo: 'Cargar una novedad',
+        contenido: '"Nueva novedad": elegí el tipo, la gravedad y contá en pocas palabras qué pasó. Se puede sacar la foto en el momento desde el celular (se achica sola antes de subirla). Si tiene que ver con un evento o un vehículo, elegilo: así aparece también en la pestaña Novedades del evento. "Más datos" agrega el lugar, quién avisó, la persona o el proveedor involucrado y quién se ocupa.',
+      },
+      {
+        titulo: 'Gravedad',
+        contenido: 'Crítica: frena el trabajo o pone en riesgo a alguien, hay que atenderla ya. Alta: se resuelve hoy o mañana. Media: hay que resolverla, pero puede esperar unos días. Baja: para dejar asentado.\nLa lista se ordena sola: primero lo que está sin resolver, y dentro de eso, lo más grave arriba. Las tarjetas de arriba cuentan cuántas hay de cada gravedad y, al tocarlas, filtran.',
+      },
+      {
+        titulo: 'Quién se entera',
+        contenido: 'Las novedades altas y críticas sin resolver le aparecen en la campanita al administrador general y a quienes figuren en "Tipos y avisos" para ese tipo. Quien se ocupa (el responsable) recibe el aviso de cualquier gravedad. El aviso desaparece cuando la novedad se marca resuelta.',
+      },
+      {
+        titulo: 'Resolver',
+        contenido: 'Desde el detalle: "En curso" cuando alguien ya la está atendiendo, y "Resolver" cuando quedó solucionada, contando qué se hizo. Queda registrado quién la resolvió y cuándo. Una novedad resuelta se puede reabrir.',
+      },
+      {
+        titulo: 'Tipos y avisos',
+        contenido: 'El administrador define los tipos (flota, material, personal, proveedor, cliente, clima, otro, o los que hagan falta), su color y a quién avisar de las graves de cada uno. Un tipo que ya no se usa se desactiva: deja de ofrecerse al cargar, pero las novedades viejas lo conservan.',
+      },
+    ],
+  },
+
   '/calendario': {
     titulo: 'Calendario',
     descripcion: 'Vista centralizada de todos los vencimientos y eventos del sistema.',
@@ -813,6 +847,20 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+};
+
+// ── Guía de carga de datos (Enjoy) ──────────────────────────────────────────
+// Se arma desde lib/guiaCargaEnjoy.ts para que el buscador encuentre cada paso
+// ("cajas chicas", "comidas"…) y lleve a la guía.
+help['/guia-carga'] = {
+  titulo: 'Guía de carga de datos',
+  descripcion: GUIA_INTRO,
+  secciones: GUIA_PASOS.map(p => ({
+    titulo: p.titulo,
+    contenido: [p.intro, ...[...(p.filas ?? []), ...(p.tareas ?? [])].map(f =>
+      `• ${f.que}${f.planilla ? ` (${f.planilla})` : ''}${f.donde && f.donde !== '—' ? ` → ${f.donde}` : ''}`,
+    )].filter(Boolean).join('\n'),
+  })),
 };
 
 // ── Routing ──────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-12 · Respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-17 · Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -24,14 +24,14 @@
 |---|---|---|---|---|
 | 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 88% | 83% |
 | 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 76% | 70% |
-| 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 82% |
+| 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 73% | 71% |
 | 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 78%* | 82% |
 | 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
 | 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 61% | 50% |
 | 08 | Marketing | Vicky | pendiente de relevar | |
 | 09 | Comunicación | Vicky | pendiente de relevar | |
-| 10 | Novedades | Santi (flota), Florencia (eventos), todos | 17% | 17% |
+| 10 | Novedades | Santi (flota), Florencia (eventos), todos | 75% | 75% |
 | 11 | Varios y módulos auxiliares | Matías (administrador del sistema) | 90% | 90% |
 | 12 | Calendario transversal *(nuevo)* | todos | 80% | 80% |
 
@@ -187,7 +187,7 @@ La especificación de Enjoy (§44) las deja fuera de la primera etapa: conciliac
 
 ## 03 · Administración
 
-**DOS57: 87% construido (16,5 de 19) · Enjoy: 82% construido (15,5 de 19) · En uso: 0%**
+**DOS57: 87% construido (16,5 de 19) · Enjoy: 83% construido (15 de 18) · En uso: 0%**
 
 Responsables: Mayra (ambas empresas), Matías. En DOS57, Andrea y Florencia (costo real). En Enjoy, Chino, Male y Vicky.
 
@@ -215,7 +215,7 @@ No se cuentan acá: auditoría de cambios y repositorio de archivos (Varios), ca
 |---|---|---|---|---|---|
 | 8 | Flujo de caja del evento: 5 pestañas de egresos y 5 de ingresos, con debe, haber y saldo, e impuestos fijos | ✅ | ✅ | Flujo de Caja Generico.xlsx | Evento → Egresos / Ingresos |
 | 9 | Conciliatoria con reparto entre socios | ✅ | ✅ | Flujo de Caja Generico (RESUMEN) | Evento → Conciliatoria |
-| 10 | Centro de costos: presupuesto contra real por rubro, IVA, señas, extras | — | ✅ | KM - Centro de Costos (Male) | Evento → Centro de costos |
+| 10 | Centro de costos: presupuesto contra real por rubro, IVA, señas, extras; se importa la planilla de cada evento | — | ✅ | KM - Centro de Costos (Male) | Evento → Centro de costos → Importar planilla |
 | 11 | Costo real del evento: la matriz de Flor, "traer del sistema", tablero comparativo de eventos | ✅ | — | Matriz de costo real (Flor) | Evento → Costo real · Costo real |
 | 12 | Valorización de material con la matriz de rental (% por ítem, nacional e importado, tipo de cambio) | ✅ | — | DOS57_BASE MATRICES_RENTAL COST_2026 (Flor) | Ítems de Rental · Presupuestos |
 | 13 | Caja imputada: los movimientos de caja asignados al evento | ✅ | ✅ | Especificación §25 | Evento → Caja |
@@ -228,7 +228,7 @@ No se cuentan acá: auditoría de cambios y repositorio de archivos (Varios), ca
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 17 | Macro: todos los eventos y KPIs globales con gráficos, vista por área para Mayra, "para hoy" y próximos días | ✅ | ✅ | Especificación §39 · Kick-off | Macro |
-| 18 | Resumen del evento: ingresos, egresos, resultado y pendientes; faltan los gráficos (gasto por rubro, presupuesto contra gastado, evolución) | 🟡 | 🟡 | Especificación §18 | Evento → Resumen |
+| 18 | Resumen del evento: ingresos, egresos, resultado y pendientes; faltan los gráficos (gasto por rubro, presupuesto contra gastado, evolución) | 🟡 | — | Especificación §18 · Respuesta de Male (nov 2026) | Evento → Resumen · Enjoy no lleva un resumen aparte: cada evento se sigue con la planilla KM - Centro de Costos, que ya está en el sistema (punto 10) |
 | 19 | Exportar el evento a Excel y PDF | 🟡 | 🟡 | Backlog F3 | Excel funciona; el PDF depende de Chromium en Render (ver RRHH, punto 23) |
 | 20 | Reportes generales exportables: resultado anual, gastos por proveedor y por rubro, ingresos, sponsors | 🟡 | 🟡 | Especificación §40 · Backlog F3 | Hay reportes por módulo, falta el centro de reportes |
 | 21 | Espacios compartidos (coworking de Alta Córdoba, depósito de Polo con Jiménez): gastos del mes cargados una sola vez y repartidos por porcentaje entre empresas | ✅ | ✅ | COWORKING · Planilla Nave 15 - Polo Sociedad Jimenez · Entrevista Mayra | Espacios Compartidos |
@@ -446,7 +446,7 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 
 ## 10 · Novedades
 
-**DOS57: 17% construido (1 de 6) · Enjoy: 17% construido (1 de 6) · En uso: 0%**
+**DOS57: 75% construido (4,5 de 6) · Enjoy: 75% construido (4,5 de 6) · En uso: 0%**
 
 Qué es: el registro de lo que pasa y hay que dejar asentado en cada evento y en la operación. Por ejemplo, un choque, un accidente, una rotura, un faltante o un problema con un proveedor. Hoy esto viaja por los grupos de WhatsApp y se pierde.
 
@@ -458,17 +458,17 @@ Se conecta con: Seguros (un siniestro es una novedad), Logística (roturas y pen
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 1 | Libro de novedades general, ligado al evento o al vehículo cuando corresponde: qué pasó, cuándo, quién, tipo (flota, material, personal, proveedor…), gravedad, fotos, resolución y estado | ⬜ | ⬜ | Pedido del cliente (Kick-off, pilar 10) · Respuesta de Male (nov 2026) | — |
-| 2 | Novedades de la flota: pendientes de reparación con resolución y estado | 🟡 | 🟡 | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hoja NOVEDADES IMPORTANTE (Santi) | El taller registra lo que entra al taller; los pendientes que todavía no entraron no quedan registrados |
+| 1 | Libro de novedades general, ligado al evento o al vehículo cuando corresponde: qué pasó, cuándo, quién, tipo (flota, material, personal, proveedor…), gravedad, fotos, resolución y estado | ✅ | ✅ | Pedido del cliente (Kick-off, pilar 10) · Respuesta de Male (nov 2026) | Novedades · se carga desde el celular, con foto |
+| 2 | Novedades de la flota: pendientes de reparación con resolución y estado | ✅ | ✅ | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hoja NOVEDADES IMPORTANTE (Santi) | Novedades de tipo Flota, ligadas al vehículo, con estado y resolución; lo que entra al taller sigue en Flota → Taller |
 | 3 | Bitácora diaria del armado (qué se armó cada día, con fotos), que hoy sale de los grupos de WhatsApp | ⬜ | ❓ | Carpeta del evento (Flor) | — |
 | 4 | Siniestros de vehículos y del personal ligados al evento donde ocurrieron | 🟡 | 🟡 | Relevamiento Lorena | Los siniestros existen, pero no se los liga a un evento |
-| 5 | Aviso inmediato a quien corresponde cuando se carga una novedad grave | ⬜ | ⬜ | — | — |
-| 6 | Novedades a la vista en una pantalla general (filtrada por tipo y ordenada por gravedad), en el resumen del evento y en el calendario | ⬜ | ⬜ | Respuesta de Male (nov 2026) | — |
+| 5 | Aviso inmediato a quien corresponde cuando se carga una novedad grave | ✅ | ✅ | — | Campanita: las altas y críticas le llegan al administrador general y a quienes se elijan para cada tipo; el responsable recibe las suyas |
+| 6 | Novedades a la vista en una pantalla general (filtrada por tipo y ordenada por gravedad), en el resumen del evento y en el calendario | ✅ | ✅ | Respuesta de Male (nov 2026) | Novedades · Evento → Novedades (y aviso en Resumen) · Calendario |
 
 ### Para definir con el cliente
 
-- **Tipos y gravedad:** confirmar la lista de tipos (flota, material, personal, proveedor, clima…) y cuántos niveles de gravedad (por ejemplo leve, media, grave).
-- **Quién se entera:** ¿quién recibe el aviso de cada tipo de novedad?
+- **Tipos y gravedad:** el sistema arranca con siete tipos (flota, material, personal, proveedor, cliente, clima, otro) y cuatro niveles de gravedad (baja, media, alta, crítica). Confirmar si sirven o qué cambiar: los tipos se editan desde la pantalla.
+- **Quién se entera:** hoy las graves le llegan al administrador general. Definir quién más recibe el aviso de cada tipo (por ejemplo, Santi las de flota y Jazmín las de material); se configura en Novedades → Tipos y avisos.
 - **Enjoy** (punto 3): ¿también lleva una bitácora diaria del armado?
 
 ---

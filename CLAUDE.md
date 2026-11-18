@@ -34,7 +34,7 @@ Reemplaza las planillas de Excel y los grupos de WhatsApp con los que trabaja ca
 | 07 | Seguros | `Flota` (seguros), `Siniestros` | `flota`, `siniestros`, `siniestrosVehiculo` |
 | 08 | Marketing | — (sin relevar, responsable Vicky) | — |
 | 09 | Comunicación | — (sin relevar, responsable Vicky) | — |
-| 10 | Novedades | — (no existe el libro de novedades) | — |
+| 10 | Novedades | `Novedades` (libro general), `Evento` (pestaña Novedades), `components/novedades` | `novedades` |
 | 11 | Varios | `Configuracion`, `ConfiguracionEmpresa`, `Auditoria`, `Login`, `CambiarPassword`, `SeleccionarEmpresa` | `auth`, `usuarios`, `empresas`, `configuracion`, `auditoria`, `notificaciones` |
 | 12 | Calendario | `Calendario`, `Macro` (para hoy / próximos días) | `calendario` |
 

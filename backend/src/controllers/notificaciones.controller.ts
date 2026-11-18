@@ -5,6 +5,7 @@ import { ubicarPeriodo, periodoAnterior, rangoSemanaFija } from './combustible.c
 import { EMPRESAS } from '../lib/empresasConstants';
 import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
 import { DIAS_AVISO_VENCIMIENTO, hoyUTC } from '../lib/vencimientos';
+import { novedadesParaAvisar } from './novedades.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -687,6 +688,27 @@ async function resolveResumenPagosObservados(req: Request): Promise<Notificacion
   }));
 }
 
+// Libro de novedades: las graves (ALTA/CRITICA) sin resolver le llegan al
+// administrador general y a quienes figuren en "avisar a" de su tipo; además,
+// cada uno ve las que le asignaron como responsable (de cualquier gravedad).
+async function resolveNovedades(req: Request): Promise<NotificacionItem[]> {
+  const novedades = await novedadesParaAvisar(req);
+  return novedades.map(n => {
+    const asignada = n.responsable_id === req.user!.id;
+    const grave = n.gravedad === 'ALTA' || n.gravedad === 'CRITICA';
+    const donde = [n.evento?.nombre, n.camion ? (n.camion.patente ?? n.camion.codigo) : null].filter(Boolean).join(' · ');
+    return {
+      id:          `novedad-${n.id}`,
+      tipo:        grave ? 'NOVEDAD_GRAVE' : 'NOVEDAD_ASIGNADA',
+      titulo:      `${n.gravedad === 'CRITICA' ? 'Novedad crítica' : n.gravedad === 'ALTA' ? 'Novedad grave' : 'Te asignaron una novedad'}: ${n.titulo}`,
+      descripcion: [n.tipo.nombre, donde, asignada && grave ? 'Te la asignaron a vos' : null, n.estado === 'EN_CURSO' ? 'en curso' : null].filter(Boolean).join(' · '),
+      urgencia:    (n.gravedad === 'CRITICA' ? 'critical' : grave ? 'warning' : 'info') as Urgencia,
+      link:        `/novedades?abrir=${n.id}`,
+      fecha:       n.created_at,
+    };
+  });
+}
+
 async function esResponsableDocumentacionFlota(req: Request): Promise<boolean> {
   if (req.user!.rol === 'ADMIN') return true;
   if (req.user!.rol !== 'OPERADOR') return false;
@@ -801,6 +823,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveDocumentacionFlota(req),
     resolveResumenPagosParaRevisar(req),
     resolveResumenPagosObservados(req),
+    resolveNovedades(req),
   ]);
 
   const items = resultados

@@ -15,7 +15,8 @@ export type TipoCalendario =
   | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
-  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA';
+  | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
+  | 'NOVEDAD';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -62,6 +63,8 @@ const COLORES: Record<TipoCalendario, string> = {
   CARNET_VENCE:         '#F59E0B',
   MULTA_VENCE:          '#F59E0B',
   CONTROL_SALIDA:       '#0E7490',
+  // Color real por item según la gravedad — default acá.
+  NOVEDAD:              '#BE123C',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -92,6 +95,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   carnets:         'CARNET_VENCE',
   multas:          'MULTA_VENCE',
   controles_salida: 'CONTROL_SALIDA',
+  novedades:       'NOVEDAD',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -937,6 +941,35 @@ const calendarioQuerySchema = z.object({
   tipos:      z.string().optional(),
 });
 
+// Libro de novedades: cada novedad en el día que pasó. Color por gravedad;
+// critical/warning sólo mientras no esté resuelta.
+const COLOR_GRAVEDAD: Record<string, string> = { CRITICA: '#B91C1C', ALTA: '#EA580C', MEDIA: '#CA8A04', BAJA: '#6B7280' };
+
+async function resolveNovedades(empresaFiltro: number | undefined, desde: Date, hasta: Date): Promise<CalendarioItem[]> {
+  const novedades = await prisma.novedad.findMany({
+    where: {
+      deleted_at: null,
+      fecha: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { tipo: { select: { nombre: true } }, evento: { select: { id: true, nombre: true } }, empresa: { select: { nombre: true } } },
+  });
+  return novedades.map(n => {
+    const abierta = n.estado !== 'RESUELTA';
+    return {
+      id:             `novedad-${n.id}`,
+      tipo:           'NOVEDAD' as const,
+      titulo:         `${n.tipo.nombre}: ${n.titulo}`,
+      fecha:          n.fecha,
+      empresa_id:     n.empresa_id,
+      empresa_nombre: n.empresa.nombre,
+      color:          COLOR_GRAVEDAD[n.gravedad] ?? COLORES.NOVEDAD,
+      urgencia:       abierta && n.gravedad === 'CRITICA' ? 'critical' as const : abierta && n.gravedad === 'ALTA' ? 'warning' as const : 'normal' as const,
+      metadata:       { novedad_id: n.id, gravedad: n.gravedad, estado: n.estado, tipo: n.tipo.nombre, evento_id: n.evento?.id ?? null, evento_nombre: n.evento?.nombre ?? null, hora: n.hora },
+    };
+  });
+}
+
 export async function getCalendario(req: Request, res: Response) {
   const parsed = calendarioQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -1017,6 +1050,8 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('CARNET_VENCE'))   tareas.push(resolveCarnetsVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('MULTA_VENCE'))    tareas.push(resolveMultasVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('CONTROL_SALIDA')) tareas.push(resolveControlesSalida(empresaFiltro, desde, hasta, hoyUTC));
+  // Libro de novedades — lo ven todos los que entran al calendario
+  if (tiposActivos.has('NOVEDAD'))        tareas.push(resolveNovedades(empresaFiltro, desde, hasta));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

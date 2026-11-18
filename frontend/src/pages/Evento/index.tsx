@@ -39,6 +39,8 @@ import { cn } from '@/lib/utils';
 import type { Rubro } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
 import TabStrip, { TabCount } from '@/components/ui/TabStrip';
+import NovedadesLista from '@/components/novedades/NovedadesLista';
+import { useNovedades } from '@/hooks/useNovedades';
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
 
@@ -241,7 +243,7 @@ function AuditoriaTab({ eventoId }: { eventoId: number }) {
   );
 }
 
-type MainTab = 'RESUMEN' | 'OPERACION' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
+type MainTab = 'RESUMEN' | 'NOVEDADES' | 'OPERACION' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS' | 'COSTO_REAL' | 'EGRESO' | 'INGRESO' | 'CAJA' | 'CONCILIATORIA' | 'ECHEQS' | 'STOCK' | 'FACTURAS' | 'A_COBRAR' | 'COMIDAS' | 'CORTESIAS' | 'LOGISTICA' | 'AUDITORIA';
 
 // adminOnly: Facturas, Auditoría, Conciliatoria y Echeqs son exclusivas de
 // ADMIN — OPERADOR/VIEWER sólo ven Resumen/Ficha/Egresos/Ingresos/Caja/Stock/
@@ -250,6 +252,8 @@ type MainTab = 'RESUMEN' | 'OPERACION' | 'FICHA' | 'PRODUCCION' | 'CENTRO_COSTOS
 // así que da lo mismo cómo se llegó a la página.
 const MAIN_TABS_ALL: { key: MainTab; label: string; adminOnly?: boolean }[] = [
   { key: 'RESUMEN',       label: 'Resumen'       },
+  // Libro de novedades del evento (choques, roturas, faltantes…) — todos los ven
+  { key: 'NOVEDADES',     label: 'Novedades'     },
   // DOS57 (modalidad OPERATIVA): rubros con material y tareas, cuadrilla por fase
   { key: 'OPERACION',     label: 'Operación'     },
   { key: 'FICHA',         label: 'Ficha'         },
@@ -280,7 +284,7 @@ const MAIN_TAB_KEYS: MainTab[] = MAIN_TABS_ALL.map(t => t.key);
 // Evento informal (carga rápida, sin presupuesto) — no tiene ficha, socios ni
 // rubros configurados, así que Ficha/Conciliatoria/Echeqs/Egresos/Ingresos/
 // Facturas/A-Cobrar/Auditoría no aplican. Ver banner "¿Se factura?" abajo.
-const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'CAJA', 'STOCK', 'COMIDAS', 'LOGISTICA'];
+const INFORMAL_TABS: MainTab[] = ['RESUMEN', 'NOVEDADES', 'CAJA', 'STOCK', 'COMIDAS', 'LOGISTICA'];
 
 // Modalidad centro de costos (Evento.modalidad): sólo los eventos grandes (TC,
 // Lecap, Monster) llevan el flujo de caja completo; el resto se maneja con la
@@ -318,6 +322,9 @@ export default function EventoPage() {
   const alertasCount = (alertas?.vencidos.length ?? 0) + (alertas?.vencen_pronto.length ?? 0);
 
   const { data: sinProveedor } = useSinProveedor(eventoId);
+  const { data: novedadesEvento } = useNovedades({ evento_id: eventoId, estado: 'ABIERTAS' });
+  const novedadesAbiertas = novedadesEvento?.items.length ?? 0;
+  const novedadesGraves = (novedadesEvento?.por_gravedad.CRITICA ?? 0) + (novedadesEvento?.por_gravedad.ALTA ?? 0);
   const countSinProveedor = sinProveedor?.total_sin_proveedor ?? 0;
 
   const canEdit  = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
@@ -527,7 +534,7 @@ export default function EventoPage() {
         items={MAIN_TABS.map(({ key, label }) => ({
           key,
           label,
-          badge: key === 'ECHEQS' ? <TabCount count={alertasCount} /> : undefined,
+          badge: key === 'ECHEQS' ? <TabCount count={alertasCount} /> : key === 'NOVEDADES' ? <TabCount count={novedadesAbiertas} tone={novedadesGraves > 0 ? 'red' : 'neutral'} /> : undefined,
         }))}
       />
 
@@ -550,11 +557,30 @@ export default function EventoPage() {
       <div className="flex-1 overflow-auto p-4">
         {mainTab === 'RESUMEN' && (
           <div className="space-y-3">
+            {novedadesAbiertas > 0 && (
+              <button
+                type="button" onClick={() => handleMainTab('NOVEDADES')}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-[var(--bg-card)] px-4 py-3 text-left shadow-sm transition-shadow hover:shadow-md"
+                style={{ borderLeftWidth: 4, borderLeftColor: novedadesGraves > 0 ? '#B91C1C' : '#CA8A04' }}
+              >
+                <AlertTriangle size={16} className={novedadesGraves > 0 ? 'text-red-600' : 'text-yellow-600'} />
+                <span className="text-sm">
+                  <strong>{novedadesAbiertas} novedad{novedadesAbiertas !== 1 ? 'es' : ''} sin resolver</strong>
+                  {novedadesGraves > 0 && <> · {novedadesGraves} grave{novedadesGraves !== 1 ? 's' : ''}</>}
+                  {' · '}{novedadesEvento!.items.slice(0, 2).map(n => n.titulo).join(' · ')}{novedadesAbiertas > 2 ? '…' : ''}
+                </span>
+                <span className="ml-auto whitespace-nowrap text-xs font-semibold text-link">Ver →</span>
+              </button>
+            )}
             {MAIN_TABS_KEYS_VISIBLES.includes('COSTO_REAL') && (
               <ResumenCostoReal eventoId={eventoId} onVer={() => setMainTab('COSTO_REAL')} />
             )}
             <ResumenRubros eventoId={eventoId} moneda={evento.moneda_base} soloEgresos={evento.modalidad !== 'FLUJO_CAJA'} />
           </div>
+        )}
+
+        {mainTab === 'NOVEDADES' && (
+          <NovedadesLista eventoId={eventoId} />
         )}
 
         {mainTab === 'FICHA' && (

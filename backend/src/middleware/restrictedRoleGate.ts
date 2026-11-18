@@ -36,6 +36,10 @@ const PANOLERO_ALLOW: Rule[] = [
   // de sólo lectura (matriz de permisos), aunque el frontend sólo le muestre
   // la tab Pañol.
   { method: 'GET',    pattern: /^\/api\/stock\/.*$/ },
+  // Libro de novedades: todos cargan (faltantes y roturas de material). El
+  // router de novedades acota el resto (tipos sólo ADMIN; el pañolero sólo
+  // modifica lo que cargó él).
+  ...['GET', 'POST', 'PATCH', 'DELETE'].map(method => ({ method, pattern: /^\/api\/novedades(\/.*)?$/ })),
 ];
 
 const RESTRICTED_RULES: Partial<Record<AuthUser['rol'], Rule[]>> = {

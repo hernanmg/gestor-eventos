@@ -7,6 +7,15 @@ import {
   getCentroCostos, exportarCentroCostos, createExtra, updateExtra, deleteExtra,
   subirComprobanteExtra, quitarComprobanteExtra, descargarComprobanteExtra, uploadComprobanteExtra,
 } from '../controllers/centroCostos.controller';
+import { importarCentroCostosKM } from '../controllers/centroCostosImport.controller';
+import { upload } from '../controllers/importer.controller';
+
+const uploadXlsx = (req: any, res: any, next: any) => {
+  upload.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+};
 
 function comprobanteMiddleware(req: any, res: any, next: any) {
   uploadComprobanteExtra.single('comprobante')(req, res, (err: any) => {
@@ -22,6 +31,8 @@ centroCostosEventoRouter.use(tenantMiddleware);
 centroCostosEventoRouter.get('/',         requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getCentroCostos));
 centroCostosEventoRouter.get('/exportar', requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(exportarCentroCostos));
 centroCostosEventoRouter.post('/extras',  requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(createExtra));
+// Planilla KM - Centro de Costos (Costos, RRHH y Extras) con vista previa
+centroCostosEventoRouter.post('/importar', requireAnyRole(ROLES.ADMIN_OPERADOR), uploadXlsx, asyncHandler(importarCentroCostosKM));
 
 // ── /api/extras-evento/:id ────────────────────────────────────────────────────
 export const extrasEventoRouter = Router();

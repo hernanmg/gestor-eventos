@@ -298,6 +298,8 @@ model Empresa {
   siniestrosEmpleado     SiniestroEmpleado[]
   excedentesHoras        ExcedenteHoras[]
   resumenesPago          ResumenPagoSemanal[]
+  novedades              Novedad[]
+  tiposNovedad           TipoNovedad[]
   eventosEmpleadoMes     EventoEmpleadoMes[]
   entregasUniforme       EntregaUniforme[]
   siniestrosVehiculo     SiniestroVehiculo[]
@@ -471,6 +473,7 @@ model Evento {
   puntos_internet        PuntoInternetEvento[]
   branding               BrandingEvento[]
   compras                CompraEvento[]
+  novedades              Novedad[]
 }
 
 // ─── RUBROS (categorías configurables de egresos/ingresos) ───────────────────
@@ -836,6 +839,9 @@ model Movimiento {
   // Extra del centro de costos que cuenta como costo (a_cargo_cliente=false) — la
   // línea la mantiene lib/extrasEvento.ts, no se edita a mano.
   extra_evento    ExtraEvento?
+  // Línea importada de la planilla KM - Centro de Costos (lib/centroCostosImporter.ts):
+  // hoja|descripción|responsable|n° de aparición. Reimportar actualiza la misma línea.
+  import_key      String?
 
   echeq           Echeq?                  @relation("EcheqMovimiento")
   pago_factura    PagoFactura?            @relation("PagoMovimiento")
@@ -843,6 +849,7 @@ model Movimiento {
   pagos_parciales PagoParcialMovimiento[]
 
   @@index([rubro_evento_id])
+  @@index([evento_id, import_key])
 }
 
 // Pagos parciales (señas, cuotas) de una línea de egreso — "Falta pagar" del
@@ -1024,6 +1031,7 @@ model Proveedor {
   rubros_evento     RubroEvento[]
   pedidos_comida    PedidoComida[]
   cuentasCorrientes CuentaCorriente[]
+  novedades         Novedad[]
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -1268,6 +1276,7 @@ model Camion {
   bitacora_viajes      BitacoraViaje[]
   multas               Multa[]
   controles_salida     ControlSalidaVehiculo[]
+  novedades            Novedad[]
 
   @@unique([codigo, empresa_id])
 }
@@ -1919,6 +1928,7 @@ model Empleado {
   siniestros_vehiculo   SiniestroVehiculo[]
   multas                Multa[]
   controles_salida      ControlSalidaVehiculo[]
+  novedades             Novedad[]
 }
 
 model Jornada {
@@ -3825,6 +3835,8 @@ model ExtraEvento {
   comprobante_data   Bytes?
   comprobante_nombre String?
   comprobante_mime   String?
+  // Importado de la hoja Extras de la planilla KM (ver Movimiento.import_key)
+  import_key         String?
   created_at         DateTime    @default(now())
   updated_at         DateTime    @updatedAt
   deleted_at         DateTime?
@@ -3984,4 +3996,101 @@ model LineaResumenPago {
   updated_by          Int?
 
   @@index([resumen_id, seccion, orden])
+}
+
+// ─── LIBRO DE NOVEDADES (pilar 10) ───────────────────────────────────────────
+// Cualquier cosa que pasa y hay que dejar asentada: un choque, algo que faltó,
+// un camión roto, una goma pinchada (respuesta de Male, nov 2026). Se ve todo
+// junto pero separado por tipo y ordenado por gravedad. Puede ligarse a un
+// evento, un vehículo, un empleado o un proveedor. Los tipos son editables por
+// empresa (Novedades → Tipos); la gravedad es fija para poder ordenar.
+
+enum GravedadNovedad {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+enum EstadoNovedad {
+  ABIERTA
+  EN_CURSO
+  RESUELTA
+}
+
+model TipoNovedad {
+  id                 Int       @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa   @relation(fields: [empresa_id], references: [id])
+  nombre             String
+  color              String?
+  orden              Int       @default(0)
+  activo             Boolean   @default(true)
+  // Usuarios que reciben el aviso de las novedades graves (ALTA/CRITICA) de
+  // este tipo, además del administrador general.
+  avisar_usuario_ids Int[]     @default([])
+  novedades          Novedad[]
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+
+  @@unique([empresa_id, nombre])
+}
+
+model Novedad {
+  id             Int              @id @default(autoincrement())
+  empresa_id     Int
+  empresa        Empresa          @relation(fields: [empresa_id], references: [id])
+  tipo_id        Int
+  tipo           TipoNovedad      @relation(fields: [tipo_id], references: [id])
+  // Fecha de calendario (medianoche UTC) + hora opcional "HH:MM"
+  fecha          DateTime
+  hora           String?
+  titulo         String
+  descripcion    String?
+  lugar          String?
+  gravedad       GravedadNovedad  @default(MEDIA)
+  estado         EstadoNovedad    @default(ABIERTA)
+  // Quién lo vio o lo avisó, si no es quien lo carga (ej. "Luis, chofer")
+  reportado_por  String?
+  // Usuario que se ocupa de resolverla
+  responsable_id Int?
+  evento_id      Int?
+  evento         Evento?          @relation(fields: [evento_id], references: [id])
+  camion_id      Int?
+  camion         Camion?          @relation(fields: [camion_id], references: [id])
+  empleado_id    Int?
+  empleado       Empleado?        @relation(fields: [empleado_id], references: [id])
+  proveedor_id   Int?
+  proveedor      Proveedor?       @relation(fields: [proveedor_id], references: [id])
+  resolucion     String?
+  resuelta_at    DateTime?
+  resuelta_por   Int?
+  adjuntos       AdjuntoNovedad[]
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  deleted_at     DateTime?
+  created_by     Int?
+  updated_by     Int?
+
+  @@index([empresa_id, estado, gravedad])
+  @@index([empresa_id, fecha])
+  @@index([evento_id])
+  @@index([camion_id])
+}
+
+model AdjuntoNovedad {
+  id         Int       @id @default(autoincrement())
+  novedad_id Int
+  novedad    Novedad   @relation(fields: [novedad_id], references: [id])
+  nombre     String
+  mime       String
+  tamanio    Int
+  data       Bytes
+  created_at DateTime  @default(now())
+  created_by Int?
+  deleted_at DateTime?
+
+  @@index([novedad_id])
 }

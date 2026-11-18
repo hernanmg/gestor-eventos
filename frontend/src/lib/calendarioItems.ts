@@ -29,6 +29,7 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   CARNET_VENCE:         'Carnets',
   MULTA_VENCE:          'Multas',
   CONTROL_SALIDA:       'Control de salida',
+  NOVEDAD:              'Novedades',
 };
 
 export const COLORES: Record<TipoCalendario, string> = {
@@ -54,6 +55,7 @@ export const COLORES: Record<TipoCalendario, string> = {
   CARNET_VENCE:         '#F59E0B',
   MULTA_VENCE:          '#F59E0B',
   CONTROL_SALIDA:       '#0E7490',
+  NOVEDAD:              '#BE123C',
 };
 
 // ── Links de navegación por tipo ──────────────────────────────────────────────
@@ -84,6 +86,7 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'CARNET_VENCE':   return '/flota?tab=carnets';
     case 'MULTA_VENCE':    return '/flota?tab=multas';
     case 'CONTROL_SALIDA': return '/flota?tab=salidas';
+    case 'NOVEDAD':        return `/novedades?abrir=${m.novedad_id}`;
     default:               return '/calendario';
   }
 }
@@ -108,6 +111,7 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
     case 'SINIESTRO_VEHICULO_PENDIENTE': return [`N° ${m.numero_siniestro ?? '—'}`, `${m.dias_sin_actividad} días sin actualizar`];
     case 'MULTA_VENCE':    return [`Monto: ${Number(m.monto).toLocaleString('es-AR')}`];
+    case 'NOVEDAD':        return [`Gravedad: ${String(m.gravedad).toLowerCase().replace('critica', 'crítica')}`, m.estado === 'RESUELTA' ? 'Resuelta' : m.estado === 'EN_CURSO' ? 'En curso' : 'Abierta', ...(m.evento_nombre ? [`Evento: ${m.evento_nombre}`] : [])];
     default:               return [];
   }
 }

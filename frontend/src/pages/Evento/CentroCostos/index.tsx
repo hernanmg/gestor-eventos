@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Download, FileSpreadsheet, Loader2, Paperclip, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, Paperclip, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BaseTable from '@/components/ui/BaseTable';
 import TabStrip, { TabCount } from '@/components/ui/TabStrip';
@@ -18,6 +18,7 @@ import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { ExtraEvento, Moneda, Movimiento, TotalCentroCostos } from '@/types';
 import LineaCostoDialog from './LineaCostoDialog';
 import ExtraDialog from './ExtraDialog';
+import ImportarCentroCostosDialog from '@/components/domain/ImportarCentroCostosDialog';
 
 // Pestaña "Centro de costos" — la planilla de Male (docs/enjoy/KM - Centro de
 // Costos.xlsx) dentro del evento. Costos y RRHH son los mismos movimientos de
@@ -63,6 +64,7 @@ export default function CentroCostosTab({ eventoId, canEdit }: Props) {
   const [lineaDialog, setLineaDialog] = useState<{ mov?: Movimiento; rrhh?: boolean } | null>(null);
   const [movDialog,   setMovDialog]   = useState<{ tipo: 'iva' | 'pagos'; movId: number } | null>(null);
   const [extraDialog, setExtraDialog] = useState<{ extra?: ExtraEvento } | null>(null);
+  const [importando,  setImportando]  = useState(false);
 
   if (isLoading || !data) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Cargando centro de costos…</p>;
@@ -124,6 +126,11 @@ export default function CentroCostosTab({ eventoId, canEdit }: Props) {
               <FileSpreadsheet size={14} className="mr-1.5" /> Exportar extras
             </Button>
           )}
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setImportando(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar planilla
+            </Button>
+          )}
           <Button variant="outline" size="sm" disabled={isExporting} onClick={() => handleExportar()}>
             {isExporting ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Download size={14} className="mr-1.5" />}
             Exportar Excel
@@ -177,6 +184,9 @@ export default function CentroCostosTab({ eventoId, canEdit }: Props) {
             open={movDialog?.tipo === 'pagos'} onClose={() => setMovDialog(null)}
           />
         </>
+      )}
+      {importando && (
+        <ImportarCentroCostosDialog eventoId={eventoId} eventoNombre={data.evento.nombre} onClose={() => setImportando(false)} />
       )}
       {extraDialog && (
         <ExtraDialog

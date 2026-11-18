@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { HelpCircle, X, ChevronRight, Loader2, Search, LifeBuoy } from 'lucide-react';
+import { HelpCircle, X, ChevronRight, Loader2, Search, LifeBuoy, ListChecks } from 'lucide-react';
 import { getHelpContent, searchHelp, type HelpLink, type HelpSection, type HelpInlineLink, type HelpSearchResult } from '@/lib/helpContent';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'help_panel_open';
@@ -61,6 +62,9 @@ function VerTambien({ links, pathname, onNavigate }: { links: HelpInlineLink[]; 
 export default function HelpPanel() {
   const location = useLocation();
   const navigate  = useNavigate();
+  const { user }  = useAuth();
+  // La guía de carga es para quien sube planillas (no jornaleros ni pañoleros)
+  const verGuia   = user?.rol === 'ADMIN' || user?.rol === 'OPERADOR';
 
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; }
@@ -168,6 +172,19 @@ export default function HelpPanel() {
 
         {/* Content */}
         <div className="overflow-y-auto h-[calc(100%-3.5rem-3.25rem)] p-4 space-y-5">
+          {/* Primer ítem fijo: la guía de carga de datos, desde cualquier pantalla */}
+          {verGuia && !searching && location.pathname !== '/guia-carga' && (
+            <button
+              onClick={() => { navigate('/guia-carga'); setOpen(false); }}
+              className="flex w-full items-start gap-2.5 rounded-md border border-primary/30 bg-primary/5 p-3 text-left hover:bg-primary/10 transition-colors"
+            >
+              <ListChecks size={18} className="mt-0.5 shrink-0 text-primary" />
+              <span>
+                <span className="block text-sm font-semibold text-foreground">Guía de carga de datos</span>
+                <span className="block text-xs text-muted-foreground">En qué orden subir las planillas de Enjoy al sistema, paso a paso.</span>
+              </span>
+            </button>
+          )}
           {searching ? (
             searchResults.length === 0 ? (
               <div className="text-sm text-muted-foreground space-y-2">

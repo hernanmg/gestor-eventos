@@ -987,7 +987,7 @@ type BloqueResuelto = BloquePedido & {
 };
 
 /** Proveedor por nombre o alias, sin tildes ni mayúsculas; "Grupo Dos57" encuentra a "DOS57". */
-function buscarProveedorPorNombre<T extends { id: number; nombre: string; alias: string | null }>(nombre: string | null, proveedores: T[]): T | null {
+export function buscarProveedorPorNombre<T extends { id: number; nombre: string; alias: string | null }>(nombre: string | null, proveedores: T[]): T | null {
   if (!nombre) return null;
   const n = normTexto(nombre);
   if (!n) return null;

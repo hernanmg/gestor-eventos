@@ -45,6 +45,8 @@ import MaterialesRentalPage from '@/pages/MaterialesRental';
 import PresupuestosPage     from '@/pages/Presupuestos';
 import PresupuestoEditorPage from '@/pages/Presupuestos/Editor';
 import GastosOperativosPage from '@/pages/GastosOperativos';
+import NovedadesPage from '@/pages/Novedades';
+import GuiaCargaPage from '@/pages/GuiaCarga';
 import SiniestrosPage       from '@/pages/Siniestros';
 import UniformesPage        from '@/pages/Uniformes';
 import TarjetaCorporativaPage from '@/pages/TarjetaCorporativa';
@@ -117,6 +119,8 @@ export default function App() {
             <Route path="/presupuestos/nuevo"      element={<PresupuestoEditorPage />} />
             <Route path="/presupuestos/:id"        element={<PresupuestoEditorPage />} />
             <Route path="/gastos-operativos"       element={<GastosOperativosPage />} />
+            <Route path="/novedades"               element={<NovedadesPage />} />
+            <Route path="/guia-carga"              element={<GuiaCargaPage />} />
             <Route path="/siniestros"              element={<SiniestrosPage />} />
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
             <Route path="/uniformes"               element={<UniformesPage />} />

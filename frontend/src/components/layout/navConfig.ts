@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -82,6 +82,7 @@ export function useNavModel(user: MeResponse): NavModel {
   const I = {
     macro:       { to: '/macro',             label: 'Macro',              icon: LayoutGrid,     group: 'inicio',      badge: errorCount,      tone: 'red' },
     calendario:  { to: '/calendario',        label: 'Calendario',         icon: CalendarDays,   group: 'inicio' },
+    novedades:   { to: '/novedades',         label: 'Novedades',          icon: Megaphone,      group: 'inicio' },
     eventos:     { to: '/eventos',           label: 'Eventos',            icon: Calendar,       group: 'eventos' },
     rental:      { to: '/materiales-rental', label: 'Ítems de Rental',    icon: Boxes,          group: 'eventos' },
     presupuestos:{ to: '/presupuestos',      label: 'Presupuestos',       icon: Calculator,     group: 'eventos' },
@@ -127,6 +128,12 @@ export function useNavModel(user: MeResponse): NavModel {
   const flat = (items: (NavItem | false)[]): NavModel => {
     const base = items.filter((x): x is NavItem => !!x);
     const extra = porPermiso.filter(p => !base.some(b => navPath(b.to) === navPath(p.to)));
+    // Novedades: todos cargan (pilar 10) — se suma a cualquier menú acotado,
+    // justo antes de Calendario (o al final si no hay calendario).
+    if (user.rol !== 'JORNALERO' && !base.some(b => b.to === I.novedades.to)) {
+      const c = base.findIndex(b => b.to === I.calendario.to);
+      if (c >= 0) base.splice(c, 0, I.novedades); else base.push(I.novedades);
+    }
     // Calendario queda al final, después de los módulos por permiso
     const cal = base.findIndex(b => b.to === I.calendario.to);
     const ordenados = cal >= 0 ? [...base.slice(0, cal), ...extra, ...base.slice(cal)] : [...base, ...extra];
@@ -187,6 +194,7 @@ export function useNavModel(user: MeResponse): NavModel {
     // restringida por área cross-empresa (usuarios con puede_ver_macro, ej. Mayra)
     esAdmin && (user.puedeCambiarEmpresa || user.puedeVerMacro) && I.macro,
     I.calendario,
+    conLectura && I.novedades,
     // Eventos
     I.eventos,
     // Presupuestación (Costo Real, DOS57) — sólo ADMIN con DOS57 activa o admin global
