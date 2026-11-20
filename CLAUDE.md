@@ -68,7 +68,7 @@ No hay tests automatizados. La verificación se hace con `tsc`, el build y proba
 - **Debe/Haber:** en `Movimiento` (pestañas del evento), EGRESO va al DEBE e INGRESO al HABER. En las cajas (`MovimientoCaja`), el ingreso va al DEBE y el gasto al HABER.
 - **Fechas:** los campos que son solo fecha de calendario se guardan a medianoche UTC y se leen en UTC. Los timestamps reales se leen en hora local. El servidor necesita `TZ=America/Argentina/Buenos_Aires`.
 - **Importadores:** viven en `backend/src/lib/*Importer.ts`. Primero muestran una vista previa y después importan. Reimportar el mismo archivo no duplica: usan upsert con clave natural o un `import_key`. Siempre se parsea contra la planilla real de `docs/`, no contra la especificación.
-- **Calendario:** un tipo nuevo hay que agregarlo en cuatro lugares: backend (`calendario.controller.ts`), `types/index.ts` (`TipoCalendario`), `hooks/useCalendario.ts` (`TIPO_QUERY_MAP`) y `lib/calendarioItems.ts` (rótulo y color). Hoy hay 4 tipos que el backend calcula y el front no muestra (ver Calendario, punto 14).
+- **Calendario:** un tipo nuevo hay que agregarlo en cuatro lugares: backend (`calendario.controller.ts`), `types/index.ts` (`TipoCalendario`), `hooks/useCalendario.ts` (`TIPO_QUERY_MAP`) y `lib/calendarioItems.ts` (rótulo y color). Si el backend devuelve un tipo que el front no tiene, el chip sale sin rótulo: agregarlo en los cuatro.
 - **Tipos del front:** todos en `frontend/src/types/index.ts`, como espejo del schema.
 
 ## Cuidados (aprendidos a los golpes)

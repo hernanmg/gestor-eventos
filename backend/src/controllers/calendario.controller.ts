@@ -16,7 +16,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -65,6 +65,8 @@ const COLORES: Record<TipoCalendario, string> = {
   CONTROL_SALIDA:       '#0E7490',
   // Color real por item según la gravedad — default acá.
   NOVEDAD:              '#BE123C',
+  MONTAJE:              '#5B7BA6',
+  CUMPLEANOS:           '#DB2777',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -96,6 +98,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   multas:          'MULTA_VENCE',
   controles_salida: 'CONTROL_SALIDA',
   novedades:       'NOVEDAD',
+  montajes:        'MONTAJE',
+  cumpleanos:      'CUMPLEANOS',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -206,11 +210,13 @@ async function resolveEcheqs(empresaFiltro: number | undefined, desde: Date, has
       deleted_at: null,
       fecha_cobro_estimada: { gte: desde, lte: hasta },
       estado: 'PENDIENTE',
-      evento: { deleted_at: null, ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}) },
+      // Con o sin evento: los cheques de la empresa también caen acá.
+      OR: [{ evento_id: null }, { evento: { deleted_at: null } }],
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
     },
     include: {
       proveedor: { select: { nombre: true } },
-      evento:    { select: { id: true, empresa_id: true, empresa: { select: { nombre: true } } } },
+      empresa:   { select: { nombre: true } },
     },
   });
 
@@ -219,11 +225,11 @@ async function resolveEcheqs(empresaFiltro: number | undefined, desde: Date, has
     tipo:           'ECHEQ_COBRO' as const,
     titulo:         `Echeq #${e.numero} — ${e.razon_social ?? e.proveedor?.nombre ?? 'Sin proveedor'}`,
     fecha:          e.fecha_cobro_estimada!,
-    empresa_id:     e.evento.empresa_id,
-    empresa_nombre: e.evento.empresa.nombre,
+    empresa_id:     e.empresa_id,
+    empresa_nombre: e.empresa.nombre,
     color:          COLORES.ECHEQ_COBRO,
     urgencia:       computeUrgencia(e.fecha_cobro_estimada!, hoy),
-    metadata:       { importe: Number(e.importe), moneda: e.moneda, evento_id: e.evento_id },
+    metadata:       { importe: Number(e.importe), moneda: e.moneda, evento_id: e.evento_id, banco: e.banco, tipo: e.tipo },
   }));
 }
 
@@ -993,6 +999,94 @@ async function resolveNovedades(empresaFiltro: number | undefined, desde: Date, 
   });
 }
 
+// Días de armado y desarmado (Flor: armado → evento → desarme). Un ítem por
+// día, así se ve en cada celda del mes. Se buscan eventos con un margen de
+// MAX_DIAS_ARMADO alrededor del rango, porque el armado cae antes del inicio
+// y el desarme después del fin.
+const MAX_DIAS_ARMADO = 60;
+
+async function resolveMontajes(empresaFiltro: number | undefined, desde: Date, hasta: Date): Promise<CalendarioItem[]> {
+  const margen = MAX_DIAS_ARMADO * 86_400_000;
+  const eventos = await prisma.evento.findMany({
+    where: {
+      deleted_at: null,
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+      fecha_inicio: { not: null, lte: new Date(hasta.getTime() + margen) },
+      OR: [
+        { fecha_fin: { gte: new Date(desde.getTime() - margen) } },
+        { fecha_fin: null, fecha_inicio: { gte: new Date(desde.getTime() - margen) } },
+      ],
+      AND: [{ OR: [{ dias_montaje: { gt: 0 } }, { dias_desmontaje: { gt: 0 } }] }],
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const e of eventos) {
+    const inicio = e.fecha_inicio!;
+    const fin    = e.fecha_fin ?? inicio;
+    const nMont  = Math.min(e.dias_montaje, MAX_DIAS_ARMADO);
+    const nDesm  = Math.min(e.dias_desmontaje, MAX_DIAS_ARMADO);
+    const push = (fase: 'MONTAJE' | 'DESMONTAJE', fecha: Date, dia: number, total: number) => {
+      if (fecha < desde || fecha > hasta) return;
+      items.push({
+        id:             `${fase.toLowerCase()}-${e.id}-${dia}`,
+        tipo:           'MONTAJE' as const,
+        titulo:         `${fase === 'MONTAJE' ? 'Montaje' : 'Desmontaje'}${total > 1 ? ` (${dia}/${total})` : ''} — ${e.nombre}`,
+        fecha,
+        empresa_id:     e.empresa_id,
+        empresa_nombre: e.empresa.nombre,
+        color:          fase === 'MONTAJE' ? COLORES.MONTAJE : '#8B6F47',
+        urgencia:       'normal' as const,
+        metadata:       { evento_id: e.id, evento_nombre: e.nombre, fase, dia, total, lugar: e.lugar },
+      });
+    };
+    // Montaje: los N días previos al inicio, numerados del primero al último.
+    for (let k = nMont; k >= 1; k--) push('MONTAJE', new Date(inicio.getTime() - k * 86_400_000), nMont - k + 1, nMont);
+    for (let k = 1; k <= nDesm; k++) push('DESMONTAJE', new Date(fin.getTime() + k * 86_400_000), k, nDesm);
+  }
+  return items;
+}
+
+// Cumpleaños del personal activo (Mayra). La fecha de nacimiento es de
+// calendario (UTC); el 29/2 cae el 28/2 los años no bisiestos. El rango
+// puede cruzar el año, así que se prueba cada año que toca.
+async function resolveCumpleanos(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const empleados = await prisma.empleado.findMany({
+    where: {
+      deleted_at: null, estado: 'ACTIVO', fecha_nacimiento: { not: null },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    select: { id: true, nombre: true, apellido: true, apodo: true, fecha_nacimiento: true, empresa_id: true, empresa: { select: { nombre: true } } },
+  });
+
+  const items: CalendarioItem[] = [];
+  for (const e of empleados) {
+    const nac = e.fecha_nacimiento!;
+    for (let anio = desde.getUTCFullYear(); anio <= hasta.getUTCFullYear(); anio++) {
+      const mes = nac.getUTCMonth();
+      let dia   = nac.getUTCDate();
+      const ultimoDia = new Date(Date.UTC(anio, mes + 1, 0)).getUTCDate();
+      if (dia > ultimoDia) dia = ultimoDia;
+      const fecha = new Date(Date.UTC(anio, mes, dia));
+      if (fecha < desde || fecha > hasta) continue;
+      const edad = anio - nac.getUTCFullYear();
+      items.push({
+        id:             `cumple-${e.id}-${anio}`,
+        tipo:           'CUMPLEANOS' as const,
+        titulo:         `Cumpleaños de ${e.apodo ? `${e.apodo} (${e.nombre} ${e.apellido})` : `${e.nombre} ${e.apellido}`}`,
+        fecha,
+        empresa_id:     e.empresa_id,
+        empresa_nombre: e.empresa.nombre,
+        color:          COLORES.CUMPLEANOS,
+        urgencia:       fecha.getTime() === hoy.getTime() ? 'warning' as const : 'normal' as const,
+        metadata:       { empleado_id: e.id, edad: edad > 0 && edad < 100 ? edad : null },
+      });
+    }
+  }
+  return items;
+}
+
 export async function getCalendario(req: Request, res: Response) {
   const parsed = calendarioQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -1063,10 +1157,12 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('GASTO_ESPACIO_VENCE') && isAdmin) tareas.push(resolveGastosEspacio(empresaFiltro, desde, hasta, hoyUTC));
   // SINIESTRO_PENDIENTE/EXCEDENTE_PENDIENTE enlazan a /gastos-operativos —
   // visibles para ADMIN y OPERADOR de DOS57 (misma matriz de esa pantalla).
-  if (tiposActivos.has('SINIESTRO_PENDIENTE')) tareas.push(resolveSiniestrosPendientes(empresaFiltro, desde, hasta, hoyUTC));
-  if (tiposActivos.has('EXCEDENTE_PENDIENTE')) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  const isAdminOOperador = isAdmin || req.user!.rol === 'OPERADOR';
+  if (tiposActivos.has('SINIESTRO_PENDIENTE') && isAdminOOperador) tareas.push(resolveSiniestrosPendientes(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('EXCEDENTE_PENDIENTE') && isAdminOOperador) tareas.push(resolveExcedentesPendientes(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('ACTIVO_STOCK_BAJO'))   tareas.push(resolveActivosStockBajo(empresaFiltro, desde, hasta, hoyUTC));
-  if (tiposActivos.has('SGR_VENCE'))           tareas.push(resolveSGRVence(empresaFiltro, desde, hasta, hoyUTC));
+  // SGR enlaza a /afip-prestamos?tab=sgr, exclusivo de ADMIN (igual que las cuotas AFIP).
+  if (tiposActivos.has('SGR_VENCE') && isAdmin) tareas.push(resolveSGRVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('SINIESTRO_VEHICULO_PENDIENTE')) tareas.push(resolveSiniestrosVehiculoPendientes(empresaFiltro, desde, hasta, hoyUTC));
   // Documentación de flota — enlazan a /flota (ADMIN y OPERADOR)
   if (tiposActivos.has('TECNICA_VENCE'))  tareas.push(resolveTecnicaVence(empresaFiltro, desde, hasta, hoyUTC));
@@ -1075,6 +1171,10 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('CONTROL_SALIDA')) tareas.push(resolveControlesSalida(empresaFiltro, desde, hasta, hoyUTC));
   // Libro de novedades — lo ven todos los que entran al calendario
   if (tiposActivos.has('NOVEDAD'))        tareas.push(resolveNovedades(empresaFiltro, desde, hasta));
+  // Montaje/desmontaje: igual que los eventos, lo ven todos.
+  if (tiposActivos.has('MONTAJE'))        tareas.push(resolveMontajes(empresaFiltro, desde, hasta));
+  // Cumpleaños: el link va al legajo en /rrhh (sólo ADMIN), mismo criterio que JORNADA.
+  if (tiposActivos.has('CUMPLEANOS') && isAdmin) tareas.push(resolveCumpleanos(empresaFiltro, desde, hasta, hoyUTC));
 
   const resultados = await Promise.all(tareas);
   const items = resultados.flat().sort((a, b) => a.fecha.getTime() - b.fecha.getTime());

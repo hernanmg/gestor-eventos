@@ -144,6 +144,7 @@ export async function createEcheq(req: Request, res: Response) {
   const echeq = await prisma.echeq.create({
     data: {
       evento_id:            eventoId,
+      empresa_id:           evento.empresa_id,
       movimiento_id:        parsed.data.movimiento_id  ?? null,
       proveedor_id:         parsed.data.proveedor_id   ?? null,
       numero:               parsed.data.numero,
@@ -184,7 +185,7 @@ export async function updateEcheq(req: Request, res: Response) {
     return;
   }
 
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (existing.estado === EstadoEcheq.COBRADO || existing.estado === EstadoEcheq.VENDIDO) {
     res.status(400).json({ error: 'No se puede modificar un echeq cobrado o vendido' }); return;
@@ -224,7 +225,7 @@ export async function updateEcheq(req: Request, res: Response) {
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
-    eventoId:     existing.evento_id,
+    eventoId:     existing.evento_id ?? undefined,
     descripcion:  `Actualizó echeq #${existing.numero}`,
     datosAntes:   { numero: existing.numero, importe: Number(existing.importe), moneda: existing.moneda, estado: existing.estado },
     datosDespues: parsed.data,
@@ -237,7 +238,7 @@ export async function updateEcheq(req: Request, res: Response) {
 
 export async function deleteEcheq(req: Request, res: Response) {
   const id       = Number(req.params.id);
-  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const existing = await prisma.echeq.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!existing) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (existing.estado === EstadoEcheq.COBRADO || existing.estado === EstadoEcheq.VENDIDO) {
     res.status(400).json({ error: 'No se puede eliminar un echeq cobrado o vendido' }); return;
@@ -254,7 +255,7 @@ export async function deleteEcheq(req: Request, res: Response) {
     accion:     'DELETE',
     entidad:    'Echeq',
     entidadId:  id,
-    eventoId:   existing.evento_id,
+    eventoId:   existing.evento_id ?? undefined,
     descripcion: `Eliminó echeq #${existing.numero}`,
     datosAntes:  { numero: existing.numero, importe: Number(existing.importe), moneda: existing.moneda, razon_social: existing.razon_social },
     ip:          req.ip,
@@ -271,12 +272,17 @@ export async function cobrarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'cuenta_id es requerido' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden cobrar echeqs en estado PENDIENTE' }); return;
   }
 
+  // Los cheques sin evento no tienen caja del evento donde asentar el cobro:
+  // se marcan como debitados desde Finanzas → Cheques (PATCH /cheques/:id/debitar).
+  if (echeq.evento_id === null) {
+    res.status(400).json({ error: 'Este cheque no es de un evento: marcalo como debitado desde Cheques' }); return;
+  }
   const { propiasIds, vinculadaIds } = await resolveCuentaIdsEvento(echeq.evento_id);
   const cuenta = [...propiasIds, ...vinculadaIds].includes(parsed.data.cuenta_id)
     ? await prisma.cuentaBancaria.findFirst({ where: { id: parsed.data.cuenta_id, deleted_at: null } })
@@ -322,7 +328,7 @@ export async function cobrarEcheq(req: Request, res: Response) {
       accion:       'UPDATE',
       entidad:      'Echeq',
       entidadId:    id,
-      eventoId:     echeq.evento_id,
+      eventoId:     echeq.evento_id ?? undefined,
       descripcion:  `Cobró echeq #${echeq.numero} — ${echeq.razon_social}`,
       datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
       datosDespues: { estado: 'COBRADO', cuenta_id: parsed.data.cuenta_id },
@@ -342,7 +348,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos' }); return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden rechazar echeqs en estado PENDIENTE' }); return;
@@ -363,7 +369,7 @@ export async function rechazarEcheq(req: Request, res: Response) {
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
-    eventoId:     echeq.evento_id,
+    eventoId:     echeq.evento_id ?? undefined,
     descripcion:  `Rechazó echeq #${echeq.numero}${parsed.data.motivo_rechazo ? ` — ${parsed.data.motivo_rechazo}` : ''}`,
     datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
     datosDespues: { estado: 'RECHAZADO', motivo_rechazo: parsed.data.motivo_rechazo },
@@ -382,7 +388,7 @@ export async function venderEcheq(req: Request, res: Response) {
     return;
   }
 
-  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, evento: withTenant(req.empresaId!) } });
+  const echeq = await prisma.echeq.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!echeq) { res.status(404).json({ error: 'Echeq no encontrado' }); return; }
   if (echeq.estado !== EstadoEcheq.PENDIENTE) {
     res.status(400).json({ error: 'Solo se pueden vender echeqs en estado PENDIENTE' }); return;
@@ -406,7 +412,7 @@ export async function venderEcheq(req: Request, res: Response) {
     accion:       'UPDATE',
     entidad:      'Echeq',
     entidadId:    id,
-    eventoId:     echeq.evento_id,
+    eventoId:     echeq.evento_id ?? undefined,
     descripcion:  `Vendió (descontó) echeq #${echeq.numero} — ${echeq.razon_social}`,
     datosAntes:   { estado: 'PENDIENTE', numero: echeq.numero },
     datosDespues: { estado: 'VENDIDO', ...parsed.data },

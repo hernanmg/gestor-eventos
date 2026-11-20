@@ -8,6 +8,7 @@ import type { CalendarioItem, TipoCalendario } from '@/types';
 
 export const TIPO_LABEL: Record<TipoCalendario, string> = {
   EVENTO:               'Eventos',
+  MONTAJE:              'Montaje / desmontaje',
   FACTURA_VENCE:        'Facturas',
   ECHEQ_COBRO:          'Echeqs',
   JORNADA:              'Jornadas',
@@ -23,6 +24,10 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           'Cuotas AFIP',
   CUOTA_PRESTAMO:       'Cuotas créditos',
   FACTURA_EMITIDA_VENCE: 'Facturas a Cobrar',
+  SGR_VENCE:            'SGR',
+  GASTO_ESPACIO_VENCE:  'Gastos de espacios',
+  EXCEDENTE_PENDIENTE:  'Excedente de horas',
+  SINIESTRO_PENDIENTE:  'Siniestros personal',
   ACTIVO_STOCK_BAJO:    'Quiebre de stock uniformes',
   SINIESTRO_VEHICULO_PENDIENTE: 'Siniestros vehículos',
   TECNICA_VENCE:        'RTO / ITV',
@@ -30,10 +35,12 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   MULTA_VENCE:          'Multas',
   CONTROL_SALIDA:       'Control de salida',
   NOVEDAD:              'Novedades',
+  CUMPLEANOS:           'Cumpleaños',
 };
 
 export const COLORES: Record<TipoCalendario, string> = {
   EVENTO:               '#1E3A5F',
+  MONTAJE:              '#5B7BA6',
   FACTURA_VENCE:        '#DC2626',
   ECHEQ_COBRO:          '#F59E0B',
   JORNADA:              '#065F46',
@@ -49,6 +56,10 @@ export const COLORES: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           '#DC2626',
   CUOTA_PRESTAMO:       '#92400E',
   FACTURA_EMITIDA_VENCE: '#065F46',
+  SGR_VENCE:            '#F59E0B',
+  GASTO_ESPACIO_VENCE:  '#3730A3',
+  EXCEDENTE_PENDIENTE:  '#F59E0B',
+  SINIESTRO_PENDIENTE:  '#DC2626',
   ACTIVO_STOCK_BAJO:    '#DC2626',
   SINIESTRO_VEHICULO_PENDIENTE: '#B91C1C',
   TECNICA_VENCE:        '#F59E0B',
@@ -56,6 +67,7 @@ export const COLORES: Record<TipoCalendario, string> = {
   MULTA_VENCE:          '#F59E0B',
   CONTROL_SALIDA:       '#0E7490',
   NOVEDAD:              '#BE123C',
+  CUMPLEANOS:           '#DB2777',
 };
 
 // ── Links de navegación por tipo ──────────────────────────────────────────────
@@ -65,7 +77,7 @@ export function getDetailLink(item: CalendarioItem): string {
   switch (item.tipo) {
     case 'EVENTO':        return `/eventos/${item.id.replace('evento-', '')}`;
     case 'FACTURA_VENCE':  return `/facturas/${item.id.replace('factura-', '')}`;
-    case 'ECHEQ_COBRO':    return m.evento_id ? `/eventos/${m.evento_id}?tab=echeqs` : '/eventos';
+    case 'ECHEQ_COBRO':    return m.evento_id ? `/eventos/${m.evento_id}?tab=echeqs` : `/cheques?viernes=${item.fecha.slice(0, 10)}`;
     // Los items JORNADA del calendario son siempre pendientes de aprobación
     // (ver resolveJornadas() en calendario.controller.ts) — se filtra directo.
     case 'JORNADA':        return `/rrhh?tab=jornadas&fecha=${item.fecha.slice(0, 10)}&estado=PENDIENTE`;
@@ -87,6 +99,12 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'MULTA_VENCE':    return '/flota?tab=multas';
     case 'CONTROL_SALIDA': return '/flota?tab=salidas';
     case 'NOVEDAD':        return `/novedades?abrir=${m.novedad_id}`;
+    case 'MONTAJE':        return `/eventos/${m.evento_id}`;
+    case 'SGR_VENCE':      return '/afip-prestamos?tab=sgr';
+    case 'GASTO_ESPACIO_VENCE': return `/espacios-compartidos/${m.espacio_id}`;
+    case 'EXCEDENTE_PENDIENTE': return '/gastos-operativos?tab=excedente-horas';
+    case 'SINIESTRO_PENDIENTE': return `/siniestros/${m.siniestro_id}`;
+    case 'CUMPLEANOS':     return '/rrhh?tab=empleados';
     default:               return '/calendario';
   }
 }
@@ -95,7 +113,7 @@ export function metadataResumen(item: CalendarioItem): string[] {
   const m = item.metadata as Record<string, any>;
   switch (item.tipo) {
     case 'FACTURA_VENCE':  return [`Pendiente: $${Number(m.importe_pendiente).toLocaleString('es-AR')}`];
-    case 'ECHEQ_COBRO':    return [`Importe: ${m.moneda} ${Number(m.importe).toLocaleString('es-AR')}`];
+    case 'ECHEQ_COBRO':    return [`Importe: ${m.moneda} ${Number(m.importe).toLocaleString('es-AR')}`, ...(m.banco ? [`Banco: ${m.banco}`] : []), ...(m.tipo && m.tipo !== 'PAGO' ? [m.tipo === 'FINANCIAMIENTO_AVALADO' ? 'Financiamiento avalado' : 'Financiamiento propio'] : [])];
     case 'JORNADA':        return m.cantidad ? [`${m.cantidad} jornada${m.cantidad !== 1 ? 's' : ''}`] : (m.convocatoria ? [`Convocatoria: ${m.convocatoria}`] : []);
     case 'STOCK_RETORNO':  return [`Evento: ${m.evento_nombre}`, `Ubicación: ${m.ubicacion}`];
     case 'LIQUIDACION': {
@@ -115,6 +133,12 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
     case 'SINIESTRO_VEHICULO_PENDIENTE': return [`N° ${m.numero_siniestro ?? '—'}`, `${m.dias_sin_actividad} días sin actualizar`];
     case 'MULTA_VENCE':    return [`Monto: ${Number(m.monto).toLocaleString('es-AR')}`];
+    case 'MONTAJE':        return [m.fase === 'MONTAJE' ? 'Armado previo al evento' : 'Desarme posterior al evento', ...(m.lugar ? [`Lugar: ${m.lugar}`] : [])];
+    case 'SGR_VENCE':      return m.estado_vinculacion ? [`Vinculación: ${String(m.estado_vinculacion).toLowerCase()}`] : [];
+    case 'GASTO_ESPACIO_VENCE': return [`Monto: $${Number(m.monto).toLocaleString('es-AR')}`];
+    case 'EXCEDENTE_PENDIENTE': return [`Período: ${m.periodo_mes}/${m.periodo_anio}`, `Total: $${Number(m.monto_total).toLocaleString('es-AR')}`];
+    case 'SINIESTRO_PENDIENTE': return [`Estado: ${String(m.estado).toLowerCase().replace('_', ' ')}`, `${m.dias_sin_actividad} días sin novedad`];
+    case 'CUMPLEANOS':     return m.edad ? [`Cumple ${m.edad}`] : [];
     case 'NOVEDAD':        return [`Gravedad: ${String(m.gravedad).toLowerCase().replace('critica', 'crítica')}`, m.estado === 'RESUELTA' ? 'Resuelta' : m.estado === 'EN_CURSO' ? 'En curso' : 'Abierta', ...(m.evento_nombre ? [`Evento: ${m.evento_nombre}`] : [])];
     default:               return [];
   }

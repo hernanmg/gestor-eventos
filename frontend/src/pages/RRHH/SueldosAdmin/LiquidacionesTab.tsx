@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Download } from 'lucide-react';
 import { useEmpleados, useAnticiposEmpleado, useCreateAnticipo, type AnticipoPayload } from '@/hooks/useRRHH';
 import {
@@ -20,6 +20,8 @@ import { cn, getApiErrorMessage } from '@/lib/utils';
 import { Trash2 } from 'lucide-react';
 import type { EstadoLiquidacionAdmin, EventoEmpleadoMes, LiquidacionAdmin, TipoAumento, TipoAnticipo, ResumenMesEmpleadoResponse } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import { ConceptosMesFields, PremiosPuntualesPanel, CierreMesPanel, CONCEPTOS_VACIOS, totalConceptos, type ConceptosForm } from './ConceptosMes';
+import { usePremiosVigentes } from '@/hooks/useSueldosAdmin';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -36,8 +38,13 @@ const MESES = [
 
 // ── Preview de generación (desglose completo, incluye split si aplica) ───────
 
-function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, premioViaje = 0, premioProduccion = 0, aumentoPorcentaje, presentismo, premioPresentismoOverride }: {
+function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, prestamosDescuento = 0, viaticoOverride, premioViaje = 0, premioProduccion = 0, aumentoPorcentaje, presentismo, premioPresentismoOverride, conceptos = [], premiosPuntuales = [], onBase }: {
   empleadoId: number; horasTrabajadas: string; valesDescuentos: number; vacacionesAguinaldo: string; prestamosDescuento?: number;
+  // Detalle del grupo vacaciones/aguinaldo/extras (suma = vacacionesAguinaldo)
+  conceptos?: { label: string; monto: number }[];
+  premiosPuntuales?: { nombre: string; monto: number }[];
+  // Sueldo del mes sin vacaciones/aguinaldo/extras — para calcular el aguinaldo
+  onBase?: (base: number) => void;
   // Override manual del viático fijo (empleados no-chofer, botón "Usar viático
   // calculado" sobre otro cálculo externo) — NUNCA se usa para el premio por
   // vuelta de choferes, que viaja aparte en premioViaje.
@@ -47,6 +54,11 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
   presentismo?: ResumenMesEmpleadoResponse; premioPresentismoOverride?: number | null;
 }) {
   const { data: acuerdo } = useAcuerdoEmpleado(empleadoId);
+  const totalPremios = premiosPuntuales.reduce((a, p) => a + p.monto, 0);
+  // Sueldo del mes sin el grupo, para el aguinaldo: se calcula en el render y
+  // se avisa después (el padre ignora el set si no cambió).
+  const baseRef = useRef<number | null>(null);
+  useEffect(() => { if (baseRef.current !== null) onBase?.(baseRef.current); });
   if (!acuerdo) return null;
 
   const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
@@ -86,8 +98,10 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
     + antiguedad
     + (acuerdo.telefono ?? 0)
     + importeExtras
+    + totalPremios
     + vacac;
   const total = subtotal - vales - prestamosDescuento;
+  baseRef.current = subtotal - vacac;
 
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3 text-sm space-y-1.5">
@@ -130,7 +144,10 @@ function GenerarPreview({ empleadoId, horasTrabajadas, valesDescuentos, vacacion
           </>
         ) : null}
         {acuerdo.telefono           ? (<><span>Teléfono</span><span className="text-right">{formatCurrency(acuerdo.telefono)}</span></>) : null}
-        {vacac > 0 ? (<><span>Vacaciones/Aguinaldo/Extras</span><span className="text-right">{formatCurrency(vacac)}</span></>) : null}
+        {premiosPuntuales.map(p => (<Fragment key={p.nombre}><span>{p.nombre}</span><span className="text-right">{formatCurrency(p.monto)}</span></Fragment>))}
+        {conceptos.length > 0
+          ? conceptos.filter(c => c.monto > 0).map(c => (<Fragment key={c.label}><span>{c.label}</span><span className="text-right">{formatCurrency(c.monto)}</span></Fragment>))
+          : vacac > 0 ? (<><span>Vacaciones/Aguinaldo/Extras</span><span className="text-right">{formatCurrency(vacac)}</span></>) : null}
         {vales > 0 ? (<><span>Vales/Descuentos</span><span className="text-right text-destructive">-{formatCurrency(vales)}</span></>) : null}
         {prestamosDescuento > 0 ? (<><span>Préstamos</span><span className="text-right text-destructive">-{formatCurrency(prestamosDescuento)}</span></>) : null}
       </div>
@@ -673,6 +690,10 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
     horas_trabajadas: '', vacaciones_aguinaldo: '', viatico_override: '', premio_presentismo_override: '',
     tipo_aumento: 'SIN_AUMENTO' as TipoAumento, porcentaje_aumento: '',
   });
+  const [conceptos, setConceptos] = useState<ConceptosForm>(CONCEPTOS_VACIOS);
+  const [premiosExcluidos, setPremiosExcluidos] = useState<Set<number>>(new Set());
+  const [baseMes, setBaseMes] = useState<number | undefined>(undefined);
+  const onBase = useCallback((b: number) => setBaseMes(b), []);
   const [ipcInfo, setIpcInfo] = useState<{ mes: string; valor: number } | null>(null);
   const [ipcError, setIpcError] = useState<string | null>(null);
   const [prestamosSel, setPrestamosSel] = useState<Set<number>>(new Set());
@@ -689,6 +710,8 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
       setIpcError(null);
       setPrestamosSel(new Set());
       setAnticiposSel(new Set());
+      setConceptos(CONCEPTOS_VACIOS);
+      setPremiosExcluidos(new Set());
       setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -696,7 +719,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   const set = (k: keyof typeof form, v: string) => {
     setForm(p => ({ ...p, [k]: v, ...((k === 'empleado_id' || k === 'periodo_mes' || k === 'periodo_anio') && { viatico_override: '', premio_presentismo_override: '' }) }));
-    if (k === 'empleado_id') { setPrestamosSel(new Set()); setAnticiposSel(new Set()); }
+    if (k === 'empleado_id') { setPrestamosSel(new Set()); setAnticiposSel(new Set()); setPremiosExcluidos(new Set()); }
     if (k === 'tipo_aumento') { setIpcInfo(null); setIpcError(null); if (v !== 'MANUAL' && v !== 'IPC') set('porcentaje_aumento', ''); }
   };
 
@@ -714,6 +737,8 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
     Number(form.periodo_mes), Number(form.periodo_anio),
   );
   const premioProduccionAuto = eventosMesResumenSel?.total ?? 0;
+  const { data: premiosVig = [] } = usePremiosVigentes(empleadoIdNum, Number(form.periodo_mes), Number(form.periodo_anio));
+  const premiosAplicados = premiosVig.filter(p => !premiosExcluidos.has(p.id));
   const { data: prestamos = [] } = usePrestamosEmpleado(empleadoIdNum);
   const prestamosPendientes = prestamos.filter(p => !p.saldado);
   const totalPrestamosSel = prestamosPendientes.filter(p => prestamosSel.has(p.id)).reduce((s, p) => s + p.monto_cuota, 0);
@@ -758,7 +783,11 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
       periodo_anio:         Number(form.periodo_anio),
       horas_trabajadas:     form.horas_trabajadas ? Number(form.horas_trabajadas) : 0,
       anticipo_ids:         Array.from(anticiposSel),
-      vacaciones_aguinaldo: form.vacaciones_aguinaldo ? Number(form.vacaciones_aguinaldo) : 0,
+      vacaciones:           Number(conceptos.vacaciones) || 0,
+      aguinaldo:            Number(conceptos.aguinaldo) || 0,
+      extras:               Number(conceptos.extras) || 0,
+      extras_detalle:       conceptos.extras_detalle.trim() || null,
+      premios_excluidos:    Array.from(premiosExcluidos),
       viatico_override:     form.viatico_override ? Number(form.viatico_override) : undefined,
       premio_presentismo_override: form.premio_presentismo_override ? Number(form.premio_presentismo_override) : undefined,
       ...(form.tipo_aumento !== 'SIN_AUMENTO' && {
@@ -844,10 +873,18 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <BancoHorasPanel acumuladoAnterior={acuerdoSel?.horas_pendientes_acum ?? 0} horasEsteMes={Number(form.horas_trabajadas) || 0} />
           )}
 
-          <div>
-            <label className={labelCls}>Vacaciones/Aguinaldos/Extras ($)</label>
-            <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => set('vacaciones_aguinaldo', v)} />
-          </div>
+          <ConceptosMesFields
+            value={conceptos} onChange={setConceptos}
+            empleadoId={empleadoIdNum} mes={Number(form.periodo_mes)} anio={Number(form.periodo_anio)}
+            baseActual={baseMes}
+          />
+          {empleadoIdNum && (
+            <PremiosPuntualesPanel
+              empleadoId={empleadoIdNum} mes={Number(form.periodo_mes)} anio={Number(form.periodo_anio)}
+              excluidos={premiosExcluidos}
+              onToggle={id => setPremiosExcluidos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
+            />
+          )}
 
           {empleadoIdNum && acuerdoSel?.premio_presentismo ? (
             <PresentismoPanel
@@ -944,7 +981,14 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               empleadoId={Number(form.empleado_id)}
               horasTrabajadas={form.horas_trabajadas}
               valesDescuentos={totalAnticiposSel}
-              vacacionesAguinaldo={form.vacaciones_aguinaldo}
+              vacacionesAguinaldo={String(totalConceptos(conceptos))}
+              conceptos={[
+                { label: 'Vacaciones', monto: Number(conceptos.vacaciones) || 0 },
+                { label: 'Aguinaldo', monto: Number(conceptos.aguinaldo) || 0 },
+                { label: conceptos.extras_detalle ? `Extras (${conceptos.extras_detalle})` : 'Extras', monto: Number(conceptos.extras) || 0 },
+              ]}
+              premiosPuntuales={premiosAplicados}
+              onBase={onBase}
               prestamosDescuento={totalPrestamosSel}
               viaticoOverride={!esChofer && form.viatico_override ? Number(form.viatico_override) : null}
               premioViaje={premioViajeAuto}
@@ -970,7 +1014,8 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
 function EditarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin | null; onClose: () => void }) {
   const updateMut = useUpdateLiquidacionAdmin();
-  const [form, setForm] = useState({ horas_trabajadas: '', vales_descuentos: '', vacaciones_aguinaldo: '' });
+  const [form, setForm] = useState({ horas_trabajadas: '', vales_descuentos: '' });
+  const [conceptos, setConceptos] = useState<ConceptosForm>(CONCEPTOS_VACIOS);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -978,7 +1023,11 @@ function EditarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin 
       setForm({
         horas_trabajadas:     String(liquidacion.horas_trabajadas),
         vales_descuentos:     String(liquidacion.vales_descuentos),
-        vacaciones_aguinaldo: String(liquidacion.vacaciones_aguinaldo),
+      });
+      const str = (n: number) => (n ? String(n) : '');
+      setConceptos({
+        vacaciones: str(liquidacion.vacaciones), aguinaldo: str(liquidacion.aguinaldo),
+        extras: str(liquidacion.extras), extras_detalle: liquidacion.extras_detalle ?? '',
       });
       setError(null);
     }
@@ -995,7 +1044,10 @@ function EditarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin 
         data: {
           horas_trabajadas:     Number(form.horas_trabajadas),
           vales_descuentos:     Number(form.vales_descuentos),
-          vacaciones_aguinaldo: Number(form.vacaciones_aguinaldo),
+          vacaciones:           Number(conceptos.vacaciones) || 0,
+          aguinaldo:            Number(conceptos.aguinaldo) || 0,
+          extras:               Number(conceptos.extras) || 0,
+          extras_detalle:       conceptos.extras_detalle.trim() || null,
         },
       });
       onClose();
@@ -1013,16 +1065,20 @@ function EditarDialog({ liquidacion, onClose }: { liquidacion: LiquidacionAdmin 
             <label className={labelCls}>Horas trabajadas</label>
             <input type="number" min="0" step="0.5" value={form.horas_trabajadas} onChange={e => setForm(p => ({ ...p, horas_trabajadas: e.target.value }))} className={inputCls} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Vales/Descuentos ($)</label>
-              <MoneyInput value={form.vales_descuentos} onChange={v => setForm(p => ({ ...p, vales_descuentos: v }))} />
-            </div>
-            <div>
-              <label className={labelCls}>Vacaciones/Aguinaldo ($)</label>
-              <MoneyInput value={form.vacaciones_aguinaldo} onChange={v => setForm(p => ({ ...p, vacaciones_aguinaldo: v }))} />
-            </div>
+          <div>
+            <label className={labelCls}>Vales/Descuentos ($)</label>
+            <MoneyInput value={form.vales_descuentos} onChange={v => setForm(p => ({ ...p, vales_descuentos: v }))} />
           </div>
+          <ConceptosMesFields
+            value={conceptos} onChange={setConceptos}
+            empleadoId={liquidacion.empleado_id} mes={liquidacion.periodo_mes} anio={liquidacion.periodo_anio}
+          />
+          {(liquidacion.premios_puntuales ?? []).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Premios de Matías incluidos al generar: {(liquidacion.premios_puntuales ?? []).map(p => `${p.nombre} ${formatCurrency(p.monto)}`).join(' · ')}.
+              Para cambiarlos, cancelá y volvé a generar.
+            </p>
+          )}
           {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
@@ -1293,6 +1349,11 @@ export default function LiquidacionesTab({ empleadoIdInicial, mesInicial, anioIn
             )}
           </BaseTable>
         </div>
+      )}
+
+      {resumen && liquidaciones.length > 0 && <CierreMesPanel resumen={resumen} />}
+      {!resumen && liquidaciones.length > 0 && (
+        <p className="mt-4 text-xs text-muted-foreground">Elegí un mes y un año para ver el total de la nómina y el cierre en efectivo y transferencia.</p>
       )}
 
       <GenerarDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />

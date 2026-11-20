@@ -55,6 +55,21 @@ enum EstadoCuenta {
   CERRADA // rendición confirmada por admin
 }
 
+// Cheques que emite la empresa (Mayra, planillas "Cheques Pendientes" por
+// banco). PAGO = a un proveedor. FINANCIAMIENTO_* = cheque propio para
+// financiarse con una SGR: el PROPIO (sin aval) se puede cubrir con la misma
+// SGR; el AVALADO entra al banco sí o sí y hay que cubrirlo.
+enum TipoCheque {
+  PAGO
+  FINANCIAMIENTO_PROPIO
+  FINANCIAMIENTO_AVALADO
+}
+
+enum FormatoCheque {
+  ECHEQ
+  FISICO
+}
+
 enum EstadoEcheq {
   PENDIENTE
   COBRADO
@@ -254,6 +269,7 @@ model Empresa {
   usuarios               Usuario[]
   usuarioEmpresaAccesos  UsuarioEmpresaAcceso[]
   eventos                Evento[]
+  echeqs                 Echeq[]
   proveedores            Proveedor[]
   tabConfigs             TabConfig[]
   categoriasStock        CategoriaStock[]
@@ -320,6 +336,7 @@ model Empresa {
   remitosEvento          RemitoEvento[]
   multas                 Multa[]
   controlesSalida        ControlSalidaVehiculo[]
+  premios_puntuales      PremioPuntual[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -1045,8 +1062,23 @@ model Proveedor {
 
 model Echeq {
   id                   Int             @id @default(autoincrement())
-  evento_id            Int
-  evento               Evento          @relation(fields: [evento_id], references: [id])
+  // Empresa que emite el cheque. Antes salía del evento; ahora hay cheques
+  // sin evento (financiamiento, gastos de la empresa) — ver Finanzas → Cheques.
+  empresa_id           Int
+  empresa              Empresa         @relation(fields: [empresa_id], references: [id])
+  evento_id            Int?
+  evento               Evento?         @relation(fields: [evento_id], references: [id], onDelete: Restrict)
+  // Banco del que sale (GALICIA, NACION, BBVA, BANCOR…) — texto en mayúsculas,
+  // las opciones habituales las sugiere el front.
+  banco                String?
+  formato              FormatoCheque   @default(ECHEQ)
+  tipo                 TipoCheque      @default(PAGO)
+  // SGR que avala o con la que se financia (sólo FINANCIAMIENTO_*)
+  sgr_id               Int?
+  sgr                  SGR?            @relation(fields: [sgr_id], references: [id])
+  // Clave del importador de la planilla de cheques del banco
+  // (banco|n° o fecha|monto|ocurrencia): reimportar no duplica.
+  import_key           String?
   // Movimiento en EG-EXTRA que originó este echeq (uno a uno)
   movimiento_id        Int?            @unique
   movimiento           Movimiento?     @relation("EcheqMovimiento", fields: [movimiento_id], references: [id])
@@ -1081,6 +1113,9 @@ model Echeq {
   updated_by           Int?
 
   pago_factura PagoFactura? @relation("PagoEcheq")
+
+  @@index([empresa_id, fecha_cobro_estimada])
+  @@unique([empresa_id, import_key])
 }
 
 // ─── ACCESO POR EVENTO ────────────────────────────────────────────────────────
@@ -1938,6 +1973,7 @@ model Empleado {
   multas                Multa[]
   controles_salida      ControlSalidaVehiculo[]
   novedades             Novedad[]
+  premios_puntuales PremioPuntual[]
 }
 
 model Jornada {
@@ -2219,6 +2255,8 @@ model AcuerdoSueldo {
   // lo elige Matías evento por evento (EventoEmpleadoMes.nivel_premio).
   valor_premio_produccion   Decimal?         @db.Decimal(10, 2)
   valor_premio_produccion_2 Decimal?         @db.Decimal(10, 2)
+  // Forma de pago habitual — ver FormaPagoSueldo y LiquidacionAdmin.monto_efectivo.
+  forma_pago                FormaPagoSueldo  @default(A_DEFINIR)
   // Estado del acuerdo
   activo                    Boolean          @default(true)
   notas                     String?
@@ -2270,6 +2308,15 @@ enum EstadoLiquidacionAdmin {
   APROBADA
   PAGADA
   CANCELADA
+}
+
+// Cómo se le paga el sueldo habitualmente (Mayra: columnas EFECTIVO /
+// TRANSFERENCIA de la hoja TOTALES). A_DEFINIR = se reparte mes a mes según
+// lo que diga Matías; el cierre lo muestra como "sin asignar".
+enum FormaPagoSueldo {
+  TRANSFERENCIA
+  EFECTIVO
+  A_DEFINIR
 }
 
 enum CategoriaAcuerdo {
@@ -2324,7 +2371,19 @@ model LiquidacionAdmin {
   antiguedad_anios            Int                    @default(0)
   importe_antiguedad          Decimal                @default(0) @db.Decimal(12, 2)
   telefono                    Decimal                @default(0) @db.Decimal(12, 2)
+  // Suma de vacaciones + aguinaldo + extras (la celda "VACACIONES/AGUINALDOS/
+  // EXTRAS" de la planilla). Se mantiene como total del grupo para el
+  // cálculo; el detalle va en los tres campos de abajo (Mayra, nov 2026).
   vacaciones_aguinaldo        Decimal                @default(0) @db.Decimal(12, 2)
+  vacaciones                  Decimal                @default(0) @db.Decimal(12, 2)
+  aguinaldo                   Decimal                @default(0) @db.Decimal(12, 2)
+  // Premio o pago puntual de este mes ("premio de productividad"), con su aclaración
+  extras                      Decimal                @default(0) @db.Decimal(12, 2)
+  extras_detalle              String?
+  // Premios que Matías agrega por un tiempo (PremioPuntual vigentes en el
+  // período) — snapshot [{ id, nombre, monto }] y su total, que suma al bruto.
+  premios_puntuales           Json?
+  premios_puntuales_total     Decimal                @default(0) @db.Decimal(12, 2)
   vales_descuentos            Decimal                @default(0) @db.Decimal(12, 2)
   // Cuotas de PrestamoEmpleado descontadas al aprobar — separado de
   // vales_descuentos porque cada una queda trazada en PagoPrestamoEmpleado
@@ -2337,6 +2396,11 @@ model LiquidacionAdmin {
   // Split entre empresas (snapshot al momento de liquidar) —
   // [{ empresa_id, empresa_nombre, porcentaje, monto }]
   splits                      Json?
+  // Cierre de sueldos: cuánto se paga en efectivo y cuánto por transferencia.
+  // null = se toma de AcuerdoSueldo.forma_pago (todo a una forma, o sin
+  // asignar si es A_DEFINIR). Lo que no se asigna queda como saldo/faltante.
+  monto_efectivo              Decimal?               @db.Decimal(12, 2)
+  monto_transferencia         Decimal?               @db.Decimal(12, 2)
   // Estado
   estado                      EstadoLiquidacionAdmin @default(BORRADOR)
   observaciones               String?
@@ -2375,6 +2439,30 @@ model LiquidacionAdmin {
   aprobado_at                 DateTime?
 
   @@unique([empleado_id, periodo_mes, periodo_anio])
+}
+
+// Premio que Matías le da a alguien por un tiempo y después saca ("premio
+// casa"): monto fijo mensual, vigente de `desde` a `hasta` (meses, ambos
+// inclusive; hasta null = hasta que se termine). Al generar la liquidación
+// del mes se suman los vigentes — ver LiquidacionAdmin.premios_puntuales.
+model PremioPuntual {
+  id          Int       @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa   @relation(fields: [empresa_id], references: [id])
+  empleado_id Int
+  empleado    Empleado  @relation(fields: [empleado_id], references: [id])
+  nombre      String
+  monto       Decimal   @db.Decimal(12, 2)
+  // Primer día del mes, medianoche UTC
+  desde       DateTime
+  hasta       DateTime?
+  notas       String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  created_by  Int?
+  deleted_at  DateTime?
+
+  @@index([empleado_id])
 }
 
 // ─── ESCALAFONES ADMINISTRATIVOS (valores por categoría, configurables) ──────
@@ -2715,6 +2803,8 @@ model SGR {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
   deleted_at         DateTime?
+
+  cheques Echeq[]
 }
 
 // ─── CIERRE CONTABLE — foto financiera para el estudio contable ─────────────

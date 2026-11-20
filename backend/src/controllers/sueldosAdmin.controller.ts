@@ -1,13 +1,13 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { EstadoLiquidacionAdmin, CategoriaAcuerdo, TipoAumento } from '@prisma/client';
+import { EstadoLiquidacionAdmin, CategoriaAcuerdo, TipoAumento, FormaPagoSueldo } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacionAdmin } from '../lib/pdfTemplates/liquidacionAdmin';
-import { calcularSueldoAdmin, calcularSplits, type SplitCalculado } from '../lib/calcularSueldoAdmin';
+import { calcularSueldoAdmin, calcularSplits, calcularAguinaldo, semestreDe, type SplitCalculado } from '../lib/calcularSueldoAdmin';
 import { calcularResumenBitacora } from './bitacoraViajes.controller';
 import { calcularResumenEventosMes } from './eventosEmpleadoMes.controller';
 
@@ -48,6 +48,12 @@ function mapDecimalsLiquidacionAdmin(l: any) {
     importe_antiguedad:   Number(l.importe_antiguedad),
     telefono:             Number(l.telefono),
     vacaciones_aguinaldo: Number(l.vacaciones_aguinaldo),
+    vacaciones:           Number(l.vacaciones ?? 0),
+    aguinaldo:            Number(l.aguinaldo ?? 0),
+    extras:               Number(l.extras ?? 0),
+    premios_puntuales_total: Number(l.premios_puntuales_total ?? 0),
+    monto_efectivo:       l.monto_efectivo      != null ? Number(l.monto_efectivo)      : null,
+    monto_transferencia:  l.monto_transferencia != null ? Number(l.monto_transferencia) : null,
     vales_descuentos:     Number(l.vales_descuentos),
     prestamos_descontados: Number(l.prestamos_descontados),
     subtotal_bruto:       Number(l.subtotal_bruto),
@@ -198,6 +204,7 @@ const acuerdoSchema = z.object({
   cobra_premio_produccion: z.boolean().default(false),
   valor_premio_produccion: z.number().min(0).nullable().optional(),
   valor_premio_produccion_2: z.number().min(0).nullable().optional(),
+  forma_pago:          z.nativeEnum(FormaPagoSueldo).optional(),
 });
 
 export async function createAcuerdo(req: Request, res: Response) {
@@ -237,6 +244,7 @@ export async function createAcuerdo(req: Request, res: Response) {
         cobra_premio_produccion: d.cobra_premio_produccion,
         valor_premio_produccion: d.valor_premio_produccion ?? null,
         valor_premio_produccion_2: d.valor_premio_produccion_2 ?? null,
+        ...(d.forma_pago && { forma_pago: d.forma_pago }),
         horas_pendientes_acum: d.horas_pendientes_acum ?? null,
         notas:               d.notas              ?? null,
         created_by:          req.user!.id,
@@ -316,6 +324,7 @@ export async function updateAcuerdo(req: Request, res: Response) {
       ...(d.cobra_premio_produccion !== undefined && { cobra_premio_produccion: d.cobra_premio_produccion }),
       ...(d.valor_premio_produccion !== undefined && { valor_premio_produccion: d.valor_premio_produccion }),
       ...(d.valor_premio_produccion_2 !== undefined && { valor_premio_produccion_2: d.valor_premio_produccion_2 }),
+      ...(d.forma_pago          !== undefined && { forma_pago: d.forma_pago }),
       ...(d.notas               !== undefined && { notas: d.notas }),
       ...(d.activo              !== undefined && { activo: d.activo }),
     },
@@ -538,7 +547,15 @@ const generarSchema = z.object({
   // no depende de horas); si se manda, sólo se usa para el banco de horas.
   horas_trabajadas:     z.number().min(0).default(0),
   vales_descuentos:     z.number().min(0).default(0),
+  // Legado: un solo monto para vacaciones/aguinaldo/extras. Si llega sin el
+  // detalle de abajo, se toma como extras.
   vacaciones_aguinaldo: z.number().min(0).default(0),
+  vacaciones:           z.number().min(0).optional(),
+  aguinaldo:            z.number().min(0).optional(),
+  extras:               z.number().min(0).optional(),
+  extras_detalle:       z.string().trim().max(300).nullable().optional(),
+  // PremioPuntual vigentes que NO se quieren sumar este mes
+  premios_excluidos:    z.array(z.number().int().positive()).optional().default([]),
   // Opt-in manual — se envía cuando el usuario clickeó "Usar viático
   // calculado" sobre el resumen de bitácora en el dialog de generar. Para
   // acuerdos categoria_acuerdo=CHOFER esto se aplica automáticamente aunque
@@ -558,6 +575,31 @@ const generarSchema = z.object({
   ipc_mes_referencia:    z.string().nullable().optional(),
   ipc_valor_aplicado:    z.number().nullable().optional(),
 });
+
+// ── Conceptos del mes: vacaciones, aguinaldo, extras y premios puntuales ────
+
+function grupoVacAgExt(d: { vacaciones?: number; aguinaldo?: number; extras?: number; vacaciones_aguinaldo?: number }) {
+  const detallado = d.vacaciones !== undefined || d.aguinaldo !== undefined || d.extras !== undefined;
+  const vacaciones = detallado ? (d.vacaciones ?? 0) : 0;
+  const aguinaldo  = detallado ? (d.aguinaldo ?? 0) : 0;
+  const extras     = detallado ? (d.extras ?? 0) : (d.vacaciones_aguinaldo ?? 0);
+  return { vacaciones, aguinaldo, extras, total: round2(vacaciones + aguinaldo + extras) };
+}
+
+const inicioMes = (mes: number, anio: number) => new Date(Date.UTC(anio, mes - 1, 1));
+
+export async function premiosVigentes(empleadoId: number, mes: number, anio: number) {
+  const periodo = inicioMes(mes, anio);
+  const premios = await prisma.premioPuntual.findMany({
+    where: {
+      empleado_id: empleadoId, deleted_at: null,
+      desde: { lte: periodo },
+      OR: [{ hasta: null }, { hasta: { gte: periodo } }],
+    },
+    orderBy: { desde: 'asc' },
+  });
+  return premios.map(p => ({ id: p.id, nombre: p.nombre, monto: Number(p.monto) }));
+}
 
 async function obtenerSplitsCalculados(empleadoId: number, total: number): Promise<SplitCalculado[]> {
   const splits = await prisma.empleadoEmpresaSplit.findMany({
@@ -635,10 +677,14 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
   }
   const valesDescuentos = anticipos.length > 0 ? round2(anticipos.reduce((s, a) => s + Number(a.monto), 0)) : d.vales_descuentos;
 
+  const grupo   = grupoVacAgExt(d);
+  const premios = (await premiosVigentes(d.empleado_id, d.periodo_mes, d.periodo_anio)).filter(p => !d.premios_excluidos.includes(p.id));
+  const totalPremios = round2(premios.reduce((s, p) => s + p.monto, 0));
+
   const calculo = calcularSueldoAdmin(
-    acuerdo, d.horas_trabajadas, valesDescuentos, d.vacaciones_aguinaldo, undefined,
+    acuerdo, d.horas_trabajadas, valesDescuentos, grupo.total, undefined,
     viaticoEfectivo, d.porcentaje_aumento ?? undefined, premioPresentismoEfectivo,
-    premioViajeEfectivo, resumenEventosMes.total,
+    premioViajeEfectivo, resumenEventosMes.total, totalPremios,
   );
   const splits  = await obtenerSplitsCalculados(d.empleado_id, calculo.total_a_cobrar);
 
@@ -671,7 +717,13 @@ export async function generarLiquidacionAdmin(req: Request, res: Response) {
         antiguedad_anios:     calculo.antiguedad_anios,
         importe_antiguedad:   calculo.importe_antiguedad,
         telefono:             calculo.telefono,
-        vacaciones_aguinaldo: d.vacaciones_aguinaldo,
+        vacaciones_aguinaldo: grupo.total,
+        vacaciones:           grupo.vacaciones,
+        aguinaldo:            grupo.aguinaldo,
+        extras:               grupo.extras,
+        extras_detalle:       grupo.extras > 0 ? (d.extras_detalle || null) : null,
+        premios_puntuales:    premios.length > 0 ? (premios as any) : undefined,
+        premios_puntuales_total: totalPremios,
         vales_descuentos:     valesDescuentos,
         subtotal_bruto:       calculo.subtotal_bruto,
         total_a_cobrar:       calculo.total_a_cobrar,
@@ -742,6 +794,10 @@ const updateLiquidacionSchema = z.object({
   horas_trabajadas:     z.number().min(0).optional(),
   vales_descuentos:     z.number().min(0).optional(),
   vacaciones_aguinaldo: z.number().min(0).optional(),
+  vacaciones:           z.number().min(0).optional(),
+  aguinaldo:            z.number().min(0).optional(),
+  extras:               z.number().min(0).optional(),
+  extras_detalle:       z.string().trim().max(300).nullable().optional(),
 });
 
 export async function updateLiquidacionAdmin(req: Request, res: Response) {
@@ -763,7 +819,19 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
 
   const horasTrabajadas    = d.horas_trabajadas     ?? Number(liquidacion.horas_trabajadas);
   const valesDescuentos    = d.vales_descuentos      ?? Number(liquidacion.vales_descuentos);
-  const vacacionesAguinaldo = d.vacaciones_aguinaldo ?? Number(liquidacion.vacaciones_aguinaldo);
+  // Detalle nuevo (vacaciones/aguinaldo/extras). Si sólo llega el monto
+  // legado, va a extras; si no llega nada, se conserva lo guardado.
+  const tocaGrupo = d.vacaciones !== undefined || d.aguinaldo !== undefined || d.extras !== undefined;
+  const grupo = tocaGrupo
+    ? grupoVacAgExt({
+        vacaciones: d.vacaciones ?? Number(liquidacion.vacaciones),
+        aguinaldo:  d.aguinaldo  ?? Number(liquidacion.aguinaldo),
+        extras:     d.extras     ?? Number(liquidacion.extras),
+      })
+    : d.vacaciones_aguinaldo !== undefined
+      ? grupoVacAgExt({ vacaciones_aguinaldo: d.vacaciones_aguinaldo })
+      : { vacaciones: Number(liquidacion.vacaciones), aguinaldo: Number(liquidacion.aguinaldo), extras: Number(liquidacion.extras), total: Number(liquidacion.vacaciones_aguinaldo) };
+  const vacacionesAguinaldo = grupo.total;
 
   // El viático y el % de aumento ya persistidos en la liquidación se
   // preservan tal cual — recalcularlos desde liquidacion.acuerdo perdería un
@@ -771,7 +839,14 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
   // generarLiquidacionAdmin), y además podría reflejar un acuerdo editado
   // después de generar esta liquidación pero antes de aprobarla.
   const aumentoPersistido = liquidacion.porcentaje_aumento_aplicado !== null ? Number(liquidacion.porcentaje_aumento_aplicado) : undefined;
-  const calculo = calcularSueldoAdmin(liquidacion.acuerdo, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, undefined, Number(liquidacion.viatico), aumentoPersistido);
+  // Premio por vuelta, de producción, presentismo y premios puntuales: se
+  // conservan los que quedaron al generar (antes se recalculaba sin ellos y el
+  // subtotal los perdía al editar un borrador).
+  const calculo = calcularSueldoAdmin(
+    liquidacion.acuerdo, horasTrabajadas, valesDescuentos, vacacionesAguinaldo, undefined,
+    Number(liquidacion.viatico), aumentoPersistido, Number(liquidacion.premio_presentismo),
+    Number(liquidacion.premio_viaje), Number(liquidacion.premio_produccion_total), Number(liquidacion.premios_puntuales_total),
+  );
   const splits  = await obtenerSplitsCalculados(liquidacion.empleado_id, calculo.total_a_cobrar);
 
   // Banco de horas (CHOFER) — recalculado sobre el `anterior` ya persistido
@@ -788,6 +863,10 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
       horas_trabajadas:     horasTrabajadas,
       vales_descuentos:     valesDescuentos,
       vacaciones_aguinaldo: vacacionesAguinaldo,
+      vacaciones:           grupo.vacaciones,
+      aguinaldo:            grupo.aguinaldo,
+      extras:               grupo.extras,
+      extras_detalle:       grupo.extras === 0 ? null : (d.extras_detalle !== undefined ? (d.extras_detalle || null) : liquidacion.extras_detalle),
       horas_extras:         calculo.horas_extras,
       importe_horas_extras: calculo.importe_horas_extras,
       antiguedad_anios:     calculo.antiguedad_anios,
@@ -1077,6 +1156,11 @@ export async function exportarLiquidacionAdminPDF(req: Request, res: Response) {
     importe_antiguedad:   Number(liquidacion.importe_antiguedad),
     telefono:             Number(liquidacion.telefono),
     vacaciones_aguinaldo: Number(liquidacion.vacaciones_aguinaldo),
+    vacaciones:           Number(liquidacion.vacaciones),
+    aguinaldo:            Number(liquidacion.aguinaldo),
+    extras:               Number(liquidacion.extras),
+    extras_detalle:       liquidacion.extras_detalle,
+    premios_puntuales:    (liquidacion.premios_puntuales as unknown as { nombre: string; monto: number }[] | null) ?? [],
     vales_descuentos:     Number(liquidacion.vales_descuentos),
     prestamos_descontados: Number(liquidacion.prestamos_descontados),
     subtotal_bruto:       Number(liquidacion.subtotal_bruto),
@@ -1169,29 +1253,48 @@ export async function getResumenMensual(req: Request, res: Response) {
       periodo_mes: mes, periodo_anio: anio, ...withTenant(req.empresaId!),
       estado: { not: EstadoLiquidacionAdmin.CANCELADA },
     },
-    include: { empleado: { select: EMPLEADO_SELECT } },
+    include: { empleado: { select: EMPLEADO_SELECT }, acuerdo: { select: { forma_pago: true } } },
+    orderBy: { empleado: { apellido: 'asc' } },
   });
 
   const empleados = liquidaciones.map(l => {
     const splits = (l.splits as unknown as SplitCalculado[] | null) ?? [];
+    const total  = Number(l.total_a_cobrar);
     return {
+      liquidacion_id:  l.id,
+      estado:          l.estado,
       empleado_id:     l.empleado_id,
       empleado_nombre: `${l.empleado.apellido}, ${l.empleado.nombre}`,
       basico:          Number(l.sueldo_basico),
       extras:          Number(l.importe_horas_extras),
+      vacaciones:      Number(l.vacaciones),
+      aguinaldo:       Number(l.aguinaldo),
+      extras_mes:      Number(l.extras),
+      premios_puntuales: Number(l.premios_puntuales_total),
       descuentos:      Number(l.vales_descuentos),
       prestamos:       Number(l.prestamos_descontados),
-      total:           Number(l.total_a_cobrar),
+      total,
+      forma_pago:      l.acuerdo.forma_pago,
+      ...formaPagoEfectiva(l, total),
       splits:          splits.map(s => ({ empresa_nombre: s.empresa_nombre, monto: s.monto })),
     };
   });
 
+  type Num = 'basico' | 'extras' | 'vacaciones' | 'aguinaldo' | 'extras_mes' | 'premios_puntuales' | 'descuentos' | 'prestamos' | 'total' | 'efectivo' | 'transferencia' | 'sin_asignar';
+  const suma = (k: Num) => round2(empleados.reduce((s, e) => s + e[k], 0));
   const totales = {
-    basico:     round2(empleados.reduce((s, e) => s + e.basico, 0)),
-    extras:     round2(empleados.reduce((s, e) => s + e.extras, 0)),
-    descuentos: round2(empleados.reduce((s, e) => s + e.descuentos, 0)),
-    prestamos:  round2(empleados.reduce((s, e) => s + e.prestamos, 0)),
-    total:      round2(empleados.reduce((s, e) => s + e.total, 0)),
+    basico:     suma('basico'),
+    extras:     suma('extras'),
+    vacaciones: suma('vacaciones'),
+    aguinaldo:  suma('aguinaldo'),
+    extras_mes: suma('extras_mes'),
+    premios_puntuales: suma('premios_puntuales'),
+    descuentos: suma('descuentos'),
+    prestamos:  suma('prestamos'),
+    total:      suma('total'),
+    efectivo:      suma('efectivo'),
+    transferencia: suma('transferencia'),
+    sin_asignar:   suma('sin_asignar'),
     por_empresa: [] as { empresa_nombre: string; monto: number }[],
   };
 
@@ -1386,4 +1489,239 @@ export async function deletePrestamo(req: Request, res: Response) {
   });
 
   res.json({ message: 'Préstamo eliminado correctamente' });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CIERRE DE SUELDOS — efectivo / transferencia (hoja TOTALES de Mayra)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Lo cargado a mano manda; si no hay nada, sale de la forma de pago habitual
+// del acuerdo. Lo que queda sin repartir es el "saldo / faltante".
+function formaPagoEfectiva(
+  l: { monto_efectivo: unknown; monto_transferencia: unknown; acuerdo: { forma_pago: FormaPagoSueldo } },
+  total: number,
+): { efectivo: number; transferencia: number; sin_asignar: number; pago_manual: boolean } {
+  const manual = l.monto_efectivo != null || l.monto_transferencia != null;
+  let efectivo = 0, transferencia = 0;
+  if (manual) {
+    efectivo      = Number(l.monto_efectivo ?? 0);
+    transferencia = Number(l.monto_transferencia ?? 0);
+  } else if (l.acuerdo.forma_pago === 'EFECTIVO') efectivo = total;
+  else if (l.acuerdo.forma_pago === 'TRANSFERENCIA') transferencia = total;
+  return { efectivo: round2(efectivo), transferencia: round2(transferencia), sin_asignar: round2(total - efectivo - transferencia), pago_manual: manual };
+}
+
+const formaPagoSchema = z.object({
+  monto_efectivo:      z.number().min(0).nullable(),
+  monto_transferencia: z.number().min(0).nullable(),
+});
+
+// PATCH /liquidaciones-admin/:id/forma-pago — se puede cargar en borrador o
+// ya aprobada (Mayra lo completa cuando está por pagar). null en los dos
+// vuelve a la forma de pago habitual del acuerdo.
+export async function updateFormaPagoLiquidacion(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const parsed = formaPagoSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+  const d = parsed.data;
+
+  const liq = await prisma.liquidacionAdmin.findFirst({ where: { id, ...withTenant(req.empresaId!) }, include: { empleado: { select: EMPLEADO_SELECT } } });
+  if (!liq) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
+  if (liq.estado === EstadoLiquidacionAdmin.CANCELADA) { res.status(400).json({ error: 'La liquidación está cancelada' }); return; }
+  const total = Number(liq.total_a_cobrar);
+  const asignado = (d.monto_efectivo ?? 0) + (d.monto_transferencia ?? 0);
+  if (asignado > total + 0.01) {
+    res.status(400).json({ error: `Efectivo + transferencia ($${asignado.toLocaleString('es-AR')}) supera el total a cobrar ($${total.toLocaleString('es-AR')})` }); return;
+  }
+  const manual = d.monto_efectivo !== null || d.monto_transferencia !== null;
+  const updated = await prisma.liquidacionAdmin.update({
+    where: { id },
+    data:  {
+      monto_efectivo:      manual ? (d.monto_efectivo ?? 0) : null,
+      monto_transferencia: manual ? (d.monto_transferencia ?? 0) : null,
+    },
+    include: { empleado: { select: EMPLEADO_SELECT } },
+  });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'LiquidacionAdmin', entidadId: id,
+    descripcion: `Forma de pago de ${liq.empleado.apellido}, ${liq.empleado.nombre} — ${liq.periodo_mes}/${liq.periodo_anio}: ${manual ? `efectivo $${d.monto_efectivo ?? 0}, transferencia $${d.monto_transferencia ?? 0}` : 'la habitual del acuerdo'}`,
+    datosAntes: { monto_efectivo: liq.monto_efectivo, monto_transferencia: liq.monto_transferencia }, datosDespues: d,
+    ip: req.ip, tx: prisma as any,
+  });
+  res.json(mapDecimalsLiquidacionAdmin(updated));
+}
+
+// PATCH /acuerdos/:id/forma-pago — fuera del candado de updateAcuerdo (que no
+// deja tocar un acuerdo con liquidaciones aprobadas): la forma de pago no
+// cambia ningún monto.
+export async function updateFormaPagoAcuerdo(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const parsed = z.object({ forma_pago: z.nativeEnum(FormaPagoSueldo) }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Forma de pago inválida' }); return; }
+  const existing = await prisma.acuerdoSueldo.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Acuerdo no encontrado' }); return; }
+  const updated = await prisma.acuerdoSueldo.update({
+    where: { id }, data: { forma_pago: parsed.data.forma_pago },
+    include: { empleado: { select: EMPLEADO_SELECT }, empresa: { select: EMPRESA_SELECT } },
+  });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'AcuerdoSueldo', entidadId: id,
+    descripcion: `Forma de pago del acuerdo #${id}: ${parsed.data.forma_pago}`,
+    datosAntes: { forma_pago: existing.forma_pago }, datosDespues: parsed.data, ip: req.ip, tx: prisma as any,
+  });
+  res.json(mapDecimalsAcuerdo(updated));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGUINALDO SUGERIDO — como en la planilla: sueldos del semestre ÷ 6 ÷ 2
+// ═══════════════════════════════════════════════════════════════════════════
+
+const aguinaldoSchema = z.object({
+  mes:         z.coerce.number().int().min(1).max(12),
+  anio:        z.coerce.number().int().min(2000).max(2100),
+  // Sueldo del mes que se está generando (todavía no existe la liquidación):
+  // lo manda el front desde la vista previa, sin vacaciones/aguinaldo/extras.
+  base_actual: z.coerce.number().min(0).optional(),
+  // Al editar una liquidación ya generada: su propio mes se toma de ella.
+  excluir_id:  z.coerce.number().int().positive().optional(),
+});
+
+export async function getAguinaldoSugerido(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const parsed = aguinaldoSchema.safeParse(req.query);
+  if (!parsed.success) { res.status(400).json({ error: 'Se requieren mes y anio' }); return; }
+  const { mes, anio, base_actual } = parsed.data;
+
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) }, select: { id: true } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+
+  const sem = semestreDe(mes);
+  const liqs = await prisma.liquidacionAdmin.findMany({
+    where: {
+      empleado_id: empleadoId, periodo_anio: anio, periodo_mes: { gte: sem.desde, lte: sem.hasta },
+      estado: { not: EstadoLiquidacionAdmin.CANCELADA },
+    },
+    select: { id: true, periodo_mes: true, subtotal_bruto: true, vacaciones_aguinaldo: true },
+  });
+  const porMes = new Map(liqs.map(l => [l.periodo_mes, l]));
+
+  const meses: { mes: number; nombre: string; base: number | null; origen: 'liquidacion' | 'este_mes' | 'sin_dato' }[] = [];
+  for (let m = sem.desde; m <= sem.hasta; m++) {
+    const l = porMes.get(m);
+    // Sueldo del mes sin el grupo vacaciones/aguinaldo/extras
+    const base = l
+      ? round2(Number(l.subtotal_bruto) - Number(l.vacaciones_aguinaldo))
+      : (m === mes && base_actual !== undefined ? base_actual : null);
+    meses.push({ mes: m, nombre: MESES_LABEL[m - 1], base, origen: l ? 'liquidacion' : (base !== null ? 'este_mes' : 'sin_dato') });
+  }
+  const calc = calcularAguinaldo(meses.map(m => m.base ?? 0));
+  res.json({
+    semestre: `${sem.nombre} ${anio}`,
+    meses,
+    meses_sin_dato: meses.filter(m => m.base === null).map(m => m.nombre),
+    ...calc,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PREMIOS PUNTUALES — los que Matías da por un tiempo
+// ═══════════════════════════════════════════════════════════════════════════
+
+const premioSchema = z.object({
+  nombre:     z.string().trim().min(1).max(80),
+  monto:      z.number().positive(),
+  desde_mes:  z.number().int().min(1).max(12),
+  desde_anio: z.number().int().min(2000).max(2100),
+  hasta_mes:  z.number().int().min(1).max(12).nullable().optional(),
+  hasta_anio: z.number().int().min(2000).max(2100).nullable().optional(),
+  notas:      z.string().nullable().optional(),
+});
+
+function mapPremio<T extends { monto: unknown; desde: Date; hasta: Date | null }>(p: T) {
+  return {
+    ...p, monto: Number(p.monto),
+    desde_mes: p.desde.getUTCMonth() + 1, desde_anio: p.desde.getUTCFullYear(),
+    hasta_mes: p.hasta ? p.hasta.getUTCMonth() + 1 : null, hasta_anio: p.hasta ? p.hasta.getUTCFullYear() : null,
+  };
+}
+
+export async function listPremiosPuntuales(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const premios = await prisma.premioPuntual.findMany({
+    where:   { empleado_id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) },
+    orderBy: [{ desde: 'desc' }],
+  });
+  res.json(premios.map(mapPremio));
+}
+
+function rangoPremio(d: z.infer<typeof premioSchema>) {
+  const desde = inicioMes(d.desde_mes, d.desde_anio);
+  const hasta = d.hasta_mes && d.hasta_anio ? inicioMes(d.hasta_mes, d.hasta_anio) : null;
+  return { desde, hasta, ok: !hasta || hasta >= desde };
+}
+
+export async function createPremioPuntual(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const parsed = premioSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+  const r = rangoPremio(parsed.data);
+  if (!r.ok) { res.status(400).json({ error: 'El mes "hasta" es anterior al "desde"' }); return; }
+
+  const premio = await prisma.premioPuntual.create({
+    data: {
+      empresa_id: req.empresaId!, empleado_id: empleadoId, nombre: parsed.data.nombre, monto: parsed.data.monto,
+      desde: r.desde, hasta: r.hasta, notas: parsed.data.notas ?? null, created_by: req.user!.id,
+    },
+  });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'CREATE', entidad: 'PremioPuntual', entidadId: premio.id,
+    descripcion: `Premio "${premio.nombre}" de $${parsed.data.monto} para ${empleado.apellido}, ${empleado.nombre}`,
+    datosDespues: parsed.data, ip: req.ip, tx: prisma as any,
+  });
+  res.status(201).json(mapPremio(premio));
+}
+
+// Editar (sobre todo, ponerle fin: hasta = último mes que lo cobra). No toca
+// liquidaciones ya generadas: quedan con su snapshot.
+export async function updatePremioPuntual(req: Request, res: Response) {
+  const id = Number(req.params.premioId);
+  const parsed = premioSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+  const existing = await prisma.premioPuntual.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Premio no encontrado' }); return; }
+  const r = rangoPremio(parsed.data);
+  if (!r.ok) { res.status(400).json({ error: 'El mes "hasta" es anterior al "desde"' }); return; }
+  const updated = await prisma.premioPuntual.update({
+    where: { id },
+    data:  { nombre: parsed.data.nombre, monto: parsed.data.monto, desde: r.desde, hasta: r.hasta, notas: parsed.data.notas ?? null },
+  });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'PremioPuntual', entidadId: id,
+    descripcion: `Editó premio "${updated.nombre}"`, datosAntes: mapPremio(existing), datosDespues: parsed.data, ip: req.ip, tx: prisma as any,
+  });
+  res.json(mapPremio(updated));
+}
+
+export async function deletePremioPuntual(req: Request, res: Response) {
+  const id = Number(req.params.premioId);
+  const existing = await prisma.premioPuntual.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
+  if (!existing) { res.status(404).json({ error: 'Premio no encontrado' }); return; }
+  await prisma.premioPuntual.update({ where: { id }, data: { deleted_at: new Date() } });
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'DELETE', entidad: 'PremioPuntual', entidadId: id,
+    descripcion: `Eliminó premio "${existing.nombre}"`, datosAntes: mapPremio(existing), ip: req.ip, tx: prisma as any,
+  });
+  res.json({ ok: true });
+}
+
+// Premios vigentes para el período (los usa el dialog de generar)
+export async function getPremiosVigentes(req: Request, res: Response) {
+  const empleadoId = Number(req.params.id);
+  const q = horasPeriodoSchema.safeParse(req.query);
+  if (!q.success) { res.status(400).json({ error: 'Se requieren mes y anio' }); return; }
+  const empleado = await prisma.empleado.findFirst({ where: { id: empleadoId, deleted_at: null, ...withTenant(req.empresaId!) }, select: { id: true } });
+  if (!empleado) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
+  res.json(await premiosVigentes(empleadoId, q.data.mes, q.data.anio));
 }

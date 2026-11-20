@@ -6,6 +6,7 @@ import type { CalendarioResponse, TipoCalendario } from '@/types';
 // Espejo de TIPO_QUERY_MAP en backend/src/controllers/calendario.controller.ts
 export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   EVENTO:               'eventos',
+  MONTAJE:              'montajes',
   FACTURA_VENCE:        'facturas',
   ECHEQ_COBRO:          'echeqs',
   JORNADA:              'jornadas',
@@ -21,6 +22,10 @@ export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   CUOTA_AFIP:           'cuotas_afip',
   CUOTA_PRESTAMO:       'cuotas_prestamo',
   FACTURA_EMITIDA_VENCE: 'facturas_emitidas',
+  SGR_VENCE:            'sgr',
+  GASTO_ESPACIO_VENCE:  'gastos_espacios',
+  EXCEDENTE_PENDIENTE:  'excedentes_horas',
+  SINIESTRO_PENDIENTE:  'siniestros',
   ACTIVO_STOCK_BAJO:    'stock_bajo',
   SINIESTRO_VEHICULO_PENDIENTE: 'siniestros_vehiculo',
   TECNICA_VENCE:        'tecnica',
@@ -28,6 +33,7 @@ export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   MULTA_VENCE:          'multas',
   CONTROL_SALIDA:       'controles_salida',
   NOVEDAD:              'novedades',
+  CUMPLEANOS:           'cumpleanos',
 };
 
 export const TODOS_LOS_TIPOS: TipoCalendario[] = Object.keys(TIPO_QUERY_MAP) as TipoCalendario[];

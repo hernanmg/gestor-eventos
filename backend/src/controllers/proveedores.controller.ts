@@ -109,7 +109,7 @@ export async function getById(req: Request, res: Response) {
   const echeqsFormatted = echeqs.map(e => ({
     id:              e.id,
     evento_id:       e.evento_id,
-    evento_nombre:   e.evento.nombre,
+    evento_nombre:   e.evento?.nombre ?? null,
     numero:          e.numero,
     importe:         Number(e.importe),
     moneda:          e.moneda,

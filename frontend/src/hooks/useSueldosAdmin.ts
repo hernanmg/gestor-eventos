@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import type {
   AcuerdoSueldo, LiquidacionAdmin, EmpresaMini, CuentaMini, EstadoLiquidacionAdmin, PrestamoEmpleado,
   BitacoraViaje, ResumenBitacora, TipoRecorrido, CategoriaAcuerdo, TipoAumento, ResumenEventosMes,
+  FormaPagoSueldo, PremioPuntual, AguinaldoSugerido,
 } from '@/types';
 
 const ACUERDOS_KEY  = ['rrhh', 'acuerdos'];
@@ -74,13 +75,25 @@ export function useIpcIndec() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface ResumenMensualEmpleado {
+  liquidacion_id:  number;
+  estado:          EstadoLiquidacionAdmin;
   empleado_id:     number;
   empleado_nombre: string;
   basico:     number;
-  extras:     number;
+  extras:     number;   // horas extras
+  vacaciones: number;
+  aguinaldo:  number;
+  extras_mes: number;   // extras / premio puntual de este mes
+  premios_puntuales: number;
   descuentos: number;
   prestamos:  number;
   total:      number;
+  // Cierre: efectivo + transferencia + sin_asignar = total
+  forma_pago:    FormaPagoSueldo;
+  efectivo:      number;
+  transferencia: number;
+  sin_asignar:   number;
+  pago_manual:   boolean;
   splits:     { empresa_nombre: string; monto: number }[];
 }
 
@@ -89,6 +102,8 @@ export interface ResumenMensual {
   empleados: ResumenMensualEmpleado[];
   totales: {
     basico: number; extras: number; descuentos: number; prestamos: number; total: number;
+    vacaciones: number; aguinaldo: number; extras_mes: number; premios_puntuales: number;
+    efectivo: number; transferencia: number; sin_asignar: number;
     por_empresa: { empresa_nombre: string; monto: number }[];
   };
 }
@@ -221,6 +236,12 @@ export interface GenerarLiquidacionAdminPayload {
   // vales_descuentos (ver generarLiquidacionAdmin en el backend).
   anticipo_ids?:        number[];
   vacaciones_aguinaldo?: number;
+  vacaciones?:          number;
+  aguinaldo?:           number;
+  extras?:              number;
+  extras_detalle?:      string | null;
+  // Premios puntuales vigentes que no se suman este mes
+  premios_excluidos?:   number[];
   // Se manda cuando el usuario clickeó "Usar viático calculado" sobre el
   // resumen de bitácora — reemplaza el viático fijo del acuerdo. Para
   // acuerdos categoria_acuerdo=CHOFER el backend lo aplica automático aunque
@@ -247,7 +268,7 @@ export function useGenerarLiquidacionAdmin() {
 export function useUpdateLiquidacionAdmin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { horas_trabajadas?: number; vales_descuentos?: number; vacaciones_aguinaldo?: number } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { horas_trabajadas?: number; vales_descuentos?: number; vacaciones?: number; aguinaldo?: number; extras?: number; extras_detalle?: string | null } }) =>
       api.put(`/rrhh/liquidaciones-admin/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY }),
   });
@@ -274,6 +295,80 @@ export function useCancelarLiquidacionAdmin() {
   return useMutation({
     mutationFn: (id: number) => api.patch(`/rrhh/liquidaciones-admin/${id}/cancelar`).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY }),
+  });
+}
+
+// ── Cierre de sueldos: efectivo / transferencia ──────────────────────────────
+
+export function useUpdateFormaPagoLiquidacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, monto_efectivo, monto_transferencia }: { id: number; monto_efectivo: number | null; monto_transferencia: number | null }) =>
+      api.patch(`/rrhh/liquidaciones-admin/${id}/forma-pago`, { monto_efectivo, monto_transferencia }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY }),
+  });
+}
+
+export function useUpdateFormaPagoAcuerdo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ acuerdoId, forma_pago }: { acuerdoId: number; forma_pago: FormaPagoSueldo }) =>
+      api.patch(`/rrhh/acuerdos/${acuerdoId}/forma-pago`, { forma_pago }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ACUERDOS_KEY });
+      qc.invalidateQueries({ queryKey: LIQ_ADMIN_KEY });
+    },
+  });
+}
+
+// ── Aguinaldo sugerido (sueldos del semestre ÷ 6 ÷ 2) ────────────────────────
+
+export function useAguinaldoSugerido() {
+  return useMutation({
+    mutationFn: ({ empleadoId, mes, anio, base_actual }: { empleadoId: number; mes: number; anio: number; base_actual?: number }) =>
+      api.get<AguinaldoSugerido>(`/rrhh/empleados/${empleadoId}/aguinaldo-sugerido`, { params: { mes, anio, base_actual } }).then(r => r.data),
+  });
+}
+
+// ── Premios puntuales (los que Matías da por un tiempo) ─────────────────────
+
+const PREMIOS_KEY = ['rrhh', 'premios-puntuales'];
+
+export function usePremiosPuntuales(empleadoId: number | null) {
+  return useQuery<PremioPuntual[]>({
+    queryKey: [...PREMIOS_KEY, empleadoId],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/premios-puntuales`).then(r => r.data),
+    enabled:  empleadoId !== null,
+  });
+}
+
+export function usePremiosVigentes(empleadoId: number | null, mes: number, anio: number) {
+  return useQuery<{ id: number; nombre: string; monto: number }[]>({
+    queryKey: [...PREMIOS_KEY, 'vigentes', empleadoId, mes, anio],
+    queryFn:  () => api.get(`/rrhh/empleados/${empleadoId}/premios-puntuales/vigentes`, { params: { mes, anio } }).then(r => r.data),
+    enabled:  empleadoId !== null,
+  });
+}
+
+export interface PremioPuntualPayload {
+  nombre: string; monto: number; desde_mes: number; desde_anio: number;
+  hasta_mes?: number | null; hasta_anio?: number | null; notas?: string | null;
+}
+
+export function useGuardarPremioPuntual(empleadoId: number | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id?: number; data: PremioPuntualPayload }) =>
+      (id ? api.put(`/rrhh/premios-puntuales/${id}`, data) : api.post(`/rrhh/empleados/${empleadoId}/premios-puntuales`, data)).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PREMIOS_KEY }),
+  });
+}
+
+export function useDeletePremioPuntual() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/rrhh/premios-puntuales/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PREMIOS_KEY }),
   });
 }
 

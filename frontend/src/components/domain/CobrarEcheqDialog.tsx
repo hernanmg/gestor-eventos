@@ -20,8 +20,9 @@ export default function CobrarEcheqDialog({ echeq, cuentas, open, onClose }: Pro
   const [referencia, setReferencia] = useState('');
   const [error,      setError]      = useState<string | null>(null);
 
-  const cobrar    = useCobrarEcheq(echeq.evento_id);
-  const { data: posicion } = usePosicionConsolidada(echeq.evento_id);
+  // Se abre desde la pestaña del evento: ahí el echeq siempre tiene evento.
+  const cobrar    = useCobrarEcheq(echeq.evento_id!);
+  const { data: posicion } = usePosicionConsolidada(echeq.evento_id!);
 
   // Build saldo map: cuenta_id → saldo_actual
   const saldoMap: Record<number, number> = {};

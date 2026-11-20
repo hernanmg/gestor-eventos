@@ -126,8 +126,9 @@ async function resumenPorEmpresa(empresaId: number, desde: Date, hasta: Date) {
     // Idem simplificación de moneda que en movimientosMes.
     prisma.echeq.aggregate({
       where: {
-        deleted_at: null, estado: 'PENDIENTE', moneda: 'ARS',
-        evento: { deleted_at: null, empresa_id: empresaId },
+        deleted_at: null, estado: 'PENDIENTE', moneda: 'ARS', empresa_id: empresaId,
+        // Con o sin evento (los cheques de la empresa también cuentan)
+        OR: [{ evento_id: null }, { evento: { deleted_at: null } }],
       },
       _sum: { importe: true },
     }),

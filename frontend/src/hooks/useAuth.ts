@@ -62,14 +62,19 @@ export function useAuth() {
 
   // ── Cambio de empresa activa ──────────────────────────────────────────────
   const switchEmpresaMutation = useMutation({
-    mutationFn: (empresaId: number) =>
-      api.post<MeResponse>('/auth/switch-empresa', { empresaId }).then(r => r.data),
-    onSuccess: (data) => {
+    // `to`: a dónde ir después de cambiar (p. ej. un link del calendario de la
+    // otra empresa). Sin `to`, va al inicio de la empresa nueva.
+    mutationFn: (args: number | { empresaId: number; to?: string }) => {
+      const empresaId = typeof args === 'number' ? args : args.empresaId;
+      return api.post<MeResponse>('/auth/switch-empresa', { empresaId }).then(r => r.data);
+    },
+    onSuccess: (data, args) => {
       queryClient.setQueryData(ME_QUERY_KEY, data);
       // Todos los datos cacheados pertenecen a la empresa anterior — se
       // invalidan para que se vuelvan a pedir con la empresa nueva.
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'auth' });
-      navigate(resolveHomeRoute(data), { replace: true });
+      const to = typeof args === 'number' ? undefined : args.to;
+      navigate(to ?? resolveHomeRoute(data), { replace: !to });
     },
   });
 

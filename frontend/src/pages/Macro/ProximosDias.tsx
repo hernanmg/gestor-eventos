@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { useCalendario, TODOS_LOS_TIPOS } from '@/hooks/useCalendario';
-import { COLORES, TIPO_LABEL, getDetailLink, metadataResumen } from '@/lib/calendarioItems';
+import { COLORES, TIPO_LABEL, metadataResumen } from '@/lib/calendarioItems';
+import CalendarioItemLink from '@/components/domain/CalendarioItemLink';
 import type { CalendarioItem } from '@/types';
 
 // ── Agenda "Próximos 7 días" ─────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export default function ProximosDias() {
                   {items.map(item => {
                     const info = metadataResumen(item)[0];
                     return (
-                      <Link key={item.id} to={getDetailLink(item)} className="group flex items-center gap-2 py-1 first:pt-0 last:pb-0">
+                      <CalendarioItemLink key={item.id} item={item} className="group flex items-center gap-2 py-1 first:pt-0 last:pb-0">
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: COLORES[item.tipo] }} aria-hidden="true" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium group-hover:underline">{item.titulo}</span>
@@ -85,7 +86,7 @@ export default function ProximosDias() {
                           </span>
                         </span>
                         <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
-                      </Link>
+                      </CalendarioItemLink>
                     );
                   })}
                 </div>

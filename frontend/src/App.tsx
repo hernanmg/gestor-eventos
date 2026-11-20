@@ -31,6 +31,7 @@ import ParteDiarioPage      from '@/pages/ParteDiario';
 import ParteDiarioHistorialPage from '@/pages/ParteDiario/Historial';
 import FlotaPage            from '@/pages/Flota';
 import AFIPPrestamosPage    from '@/pages/AFIPPrestamos';
+import ChequesPage          from '@/pages/Cheques';
 import FacturasEmitidasPage from '@/pages/FacturasEmitidas';
 import EspaciosCompartidosPage from '@/pages/EspaciosCompartidos';
 import EspacioCompartidoDetallePage from '@/pages/EspaciosCompartidos/Detalle';
@@ -125,6 +126,7 @@ export default function App() {
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
             <Route path="/uniformes"               element={<UniformesPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
+            <Route path="/cheques"                 element={<ChequesPage />} />
             <Route path="/tarjeta-corporativa"     element={<TarjetaCorporativaPage />} />
             <Route path="/facturas-emitidas"       element={<FacturasEmitidasPage />} />
             <Route path="/espacios-compartidos"     element={<EspaciosCompartidosPage />} />

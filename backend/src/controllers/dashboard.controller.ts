@@ -39,7 +39,7 @@ export async function getResumen(req: Request, res: Response) {
       },
     }),
     prisma.echeq.findMany({
-      where:  { deleted_at: null, estado: 'PENDIENTE', evento: withTenant(empresaId) },
+      where:  { deleted_at: null, estado: 'PENDIENTE', ...withTenant(empresaId), OR: [{ evento_id: null }, { evento: { deleted_at: null } }] },
       select: { moneda: true, importe: true, fecha_cobro_estimada: true },
     }),
     prisma.evento.findMany({
@@ -296,7 +296,7 @@ export async function getAlertas(req: Request, res: Response) {
       alertas.push({
         tipo: 'ECHEQ_VENCIDO', severidad: 'ERROR',
         mensaje: `Echeq ${e.numero} (${e.razon_social}) vencido hace ${dias} día${dias !== 1 ? 's' : ''}`,
-        evento_id: e.evento_id, evento_nombre: e.evento.nombre,
+        evento_id: e.evento_id!, evento_nombre: e.evento!.nombre,
         metadata: { echeq_id: e.id, numero: e.numero, razon_social: e.razon_social, importe: Number(e.importe), moneda: e.moneda, dias_vencido: dias },
       });
     } else if (f <= in7) {
@@ -304,7 +304,7 @@ export async function getAlertas(req: Request, res: Response) {
       alertas.push({
         tipo: 'ECHEQ_POR_VENCER', severidad: 'WARNING',
         mensaje: `Echeq ${e.numero} (${e.razon_social}) vence en ${dias} día${dias !== 1 ? 's' : ''}`,
-        evento_id: e.evento_id, evento_nombre: e.evento.nombre,
+        evento_id: e.evento_id!, evento_nombre: e.evento!.nombre,
         metadata: { echeq_id: e.id, numero: e.numero, razon_social: e.razon_social, importe: Number(e.importe), moneda: e.moneda, dias_para_vencer: dias },
       });
     }

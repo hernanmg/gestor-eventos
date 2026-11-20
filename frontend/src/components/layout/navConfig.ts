@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -96,6 +96,7 @@ export function useNavModel(user: MeResponse): NavModel {
     emitidas:    { to: '/facturas-emitidas', label: 'Facturas a Cobrar',  icon: Receipt,        group: 'finanzas', badge: facturasEmitidasVencidas, tone: 'red' },
     ctacte:      { to: '/cuentas-corrientes', label: 'Cuentas Corrientes', icon: ArrowLeftRight, group: 'finanzas' },
     proveedores: { to: '/proveedores',       label: 'Proveedores',        icon: Building2,      group: 'finanzas' },
+    cheques:     { to: '/cheques',           label: 'Cheques',            icon: ScrollText,     group: 'finanzas' },
     afip:        { to: '/afip-prestamos',    label: 'AFIP / Créditos',    icon: Landmark,       group: 'finanzas' },
     cierre:      { to: '/cierre-contable',   label: 'Cierre Contable',    icon: FileSpreadsheet, group: 'finanzas' },
     stock:       { to: '/stock',             label: 'Stock',              icon: Package,        group: 'operaciones', badge: stockQuiebres, tone: 'red' },
@@ -212,6 +213,7 @@ export function useNavModel(user: MeResponse): NavModel {
     esAdmin && I.emitidas,
     esAdmin && I.ctacte,
     esAdmin && I.proveedores,
+    esAdmin && I.cheques,
     esAdmin && I.afip,
     esAdmin && I.cierre,
     // Operaciones

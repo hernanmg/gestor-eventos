@@ -6,6 +6,7 @@ import { EMPRESAS } from '../lib/empresasConstants';
 import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
 import { DIAS_AVISO_VENCIMIENTO, hoyUTC } from '../lib/vencimientos';
 import { novedadesParaAvisar } from './novedades.controller';
+import { avisoChequesViernes } from './cheques.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -688,6 +689,26 @@ async function resolveResumenPagosObservados(req: Request): Promise<Notificacion
   }));
 }
 
+// Aviso de los jueves (Mayra): cheques pendientes que caen el viernes o el
+// fin de semana y cuánto hay que cubrir, por banco. Sale jueves y viernes, a
+// los administradores (quién más lo recibe queda a confirmar con Mayra).
+async function resolveChequesViernes(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+  const aviso = await avisoChequesViernes(req.empresaId!);
+  if (!aviso) return [];
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`;
+  const dia = aviso.viernes.toLocaleDateString('es-AR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
+  return [{
+    id:          `cheques-viernes-${aviso.viernes.toISOString().slice(0, 10)}`,
+    tipo:        'CHEQUES_VIERNES',
+    titulo:      `Cheques del viernes ${dia}: ${fmt(aviso.total)} a cubrir`,
+    descripcion: `${aviso.cantidad} cheque(s)${aviso.avalados ? `, ${aviso.avalados} avalado(s) por SGR` : ''} · ${aviso.porBanco.map(([b, t]) => `${b} ${fmt(t)}`).join(' · ')}`,
+    urgencia:    'warning',
+    link:        `/cheques?viernes=${aviso.viernes.toISOString().slice(0, 10)}`,
+    fecha:       aviso.viernes,
+  }];
+}
+
 // Libro de novedades: las graves (ALTA/CRITICA) sin resolver le llegan al
 // administrador general y a quienes figuren en "avisar a" de su tipo; además,
 // cada uno ve las que le asignaron como responsable (de cualquier gravedad).
@@ -824,6 +845,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveResumenPagosParaRevisar(req),
     resolveResumenPagosObservados(req),
     resolveNovedades(req),
+    resolveChequesViernes(req),
   ]);
 
   const items = resultados

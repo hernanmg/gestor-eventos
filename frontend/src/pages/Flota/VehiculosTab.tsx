@@ -283,12 +283,16 @@ function BajaDialog({ vehiculo, onClose }: { vehiculo: VehiculoFlota | null; onC
 // ── Drawer de detalle ─────────────────────────────────────────────────────────
 
 function DetalleVehiculo({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const { data: v, isLoading } = useVehiculoFlota(id);
+  const { data: v, isLoading, isError } = useVehiculoFlota(id);
 
   return (
     <Dialog open={id != null} onOpenChange={o => !o && onClose()}>
       <DialogContent className="sm:max-w-2xl">
-        {isLoading || !v ? (
+        {isError ? (
+          <p className="text-sm text-muted-foreground p-4">
+            No se encontró el vehículo en la empresa activa. Si es de la otra empresa, cambiala desde el menú y volvé a abrirlo.
+          </p>
+        ) : isLoading || !v ? (
           <p className="text-sm text-muted-foreground p-4">Cargando…</p>
         ) : (
           <div className="space-y-5">

@@ -45,7 +45,7 @@ function RechazarDialog({
 }) {
   const [motivo, setMotivo] = useState('');
   const [error,  setError]  = useState<string | null>(null);
-  const rechazar = useRechazarEcheq(echeq.evento_id);
+  const rechazar = useRechazarEcheq(echeq.evento_id!);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +112,7 @@ function VenderDialog({
   const [tasa,         setTasa]         = useState('');
   const [montoNeto,    setMontoNeto]    = useState('');
   const [error,        setError]        = useState<string | null>(null);
-  const vender = useVenderEcheq(echeq.evento_id);
+  const vender = useVenderEcheq(echeq.evento_id!);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

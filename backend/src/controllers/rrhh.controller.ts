@@ -608,6 +608,63 @@ export async function aprobarJornada(req: Request, res: Response) {
   res.json(mapDecimalsJornada(updated));
 }
 
+// Una jornada aprobada que ya entró en una liquidación (no cancelada) del mismo
+// empleado no se puede desaprobar ni borrar: cambiaría lo que se pagó. Hay que
+// cancelar la liquidación primero. Las liquidaciones toman las jornadas por
+// rango de fechas (no hay FK), así que se busca por período.
+async function liquidacionQueIncluye(j: { empleado_id: number; fecha: Date; empresa_id: number }) {
+  return prisma.liquidacion.findFirst({
+    where: {
+      empleado_id: j.empleado_id,
+      empresa_id:  j.empresa_id,
+      estado:      { not: EstadoLiquidacion.CANCELADA },
+      fecha_desde: { lte: j.fecha },
+      fecha_hasta: { gte: j.fecha },
+    },
+    select: { id: true, estado: true },
+  });
+}
+
+const ESTADO_LIQ_TXT: Record<string, string> = { BORRADOR: 'en borrador', PRE_APROBADA: 'pre-aprobada', APROBADA: 'aprobada', PAGADA: 'pagada' };
+
+// PATCH /rrhh/jornadas/:id/desaprobar — vuelve una jornada APROBADA o
+// RECHAZADA a PENDIENTE (se aprobó o rechazó por error).
+export async function desaprobarJornada(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const jornada = await prisma.jornada.findFirst({
+    where: { id, deleted_at: null, ...withTenant(req.empresaId!) },
+    include: { empleado: { select: { nombre: true, apellido: true } } },
+  });
+  if (!jornada) { res.status(404).json({ error: 'Jornada no encontrada' }); return; }
+  if (jornada.estado === EstadoJornada.PENDIENTE) {
+    res.status(400).json({ error: 'La jornada ya está pendiente' }); return;
+  }
+  if (jornada.estado === EstadoJornada.APROBADA) {
+    const liq = await liquidacionQueIncluye(jornada);
+    if (liq) {
+      res.status(400).json({ error: `La jornada ya está en una liquidación ${ESTADO_LIQ_TXT[liq.estado] ?? ''}. Cancelá la liquidación antes de desaprobarla.` }); return;
+    }
+  }
+
+  const updated = await prisma.jornada.update({
+    where: { id },
+    data:  { estado: EstadoJornada.PENDIENTE, aprobado_por: null, aprobado_at: null, motivo_rechazo: null },
+  });
+  await registrarAuditoria({
+    usuarioId:     req.user!.id,
+    empresaId:     req.empresaId!,
+    accion:        'UPDATE',
+    entidad:       'Jornada',
+    entidadId:     id,
+    descripcion:   `Volvió a pendiente la jornada ${jornada.estado === EstadoJornada.APROBADA ? 'aprobada' : 'rechazada'} de ${jornada.empleado.apellido}, ${jornada.empleado.nombre} del ${jornada.fecha.toISOString().slice(0, 10)}`,
+    datosAntes:    { estado: jornada.estado, aprobado_por: jornada.aprobado_por, motivo_rechazo: jornada.motivo_rechazo },
+    datosDespues:  { estado: EstadoJornada.PENDIENTE },
+    ip:            req.ip,
+    tx:            prisma as any,
+  });
+  res.json(mapDecimalsJornada(updated));
+}
+
 const rechazarSchema = z.object({ motivo: z.string().min(1, 'El motivo es requerido') });
 
 export async function rechazarJornada(req: Request, res: Response) {
@@ -643,11 +700,30 @@ export async function deleteJornada(req: Request, res: Response) {
   if (scope.forced !== null && jornada.empleado_id !== scope.forced) {
     res.status(403).json({ error: 'No podés eliminar jornadas de otro empleado' }); return;
   }
-  if (jornada.estado !== EstadoJornada.PENDIENTE) {
+  // El empleado (scope forzado) sólo borra las suyas pendientes; el admin
+  // puede borrar aprobadas o rechazadas mientras no estén liquidadas.
+  if (scope.forced !== null && jornada.estado !== EstadoJornada.PENDIENTE) {
     res.status(400).json({ error: 'Sólo se pueden eliminar jornadas en estado PENDIENTE' }); return;
+  }
+  if (jornada.estado === EstadoJornada.APROBADA) {
+    const liq = await liquidacionQueIncluye(jornada);
+    if (liq) {
+      res.status(400).json({ error: `La jornada ya está en una liquidación ${ESTADO_LIQ_TXT[liq.estado] ?? ''}. Cancelá la liquidación antes de eliminarla.` }); return;
+    }
   }
 
   await prisma.jornada.update({ where: { id }, data: { deleted_at: new Date() } });
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId!,
+    accion:       'DELETE',
+    entidad:      'Jornada',
+    entidadId:    id,
+    descripcion:  `Eliminó una jornada ${jornada.estado.toLowerCase()} del ${jornada.fecha.toISOString().slice(0, 10)}`,
+    datosAntes:   { estado: jornada.estado, empleado_id: jornada.empleado_id, fecha: jornada.fecha },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
   res.json({ message: 'Jornada eliminada correctamente' });
 }
 

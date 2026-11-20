@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, CalendarDays, List } from 'lucide-react';
 import { useCalendario, usePrefetchCalendario, TODOS_LOS_TIPOS } from '@/hooks/useCalendario';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,9 +6,10 @@ import { EMPRESAS } from '@/lib/empresasConstants';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import CalendarioItemLink from '@/components/domain/CalendarioItemLink';
 import type { CalendarioItem, TipoCalendario } from '@/types';
 import PageHeader from '@/components/ui/PageHeader';
-import { COLORES, TIPO_LABEL, getDetailLink, metadataResumen } from '@/lib/calendarioItems';
+import { COLORES, TIPO_LABEL, metadataResumen } from '@/lib/calendarioItems';
 
 const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 const MAX_DIAS_AGENDA = 89; // debajo del límite de 3 meses del backend
@@ -58,9 +58,9 @@ function ItemDetalle({ item, isAdmin }: { item: CalendarioItem; isAdmin: boolean
           {info.map((l, i) => <p key={i}>{l}</p>)}
         </div>
       )}
-      <Link to={getDetailLink(item)} className="inline-block text-xs font-semibold text-link hover:underline">
+      <CalendarioItemLink item={item} className="inline-block text-xs font-semibold text-link hover:underline">
         Ver detalle →
-      </Link>
+      </CalendarioItemLink>
     </div>
   );
 }
@@ -190,9 +190,9 @@ function AgendaCard({ item, isAdmin }: { item: CalendarioItem; isAdmin: boolean 
         <p className="text-sm font-medium truncate">{item.titulo}</p>
         {info.length > 0 && <p className="text-xs text-muted-foreground mt-0.5">{info.join(' · ')}</p>}
       </div>
-      <Link to={getDetailLink(item)} className="shrink-0 text-xs font-semibold text-link hover:underline whitespace-nowrap">
+      <CalendarioItemLink item={item} className="shrink-0 text-xs font-semibold text-link hover:underline whitespace-nowrap">
         Ver detalle →
-      </Link>
+      </CalendarioItemLink>
     </div>
   );
 }

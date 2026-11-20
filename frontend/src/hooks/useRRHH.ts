@@ -185,6 +185,14 @@ export function useRechazarJornada() {
   });
 }
 
+export function useDesaprobarJornada() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.patch(`/rrhh/jornadas/${id}/desaprobar`).then(r => r.data),
+    onSuccess:  () => invalidateJornadas(qc),
+  });
+}
+
 export function useDeleteJornada() {
   const qc = useQueryClient();
   return useMutation({

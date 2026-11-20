@@ -544,6 +544,7 @@ export async function pagarFactura(req: Request, res: Response) {
       const echeq = await tx.echeq.create({
         data: {
           evento_id:            factura.evento_id!, // validado arriba: ECHEQ exige evento
+          empresa_id:           factura.empresa_id,
           movimiento_id:        movimientoId,
           proveedor_id:         factura.proveedor_id,
           numero:               echeq_numero,

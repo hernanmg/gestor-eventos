@@ -897,9 +897,18 @@ export interface PosicionConsolidada {
 
 // ── Echeqs ────────────────────────────────────────────────────────────────────
 
+export type TipoCheque    = 'PAGO' | 'FINANCIAMIENTO_PROPIO' | 'FINANCIAMIENTO_AVALADO';
+export type FormatoCheque = 'ECHEQ' | 'FISICO';
+
 export interface Echeq {
   id:                    number;
-  evento_id:             number;
+  empresa_id:            number;
+  // null = cheque de la empresa sin evento (financiamiento, gastos generales)
+  evento_id:             number | null;
+  banco:                 string | null;
+  formato:               FormatoCheque;
+  tipo:                  TipoCheque;
+  sgr_id:                number | null;
   movimiento_id:         number | null;
   movimiento_caja_id:    number | null;
   proveedor_id:          number | null;
@@ -925,6 +934,34 @@ export interface Echeq {
   deleted_at:            string | null;
   created_by:            number | null;
   updated_by:            number | null;
+}
+
+// Finanzas → Cheques: el mismo Echeq con sus relaciones resueltas.
+export interface ChequeEmpresa extends Omit<Echeq, 'dias_para_vencimiento'> {
+  evento:    { id: number; nombre: string } | null;
+  proveedor: { id: number; nombre: string } | null;
+  sgr:       { id: number; nombre: string } | null;
+}
+
+export interface ResumenChequesBanco {
+  banco:                string;
+  cantidad:             number;
+  total:                number;
+  financiamiento:       number;
+  vencidos:             number;
+  total_vencidos:       number;
+  bloque_viernes:       number;
+  total_bloque_viernes: number;
+  avalados_bloque:      number;
+}
+
+export interface ResumenCheques {
+  hoy:                  string;
+  viernes:              string;
+  hasta:                string;
+  bancos:               ResumenChequesBanco[];
+  total_bloque_viernes: number;
+  bancos_usados:        string[];
 }
 
 export interface AlertasEcheqs {
@@ -2158,6 +2195,7 @@ export interface AcuerdoSueldo {
     subtotal_bruto:       number;
     total_a_cobrar:       number;
   };
+  forma_pago?:          FormaPagoSueldo;
 }
 
 // ── Premio de producción — eventos del mes por empleado ───────────────────────
@@ -2199,6 +2237,29 @@ export interface LiquidacionAdminMovimientoCaja {
   descripcion:   string | null;
 }
 
+export type FormaPagoSueldo = 'TRANSFERENCIA' | 'EFECTIVO' | 'A_DEFINIR';
+
+export interface PremioPuntual {
+  id:          number;
+  empleado_id: number;
+  nombre:      string;
+  monto:       number;
+  desde_mes:   number;
+  desde_anio:  number;
+  hasta_mes:   number | null;
+  hasta_anio:  number | null;
+  notas:       string | null;
+}
+
+export interface AguinaldoSugerido {
+  semestre:       string;
+  meses:          { mes: number; nombre: string; base: number | null; origen: 'liquidacion' | 'este_mes' | 'sin_dato' }[];
+  meses_sin_dato: string[];
+  suma:           number;
+  promedio:       number;
+  aguinaldo:      number;
+}
+
 export interface LiquidacionAdmin {
   id:                   number;
   empleado_id:          number;
@@ -2224,7 +2285,18 @@ export interface LiquidacionAdmin {
   antiguedad_anios:     number;
   importe_antiguedad:   number;
   telefono:             number;
+  // Total del grupo vacaciones + aguinaldo + extras (ver los tres de abajo)
   vacaciones_aguinaldo: number;
+  vacaciones:           number;
+  aguinaldo:            number;
+  extras:               number;
+  extras_detalle:       string | null;
+  // Premios de Matías por un tiempo, vigentes en el período (snapshot)
+  premios_puntuales:       { id: number; nombre: string; monto: number }[] | null;
+  premios_puntuales_total: number;
+  // Cierre: null = sale de la forma de pago habitual del acuerdo
+  monto_efectivo:       number | null;
+  monto_transferencia:  number | null;
   vales_descuentos:     number;
   subtotal_bruto:       number;
   total_a_cobrar:       number;
@@ -2566,10 +2638,11 @@ export type TipoCalendario =
   | 'PARTE_DIARIO' | 'STOCK_RETORNO' | 'LIQUIDACION'
   | 'RENDICION_PENDIENTE' | 'SALDO_MINIMO' | 'CTA_CORRIENTE_INACTIVA'
   | 'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_RETIRO'
-  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'ACTIVO_STOCK_BAJO'
+  | 'CUOTA_AFIP' | 'CUOTA_PRESTAMO' | 'FACTURA_EMITIDA_VENCE' | 'GASTO_ESPACIO_VENCE'
+  | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

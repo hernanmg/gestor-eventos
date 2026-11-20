@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Check, X as XIcon, Trash2 } from 'lucide-react';
+import { Plus, Check, X as XIcon, Trash2, Undo2 } from 'lucide-react';
 import {
-  useJornadas, useCreateJornada, useAprobarJornada, useRechazarJornada, useDeleteJornada, useEmpleados,
+  useJornadas, useCreateJornada, useAprobarJornada, useRechazarJornada, useDesaprobarJornada, useDeleteJornada, useEmpleados,
   type JornadaFiltros, type JornadaPayload,
 } from '@/hooks/useRRHH';
 import { useEventos } from '@/hooks/useEvento';
@@ -226,6 +226,7 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
   const { data: eventos = [] }   = useEventos();
   const aprobarMut = useAprobarJornada();
   const deleteMut  = useDeleteJornada();
+  const desaprobarMut = useDesaprobarJornada();
 
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [rechazando, setRechazando]     = useState<Jornada | null>(null);
@@ -243,8 +244,15 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
     setSeleccion(new Set());
   };
 
+  const handleDesaprobar = (j: Jornada) => {
+    const txt = j.estado === 'APROBADA' ? 'aprobada' : 'rechazada';
+    if (!window.confirm(`¿Volver a pendiente esta jornada ${txt}?`)) return;
+    desaprobarMut.mutate(j.id, { onError: (err) => alert(getApiErrorMessage(err) ?? 'No se pudo volver a pendiente') });
+  };
+
   const handleDelete = (j: Jornada) => {
-    if (!window.confirm('¿Eliminar esta jornada?')) return;
+    const aviso = j.estado === 'APROBADA' ? '¿Eliminar esta jornada aprobada? Deja de contar para la liquidación.' : '¿Eliminar esta jornada?';
+    if (!window.confirm(aviso)) return;
     deleteMut.mutate(j.id, { onError: (err) => alert(getApiErrorMessage(err) ?? 'Error al eliminar') });
   };
 
@@ -327,19 +335,25 @@ export default function JornadasTab({ empleadoIdInicial }: { empleadoIdInicial?:
                     </span>
                   </td>
                   <td className="px-3 py-2.5">
-                    {j.estado === 'PENDIENTE' && (
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" title="Aprobar" onClick={() => aprobarMut.mutate(j.id)}>
-                          <Check size={14} className="text-green-600" />
+                    <div className="flex items-center justify-end gap-1">
+                      {j.estado === 'PENDIENTE' ? (
+                        <>
+                          <Button variant="ghost" size="icon" title="Aprobar" onClick={() => aprobarMut.mutate(j.id)}>
+                            <Check size={14} className="text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Rechazar" onClick={() => setRechazando(j)}>
+                            <XIcon size={14} className="text-destructive" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="icon" title={j.estado === 'APROBADA' ? 'Desaprobar (vuelve a pendiente)' : 'Volver a pendiente'} onClick={() => handleDesaprobar(j)} disabled={desaprobarMut.isPending}>
+                          <Undo2 size={14} className="text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" title="Rechazar" onClick={() => setRechazando(j)}>
-                          <XIcon size={14} className="text-destructive" />
-                        </Button>
-                        <Button variant="ghost" size="icon" title="Eliminar" onClick={() => handleDelete(j)}>
-                          <Trash2 size={14} className="text-muted-foreground" />
-                        </Button>
-                      </div>
-                    )}
+                      )}
+                      <Button variant="ghost" size="icon" title="Eliminar" onClick={() => handleDelete(j)}>
+                        <Trash2 size={14} className="text-muted-foreground" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
                 );

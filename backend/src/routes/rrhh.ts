@@ -6,7 +6,7 @@ import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
   listEmpleados, getEmpleado, createEmpleado, updateEmpleado, deleteEmpleado,
-  listJornadas, listJornadasEmpleado, createJornada, updateJornada, aprobarJornada, rechazarJornada, deleteJornada,
+  listJornadas, listJornadasEmpleado, createJornada, updateJornada, aprobarJornada, rechazarJornada, desaprobarJornada, deleteJornada,
   listAnticiposEmpleado, createAnticipo, deleteAnticipo,
   listLiquidaciones, getLiquidacion, previewLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
   exportarLiquidacionPDF, aprobarLiquidacionesLote, preAprobarLiquidaciones, volverBorradorLiquidacion,
@@ -22,6 +22,8 @@ import {
   aprobarLiquidacionAdmin, cancelarLiquidacionAdmin, exportarLiquidacionAdminPDF,
   getResumenMensual, getHorasPeriodo, getIpcIndec,
   listPrestamosEmpleado, createPrestamo, deletePrestamo,
+  updateFormaPagoLiquidacion, updateFormaPagoAcuerdo, getAguinaldoSugerido,
+  listPremiosPuntuales, createPremioPuntual, updatePremioPuntual, deletePremioPuntual, getPremiosVigentes,
 } from '../controllers/sueldosAdmin.controller';
 import {
   listEscalafones, getValoresEscalafon, createEscalafon, updateEscalafon, deleteEscalafon,
@@ -78,6 +80,7 @@ router.post('/jornadas',                 requireAnyRole(ROLES.JORNALERO_PROPIO),
 router.put('/jornadas/:id',              requireRole('ADMIN'), asyncHandler(updateJornada));
 router.patch('/jornadas/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarJornada));
 router.patch('/jornadas/:id/rechazar',   requireRole('ADMIN'), asyncHandler(rechazarJornada));
+router.patch('/jornadas/:id/desaprobar', requireRole('ADMIN'), asyncHandler(desaprobarJornada));
 router.delete('/jornadas/:id',           requireRole('ADMIN'), asyncHandler(deleteJornada));
 router.post('/jornadas/importar-historial', requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarHistorialConvocatorias));
 
@@ -122,6 +125,7 @@ router.post('/acuerdos',                    requireRole('ADMIN'), asyncHandler(c
 router.put('/acuerdos/:id',                 requireRole('ADMIN'), asyncHandler(updateAcuerdo));
 router.delete('/acuerdos/:id',              requireRole('ADMIN'), asyncHandler(deleteAcuerdo));
 router.patch('/acuerdos/:id/restaurar',     requireRole('ADMIN'), asyncHandler(restaurarAcuerdo));
+router.patch('/acuerdos/:id/forma-pago',    requireRole('ADMIN'), asyncHandler(updateFormaPagoAcuerdo));
 
 router.post('/empleados/:id/splits',        requireRole('ADMIN'), asyncHandler(upsertSplits));
 router.delete('/empleados/:id/splits',      requireRole('ADMIN'), asyncHandler(deleteSplits));
@@ -137,6 +141,14 @@ router.post('/liquidaciones-admin/generar',         requireRole('ADMIN'), asyncH
 router.put('/liquidaciones-admin/:id',              requireRole('ADMIN'), asyncHandler(updateLiquidacionAdmin));
 router.patch('/liquidaciones-admin/:id/aprobar',    requireRole('ADMIN'), asyncHandler(aprobarLiquidacionAdmin));
 router.patch('/liquidaciones-admin/:id/cancelar',   requireRole('ADMIN'), asyncHandler(cancelarLiquidacionAdmin));
+router.patch('/liquidaciones-admin/:id/forma-pago', requireRole('ADMIN'), asyncHandler(updateFormaPagoLiquidacion));
+// Conceptos de Sueldos Admin (Mayra): aguinaldo sugerido y premios puntuales
+router.get('/empleados/:id/aguinaldo-sugerido',     requireRole('ADMIN'), asyncHandler(getAguinaldoSugerido));
+router.get('/empleados/:id/premios-puntuales/vigentes', requireRole('ADMIN'), asyncHandler(getPremiosVigentes));
+router.get('/empleados/:id/premios-puntuales',      requireRole('ADMIN'), asyncHandler(listPremiosPuntuales));
+router.post('/empleados/:id/premios-puntuales',     requireRole('ADMIN'), asyncHandler(createPremioPuntual));
+router.put('/premios-puntuales/:premioId',          requireRole('ADMIN'), asyncHandler(updatePremioPuntual));
+router.delete('/premios-puntuales/:premioId',       requireRole('ADMIN'), asyncHandler(deletePremioPuntual));
 
 // ── Escalafones administrativos (valores por categoría, configurables) ───────
 router.get('/escalafones',                  requireRole('ADMIN'), asyncHandler(listEscalafones));

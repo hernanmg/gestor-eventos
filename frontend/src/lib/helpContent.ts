@@ -638,6 +638,34 @@ const help: Record<string, HelpContent> = {
   },
 
   // ── AFIP y Créditos Bancarios ────────────────────────────────────────────────
+  '/cheques': {
+    titulo: 'Cheques',
+    descripcion: 'Los cheques que emite la empresa, por banco: los de pago a proveedores y los de financiamiento con SGR, sean de un evento o no. Reemplaza las planillas de cheques pendientes de cada banco.',
+    secciones: [
+      {
+        titulo: 'Cargar un cheque',
+        contenido: '"Nuevo cheque": banco, número, a quién va (proveedor o concepto), monto y fecha de pago. Si es de un evento, elegilo; si es de la empresa (financiamiento, gastos generales), dejalo sin evento. Los cheques que se generan al pagar una factura con echeq o desde Gastos Extraordinarios del evento aparecen acá solos: completales el banco desde "Editar".',
+      },
+      {
+        titulo: 'Importar la planilla del banco',
+        contenido: '"Importar planilla" lee la planilla de cheques de cada banco (una hoja por año, con sus bloques por mes de flujo de cheques y de financiamiento). Primero muestra cuántos cheques hay por año y qué se va a hacer; elegís los años y confirmás. PAGADO entra como debitado con su fecha de entrada, ACEPTADO o vacío como pendiente, y VENCIDO o ANULADO como rechazado con ese texto. Se puede volver a importar la misma planilla actualizada: no duplica, y lo que ya marcaste en el sistema no vuelve atrás. Si un cheque ya estaba cargado desde un evento o un pago de factura, se le completa el banco. Para que los de financiamiento queden ligados a su SGR, cargá antes las SGR en AFIP / Créditos.',
+      },
+      {
+        titulo: 'Financiamiento con SGR',
+        contenido: 'Elegí el tipo "Financiamiento": propio (sin aval, se puede cubrir con la misma SGR) o avalado (entra al banco sí o sí y hay que cubrirlo). Se ven en verde, como en la planilla, y se pueden filtrar aparte.',
+      },
+      {
+        titulo: 'Debitado',
+        contenido: 'Cuando el cheque entra al banco, "Debitado" y la fecha en que entró: es el "PAGADO" y la "fecha de entrada" de la planilla. Si te equivocaste, se vuelve a pendiente con la flecha. Los que tienen fecha pasada y siguen pendientes se marcan en rojo en la tarjeta del banco.',
+      },
+      {
+        titulo: 'Aviso de los jueves',
+        contenido: 'Jueves y viernes la campanita avisa cuánto hay que cubrir por los cheques que caen ese viernes o el fin de semana, separado por banco y contando los avalados. La tarjeta "A cubrir el viernes" muestra lo mismo todos los días; al tocarla, filtra esos cheques.',
+      },
+    ],
+    links: [{ label: 'SGR (AFIP / Créditos)', ruta: '/afip-prestamos?tab=sgr' }, { label: 'Ver el calendario', ruta: '/calendario' }],
+  },
+
   '/afip-prestamos': {
     titulo: 'AFIP y Créditos Bancarios',
     descripcion: 'Seguimiento de planes de pago AFIP y créditos bancarios con cronograma de cuotas.',
@@ -686,6 +714,10 @@ const help: Record<string, HelpContent> = {
         contenido: 'En Importar → "Horas y vales" subí la planilla HORAS Y VALES del mes (una hoja por persona). Se toman las horas trabajadas de cada día, también las que pasan la medianoche, y los vales de abajo entran como anticipos. Las jornadas quedan aprobadas. Si alguien no está en RRHH, se da de alta como jornalero y hay que cargarle el valor hora. Reimportar el mismo archivo no duplica.',
       },
       {
+        titulo: 'Corregir una jornada aprobada o rechazada',
+        contenido: 'En Jornadas, el botón de la flecha vuelve una jornada aprobada o rechazada a pendiente, para corregirla y aprobarla de nuevo. El tacho la elimina aunque esté aprobada. Si la jornada ya entró en una liquidación (en borrador, pre-aprobada, aprobada o pagada), el sistema no deja hacer ninguna de las dos cosas: primero hay que cancelar esa liquidación.',
+      },
+      {
         titulo: 'Cómo se calcula',
         contenido: 'Por hora: las primeras 10 horas de cada día se pagan al valor hora y el resto al valor de la hora extra. A eso se le descuentan los adelantos y vales pendientes.',
       },
@@ -724,6 +756,22 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Antigüedad',
         contenido: 'Se cuenta desde la fecha de ingreso del empleado (RRHH → Empleados), no desde el inicio del acuerdo, que cambia con cada aumento. Si el empleado no tiene la fecha de ingreso cargada, se usa la del acuerdo.',
+      },
+      {
+        titulo: 'Vacaciones, aguinaldo y extras',
+        contenido: 'Al generar o editar una liquidación, vacaciones, aguinaldo y extras se cargan por separado, y los extras llevan su aclaración (por ejemplo "Premio productividad"). Así, si un mes se paga el aguinaldo y además un premio, cada uno queda con su monto y sale por separado en el recibo, sin sumarlos a mano. Las liquidaciones anteriores a este cambio tenían un solo monto: quedaron como extras.',
+      },
+      {
+        titulo: 'Calcular el aguinaldo',
+        contenido: '"Calcular", al lado de Aguinaldo, hace la misma cuenta que la planilla: suma los sueldos de los seis meses del semestre (enero a junio o julio a diciembre), divide por 6 y después por 2. Cada sueldo se toma sin vacaciones, aguinaldo ni extras. El mes que estás generando entra con lo que muestra la vista previa. Si algún mes no tiene sueldo en el sistema, lo avisa: si la persona trabajó ese mes, el monto queda bajo y conviene corregirlo a mano.',
+      },
+      {
+        titulo: 'Premios de Matías por un tiempo',
+        contenido: 'Para los premios que Matías da durante algunos meses (por ejemplo, un "premio casa"): en Generar liquidación → Premios de Matías → "agregar", con el monto por mes, desde cuándo y, si se sabe, hasta cuándo. Mientras esté vigente se suma solo en cada liquidación. Se puede destildar en un mes puntual, y "terminar" lo corta desde el mes que estás liquidando. Las liquidaciones ya generadas no cambian.',
+      },
+      {
+        titulo: 'Cierre de sueldos: efectivo y transferencia',
+        contenido: 'Con un mes y un año elegidos en Liquidaciones, abajo aparece el cierre: cuánto cobra cada uno, cuánto va en efectivo, cuánto por transferencia y lo que falta asignar, con los totales que hay que pedirle a Matías. Cada persona tiene una forma de pago habitual (transferencia, efectivo o "a definir cada mes"). Si un mes es distinto, tocá la fila y repartilo; "Volver a la habitual" deshace el cambio. Se puede completar aunque la liquidación ya esté aprobada.',
       },
     ],
   },
@@ -764,6 +812,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: '¿Qué muestra?',
         contenido: 'Vista centralizada de todos los vencimientos y eventos del sistema: seguros, RTO/ITV, carnets de conducir, multas, controles de salida pendientes, patentes, cuotas AFIP, créditos, facturas y más. Filtrá por tipo con los badges de colores. Lo vencido aparece en rojo y lo que vence pronto en amarillo.',
+      },
+      {
+        titulo: 'Montaje, desmontaje y cumpleaños',
+        contenido: 'Si el evento tiene cargados días de montaje o desmontaje, cada uno aparece en su día, antes del inicio y después del fin, con el número de día (por ejemplo "Montaje (2/3)"). Los cumpleaños del personal activo salen de la fecha de nacimiento del legajo y los ve administración.',
       },
     ],
   },

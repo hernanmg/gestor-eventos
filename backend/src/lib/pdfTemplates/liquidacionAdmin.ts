@@ -1,4 +1,4 @@
-import { CSS } from './shared';
+import { CSS, esc } from './shared';
 
 export interface LiquidacionAdminPdfData {
   empresa: { nombre: string; logo_data_url: string | null };
@@ -21,6 +21,12 @@ export interface LiquidacionAdminPdfData {
   importe_antiguedad: number;
   telefono: number;
   vacaciones_aguinaldo: number;
+  // Detalle del grupo (desde nov 2026). Las liquidaciones viejas traen todo en extras.
+  vacaciones?:          number;
+  aguinaldo?:           number;
+  extras?:              number;
+  extras_detalle?:      string | null;
+  premios_puntuales?:   { nombre: string; monto: number }[];
   vales_descuentos: number;
   prestamos_descontados: number;
   subtotal_bruto: number;
@@ -59,11 +65,18 @@ export function templateLiquidacionAdmin(d: LiquidacionAdminPdfData): string {
     { label: `Antigüedad (${d.antiguedad_anios} año${d.antiguedad_anios !== 1 ? 's' : ''})`, monto: d.importe_antiguedad },
     { label: 'Teléfono', monto: d.telefono },
     { label: `Horas Extras (${d.horas_extras} hs)`, monto: d.importe_horas_extras },
-    { label: 'Vacaciones/Aguinaldo/Extras', monto: d.vacaciones_aguinaldo },
+    ...(d.vacaciones !== undefined
+      ? [
+          { label: 'Vacaciones', monto: d.vacaciones },
+          { label: 'Aguinaldo', monto: d.aguinaldo ?? 0 },
+          { label: d.extras_detalle ? `Extras (${d.extras_detalle})` : 'Extras', monto: d.extras ?? 0 },
+        ]
+      : [{ label: 'Vacaciones/Aguinaldo/Extras', monto: d.vacaciones_aguinaldo }]),
+    ...(d.premios_puntuales ?? []).map(p => ({ label: p.nombre, monto: p.monto })),
   ].filter(c => c.monto !== 0 || c.label.startsWith('Sueldo Básico'));
 
   const conceptosRows = conceptos.map(c => `
-    <tr><td>${c.label}</td><td class="text-right">${fmtMoneda(c.monto)}</td></tr>`).join('');
+    <tr><td>${esc(c.label)}</td><td class="text-right">${fmtMoneda(c.monto)}</td></tr>`).join('');
 
   const splitsRows = (d.splits ?? []).map(s => `
     <tr>

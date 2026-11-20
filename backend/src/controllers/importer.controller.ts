@@ -181,6 +181,7 @@ export async function confirmar(req: Request, res: Response) {
         await tx.echeq.create({
           data: {
             evento_id:            evento.id,
+            empresa_id:           evento.empresa_id,
             numero:               echeq.numero,
             razon_social:         echeq.razon_social,
             detalle:              echeq.detalle,

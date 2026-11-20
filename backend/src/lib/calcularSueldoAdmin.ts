@@ -56,6 +56,9 @@ export interface ResultadoSueldoAdmin {
   // Premio de producción — suma de EventoEmpleadoMes del período, sólo si
   // AcuerdoSueldo.cobra_premio_produccion=true. Ver EventoEmpleadoMes.
   premio_produccion:    number;
+  // Premios que Matías da por un tiempo (PremioPuntual vigentes) — ver
+  // LiquidacionAdmin.premios_puntuales.
+  premios_puntuales:    number;
   premio_presentismo:   number;
   // true cuando horas_trabajadas < horas_acordadas_mes — perdió el
   // presentismo (premio_presentismo ya viene en 0 en ese caso). El frontend
@@ -98,6 +101,8 @@ export function calcularSueldoAdmin(
   // Premio de producción del período (suma de EventoEmpleadoMes) — ver
   // ResultadoSueldoAdmin.premio_produccion.
   premioProduccion = 0,
+  // Suma de los PremioPuntual vigentes en el período.
+  premiosPuntuales = 0,
 ): ResultadoSueldoAdmin {
   const esChofer = acuerdo.categoria_acuerdo === 'CHOFER';
 
@@ -126,6 +131,7 @@ export function calcularSueldoAdmin(
     + viatico
     + premioViaje
     + premioProduccion
+    + premiosPuntuales
     + premioPresentismo
     + antiguedad.monto
     + Number(acuerdo.telefono ?? 0)
@@ -142,6 +148,7 @@ export function calcularSueldoAdmin(
     viatico,
     premio_viaje:         round2(premioViaje),
     premio_produccion:    round2(premioProduccion),
+    premios_puntuales:    round2(premiosPuntuales),
     premio_presentismo:   premioPresentismo,
     presentismo_perdido:  premioPresentismoOverride !== undefined
       ? premioPresentismoOverride === 0 && Number(acuerdo.premio_presentismo ?? 0) > 0
@@ -203,4 +210,19 @@ export function calcularSplits(
   });
 
   return resultado;
+}
+
+// Aguinaldo como lo calcula Mayra en la planilla (columna I de cada hoja):
+// suma de los sueldos de los 6 meses del semestre, ÷ 6, ÷ 2. El sueldo de
+// cada mes va SIN vacaciones/aguinaldo/extras (si no, el aguinaldo se
+// calcularía sobre sí mismo). Los meses sin sueldo cuentan 0: un empleado que
+// entró a mitad de semestre cobra la parte proporcional.
+export function semestreDe(mes: number): { desde: number; hasta: number; nombre: string } {
+  return mes <= 6 ? { desde: 1, hasta: 6, nombre: 'Enero a Junio' } : { desde: 7, hasta: 12, nombre: 'Julio a Diciembre' };
+}
+
+export function calcularAguinaldo(sueldosDelSemestre: number[]): { suma: number; promedio: number; aguinaldo: number } {
+  const suma = round2(sueldosDelSemestre.reduce((s, n) => s + n, 0));
+  const promedio = round2(suma / 6);
+  return { suma, promedio, aguinaldo: round2(promedio / 2) };
 }

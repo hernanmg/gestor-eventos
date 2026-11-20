@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-18 · Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-20 · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -22,8 +22,8 @@
 
 | # | Pilar | Responsables | DOS57 | Enjoy |
 |---|---|---|---|---|
-| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 88% | 85% |
-| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 76% | 70% |
+| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 92% | 90% |
+| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 85% | 80% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 73% | 71% |
 | 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 78%* | 82% |
@@ -33,13 +33,13 @@
 | 09 | Comunicación | Vicky | pendiente de relevar | |
 | 10 | Novedades | Santi (flota), Florencia (eventos), todos | 75% | 75% |
 | 11 | Varios y módulos auxiliares | Matías (administrador del sistema) | 90% | 90% |
-| 12 | Calendario transversal *(nuevo)* | todos | 80% | 80% |
+| 12 | Calendario transversal *(nuevo)* | todos | 93% | 93% |
 
 ---
 
 ## 01 · RRHH
 
-**DOS57: 88% construido (26,5 de 30) · Enjoy: 85% construido (17 de 20) · En uso: 0%, arranca con la prueba en producción**
+**DOS57: 92% construido (27,5 de 30) · Enjoy: 90% construido (18 de 20) · En uso: 0%, arranca con la prueba en producción**
 
 Responsables: Mayra cierra sueldos de las dos empresas. En DOS57 la alimentan Lorena (presentismo, padrón, siniestros, uniformes), Andrea (jornaleros, adelantos, gastos del mes), Jazmín (parte diario) y Santi. En Enjoy: Male (jornaleros) y Daniel (personal técnico).
 
@@ -98,8 +98,8 @@ Se conecta con: Depósito (parte diario y pañol cargan horas a la gente que est
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 30 | Vacaciones, aguinaldo y extras como conceptos separados en la liquidación, más premios puntuales que Matías agrega por un tiempo | 🟡 | 🟡 | Entrevista Mayra · SUELDO DOS57 Julio 2026 | Hoy vacaciones y aguinaldo van en un solo concepto |
-| 31 | Cierre de sueldos del mes: total a pagar y cuánto va por transferencia y cuánto en efectivo | 🟡 | 🟡 | Entrevista Mayra (conciliación final de la planilla de sueldos) | El resumen mensual da el total; falta separar transferencia y efectivo |
+| 30 | Vacaciones, aguinaldo y extras como conceptos separados en la liquidación, más premios puntuales que Matías agrega por un tiempo | ✅ | ✅ | Entrevista Mayra · SUELDO DOS57 Julio 2026 | Sueldos Admin → Liquidaciones: cada concepto con su monto y los extras con su aclaración; aguinaldo calculado como en la planilla (sueldos del semestre ÷ 6 ÷ 2); premios de Matías con desde y hasta que se suman solos |
+| 31 | Cierre de sueldos del mes: total a pagar y cuánto va por transferencia y cuánto en efectivo | ✅ | ✅ | Entrevista Mayra (conciliación final de la planilla de sueldos) · hoja TOTALES | Sueldos Admin → Liquidaciones (con mes elegido): efectivo, transferencia y sin asignar por persona, con forma de pago habitual de cada uno |
 
 Mayra respondió en noviembre: la antigüedad se cuenta desde el ingreso a la empresa (el sistema ya la toma de la fecha de ingreso del legajo) y el premio de producción 1 o 2 lo pone Matías según el evento (se elige al cargar cada evento del mes).
 
@@ -128,7 +128,7 @@ También confirma cosas que ya están: ítems fijos del acuerdo (básico, incent
 
 ## 02 · Finanzas
 
-**DOS57: 76% construido (17,5 de 23) · Enjoy: 70% construido (15,5 de 22) · En uso: 0%**
+**DOS57: 85% construido (19,5 de 23) · Enjoy: 80% construido (17,5 de 22) · En uso: 0%**
 
 Responsables: Mayra cierra las dos empresas y lleva Galicia y Nación en las dos, y Francés en Enjoy. Chino lleva Bancor y Rebanking en las dos empresas (respuesta de Mayra, nov 2026). En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
 
@@ -151,9 +151,9 @@ No se cuentan acá: órdenes de compra y comparativos de proveedores (Proveedore
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 6 | Echeqs del evento: pendientes, cobrados, vendidos (con descuento), rechazados, con vencimientos | ✅ | ✅ | Flujo de Caja Generico (EG-EXTRA) | Evento → Echeqs · Calendario |
-| 7 | Cheques físicos (chequera del Francés, poco uso) | 🟡 | 🟡 | Cheques Pendientes - GALICIA · Entrevista Mayra | Se puede elegir "cheque" como medio de pago, pero no hay registro de la chequera |
-| 8 | Cheques emitidos de la empresa por banco, también los que no son de un evento, separando los de financiamiento con SGR (cheque propio o avalado) | 🟡 | 🟡 | Entrevista Mayra ("las que llevo casi todos los días") | Los echeqs hoy viven dentro de un evento; falta el registro por banco de la empresa |
-| 9 | Aviso de los jueves: cheques que caen el viernes y cuánto hay que cubrir en el banco | ⬜ | ⬜ | Entrevista Mayra | El calendario muestra los echeqs, pero no hay aviso semanal con el total a cubrir |
+| 7 | Cheques físicos (chequera del Francés, poco uso) | ✅ | ✅ | Cheques Pendientes - GALICIA · Entrevista Mayra | Cheques: cada cheque dice si es echeq o físico |
+| 8 | Cheques emitidos de la empresa por banco, también los que no son de un evento, separando los de financiamiento con SGR (cheque propio o avalado) | ✅ | ✅ | Entrevista Mayra ("las que llevo casi todos los días") · Cheques Pendientes - GALICIA | Cheques: por banco, agrupados por fecha de pago con el total del día, financiamiento en verde, "debitado" con la fecha en que entró. Los cheques de los eventos y de los pagos de facturas aparecen solos. Importa la planilla de cheques de cada banco, desde 2021 |
+| 9 | Aviso de los jueves: cheques que caen el viernes y cuánto hay que cubrir en el banco | ✅ | ✅ | Entrevista Mayra | Campanita, jueves y viernes, con el total por banco y los avalados (incluye el fin de semana). Cheques muestra lo mismo todos los días |
 | 10 | Echeqs recibidos de clientes ligados a la factura que cobran, con aviso para depositarlos o ponerlos en custodia antes del vencimiento | 🟡 | 🟡 | Entrevista Mayra | Se registra el cobro de la factura, pero el echeq recibido no queda ligado con su vencimiento |
 
 ### Deudas y compromisos
@@ -186,8 +186,8 @@ La especificación de Enjoy (§44) las deja fuera de la primera etapa: conciliac
 ### Para definir con el cliente
 
 - **Resumen semanal de pagos en Enjoy** (punto 4): Andrea cree que lo arma Male. Confirmar con ella si lo hace y si Matías lo aprueba igual, línea por línea.
-- **Cheques de la empresa** (punto 8): ¿se llevan todos en el sistema, también los de Bancor que hace Chino?
-- **Aviso de los jueves** (punto 9): ¿a quién le llega, solo a Mayra o también a Matías?
+- **Cheques de la empresa** (punto 8): ya se pueden cargar de cualquier banco. Falta confirmar si los de Bancor los carga Chino o Mayra.
+- **Aviso de los jueves** (punto 9): hoy les llega a los administradores. ¿Le tiene que llegar a alguien más, por ejemplo a Chino por Bancor?
 - **Leasings** (punto 13): ¿cuántos hay y con quién?
 - **Pagos fijos** (punto 17): ¿incluye los gastos personales de los socios (servicios de Matías y Pollo) o solo los de la empresa? Ojo: esa planilla tiene claves fiscales escritas; el sistema no debería guardarlas.
 - **Talleres** (punto 20): ¿hay otros clientes fijos que funcionen igual?
@@ -516,9 +516,9 @@ Qué es: lo que sostiene a todos los pilares: acceso, permisos, configuración, 
 
 ## 12 · Calendario transversal *(pilar nuevo)*
 
-**DOS57: 80% construido (12 de 15) · Enjoy: 80% construido (12 de 15) · En uso: 0%**
+**DOS57: 93% construido (14 de 15) · Enjoy: 93% construido (14 de 15) · En uso: 0%**
 
-Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un solo lugar lo que pasa y lo que vence en todos los pilares, y cada persona ve lo suyo. Hoy suma 22 tipos de ítems.
+Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un solo lugar lo que pasa y lo que vence en todos los pilares, y cada persona ve lo suyo. Hoy suma 29 tipos de ítems.
 
 ### Cómo se ve
 
@@ -534,7 +534,7 @@ Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 5 | Administración: eventos, de la fecha de inicio a la de fin | ✅ | ✅ | — | Calendario |
-| 6 | Administración: días de montaje y desmontaje, diferenciados del evento | 🟡 | 🟡 | Relevamiento Flor (armado → evento → desarme) | Los días se cargan en el evento, pero el calendario no los muestra |
+| 6 | Administración: días de montaje y desmontaje, diferenciados del evento | ✅ | ✅ | Relevamiento Flor (armado → evento → desarme) | Calendario: cada día de armado y de desarme, con su número ("Montaje 2/3") |
 | 7 | Logística: tareas del cronograma de cada evento (Operación) | ⬜ | ⬜ | Carpeta del evento (Flor) · Planilla de producción (Daniel) | — |
 | 8 | RRHH: jornadas, partes diarios y liquidaciones (una entrada por día de pago, que abre el listado de ese día) | ✅ | ✅ | Reunión con Male (nov 2026) | Calendario |
 | 9 | Finanzas: echeqs, cuotas de AFIP y de créditos, facturas a cobrar, rendiciones de caja, saldo bajo, cuentas corrientes sin movimiento | ✅ | ✅ | — | Calendario |
@@ -542,8 +542,8 @@ Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un 
 | 11 | Depósito: retornos de stock pendientes, quiebre de stock de uniformes | ✅ | ✅ | — | Calendario |
 | 12 | Logística: patentes, RTO/ITV, retiros del taller, controles de salida, multas, carnets | ✅ | ✅ | Relevamiento Lorena | Calendario |
 | 13 | Seguros: vencimiento de pólizas, siniestros de vehículos abiertos | ✅ | ✅ | Relevamiento Lorena | Calendario |
-| 14 | Cuatro tipos que el sistema ya calcula pero la pantalla no muestra: SGR, gastos de espacios compartidos, siniestros del personal, excedente de horas | 🟡 | 🟡 | — | Salen en la campanita, faltan en el calendario |
-| 15 | RRHH: cumpleaños del personal | ⬜ | ⬜ | Entrevista Mayra | La fecha de nacimiento está en el legajo |
+| 14 | SGR, gastos de espacios compartidos, siniestros del personal y excedente de horas | ✅ | ✅ | — | Calendario y campanita |
+| 15 | RRHH: cumpleaños del personal | ✅ | ✅ | Entrevista Mayra | Calendario, para administración (sale de la fecha de nacimiento del legajo) |
 
 ### Para más adelante (no cuentan para el %)
 
