@@ -371,6 +371,20 @@ const help: Record<string, HelpContent> = {
         titulo: 'PDF adjunto',
         contenido: 'Al cargar la factura podés adjuntar el PDF original. Quedará guardado en el sistema para consulta y auditoría.',
       },
+      {
+        titulo: 'Importar el libro de compras de AFIP',
+        contenido: '"Importar libro de compras" carga las facturas del Excel de "Mis Comprobantes Recibidos". Si el proveedor no existe se crea con su CUIT, y las de más de $ 500.000 sin PDF quedan marcadas. Reimportar no duplica.',
+      },
+      {
+        titulo: 'Orden de compra y orden de pago',
+        contenido: [
+          'Si la compra tuvo ',
+          { texto: 'orden de compra', ruta: '/ordenes-compra' },
+          ', vinculá la factura para cotejar lo pedido con lo facturado antes de pagar. Para pagar varias facturas de un proveedor juntas, con su echeq y las firmas de quién la revisó y autorizó, armá una ',
+          { texto: 'orden de pago', ruta: '/ordenes-pago' },
+          ': al registrarla, el pago queda en cada factura.',
+        ],
+      },
     ],
     links: [
       { label: 'Nueva factura',         accion: 'abrir_modal_nueva_factura' },
@@ -395,6 +409,22 @@ const help: Record<string, HelpContent> = {
         titulo: 'PDF',
         contenido: 'El PDF se almacena en la base de datos. Podés verlo en una nueva pestaña o descargarlo con su nombre original.',
       },
+      {
+        titulo: 'Orden de compra',
+        contenido: [
+          'Si está vinculada a una ',
+          { texto: 'orden de compra', ruta: '/ordenes-compra' },
+          ', se ve el total pedido contra lo facturado (sumando todas las facturas de la orden) y si coincide. Si no está vinculada y el proveedor tiene órdenes abiertas, se puede vincular desde acá.',
+        ],
+      },
+      {
+        titulo: 'Orden de pago',
+        contenido: [
+          'Si la factura está en una ',
+          { texto: 'orden de pago', ruta: '/ordenes-pago' },
+          ', se ve cuál, en qué estado y por cuánto. Los pagos que genera la orden aparecen en la lista de pagos con su número de orden.',
+        ],
+      },
     ],
   },
 
@@ -410,6 +440,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Vencimientos',
         contenido: 'Las facturas vencidas sin cobrar aparecen en el Calendario y en las notificaciones.',
+      },
+      {
+        titulo: 'Importar de AFIP',
+        contenido: '"Importar de AFIP" carga las facturas desde el Excel de "Mis Comprobantes Emitidos", o desde la planilla de ventas con una hoja por mes. Si la planilla trae la fecha de ingreso del pago, la factura queda cobrada; lo que ingresó al banco se anota en el cobro (la diferencia suele ser retenciones). Las que figuran en la hoja de conciliación como pendientes quedan sin cobrar, o con cobro parcial si las observaciones dicen "pago parcial $…". Si dice "NC" y no tiene cobro, queda anulada. Las notas de crédito del export de AFIP no se cargan solas: se listan para que las apliques en la factura que corresponde. El archivo tiene que ser del CUIT de la empresa activa, y volver a subirlo no duplica nada: sólo completa lo que falte.',
       },
     ],
   },
@@ -434,6 +468,18 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Importar Excel',
         contenido: 'Al importar un Excel, si los conceptos coinciden con nombres de proveedores, el sistema te sugiere vincularlos en forma masiva.',
+      },
+      {
+        titulo: 'Pedidos y pagos al proveedor',
+        contenido: [
+          'Lo que se le pide va en ',
+          { texto: 'Órdenes de compra', ruta: '/ordenes-compra' },
+          ' (con PDF para mandarle), sus facturas en ',
+          { texto: 'Facturas a Pagar', ruta: '/facturas' },
+          ' y los pagos agrupados en ',
+          { texto: 'Órdenes de pago', ruta: '/ordenes-pago' },
+          '. Cargá el CBU y el alias en el proveedor: la orden de pago los muestra.',
+        ],
       },
     ],
     links: [
@@ -496,6 +542,61 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Cuadro de seguros y cuotas',
         contenido: 'En Seguros, "Importar cuadro de seguros" lee el cuadro de Mayra (SEGUROS PARQUE AUTOMOTOR o Cuadro Seguros Flota). Completa en cada póliza ya cargada la cobertura, si es individual o de flota, la suma asegurada, la forma de pago y la cuota, y trae las cuotas mes a mes de la hoja de pagos (botón del calendario en cada fila). El cuadro no tiene vencimientos: esos siguen saliendo de la pizarra. Si el cuadro dice otra aseguradora que la cargada, o el vehículo no está en Flota, la vista previa lo avisa y no cambia nada. Reimportar no duplica.',
+        veTambien: [{ texto: 'Seguro del personal (ART / AP)', ruta: '/seguros-personal' }],
+      },
+    ],
+  },
+
+  // ── Órdenes de compra ───────────────────────────────────────────────────────
+  '/ordenes-compra': {
+    titulo: 'Órdenes de compra',
+    descripcion: 'Lo que se le pide a cada proveedor, con su PDF, el control de lo que llegó y el cotejo con la factura antes de pagar.',
+    secciones: [
+      {
+        titulo: 'Armar la orden',
+        contenido: '"Nueva orden" la crea en borrador con el próximo número de la empresa. Elegí el proveedor: se completan contacto, teléfono, entrega y plazo de su última orden. Cargá los artículos con cantidad y precio; el subtotal, el IVA y el total se calculan solos. Mientras es borrador se puede corregir (por ejemplo, cuando el depósito cambia un material o agrega la referencia del proveedor).',
+      },
+      {
+        titulo: 'Emitir y mandar',
+        contenido: '"Emitir" la deja fija y el PDF sale sin la marca de borrador, listo para mandarle al proveedor. Si hay que cambiar algo, "Volver a borrador" (mientras no tenga facturas). Anular deja la orden en el historial con su número.',
+      },
+      {
+        titulo: 'Recepción',
+        contenido: '"Registrar recepción" anota cuánto llegó de cada artículo. Lo que llegó de menos queda marcado en la orden y en el cotejo. Se puede registrar más de una vez si llega en partes.',
+      },
+      {
+        titulo: 'Cotejo con la factura',
+        contenido: 'Cuando llega la factura del proveedor, vinculala a la orden (desde la orden o desde la factura en Facturas a Pagar). El cotejo compara lo pedido con lo facturado, sumando todas las facturas de la orden. Si coincide, "Cotejada: cerrar la orden"; si hay diferencia, se cierra igual anotando el motivo. En la factura también se ve si coincide con su orden antes de aprobarla o pagarla.',
+        veTambien: [{ texto: 'Facturas a Pagar', ruta: '/facturas' }, { texto: 'Órdenes de pago', ruta: '/ordenes-pago' }],
+      },
+    ],
+  },
+
+  // ── Órdenes de pago ─────────────────────────────────────────────────────────
+  '/ordenes-pago': {
+    titulo: 'Órdenes de pago',
+    descripcion: 'Las facturas de un proveedor que se pagan juntas, con el echeq o la transferencia de cada parte y quién la elaboró, revisó y autorizó. Reemplaza la hoja "Orden de pago" de la planilla de compras y pagos.',
+    secciones: [
+      {
+        titulo: 'Armar la orden',
+        contenido: [
+          '"Nueva orden": elegí el proveedor y aparecen sus facturas pendientes de ',
+          { texto: 'Facturas a Pagar', ruta: '/facturas' },
+          ' (las que ya están en otra orden abierta no se muestran). Tildá las que se pagan; si una se paga en parte, cambiá el importe. Abajo cargá cómo se paga: echeq o cheque con su número y banco, transferencia o efectivo, con la fecha de pago y el importe de cada uno. "Completar lo que falta" pone la diferencia en el último pago. El borrador se puede guardar aunque los totales no cierren.',
+        ],
+      },
+      {
+        titulo: 'Revisar y autorizar',
+        contenido: '"Marcar revisada" pide que el total pagado coincida con el total a pagar y deja anotado quién la revisó. "Autorizar" lo hace el administrador general (Matías) o quien tenga el permiso de aprobar pagos (Configuración → Usuarios). Si hay que cambiar algo, "Volver a borrador": se borran las firmas y se edita de nuevo. El PDF sale con el formato de la planilla, con los nombres de quien elaboró, revisó y autorizó; en borrador lleva la marca de agua.',
+      },
+      {
+        titulo: 'Registrar el pago',
+        contenido: [
+          'Con la orden autorizada, "Registrar el pago" anota el pago en cada factura, repartiendo los medios en orden: si un echeq cubre dos facturas, queda un pago en cada una y un solo echeq. Los echeqs aparecen en ',
+          { texto: 'Cheques', ruta: '/cheques' },
+          ' con su banco y fecha de pago. Si la factura tiene evento y pestaña o rubro, el egreso del evento se crea como en un pago normal. Una orden pagada ya no se anula: si hay que corregir un pago, se anula desde la factura.',
+        ],
+        veTambien: [{ texto: 'Órdenes de compra', ruta: '/ordenes-compra' }, { texto: 'Facturas a Pagar', ruta: '/facturas' }],
       },
     ],
   },
@@ -676,7 +777,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Cargar un cheque',
-        contenido: '"Nuevo cheque": banco, número, a quién va (proveedor o concepto), monto y fecha de pago. Si es de un evento, elegilo; si es de la empresa (financiamiento, gastos generales), dejalo sin evento. Los cheques que se generan al pagar una factura con echeq o desde Gastos Extraordinarios del evento aparecen acá solos: completales el banco desde "Editar".',
+        contenido: '"Nuevo cheque": banco, número, a quién va (proveedor o concepto), monto y fecha de pago. Si es de un evento, elegilo; si es de la empresa (financiamiento, gastos generales), dejalo sin evento. Los cheques que se generan al pagar una factura con echeq, al registrar una orden de pago (ya con su banco) o desde Gastos Extraordinarios del evento aparecen acá solos: a los que no traen banco, completáselo desde "Editar".',
       },
       {
         titulo: 'Importar la planilla del banco',
@@ -763,6 +864,7 @@ const help: Record<string, HelpContent> = {
       },
     ],
     links: [
+      { label: 'Seguro del personal (ART / AP)', ruta: '/seguros-personal' },
       { label: 'Importar horas y vales', ruta: '/rrhh/importar' },
       { label: 'Ver el calendario', ruta: '/calendario' },
     ],

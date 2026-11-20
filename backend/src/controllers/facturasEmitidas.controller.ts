@@ -6,6 +6,8 @@ import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { convertirARS } from '../lib/convertirARS';
 import { registrarAuditoria } from '../lib/auditoria';
+import { procesarComprobantesEmitidos } from '../lib/comprobantesEmitidosImporter';
+import { CUIT_DOS57_FALLBACK } from './remitos.controller';
 
 // ── Multer PDF ────────────────────────────────────────────────────────────────
 
@@ -633,4 +635,22 @@ export async function uploadPdfFactura(req: Request, res: Response) {
     },
   });
   res.json({ message: 'PDF adjuntado correctamente' });
+}
+
+// ── importarComprobantesAfip ──────────────────────────────────────────────────
+// POST /api/facturas-emitidas/importar-afip?preview=true|false
+// "Mis Comprobantes Emitidos" de AFIP o la planilla de ventas de Mayra (hojas por
+// mes + CONCILIACIÓN). Ver lib/comprobantesEmitidosImporter.ts.
+export async function importarComprobantesAfip(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
+  const aplicar = req.query.preview === 'false';
+  const empresa = await prisma.empresa.findUnique({ where: { id: req.empresaId! }, select: { id: true, cuit: true, nombre: true } });
+  // DOS57 todavía no tiene el CUIT cargado en Configuración de empresa (mismo fallback que los remitos).
+  const cuitEmpresa = empresa?.cuit ?? (/dos\s?57/i.test(empresa?.nombre ?? '') ? CUIT_DOS57_FALLBACK : null);
+  try {
+    const nombre = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    res.json(await procesarComprobantesEmitidos(req.file.buffer, nombre, req.empresaId!, req.user!.id, aplicar, cuitEmpresa));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? 'Error al procesar el archivo' });
+  }
 }

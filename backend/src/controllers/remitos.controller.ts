@@ -18,7 +18,7 @@ import { EMPRESAS } from '../lib/empresasConstants';
 // Datos fiscales impresos en la planilla original (DOS57_REMITOS_2026.xlsx).
 // Empresa no tiene campos para IIBB / inicio de actividades / condición IVA, y
 // el CUIT se usa sólo si no está cargado en Configuración.
-const CUIT_DOS57_FALLBACK = '30-71617506-1';
+export const CUIT_DOS57_FALLBACK = '30-71617506-1';
 const FISCAL_DOS57 = [
   'Córdoba Capital Argentina',
   'IVA RESPONSABLE INSCRIPTO',

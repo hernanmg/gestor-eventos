@@ -1775,6 +1775,9 @@ export interface Factura {
   fecha_vencimiento: string | null;
   proveedor_id:      number | null;
   proveedor?:        { id: number; nombre: string; alias: string | null; cuit?: string | null } | null;
+  // Sólo en el detalle: orden de compra que cumple esta factura (cotejo)
+  orden_compra?:     { id: number; numero: number; estado: string; moneda: Moneda; total: number; facturado: number; diferencia: number } | null;
+  ordenesPago?:      { id: number; numero: number; estado: EstadoOrdenPago; importe: number }[];
   evento_id:         number | null;
   evento?:           { id: number; nombre: string } | null;
   tab_numero:        number | null;
@@ -3648,4 +3651,86 @@ export interface OpcionesNovedad {
   empleados:   { id: number; nombre: string; apellido: string }[];
   proveedores: { id: number; nombre: string }[];
   usuarios:    { id: number; nombre: string; rol: string; empresa_id: number | null }[];
+}
+
+// ── Órdenes de compra ──
+export type EstadoOrdenCompra = 'BORRADOR' | 'EMITIDA' | 'RECIBIDA' | 'CERRADA' | 'ANULADA';
+
+export interface OrdenCompraResumen {
+  id:                   number;
+  numero:               number;
+  numero_formateado:    string;
+  fecha:                string;
+  estado:               EstadoOrdenCompra;
+  moneda:               Moneda;
+  subtotal:             number | string;
+  iva:                  number | string;
+  total:                number | string;
+  referencia_proveedor: string | null;
+  emitida_at:           string | null;
+  recibida_at:          string | null;
+  proveedor:            { id: number; nombre: string; cuit: string | null };
+  evento:               { id: number; nombre: string } | null;
+  facturado:            number;
+  cant_facturas:        number;
+  _count:               { items: number };
+}
+
+export interface OrdenCompraItem {
+  id:                number;
+  orden_item:        number;
+  codigo:            string | null;
+  descripcion:       string;
+  cantidad:          number | string;
+  precio_unitario:   number | string;
+  total:             number | string;
+  cantidad_recibida: number | string | null;
+}
+
+export interface OrdenCompraDetalle {
+  id: number; numero: number; numero_formateado: string; fecha: string; estado: EstadoOrdenCompra;
+  proveedor_id: number; evento_id: number | null;
+  proveedor: { id: number; nombre: string; cuit: string | null; telefono: string | null; email: string | null };
+  evento: { id: number; nombre: string } | null;
+  contacto: string | null; telefono: string | null; domicilio: string | null; ciudad: string | null;
+  entrega: string | null; direccion_entrega: string | null; plazo_pago: string | null; forma_pago: string | null;
+  referencia_proveedor: string | null; moneda: Moneda; iva_porcentaje: number | string;
+  subtotal: number | string; iva: number | string; total: number | string;
+  emitida_at: string | null; recibida_at: string | null; notas: string | null; notas_cotejo: string | null;
+  items: OrdenCompraItem[];
+  facturas: { id: number; numero_factura: string; tipo_factura: string; fecha_emision: string; importe_total: number | string; neto_gravado: number | string | null; iva_importe: number | string | null; estado: string; moneda: Moneda; importe_pendiente: number | string }[];
+  cotejo: {
+    facturado_total: number; facturado_neto: number; diferencia_total: number; diferencia_neto: number; coincide: boolean;
+    faltantes: { orden_item: number; descripcion: string; pedido: number; recibido: number }[];
+    items_sin_controlar: number;
+  };
+}
+
+// ── Órdenes de pago a proveedores (/ordenes-pago) ────────────────────────────
+export type EstadoOrdenPago = 'BORRADOR' | 'REVISADA' | 'AUTORIZADA' | 'PAGADA' | 'ANULADA';
+
+export interface OrdenPagoResumen {
+  id: number; numero: number; numero_formateado: string; fecha: string; estado: EstadoOrdenPago; moneda: Moneda;
+  concepto: string | null; total_facturas: number; total_pagos: number;
+  proveedor: { id: number; nombre: string };
+  cant_facturas: number; cant_medios: number; medios: string[];
+}
+
+export interface FacturaParaOrdenPago {
+  id: number; numero_factura: string; tipo_factura: string; fecha_emision: string;
+  importe_total: number; importe_pendiente: number; estado: string; moneda: Moneda;
+  evento: { id: number; nombre: string } | null;
+}
+
+export interface OrdenPagoDetalle {
+  id: number; numero: number; numero_formateado: string; fecha: string; estado: EstadoOrdenPago; moneda: Moneda;
+  proveedor_id: number; concepto: string | null; notas: string | null;
+  proveedor: { id: number; nombre: string; cuit: string | null; cbu: string | null; alias_bancario: string | null; banco: string | null };
+  total_facturas: number; total_pagos: number; diferencia: number; cierra: boolean;
+  elaborado_nombre: string | null; revisado_nombre: string | null; autorizado_nombre: string | null;
+  revisado_at: string | null; autorizado_at: string | null; pagada_at: string | null;
+  puede_autorizar: boolean;
+  facturas: { id: number; orden_item: number; factura_id: number; importe: number; factura: FacturaParaOrdenPago }[];
+  medios: { id: number; orden_item: number; medio_pago: MedioPago; numero: string | null; banco: string | null; fecha_pago: string; importe: number }[];
+  pagos: { id: number; factura_id: number; importe: number; medio_pago: MedioPago; referencia: string | null; echeq_id: number | null; fecha_pago: string }[];
 }

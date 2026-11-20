@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, ShoppingCart, HandCoins, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -96,6 +96,8 @@ export function useNavModel(user: MeResponse): NavModel {
     emitidas:    { to: '/facturas-emitidas', label: 'Facturas a Cobrar',  icon: Receipt,        group: 'finanzas', badge: facturasEmitidasVencidas, tone: 'red' },
     ctacte:      { to: '/cuentas-corrientes', label: 'Cuentas Corrientes', icon: ArrowLeftRight, group: 'finanzas' },
     proveedores: { to: '/proveedores',       label: 'Proveedores',        icon: Building2,      group: 'finanzas' },
+    ordenes:     { to: '/ordenes-compra',    label: 'Órdenes de compra',  icon: ShoppingCart,   group: 'finanzas' },
+    ordenesPago: { to: '/ordenes-pago',      label: 'Órdenes de pago',    icon: HandCoins,      group: 'finanzas' },
     cheques:     { to: '/cheques',           label: 'Cheques',            icon: ScrollText,     group: 'finanzas' },
     afip:        { to: '/afip-prestamos',    label: 'AFIP / Créditos',    icon: Landmark,       group: 'finanzas' },
     cierre:      { to: '/cierre-contable',   label: 'Cierre Contable',    icon: FileSpreadsheet, group: 'finanzas' },
@@ -124,6 +126,7 @@ export function useNavModel(user: MeResponse): NavModel {
   const porPermiso: NavItem[] = user.rol === 'ADMIN' ? [] : ([
     tienePermiso(user, 'TARJETA_CORPORATIVA') && I.tarjeta,
     tienePermiso(user, 'FACTURAS') && I.facturas,
+    tienePermiso(user, 'FACTURAS') && I.ordenesPago,
     tienePermiso(user, 'UNIFORMES') && I.uniformes,
   ] as (NavItem | false)[]).filter((x): x is NavItem => !!x);
 
@@ -214,6 +217,10 @@ export function useNavModel(user: MeResponse): NavModel {
     esAdmin && I.emitidas,
     esAdmin && I.ctacte,
     esAdmin && I.proveedores,
+    // Órdenes de compra — arman borradores ADMIN y OPERADOR (ej. Jazmín pide material)
+    adminOOper && I.ordenes,
+    // Órdenes de pago — mismo acceso que Facturas a Pagar
+    (esAdmin || tienePermiso(user, 'FACTURAS')) && I.ordenesPago,
     esAdmin && I.cheques,
     esAdmin && I.afip,
     esAdmin && I.cierre,

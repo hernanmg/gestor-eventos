@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Search, Filter, AlertTriangle, FileText, Eye } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, FileText, Eye, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useFacturasEmitidas, useResumenFacturasEmitidas, type FacturasEmitidasFiltros } from '@/hooks/useFacturasEmitidas';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import FacturaEmitidaForm from './FacturaEmitidaForm';
 import FacturaEmitidaDetalle from './FacturaEmitidaDetalle';
 import RegistrarCobroDialog from './RegistrarCobroDialog';
+import ImportarAfipDialog from './ImportarAfipDialog';
 import { TIPO_COMPROBANTE_LABEL } from './labels';
 import api from '@/lib/api';
 import type { EstadoFacturaEmitida, FacturaEmitida, TipoComprobanteEmitido, Moneda } from '@/types';
@@ -132,6 +133,7 @@ export default function FacturasEmitidasPage() {
   const [filtros, setFiltros]   = useState<FacturasEmitidasFiltros>({});
   const [busqueda, setBusqueda] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [openId,    setOpenId]      = useState<number | null>(null);
   const [cobrarId,  setCobrarId]    = useState<number | null>(null);
 
@@ -171,9 +173,14 @@ export default function FacturasEmitidasPage() {
         title="Facturas a Cobrar"
         subtitle="Facturas emitidas a clientes"
         actions={
-          <Button size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} className="mr-1.5" /> Nueva factura
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar de AFIP
+            </Button>
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <Plus size={14} className="mr-1.5" /> Nueva factura
+            </Button>
+          </div>
         }
       />
 
@@ -259,6 +266,8 @@ export default function FacturasEmitidasPage() {
           </div>
         </div>
       )}
+
+      {showImport && <ImportarAfipDialog onClose={() => setShowImport(false)} />}
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-2xl">

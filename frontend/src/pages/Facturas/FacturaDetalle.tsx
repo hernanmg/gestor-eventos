@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, FileText, Plus, Trash2, AlertTriangle,
   CheckCircle, Clock, XCircle, Ban, ExternalLink, Download,
-  Eye, Loader2,
+  Eye, Loader2, ShoppingCart,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,6 +18,7 @@ import {
   type PagoPayload,
 } from '@/hooks/useFacturas';
 import { useEventos } from '@/hooks/useEvento';
+import { useOrdenesCompra, useVincularFacturaOC } from '@/hooks/useOrdenesCompra';
 import { Button } from '@/components/ui/button';
 import MoneyInput from '@/components/ui/MoneyInput';
 import api from '@/lib/api';
@@ -400,6 +401,22 @@ export default function FacturaDetalle() {
             <Row label="Rubro"       value={rubroNombre} />
           </div>
 
+          <OrdenCompraFactura factura={factura} />
+
+          {(factura.ordenesPago?.length ?? 0) > 0 && (
+            <div className="bg-card border border-border rounded-lg p-4 text-sm space-y-1">
+              {factura.ordenesPago!.map(op => (
+                <div key={op.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {op.estado === 'PAGADA' ? 'Pagada con la' : 'Incluida en la'} orden de pago <span className="font-medium">OP {String(op.numero).padStart(6, '0')}</span>
+                    <span className="text-muted-foreground"> ({op.estado.toLowerCase()}) · {formatCurrency(op.importe, factura.moneda)}</span>
+                  </span>
+                  <Link to={`/ordenes-pago?abrir=${op.id}`} className="text-xs underline">Ver orden</Link>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Importes */}
           <div className="bg-card border border-border rounded-lg p-4 space-y-2 text-sm">
             <div className="flex justify-between">
@@ -551,6 +568,57 @@ export default function FacturaDetalle() {
           onClose={() => setShowPagar(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Orden de compra de la factura (cotejo antes de pagar) ──────────────────────
+// Si está vinculada: total pedido vs facturado (sumando todas las facturas de
+// la orden). Si no, ofrece vincularla a una orden emitida/recibida del mismo
+// proveedor — el cierre del cotejo se hace desde la orden.
+function OrdenCompraFactura({ factura }: { factura: { id: number; proveedor_id: number | null; moneda: any; orden_compra?: { id: number; numero: number; estado: string; moneda: any; total: number; facturado: number; diferencia: number } | null } }) {
+  const oc = factura.orden_compra;
+  const { data: ordenes = [] } = useOrdenesCompra({ proveedor_id: factura.proveedor_id ?? undefined }, !oc && factura.proveedor_id != null);
+  const vincular = useVincularFacturaOC();
+  const [sel, setSel] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const abiertas = ordenes.filter(o => o.estado === 'EMITIDA' || o.estado === 'RECIBIDA');
+  const numero = (n: number) => `OC ${String(n).padStart(6, '0')}`;
+
+  if (oc) {
+    const coincide = Math.abs(oc.diferencia) <= 1;
+    return (
+      <div className={cn('border rounded-lg p-4 text-sm space-y-1', coincide ? 'bg-card border-border' : 'bg-amber-50 border-amber-200')}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium flex items-center gap-1.5"><ShoppingCart size={14} /> {numero(oc.numero)}</span>
+          <Link to={`/ordenes-compra?abrir=${oc.id}`} className="text-xs underline">Ver orden</Link>
+        </div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Pedido</span><span>{formatCurrency(oc.total, oc.moneda)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Facturado (todas las facturas de la orden)</span><span>{formatCurrency(oc.facturado, oc.moneda)}</span></div>
+        <div className={cn('flex justify-between font-medium', coincide ? 'text-green-700' : 'text-amber-800')}>
+          <span>{coincide ? 'Coincide con la orden' : 'Diferencia con la orden'}</span>
+          {!coincide && <span>{formatCurrency(oc.diferencia, oc.moneda)}</span>}
+        </div>
+      </div>
+    );
+  }
+  if (abiertas.length === 0) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 text-sm space-y-2">
+      <p className="font-medium flex items-center gap-1.5"><ShoppingCart size={14} /> Orden de compra</p>
+      <p className="text-xs text-muted-foreground">Este proveedor tiene órdenes de compra abiertas. Vinculá la factura para cotejarla con lo pedido.</p>
+      <div className="flex gap-2">
+        <select value={sel} onChange={e => setSel(e.target.value)} className="flex-1 border border-input rounded px-2 py-1.5 text-sm bg-white">
+          <option value="">Elegir orden…</option>
+          {abiertas.map(o => <option key={o.id} value={o.id}>{o.numero_formateado} — {new Date(o.fecha).toLocaleDateString('es-AR', { timeZone: 'UTC' })} — {formatCurrency(Number(o.total), o.moneda)}</option>)}
+        </select>
+        <Button size="sm" variant="outline" disabled={!sel || vincular.isPending} onClick={async () => {
+          setError(null);
+          try { await vincular.mutateAsync({ id: Number(sel), factura_id: factura.id }); setSel(''); }
+          catch (err: any) { setError(err?.response?.data?.error ?? 'No se pudo vincular'); }
+        }}>Vincular</Button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

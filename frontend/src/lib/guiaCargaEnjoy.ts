@@ -89,7 +89,7 @@ export const GUIA_PASOS: PasoGuia[] = [
       { id: '4.1', que: 'Cajas chicas (histórico)', planilla: 'CAJAS 2026, versión actualizada', donde: 'Caja Global → Importar cajas chicas', ruta: '/caja', revisar: 'Cada rendición queda como una caja cerrada. La de Dani de abril (3) no cierra por $ 39.000.' },
       { id: '4.2', que: 'Cajas chicas nuevas', donde: 'Caja Global → Nueva caja', ruta: '/caja', revisar: 'Quién la rinde y quién la cierra.' },
       { id: '4.3', que: 'Libro de compras de AFIP', planilla: 'FACTURAS <MES> ENJOY, todos los meses', donde: 'Facturas a pagar → Importar libro de compras', ruta: '/facturas', revisar: 'Facturas sin evento o sin proveedor, y las de más de $ 500.000 sin PDF.' },
-      { id: '4.4', que: 'Facturas a clientes', donde: 'Facturas emitidas', ruta: '/facturas-emitidas', revisar: 'A mano: todavía no hay importador de comprobantes emitidos.' },
+      { id: '4.4', que: 'Facturas a clientes', planilla: 'Mis Comprobantes Emitidos de AFIP, o la planilla de ventas por mes', donde: 'Facturas a Cobrar → Importar de AFIP', ruta: '/facturas-emitidas', revisar: 'Con la planilla de ventas entran también los cobros. Revisar las pendientes y las notas de crédito, que se aplican a mano.' },
       { id: '4.5', que: 'Tarjeta corporativa', planilla: 'Tarjeta Corporativa ENJOY 2026 (la arma Santi)', donde: 'Tarjeta Corp. → Importar', ruta: '/tarjeta-corporativa', revisar: 'Acordar que los gastos se carguen a medida que llegan, no por WhatsApp.' },
       { id: '4.6', que: 'Resumen semanal de pagos', planilla: 'A confirmar', donde: 'Gastos del mes → Pagos semanales', ruta: '/gastos-operativos', revisar: 'Si lo arma Male y si Matías lo aprueba línea por línea.' },
     ],

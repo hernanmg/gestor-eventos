@@ -72,6 +72,17 @@ function mapFactura(f: any) {
       ...p,
       importe: Number(p.importe),
     })),
+    orden_compra: f.orden_compra ? (() => {
+      const facturado = f.orden_compra.facturas.reduce((n: number, x: any) => n + Number(x.importe_total), 0);
+      return {
+        id: f.orden_compra.id, numero: f.orden_compra.numero, estado: f.orden_compra.estado, moneda: f.orden_compra.moneda,
+        total: Number(f.orden_compra.total), facturado: Math.round(facturado * 100) / 100,
+        diferencia: Math.round((facturado - Number(f.orden_compra.total)) * 100) / 100,
+      };
+    })() : f.orden_compra,
+    ordenesPago: f.ordenesPago?.map((x: any) => ({
+      id: x.orden_pago.id, numero: x.orden_pago.numero, estado: x.orden_pago.estado, importe: Number(x.importe),
+    })),
   };
 }
 
@@ -195,6 +206,18 @@ export async function detail(req: Request, res: Response) {
       proveedor: { select: { id: true, nombre: true, alias: true, cuit: true } },
       evento:    { select: { id: true, nombre: true, estado: true } },
       rubro:     { select: { id: true, nombre: true } },
+      // Órdenes de pago en las que está (no anuladas)
+      ordenesPago: {
+        where:  { orden_pago: { deleted_at: null, estado: { not: 'ANULADA' } } },
+        select: { importe: true, orden_pago: { select: { id: true, numero: true, estado: true } } },
+      },
+      // Cotejo con la orden de compra (Mayra, antes de pagar)
+      orden_compra: {
+        select: {
+          id: true, numero: true, estado: true, total: true, subtotal: true, moneda: true,
+          facturas: { where: { deleted_at: null, estado: { not: 'ANULADA' } }, select: { importe_total: true } },
+        },
+      },
       pagos:     {
         where:   { deleted_at: null },
         include: {
@@ -479,114 +502,147 @@ export async function pagarFactura(req: Request, res: Response) {
     res.status(400).json({ error: 'Vinculá la factura a un evento antes de pagarla con echeq' }); return;
   }
 
-  const result = await prisma.$transaction(async tx => {
-    // 1. Crear PagoFactura
-    const pago = await tx.pagoFactura.create({
-      data: {
-        factura_id: facturaId,
-        fecha_pago: new Date(fecha_pago),
-        importe,
-        moneda:     factura.moneda,
-        medio_pago: medio_pago as MedioPago,
-        referencia: referencia ?? null,
-        notas:      notas      ?? null,
-        created_by: req.user!.id,
-      },
-    });
-
-    let movimientoId: number | null = null;
-    let echeqId:      number | null = null;
-
-    // 2. Crear Movimiento si hay tab o rubro configurado (y evento: las facturas
-    // importadas del libro AFIP pueden estar todavía sin evento vinculado)
-    if (factura.evento_id !== null && (factura.tab_numero || factura.rubro_id)) {
-      const lastOrder = await tx.movimiento.findFirst({
-        where: {
-          evento_id: factura.evento_id, tipo: Tipo.EGRESO, deleted_at: null,
-          ...(factura.rubro_id ? { rubro_id: factura.rubro_id } : { tab_numero: factura.tab_numero }),
-        },
-        orderBy: { orden: 'desc' },
-        select:  { orden: true },
-      });
-      const mov = await tx.movimiento.create({
-        data: {
-          evento_id:   factura.evento_id,
-          tipo:        Tipo.EGRESO,
-          tab_numero:  factura.tab_numero,
-          rubro_id:    factura.rubro_id,
-          estado_movimiento: 'PAGADO',
-          fecha:       new Date(fecha_pago),
-          concepto:    factura.proveedor?.nombre ?? 'Sin proveedor',
-          descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
-          // Convención de Movimiento: EGRESO → DEBE (haber = 0). Los reportes calculan
-          // egresos = debe − haber, así que en HABER el pago restaba del total en vez de sumar.
-          debe:        importe,
-          moneda:      factura.moneda,
-          tasa_cambio: factura.tasa_cambio,
-          monto_ars:   convertirARS(importe, factura.moneda, factura.tasa_cambio !== null ? Number(factura.tasa_cambio) : null),
-          proveedor_id: factura.proveedor_id,
-          orden:       (lastOrder?.orden ?? 0) + 1,
-          saldo:       0,
-          created_by:  req.user!.id,
-          updated_by:  req.user!.id,
-        },
-      });
-      movimientoId = mov.id;
-      if (factura.rubro_id) {
-        await recalcularSaldosRubro(factura.evento_id, Tipo.EGRESO, factura.rubro_id, tx as any);
-      } else if (factura.tab_numero) {
-        await recalcularSaldos(factura.evento_id, Tipo.EGRESO, factura.tab_numero, tx as any);
-      }
-    }
-
-    // 3. Crear Echeq si medio_pago = ECHEQ
-    if (medio_pago === 'ECHEQ' && echeq_numero) {
-      const echeq = await tx.echeq.create({
-        data: {
-          evento_id:            factura.evento_id!, // validado arriba: ECHEQ exige evento
-          empresa_id:           factura.empresa_id,
-          movimiento_id:        movimientoId,
-          proveedor_id:         factura.proveedor_id,
-          numero:               echeq_numero,
-          razon_social:         factura.proveedor?.nombre ?? null,
-          importe,
-          moneda:               factura.moneda,
-          estado:               'PENDIENTE',
-          fecha_emision:        new Date(fecha_pago),
-          fecha_cobro_estimada: echeq_fecha_cobro_estimada ? new Date(echeq_fecha_cobro_estimada) : null,
-          created_by:           req.user!.id,
-          updated_by:           req.user!.id,
-        },
-      });
-      echeqId = echeq.id;
-    }
-
-    // 4. Actualizar PagoFactura con ids generados
-    await tx.pagoFactura.update({
-      where: { id: pago.id },
-      data:  { movimiento_id: movimientoId, echeq_id: echeqId },
-    });
-
-    // 5 & 6. Recalcular totales y estado de factura
-    await recalcularFactura(facturaId, tx);
-
-    await registrarAuditoria({
-      usuarioId:    req.user!.id,
-      empresaId:    req.empresaId,
-      accion:       'CREATE',
-      entidad:      'PagoFactura',
-      entidadId:    pago.id,
-      eventoId:     factura.evento_id ?? undefined,
-      descripcion:  `Pago de $${importe} (${medio_pago}) registrado en factura ${factura.tipo_factura}${factura.numero_factura}`,
-      datosDespues: { importe, medio_pago, movimientoId, echeqId },
-      ip:           req.ip,
-      tx:           tx as any,
-    });
-
-    return { ...pago, importe: Number(pago.importe), movimiento_id: movimientoId, echeq_id: echeqId };
-  });
+  const result = await prisma.$transaction(tx => crearPagoFacturaTx(tx, factura, {
+    fecha_pago: new Date(fecha_pago), importe, medio_pago: medio_pago as MedioPago,
+    referencia: referencia ?? null, notas: notas ?? null,
+    echeq: medio_pago === 'ECHEQ' && echeq_numero ? {
+      numero: echeq_numero, importe, fecha_emision: new Date(fecha_pago),
+      fecha_cobro_estimada: echeq_fecha_cobro_estimada ? new Date(echeq_fecha_cobro_estimada) : null,
+    } : null,
+  }, { usuarioId: req.user!.id, empresaId: req.empresaId!, ip: req.ip }));
 
   res.status(201).json(result);
+}
+
+// ── crearPagoFacturaTx ────────────────────────────────────────────────────────
+// Registra un pago de factura dentro de una transacción: PagoFactura, egreso en
+// el evento (si la factura tiene evento y pestaña/rubro), echeq (si viene) y
+// recálculo del pendiente. Lo usan pagarFactura y las órdenes de pago.
+export interface DatosPagoFactura {
+  fecha_pago:     Date;
+  importe:        number;
+  medio_pago:     MedioPago;
+  referencia:     string | null;
+  notas:          string | null;
+  orden_pago_id?: number | null;
+  // Echeq a emitir junto con este pago. Su importe puede ser mayor que el del
+  // pago cuando un mismo echeq cubre varias facturas de una orden de pago.
+  echeq?: { numero: string; importe: number; fecha_emision: Date; fecha_cobro_estimada: Date | null; banco?: string | null } | null;
+}
+
+export interface FacturaParaPago {
+  id: number; empresa_id: number; evento_id: number | null; proveedor_id: number | null;
+  tab_numero: number | null; rubro_id: number | null; moneda: Moneda; tasa_cambio: any;
+  tipo_factura: string; numero_factura: string; proveedor?: { nombre: string } | null;
+}
+
+export async function crearPagoFacturaTx(
+  tx: any, factura: FacturaParaPago, d: DatosPagoFactura,
+  ctx: { usuarioId: number; empresaId: number; ip?: string },
+) {
+  const { importe, medio_pago } = d;
+  const pago = await tx.pagoFactura.create({
+    data: {
+      factura_id:    factura.id,
+      fecha_pago:    d.fecha_pago,
+      importe,
+      moneda:        factura.moneda,
+      medio_pago,
+      referencia:    d.referencia,
+      notas:         d.notas,
+      orden_pago_id: d.orden_pago_id ?? null,
+      created_by:    ctx.usuarioId,
+    },
+  });
+
+  let movimientoId: number | null = null;
+  let echeqId:      number | null = null;
+
+  // Egreso en el evento si hay pestaña o rubro configurado (y evento: las facturas
+  // importadas del libro AFIP pueden estar todavía sin evento vinculado)
+  if (factura.evento_id !== null && (factura.tab_numero || factura.rubro_id)) {
+    const lastOrder = await tx.movimiento.findFirst({
+      where: {
+        evento_id: factura.evento_id, tipo: Tipo.EGRESO, deleted_at: null,
+        ...(factura.rubro_id ? { rubro_id: factura.rubro_id } : { tab_numero: factura.tab_numero }),
+      },
+      orderBy: { orden: 'desc' },
+      select:  { orden: true },
+    });
+    const mov = await tx.movimiento.create({
+      data: {
+        evento_id:   factura.evento_id,
+        tipo:        Tipo.EGRESO,
+        tab_numero:  factura.tab_numero,
+        rubro_id:    factura.rubro_id,
+        estado_movimiento: 'PAGADO',
+        fecha:       d.fecha_pago,
+        concepto:    factura.proveedor?.nombre ?? 'Sin proveedor',
+        descripcion: `Pago Fact. ${factura.tipo_factura}${factura.numero_factura}`,
+        // Convención de Movimiento: EGRESO → DEBE (haber = 0). Los reportes calculan
+        // egresos = debe − haber, así que en HABER el pago restaba del total en vez de sumar.
+        debe:        importe,
+        moneda:      factura.moneda,
+        tasa_cambio: factura.tasa_cambio,
+        monto_ars:   convertirARS(importe, factura.moneda, factura.tasa_cambio !== null ? Number(factura.tasa_cambio) : null),
+        proveedor_id: factura.proveedor_id,
+        orden:       (lastOrder?.orden ?? 0) + 1,
+        saldo:       0,
+        created_by:  ctx.usuarioId,
+        updated_by:  ctx.usuarioId,
+      },
+    });
+    movimientoId = mov.id;
+    if (factura.rubro_id) {
+      await recalcularSaldosRubro(factura.evento_id, Tipo.EGRESO, factura.rubro_id, tx as any);
+    } else if (factura.tab_numero) {
+      await recalcularSaldos(factura.evento_id, Tipo.EGRESO, factura.tab_numero, tx as any);
+    }
+  }
+
+  if (d.echeq) {
+    const echeq = await tx.echeq.create({
+      data: {
+        evento_id:            factura.evento_id,
+        empresa_id:           factura.empresa_id,
+        movimiento_id:        movimientoId,
+        proveedor_id:         factura.proveedor_id,
+        numero:               d.echeq.numero,
+        banco:                d.echeq.banco ?? null,
+        razon_social:         factura.proveedor?.nombre ?? null,
+        importe:              d.echeq.importe,
+        moneda:               factura.moneda,
+        estado:               'PENDIENTE',
+        fecha_emision:        d.echeq.fecha_emision,
+        fecha_cobro_estimada: d.echeq.fecha_cobro_estimada,
+        created_by:           ctx.usuarioId,
+        updated_by:           ctx.usuarioId,
+      },
+    });
+    echeqId = echeq.id;
+  }
+
+  await tx.pagoFactura.update({
+    where: { id: pago.id },
+    data:  { movimiento_id: movimientoId, echeq_id: echeqId },
+  });
+
+  await recalcularFactura(factura.id, tx);
+
+  await registrarAuditoria({
+    usuarioId:    ctx.usuarioId,
+    empresaId:    ctx.empresaId,
+    accion:       'CREATE',
+    entidad:      'PagoFactura',
+    entidadId:    pago.id,
+    eventoId:     factura.evento_id ?? undefined,
+    descripcion:  `Pago de $${importe} (${medio_pago}) registrado en factura ${factura.tipo_factura}${factura.numero_factura}`,
+    datosDespues: { importe, medio_pago, movimientoId, echeqId, orden_pago_id: d.orden_pago_id ?? null },
+    ip:           ctx.ip,
+    tx:           tx as any,
+  });
+
+  return { ...pago, importe: Number(pago.importe), movimiento_id: movimientoId, echeq_id: echeqId };
 }
 
 // ── anularPago ────────────────────────────────────────────────────────────────

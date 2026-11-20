@@ -338,6 +338,8 @@ model Empresa {
   controlesSalida        ControlSalidaVehiculo[]
   premios_puntuales      PremioPuntual[]
   polizasPersonal        PolizaPersonal[]
+  ordenesCompra          OrdenCompra[]
+  ordenesPago            OrdenPago[]
   coberturasEmpleado     CoberturaEmpleado[]
   cuotasSeguroVehiculo   CuotaSeguroVehiculo[]
 }
@@ -487,6 +489,7 @@ model Evento {
   alias_planilla         AliasEventoPlanilla[]
   presupuestos           PresupuestoEvento[]
   remitos                RemitoEvento[]
+  ordenesCompra          OrdenCompra[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
   controles_salida       ControlSalidaVehiculo[]
@@ -1016,16 +1019,16 @@ model MovimientoCaja {
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
 
 model Proveedor {
-  id                  Int       @id @default(autoincrement())
+  id                  Int           @id @default(autoincrement())
   empresa_id          Int
-  empresa             Empresa   @relation(fields: [empresa_id], references: [id])
+  empresa             Empresa       @relation(fields: [empresa_id], references: [id])
   nombre              String
   alias               String?
-  cuit                String?   @unique
+  cuit                String?       @unique
   categoria           String?
   telefono            String?
   notas               String?
-  activo              Boolean   @default(true)
+  activo              Boolean       @default(true)
   // Datos del formulario de Google (Enjoy) — ver importarProveedoresFormulario.
   // `alias` de arriba es el nombre corto comercial; el alias del CBU va en alias_bancario.
   // `dni` es la clave de upsert cuando el CUIT del formulario no es válido (< 11 dígitos).
@@ -1043,10 +1046,12 @@ model Proveedor {
   servicio            String?
   // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
   // participa del reparto. Ver POST /api/facturas-emitidas.
-  es_comisionista     Boolean   @default(false)
-  porcentaje_comision Decimal?  @db.Decimal(5, 2)
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
+  es_comisionista     Boolean       @default(false)
+  porcentaje_comision Decimal?      @db.Decimal(5, 2)
+  ordenesCompra       OrdenCompra[]
+  ordenesPago         OrdenPago[]
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
   deleted_at          DateTime?
   created_by          Int?
   updated_by          Int?
@@ -1058,6 +1063,154 @@ model Proveedor {
   pedidos_comida    PedidoComida[]
   cuentasCorrientes CuentaCorriente[]
   novedades         Novedad[]
+}
+
+// ─── ÓRDENES DE COMPRA ────────────────────────────────────────────────────────
+// Replica "Ordenes de Compra y Pago.xlsx" (Mayra): encabezado de la empresa,
+// proveedor con contacto, entrega, plazo y forma de pago, ítems con cantidad y
+// precio, subtotal + IVA + total. Se emite en PDF y se le manda al proveedor;
+// cuando llega la factura se vincula para cotejar lo pedido contra lo facturado
+// antes de pagar ("yo solo debería cotejar con la factura", Mayra).
+
+enum EstadoOrdenCompra {
+  BORRADOR
+  EMITIDA // enviada al proveedor
+  RECIBIDA // llegó la mercadería
+  CERRADA // facturada y cotejada
+  ANULADA
+}
+
+model OrdenCompra {
+  id                   Int               @id @default(autoincrement())
+  empresa_id           Int
+  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
+  numero               Int // correlativo por empresa
+  fecha                DateTime // fecha de calendario
+  proveedor_id         Int
+  proveedor            Proveedor         @relation(fields: [proveedor_id], references: [id])
+  evento_id            Int?
+  evento               Evento?           @relation(fields: [evento_id], references: [id])
+  // Datos del proveedor tal como salen en la orden (la planilla los repite)
+  contacto             String?
+  telefono             String?
+  domicilio            String?
+  ciudad               String?
+  // Condiciones
+  entrega              String? // "Envío a domicilio" | "Retiro en local"
+  direccion_entrega    String?
+  plazo_pago           String? // "30-45-60 días"
+  forma_pago           String? // "Echeqs"
+  referencia_proveedor String? // n° de presupuesto o referencia que pone el proveedor
+  moneda               Moneda            @default(ARS)
+  iva_porcentaje       Decimal           @default(21) @db.Decimal(5, 2)
+  subtotal             Decimal           @default(0) @db.Decimal(15, 2)
+  iva                  Decimal           @default(0) @db.Decimal(15, 2)
+  total                Decimal           @default(0) @db.Decimal(15, 2)
+  estado               EstadoOrdenCompra @default(BORRADOR)
+  emitida_at           DateTime?
+  emitida_por          Int?
+  recibida_at          DateTime?
+  notas                String?
+  notas_cotejo         String?
+  items                OrdenCompraItem[]
+  facturas             Factura[]
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+  deleted_at           DateTime?
+  created_by           Int?
+
+  @@unique([empresa_id, numero])
+  @@index([proveedor_id])
+}
+
+model OrdenCompraItem {
+  id                Int         @id @default(autoincrement())
+  orden_id          Int
+  orden             OrdenCompra @relation(fields: [orden_id], references: [id], onDelete: Cascade)
+  orden_item        Int // 1, 2, 3… como la columna Nº
+  codigo            String?
+  descripcion       String
+  cantidad          Decimal     @db.Decimal(12, 2)
+  precio_unitario   Decimal     @db.Decimal(15, 2)
+  total             Decimal     @db.Decimal(15, 2)
+  cantidad_recibida Decimal?    @db.Decimal(12, 2) // null = todavía no se controló
+
+  @@index([orden_id])
+}
+
+// ─── ÓRDENES DE PAGO ──────────────────────────────────────────────────────────
+// Hoja "ORDEN DE PAGO" de la planilla de Mayra: facturas del proveedor que se
+// pagan juntas, medio de pago de cada parte (echeq y número), totales, y quién
+// la elaboró, revisó y autorizó. Al registrarla como pagada genera los
+// PagoFactura (y los echeqs) de cada factura.
+
+enum EstadoOrdenPago {
+  BORRADOR
+  REVISADA
+  AUTORIZADA
+  PAGADA
+  ANULADA
+}
+
+model OrdenPago {
+  id             Int                @id @default(autoincrement())
+  empresa_id     Int
+  empresa        Empresa            @relation(fields: [empresa_id], references: [id])
+  numero         Int // correlativo por empresa
+  fecha          DateTime
+  proveedor_id   Int
+  proveedor      Proveedor          @relation(fields: [proveedor_id], references: [id])
+  concepto       String?
+  moneda         Moneda             @default(ARS)
+  total_facturas Decimal            @db.Decimal(15, 2)
+  total_pagos    Decimal            @db.Decimal(15, 2)
+  estado         EstadoOrdenPago    @default(BORRADOR)
+  // Firmas (usuarios del sistema)
+  elaborado_por  Int?
+  revisado_por   Int?
+  revisado_at    DateTime?
+  autorizado_por Int?
+  autorizado_at  DateTime?
+  pagada_at      DateTime?
+  notas          String?
+  facturas       OrdenPagoFactura[]
+  medios         OrdenPagoMedio[]
+  pagos          PagoFactura[]
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+  deleted_at     DateTime?
+  created_by     Int?
+  updated_by     Int?
+
+  @@unique([empresa_id, numero])
+  @@index([proveedor_id])
+}
+
+model OrdenPagoFactura {
+  id            Int       @id @default(autoincrement())
+  orden_pago_id Int
+  orden_pago    OrdenPago @relation(fields: [orden_pago_id], references: [id], onDelete: Cascade)
+  factura_id    Int
+  factura       Factura   @relation(fields: [factura_id], references: [id])
+  orden_item    Int
+  importe       Decimal   @db.Decimal(15, 2) // lo que se paga de esa factura en esta orden
+
+  @@index([orden_pago_id])
+  @@index([factura_id])
+}
+
+model OrdenPagoMedio {
+  id            Int       @id @default(autoincrement())
+  orden_pago_id Int
+  orden_pago    OrdenPago @relation(fields: [orden_pago_id], references: [id], onDelete: Cascade)
+  orden_item    Int
+  medio_pago    MedioPago
+  numero        String? // n° de echeq / cheque / transferencia
+  banco         String?
+  fecha_pago    DateTime
+  importe       Decimal   @db.Decimal(15, 2)
+
+  @@index([orden_pago_id])
 }
 
 // ─── ECHEQS ───────────────────────────────────────────────────────────────────
@@ -1754,6 +1907,10 @@ model Factura {
   pdf_nombre_afip          String? // nombre del archivo en la descarga de AFIP
   tiene_comprobante_fisico Boolean                 @default(false)
   origen_import            String? // "AFIP", "MANUAL", etc.
+  // Orden de compra que esta factura cumple (Mayra coteja lo pedido contra lo
+  // facturado antes de pagar). Una orden puede tener varias facturas.
+  orden_compra_id          Int?
+  orden_compra             OrdenCompra?            @relation(fields: [orden_compra_id], references: [id])
   created_at               DateTime                @default(now())
   updated_at               DateTime                @updatedAt
   deleted_at               DateTime?
@@ -1761,6 +1918,7 @@ model Factura {
   updated_by               Int?
 
   pagos          PagoFactura[]
+  ordenesPago    OrdenPagoFactura[]
   movimientosCCC MovimientoCCC[]
 }
 
@@ -1778,6 +1936,9 @@ model PagoFactura {
   movimiento    Movimiento? @relation("PagoMovimiento", fields: [movimiento_id], references: [id])
   echeq_id      Int?        @unique
   echeq         Echeq?      @relation("PagoEcheq", fields: [echeq_id], references: [id])
+  // Orden de pago que lo generó (al registrar el pago de la orden)
+  orden_pago_id Int?
+  orden_pago    OrdenPago?  @relation(fields: [orden_pago_id], references: [id])
   created_at    DateTime    @default(now())
   updated_at    DateTime    @updatedAt
   deleted_at    DateTime?

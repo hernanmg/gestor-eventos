@@ -18,7 +18,16 @@ import {
   registrarCobro,
   eliminarCobro,
   uploadPdfFactura,
+  importarComprobantesAfip,
 } from '../controllers/facturasEmitidas.controller';
+import { upload as uploadXlsx } from '../controllers/importer.controller';
+
+function xlsxMiddleware(req: any, res: any, next: any) {
+  uploadXlsx.single('archivo')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
 
 function pdfMiddleware(req: any, res: any, next: any) {
   uploadPDF.single('pdf')(req, res, (err: any) => {
@@ -39,6 +48,7 @@ facturasEmitidasRouter.use(requireRole('ADMIN'));
 facturasEmitidasRouter.get('/clientes',           asyncHandler(buscarClientes));
 facturasEmitidasRouter.get('/resumen',            asyncHandler(resumen));
 facturasEmitidasRouter.delete('/cobros/:id',      asyncHandler(eliminarCobro));
+facturasEmitidasRouter.post('/importar-afip',      xlsxMiddleware, asyncHandler(importarComprobantesAfip));
 
 facturasEmitidasRouter.get('/',                   asyncHandler(list));
 facturasEmitidasRouter.post('/',                  asyncHandler(create));

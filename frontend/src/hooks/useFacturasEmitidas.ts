@@ -172,3 +172,41 @@ export function facturaEmitidaPdfUrl(facturaId: number): string {
   const base = (api.defaults.baseURL ?? '').replace(/\/$/, '');
   return `${base}/facturas-emitidas/${facturaId}/pdf`;
 }
+
+// ── Importar "Mis Comprobantes Emitidos" de AFIP / planilla de ventas ─────────
+export interface ImportarEmitidasResultado {
+  preview:         boolean;
+  formato:         'PLANILLA' | 'AFIP' | 'MIXTO' | null;
+  hojas_leidas:    string[];
+  cuit_archivo:    string | null;
+  total_filas:     number;
+  creadas:         number;
+  actualizadas:    number;
+  sin_cambios:     number;
+  cobros_nuevos:   number;
+  por_estado:      Partial<Record<EstadoFacturaEmitida, number>>;
+  total_facturado: number;
+  pendientes:      { numero: string; cliente: string; total: number; cobrado: number; motivo: string }[];
+  anuladas:        { numero: string; cliente: string; total: number; motivo: string }[];
+  notas_credito:   { numero: string; cliente: string; total: number; fecha: string }[];
+  duplicadas_en_archivo: number;
+  errores:         { hoja: string; fila_excel: number; motivo: string }[];
+}
+
+export function useImportarComprobantesEmitidos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, preview }: { file: File; preview: boolean }) => {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      return api.post<ImportarEmitidasResultado>(
+        `/facturas-emitidas/importar-afip?preview=${preview}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } },
+      ).then(r => r.data);
+    },
+    onSuccess: (data) => {
+      if (data.preview) return;
+      qc.invalidateQueries({ queryKey: KEY });
+      invalidateGlobales(qc);
+    },
+  });
+}
