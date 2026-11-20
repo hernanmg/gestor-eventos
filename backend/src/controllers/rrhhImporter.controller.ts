@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
 import { registrarAuditoria } from '../lib/auditoria';
 import { importarPadronEmpleados } from '../lib/padronEmpleadosImporter';
-import { calcularHoras } from './rrhh.controller';
+import { analizarHorasVales, importarHorasVales } from '../lib/horasValesImporter';
 import {
   round2, calcularDiaSemana, calcularHorasTrabajadas, resolverValorPorVuelta, ESTADOS_BLOQUEAN_EDICION,
 } from './bitacoraViajes.controller';
@@ -213,111 +213,33 @@ export async function importarEmpleados(req: Request, res: Response) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // POST /api/rrhh/importar/jornadas
-// Un empleado por hoja (nombre de la hoja se matchea contra apellido/nombre de
-// empleados existentes), filas = jornadas. Columnas esperadas: fecha, hora
-// ingreso, hora egreso, descripcion — mismo layout que Horas-y-vales.xlsx.
-// Enviar ?dry_run=true para previsualizar sin guardar.
+// Planilla "HORAS Y VALES" de Enjoy (una hoja por persona, horas + vales) —
+// ver lib/horasValesImporter.ts. ?dry_run=true para previsualizar.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function importarJornadas(req: Request, res: Response) {
   if (!req.file) { res.status(400).json({ error: 'Se requiere un archivo .xlsx' }); return; }
   const dryRun = req.query.dry_run === 'true';
 
-  let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(req.file.buffer, { type: 'buffer' });
-  } catch (err: any) {
-    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message }); return;
-  }
-
-  const empleados = await prisma.empleado.findMany({
-    where:  { deleted_at: null, ...withTenant(req.empresaId!) },
-    select: { id: true, nombre: true, apellido: true },
-  });
-
-  function matchEmpleado(sheetName: string) {
-    const norm = normalizeHeader(sheetName);
-    return empleados.find(e => norm.includes(normalizeHeader(e.apellido)) && norm.includes(normalizeHeader(e.nombre)))
-        ?? empleados.find(e => norm.includes(normalizeHeader(e.apellido)));
-  }
-
-  const hojasResultado: any[] = [];
-  const aCrear: { empleado_id: number; fecha: Date; hora_ingreso: Date | null; hora_egreso: Date | null; descripcion: string | null }[] = [];
-
-  for (const sheetName of wb.SheetNames) {
-    const empleado = matchEmpleado(sheetName);
-    const sheet    = wb.Sheets[sheetName];
-    const rows     = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
-    const filas: any[] = [];
-
-    rows.forEach((row, idx) => {
-      const fechaRaw = getCell(row, ['fecha']);
-      const fecha    = excelDateToJs(fechaRaw);
-      const errores: string[] = [];
-      if (!empleado) errores.push('No se encontró un empleado cuyo nombre coincida con esta hoja');
-      if (!fecha)    errores.push('Falta fecha o formato inválido');
-
-      const horaIngresoRaw = getCell(row, ['hora ingreso', 'ingreso']);
-      const horaEgresoRaw  = getCell(row, ['hora egreso', 'egreso']);
-      const horaIngreso    = fecha ? combineFechaHora(fecha, horaIngresoRaw) : null;
-      const horaEgreso     = fecha ? combineFechaHora(fecha, horaEgresoRaw)  : null;
-      const descripcion    = getCell(row, ['descripcion', 'detalle', 'evento']) ?? null;
-
-      filas.push({
-        fila_excel:  idx + 2,
-        empleado_id: empleado?.id ?? null,
-        fecha:       fecha ? fecha.toISOString().slice(0, 10) : null,
-        hora_ingreso: horaIngreso ? horaIngreso.toISOString() : null,
-        hora_egreso:  horaEgreso  ? horaEgreso.toISOString()  : null,
-        descripcion,
-        importable:  errores.length === 0,
-        errores,
-      });
-
-      if (errores.length === 0 && empleado && fecha) {
-        aCrear.push({ empleado_id: empleado.id, fecha, hora_ingreso: horaIngreso, hora_egreso: horaEgreso, descripcion });
-      }
-    });
-
-    hojasResultado.push({
-      hoja:            sheetName,
-      empleado_id:     empleado?.id ?? null,
-      empleado_nombre: empleado ? `${empleado.apellido}, ${empleado.nombre}` : null,
-      filas,
-    });
-  }
-
-  if (dryRun) {
-    res.json({ preview: true, hojas: hojasResultado, total_importables: aCrear.length });
-    return;
-  }
-
-  let creados  = 0;
-  let omitidos = 0;
-  for (const item of aCrear) {
-    const { horas_normales, horas_extras } = calcularHoras(item.hora_ingreso, item.hora_egreso);
-    try {
-      await prisma.jornada.create({
-        data: {
-          empleado_id: item.empleado_id,
-          ...withTenant(req.empresaId!),
-          fecha:        item.fecha,
-          hora_ingreso: item.hora_ingreso,
-          hora_egreso:  item.hora_egreso,
-          horas_normales,
-          horas_extras,
-          descripcion:  item.descripcion,
-          created_by:   req.user!.id,
-        },
-      });
-      creados++;
-    } catch (err: any) {
-      if (err?.code === 'P2002') { omitidos++; continue; } // jornada ya existente para ese empleado+fecha
-      throw err;
+    if (dryRun) {
+      res.json({ preview: true, ...(await analizarHorasVales(req.file.buffer, req.empresaId!)) });
+      return;
     }
+    const r = await importarHorasVales(req.file.buffer, req.empresaId!, req.user!.id);
+    await registrarAuditoria({
+      usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
+      accion:      'IMPORT',
+      entidad:     'Jornada',
+      descripcion: `Importó la planilla de horas y vales: ${r.creadas} jornada(s) nuevas, ${r.actualizadas} actualizadas, ${r.vales_creados} vale(s), ${r.empleados_creados} empleado(s) nuevos`,
+      ip:          req.ip,
+      tx:          prisma as any,
+    });
+    res.json({ preview: false, ...r });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Error al procesar el archivo', detail: err.message });
   }
-
-  res.json({ preview: false, creados, omitidos, hojas: hojasResultado });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -139,17 +139,87 @@ function ImportarEmpleados() {
   );
 }
 
-// ── Importar jornadas ──────────────────────────────────────────────────────────
+// ── Importar jornadas (planilla HORAS Y VALES de Enjoy) ───────────────────────
 
-interface FilaJornada { fila_excel: number; fecha: string | null; importable: boolean; errores: string[] }
-interface HojaJornadas { hoja: string; empleado_nombre: string | null; filas: FilaJornada[] }
-interface PreviewJornadas { hojas: HojaJornadas[]; total_importables: number }
+interface FilaJornada { fila_excel: number; fecha: string; inicio: string | null; fin: string | null; horas: number; detalle: string | null; accion: 'crear' | 'actualizar' | 'liquidada'; aviso?: string }
+interface ValeJornada { fila_excel: number; fecha: string; detalle: string | null; monto: number; tipo: string; accion: 'crear' | 'existente' }
+interface HojaJornadas {
+  hoja: string; es_planilla: boolean; periodo: string | null; empleado_nombre: string | null; crea_empleado: boolean; empleado_id: number | null;
+  avisos: string[]; dias_libres: number; horas_total: number; horas_planilla: number | null; filas: FilaJornada[]; vales: ValeJornada[];
+}
+interface PreviewJornadas { hojas: HojaJornadas[]; total_importables: number; total_vales: number; empleados_nuevos: number }
+interface ResultadoJornadas { creadas: number; actualizadas: number; vales_creados: number; empleados_creados: number }
+
+const ACCION_LABEL: Record<FilaJornada['accion'], string> = { crear: 'Nueva', actualizar: 'Se actualiza', liquidada: 'Ya liquidada' };
+
+function HojaPreview({ h }: { h: HojaJornadas }) {
+  const [abierta, setAbierta] = useState(false);
+  if (!h.es_planilla) {
+    return <div className="p-3 text-xs text-muted-foreground">{h.hoja}: no es una hoja de horas, se saltea.</div>;
+  }
+  const importable = !!h.empleado_id || h.crea_empleado;
+  return (
+    <div className="p-3 space-y-1">
+      <button type="button" onClick={() => setAbierta(a => !a)} className="w-full text-left">
+        <p className="text-sm font-medium">
+          {h.hoja}{' '}
+          {h.empleado_nombre
+            ? <span className={cn(h.crea_empleado ? 'text-amber-700' : 'text-muted-foreground')}>→ {h.empleado_nombre}{h.crea_empleado && ' (nuevo)'}</span>
+            : <span className="text-destructive">(sin empleado)</span>}
+          {h.periodo && <span className="ml-2 text-xs text-muted-foreground">{h.periodo}</span>}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {h.filas.length} día(s) trabajados · {h.horas_total} hs
+          {h.horas_planilla !== null && ` (la hoja dice ${h.horas_planilla})`}
+          {h.dias_libres > 0 && ` · ${h.dias_libres} libres`}
+          {h.vales.length > 0 && ` · ${h.vales.length} vale(s)`}
+          {' · '}<span className="text-link">{abierta ? 'ocultar detalle' : 'ver detalle'}</span>
+        </p>
+      </button>
+      {h.avisos.map(a => <p key={a} className="text-xs text-amber-700 flex items-start gap-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{a}</p>)}
+      {abierta && importable && (
+        <div className="overflow-x-auto pt-1">
+          <BaseTable className="w-full text-xs">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="px-1.5 py-1 text-left">Fecha</th>
+                <th className="px-1.5 py-1 text-left">Horario</th>
+                <th className="px-1.5 py-1 text-right">Hs.</th>
+                <th className="px-1.5 py-1 text-left">Detalle</th>
+                <th className="px-1.5 py-1 text-left">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {h.filas.map(f => (
+                <tr key={f.fila_excel}>
+                  <td className="px-1.5 py-1">{f.fecha.slice(8, 10)}/{f.fecha.slice(5, 7)}</td>
+                  <td className="px-1.5 py-1">{f.inicio ?? '—'} a {f.fin ?? '—'}</td>
+                  <td className="px-1.5 py-1 text-right">{f.horas}</td>
+                  <td className="px-1.5 py-1">{f.detalle ?? '—'}{f.aviso && <span className="block text-amber-700">{f.aviso}</span>}</td>
+                  <td className={cn('px-1.5 py-1', f.accion === 'liquidada' && 'text-muted-foreground')}>{ACCION_LABEL[f.accion]}</td>
+                </tr>
+              ))}
+              {h.vales.map(v => (
+                <tr key={`v${v.fila_excel}-${v.monto}`} className="bg-muted/30">
+                  <td className="px-1.5 py-1">{v.fecha.slice(8, 10)}/{v.fecha.slice(5, 7)}</td>
+                  <td className="px-1.5 py-1" colSpan={2}>{v.tipo.toLowerCase()} ${v.monto.toLocaleString('es-AR')}</td>
+                  <td className="px-1.5 py-1">{v.detalle ?? '—'}</td>
+                  <td className="px-1.5 py-1">{v.accion === 'crear' ? 'Nuevo' : 'Ya cargado'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </BaseTable>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ImportarJornadas() {
   const importarMut = useImportarJornadas();
   const [file, setFile]       = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewJornadas | null>(null);
-  const [resultado, setResultado] = useState<{ creados: number; omitidos: number } | null>(null);
+  const [resultado, setResultado] = useState<ResultadoJornadas | null>(null);
   const [error, setError]     = useState<string | null>(null);
 
   const handleFile = async (f: File) => {
@@ -167,7 +237,7 @@ function ImportarJornadas() {
     setError(null);
     try {
       const data = await importarMut.mutateAsync({ file, dryRun: false });
-      setResultado({ creados: data.creados, omitidos: data.omitidos });
+      setResultado(data);
       setPreview(null);
     } catch (err) {
       setError(getApiErrorMessage(err) ?? 'Error al importar');
@@ -178,8 +248,11 @@ function ImportarJornadas() {
     return (
       <div className="max-w-xl rounded-lg border border-border p-6 text-center space-y-2">
         <CheckCircle2 size={32} className="text-green-600 mx-auto" />
-        <p className="text-sm font-medium">{resultado.creados} jornada(s) importada(s)</p>
-        {resultado.omitidos > 0 && <p className="text-xs text-muted-foreground">{resultado.omitidos} fila(s) omitida(s) (duplicadas o inválidas)</p>}
+        <p className="text-sm font-medium">{resultado.creadas} jornada(s) nuevas · {resultado.actualizadas} actualizada(s)</p>
+        <p className="text-xs text-muted-foreground">
+          {resultado.vales_creados} vale(s) cargados{resultado.empleados_creados > 0 && ` · ${resultado.empleados_creados} empleado(s) dados de alta (falta cargarles el valor hora)`}
+        </p>
+        <p className="text-xs text-muted-foreground">Las jornadas quedan aprobadas: ya se pueden liquidar desde Liquidaciones → Generar pendientes.</p>
         <Button size="sm" variant="outline" onClick={() => { setResultado(null); setFile(null); }}>Importar otro archivo</Button>
       </div>
     );
@@ -188,29 +261,24 @@ function ImportarJornadas() {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground max-w-xl">
-        Un empleado por hoja (el nombre de la hoja se matchea contra el apellido/nombre de empleados existentes) — mismo layout que Horas-y-vales.xlsx.
+        Planilla HORAS Y VALES del mes: una hoja por persona (Nombre, DNI, días con ingreso, egreso y horas trabajadas, y los vales abajo).
+        Se toman las horas trabajadas de la planilla y las jornadas quedan aprobadas. Reimportar el mismo archivo no duplica.
       </p>
       {!preview && <Dropzone onFile={handleFile} busy={importarMut.isPending} />}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {preview && (
         <div className="space-y-3">
-          <p className="text-sm">{preview.total_importables} jornada(s) importables en {preview.hojas.length} hoja(s)</p>
-          <div className="rounded-lg border border-border overflow-hidden max-h-96 overflow-y-auto divide-y divide-border">
-            {preview.hojas.map(h => (
-              <div key={h.hoja} className="p-3">
-                <p className="text-sm font-medium mb-1">
-                  {h.hoja} {h.empleado_nombre ? <span className="text-muted-foreground">→ {h.empleado_nombre}</span> : <span className="text-destructive">(sin empleado asociado)</span>}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {h.filas.filter(f => f.importable).length} de {h.filas.length} filas importables
-                </p>
-              </div>
-            ))}
+          <p className="text-sm">
+            {preview.total_importables} jornada(s) y {preview.total_vales} vale(s) para importar
+            {preview.empleados_nuevos > 0 && ` · ${preview.empleados_nuevos} persona(s) nuevas`}
+          </p>
+          <div className="rounded-lg border border-border overflow-hidden max-h-[28rem] overflow-y-auto divide-y divide-border">
+            {preview.hojas.map(h => <HojaPreview key={h.hoja} h={h} />)}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setPreview(null); setFile(null); }}>Cancelar</Button>
-            <Button size="sm" onClick={confirmar} disabled={importarMut.isPending || preview.total_importables === 0}>
-              {importarMut.isPending ? 'Importando…' : `Confirmar (${preview.total_importables})`}
+            <Button size="sm" onClick={confirmar} disabled={importarMut.isPending || (preview.total_importables === 0 && preview.total_vales === 0)}>
+              {importarMut.isPending ? 'Importando…' : `Confirmar (${preview.total_importables} jornadas)`}
             </Button>
           </div>
         </div>
@@ -231,7 +299,7 @@ export default function RRHHImportarPage() {
         value={tab}
         onChange={setTab}
         className="mb-6"
-        items={[{ key: 'empleados', label: 'Importar empleados' }, { key: 'jornadas', label: 'Importar jornadas' }]}
+        items={[{ key: 'empleados', label: 'Importar empleados' }, { key: 'jornadas', label: 'Horas y vales' }]}
       />
       {tab === 'empleados' ? <ImportarEmpleados /> : <ImportarJornadas />}
     </div>

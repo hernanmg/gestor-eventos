@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { Tipo, TipoRubro, EstadoJornada, EstadoLiquidacion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { withTenant } from '../lib/tenant';
-import { recalcularSaldosRubro } from '../lib/recalcularSaldos';
+import { recalcularSaldosRubro, recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { renderPDF } from '../lib/pdfExporter';
 import { templateLiquidacion } from '../lib/pdfTemplates/liquidacion';
 import { RUBROS_SISTEMA } from '../lib/rubrosConstants';
-import { calcularMontoJornada } from '../lib/calcularLiquidacion';
+import { calcularMontoJornada, HORAS_BASE_LINEAL } from '../lib/calcularLiquidacion';
 
 const CATEGORIAS_EMPLEADO = [
   'CAPITAN', 'ARMADOR', 'CHOFER', 'ADMINISTRATIVO', 'TECNICO',
@@ -27,10 +27,14 @@ export function calcularHoras(horaIngreso: Date | null, horaEgreso: Date | null)
   }
   const minutosTotales = (horaEgreso.getTime() - horaIngreso.getTime()) / 60000;
   if (minutosTotales <= 0) return { horas_normales: 0, horas_extras: 0 };
-  if (minutosTotales <= 480) {
-    return { horas_normales: round2(minutosTotales / 60), horas_extras: 0 };
-  }
-  return { horas_normales: 8, horas_extras: round2((minutosTotales - 480) / 60) };
+  return partirHorasLineal(round2(minutosTotales / 60));
+}
+
+// Parte un total de horas según la base del valor hora (HORAS_BASE_LINEAL).
+export function partirHorasLineal(horas: number) {
+  if (horas <= 0) return { horas_normales: 0, horas_extras: 0 };
+  if (horas <= HORAS_BASE_LINEAL) return { horas_normales: round2(horas), horas_extras: 0 };
+  return { horas_normales: HORAS_BASE_LINEAL, horas_extras: round2(horas - HORAS_BASE_LINEAL) };
 }
 
 // Igual que calcularHoras, pero parte las horas según el umbral de jornada del
@@ -203,6 +207,7 @@ const empleadoSchema = z.object({
   // ── Legajo ────────────────────────────────────────────────────────────────────
   apodo:                      z.string().nullable().optional(),
   fecha_nacimiento:           z.string().nullable().optional(),
+  fecha_ingreso:              z.string().nullable().optional(),
   grupo_sanguineo:            z.string().nullable().optional(),
   contacto_emergencia_nombre: z.string().nullable().optional(),
   contacto_emergencia_tel:    z.string().nullable().optional(),
@@ -309,6 +314,7 @@ export async function createEmpleado(req: Request, res: Response) {
 
       apodo:                      d.apodo ?? null,
       fecha_nacimiento:           d.fecha_nacimiento ? new Date(d.fecha_nacimiento) : null,
+      fecha_ingreso:              d.fecha_ingreso ? new Date(d.fecha_ingreso) : null,
       grupo_sanguineo:            d.grupo_sanguineo ?? null,
       contacto_emergencia_nombre: d.contacto_emergencia_nombre ?? null,
       contacto_emergencia_tel:    d.contacto_emergencia_tel ?? null,
@@ -371,6 +377,7 @@ export async function updateEmpleado(req: Request, res: Response) {
 
       ...(d.apodo                      !== undefined && { apodo:                      d.apodo }),
       ...(d.fecha_nacimiento           !== undefined && { fecha_nacimiento:           d.fecha_nacimiento ? new Date(d.fecha_nacimiento) : null }),
+      ...(d.fecha_ingreso              !== undefined && { fecha_ingreso:              d.fecha_ingreso ? new Date(d.fecha_ingreso) : null }),
       ...(d.grupo_sanguineo            !== undefined && { grupo_sanguineo:            d.grupo_sanguineo }),
       ...(d.contacto_emergencia_nombre !== undefined && { contacto_emergencia_nombre: d.contacto_emergencia_nombre }),
       ...(d.contacto_emergencia_tel    !== undefined && { contacto_emergencia_tel:    d.contacto_emergencia_tel }),
@@ -709,27 +716,55 @@ export async function deleteAnticipo(req: Request, res: Response) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function listLiquidaciones(req: Request, res: Response) {
-  const { empleado_id, evento_id, estado, desde, hasta } = req.query;
+  const { empleado_id, evento_id, estado, desde, hasta, fecha_pago, fecha_pago_desde, fecha_pago_hasta, pendientes } = req.query;
   const where: any = { ...withTenant(req.empresaId!) };
   if (empleado_id) where.empleado_id = Number(empleado_id);
   if (evento_id)   where.evento_id   = Number(evento_id);
   if (estado)      where.estado      = estado;
+  // "Pendientes de pago": todo lo que todavía no se pagó ni se canceló.
+  if (pendientes === 'true' && !estado) where.estado = { in: [EstadoLiquidacion.BORRADOR, EstadoLiquidacion.PRE_APROBADA, EstadoLiquidacion.APROBADA] };
   if (desde || hasta) {
     where.fecha_desde = {};
     if (desde) where.fecha_desde.gte = new Date(String(desde));
     if (hasta) where.fecha_desde.lte = new Date(String(hasta));
   }
+  if (fecha_pago) {
+    where.fecha_pago = new Date(String(fecha_pago));
+  } else if (fecha_pago_desde || fecha_pago_hasta) {
+    where.fecha_pago = {};
+    if (fecha_pago_desde) where.fecha_pago.gte = new Date(String(fecha_pago_desde));
+    if (fecha_pago_hasta) where.fecha_pago.lte = new Date(String(fecha_pago_hasta));
+  }
 
   const liquidaciones = await prisma.liquidacion.findMany({
     where,
     include: {
-      empleado: { select: { id: true, nombre: true, apellido: true } },
+      empleado: { select: { id: true, nombre: true, apellido: true, dni: true, cuit: true, cbu: true, alias: true, banco: true } },
       evento:   { select: { id: true, nombre: true } },
+      movimientos_caja: { where: { deleted_at: null }, select: { id: true, cuenta_id: true, comprobante_nombre: true, cuenta: { select: { nombre: true } } } },
     },
-    orderBy: { created_at: 'desc' },
+    orderBy: [{ fecha_pago: { sort: 'desc', nulls: 'last' } }, { created_at: 'desc' }],
   });
-  res.json(liquidaciones.map(mapDecimalsLiquidacion));
+  res.json(liquidaciones.map(l => {
+    const pago = l.movimientos_caja[0];
+    const { movimientos_caja, ...resto } = l;
+    return {
+      ...mapDecimalsLiquidacion(resto),
+      pago: pago ? { movimiento_caja_id: pago.id, cuenta_id: pago.cuenta_id, cuenta_nombre: pago.cuenta.nombre, tiene_comprobante: !!pago.comprobante_nombre } : null,
+    };
+  }));
 }
+
+// Próximo viernes (hoy si es viernes) como fecha de calendario — Enjoy paga
+// los viernes (Male, nov 2026). Se usa como fecha de pago por defecto.
+export function proximoViernes(desde: Date = new Date()): Date {
+  const hoy = new Date(Date.UTC(desde.getFullYear(), desde.getMonth(), desde.getDate()));
+  const dias = (5 - hoy.getUTCDay() + 7) % 7;
+  hoy.setUTCDate(hoy.getUTCDate() + dias);
+  return hoy;
+}
+
+const fechaCalendario = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00.000Z`);
 
 export async function getLiquidacion(req: Request, res: Response) {
   const id = Number(req.params.id);
@@ -767,6 +802,7 @@ const generarSchema = z.object({
   fecha_desde: z.string().min(1),
   fecha_hasta: z.string().min(1),
   evento_id:   z.number().int().positive().nullable().optional(),
+  fecha_pago:  z.string().min(1).nullable().optional(),
 });
 
 // Desglose por jornada APROBADA del período — usa calcularMontoJornada, que
@@ -876,93 +912,389 @@ export async function generarLiquidacion(req: Request, res: Response) {
       total_descuentos: totalDescuentos,
       total_a_cobrar:   totalACobrar,
       estado:           EstadoLiquidacion.BORRADOR,
+      fecha_pago:       d.fecha_pago ? fechaCalendario(d.fecha_pago) : proximoViernes(),
     },
   });
   res.status(201).json(mapDecimalsLiquidacion(liquidacion));
 }
 
-export async function aprobarLiquidacion(req: Request, res: Response) {
-  const id = Number(req.params.id);
-  const liquidacion = await prisma.liquidacion.findFirst({
-    where:   { id, ...withTenant(req.empresaId!) },
+// ── Aprobación, pre-aprobación y pago ─────────────────────────────────────────
+// Circuito de Enjoy (Male, nov 2026): BORRADOR → PRE_APROBADA (Male arma el
+// pedido de transferencias y se lo manda a Matías) → APROBADA (Matías aprueba;
+// se genera el egreso del evento) → PAGADA (May sube el comprobante; sale de
+// la cuenta elegida como gasto en Caja). DOS57 puede aprobar directo desde
+// BORRADOR, como hasta ahora.
+
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+class ErrorLiquidacion extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+function responderError(res: Response, err: unknown): boolean {
+  if (err instanceof ErrorLiquidacion) { res.status(err.status).json({ error: err.message }); return true; }
+  return false;
+}
+
+async function aprobarEnTx(tx: Tx, id: number, empresaId: number, userId: number, ip?: string) {
+  const liquidacion = await tx.liquidacion.findFirst({
+    where:   { id, ...withTenant(empresaId) },
     include: { empleado: true },
   });
-  if (!liquidacion) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
-  if (liquidacion.estado !== EstadoLiquidacion.BORRADOR) {
-    res.status(400).json({ error: `No se puede aprobar una liquidación en estado ${liquidacion.estado}` }); return;
+  if (!liquidacion) throw new ErrorLiquidacion(404, 'Liquidación no encontrada');
+  if (liquidacion.estado !== EstadoLiquidacion.BORRADOR && liquidacion.estado !== EstadoLiquidacion.PRE_APROBADA) {
+    throw new ErrorLiquidacion(400, `La liquidación de ${liquidacion.empleado.apellido} está ${liquidacion.estado.toLowerCase()}: no se puede aprobar`);
   }
 
-  const result = await prisma.$transaction(async tx => {
-    let movimientoId: number | null = null;
-
-    if (liquidacion.evento_id) {
-      const tabNumero = await getOrCreateTabRRHH(req.empresaId!, tx);
-      const rubroId   = await getOrCreateRubroRRHH(req.empresaId!, tx);
-      const lastOrder = await tx.movimiento.findFirst({
-        where:   { evento_id: liquidacion.evento_id, tipo: Tipo.EGRESO, rubro_id: rubroId, deleted_at: null },
-        orderBy: { orden: 'desc' },
-        select:  { orden: true },
-      });
-      const mov = await tx.movimiento.create({
-        data: {
-          evento_id:   liquidacion.evento_id,
-          tipo:        Tipo.EGRESO,
-          tab_numero:  tabNumero,
-          rubro_id:    rubroId,
-          estado_movimiento: 'PAGADO',
-          fecha:       new Date(),
-          concepto:    `Liquidación ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre}`,
-          descripcion: `Período ${liquidacion.fecha_desde.toISOString().slice(0, 10)} a ${liquidacion.fecha_hasta.toISOString().slice(0, 10)}`,
-          // Convención de Movimiento: EGRESO → DEBE (haber = 0). Ver comentario en facturas.controller.
-          debe:        liquidacion.total_a_cobrar,
-          orden:       (lastOrder?.orden ?? 0) + 1,
-          saldo:       0,
-          created_by:  req.user!.id,
-          updated_by:  req.user!.id,
-        },
-      });
-      movimientoId = mov.id;
-      await recalcularSaldosRubro(liquidacion.evento_id, Tipo.EGRESO, rubroId, tx as any);
-    }
-
-    // 3. Marcar anticipos no descontados de este empleado como aplicados a esta liquidación
-    const anticiposAplicados = await tx.anticipo.findMany({
-      where: { empleado_id: liquidacion.empleado_id, descontado: false },
+  let movimientoId: number | null = null;
+  if (liquidacion.evento_id) {
+    const tabNumero = await getOrCreateTabRRHH(empresaId, tx);
+    const rubroId   = await getOrCreateRubroRRHH(empresaId, tx);
+    const lastOrder = await tx.movimiento.findFirst({
+      where:   { evento_id: liquidacion.evento_id, tipo: Tipo.EGRESO, rubro_id: rubroId, deleted_at: null },
+      orderBy: { orden: 'desc' },
+      select:  { orden: true },
     });
-    await tx.anticipo.updateMany({
-      where: { id: { in: anticiposAplicados.map((a: any) => a.id) } },
-      data:  { descontado: true, liquidacion_id: id },
-    });
-
-    // 4. Actualizar liquidación
-    const updated = await tx.liquidacion.update({
-      where: { id },
+    const mov = await tx.movimiento.create({
       data: {
-        estado:       EstadoLiquidacion.APROBADA,
-        movimiento_id: movimientoId,
-        aprobado_por:  req.user!.id,
-        aprobado_at:   new Date(),
+        evento_id:   liquidacion.evento_id,
+        tipo:        Tipo.EGRESO,
+        tab_numero:  tabNumero,
+        rubro_id:    rubroId,
+        // Aprobada todavía no es pagada: pasa a PAGADO al registrar el pago.
+        estado_movimiento: 'CONFIRMADO',
+        fecha:       liquidacion.fecha_pago ?? new Date(),
+        concepto:    `Liquidación ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre}`,
+        descripcion: `Período ${liquidacion.fecha_desde.toISOString().slice(0, 10)} a ${liquidacion.fecha_hasta.toISOString().slice(0, 10)}`,
+        // Convención de Movimiento: EGRESO → DEBE (haber = 0). Ver comentario en facturas.controller.
+        debe:        liquidacion.total_a_cobrar,
+        orden:       (lastOrder?.orden ?? 0) + 1,
+        saldo:       0,
+        created_by:  userId,
+        updated_by:  userId,
       },
     });
+    movimientoId = mov.id;
+    await recalcularSaldosRubro(liquidacion.evento_id, Tipo.EGRESO, rubroId, tx as any);
+  }
 
-    // 5. Auditoría
-    await registrarAuditoria({
-      usuarioId:    req.user!.id,
-      empresaId:    req.empresaId,
-      accion:       'APROBAR',
-      entidad:      'Liquidacion',
-      entidadId:    id,
-      eventoId:     liquidacion.evento_id ?? undefined,
-      descripcion:  `Aprobó liquidación de ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre} por $${Number(liquidacion.total_a_cobrar)}`,
-      datosDespues: { movimientoId, total_a_cobrar: Number(liquidacion.total_a_cobrar) },
-      ip:           req.ip,
-      tx:           tx as any,
-    });
-
-    return updated;
+  // Anticipos no descontados de este empleado → aplicados a esta liquidación
+  await tx.anticipo.updateMany({
+    where: { empleado_id: liquidacion.empleado_id, descontado: false },
+    data:  { descontado: true, liquidacion_id: id },
   });
 
-  res.json(mapDecimalsLiquidacion(result));
+  const updated = await tx.liquidacion.update({
+    where: { id },
+    data: {
+      estado:        EstadoLiquidacion.APROBADA,
+      movimiento_id: movimientoId,
+      aprobado_por:  userId,
+      aprobado_at:   new Date(),
+    },
+  });
+
+  await registrarAuditoria({
+    usuarioId:    userId,
+    empresaId,
+    accion:       'APROBAR',
+    entidad:      'Liquidacion',
+    entidadId:    id,
+    eventoId:     liquidacion.evento_id ?? undefined,
+    descripcion:  `Aprobó liquidación de ${liquidacion.empleado.apellido}, ${liquidacion.empleado.nombre} por $${Number(liquidacion.total_a_cobrar)}`,
+    datosDespues: { movimientoId, total_a_cobrar: Number(liquidacion.total_a_cobrar) },
+    ip,
+    tx:           tx as any,
+  });
+  return updated;
+}
+
+export async function aprobarLiquidacion(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  try {
+    const result = await prisma.$transaction(tx => aprobarEnTx(tx, id, req.empresaId!, req.user!.id, req.ip));
+    res.json(mapDecimalsLiquidacion(result));
+  } catch (err) {
+    if (!responderError(res, err)) throw err;
+  }
+}
+
+const idsSchema = z.object({ ids: z.array(z.number().int().positive()).min(1) });
+
+// PATCH /rrhh/liquidaciones/aprobar-lote — todo o nada.
+export async function aprobarLiquidacionesLote(req: Request, res: Response) {
+  const parsed = idsSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Elegí al menos una liquidación' }); return; }
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const out = [];
+      for (const id of parsed.data.ids) out.push(await aprobarEnTx(tx, id, req.empresaId!, req.user!.id, req.ip));
+      return out;
+    }, { timeout: 60_000 });
+    res.json({ aprobadas: result.length });
+  } catch (err) {
+    if (!responderError(res, err)) throw err;
+  }
+}
+
+// PATCH /rrhh/liquidaciones/pre-aprobar — Male mandó el pedido a Matías.
+export async function preAprobarLiquidaciones(req: Request, res: Response) {
+  const parsed = idsSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Elegí al menos una liquidación' }); return; }
+  const r = await prisma.liquidacion.updateMany({
+    where: { id: { in: parsed.data.ids }, ...withTenant(req.empresaId!), estado: EstadoLiquidacion.BORRADOR },
+    data:  { estado: EstadoLiquidacion.PRE_APROBADA, pre_aprobado_por: req.user!.id, pre_aprobado_at: new Date() },
+  });
+  await registrarAuditoria({
+    usuarioId:    req.user!.id,
+    empresaId:    req.empresaId,
+    accion:       'UPDATE',
+    entidad:      'Liquidacion',
+    descripcion:  `Pre-aprobó ${r.count} liquidación(es) (pedido de transferencias enviado)`,
+    datosDespues: { ids: parsed.data.ids },
+    ip:           req.ip,
+    tx:           prisma as any,
+  });
+  res.json({ pre_aprobadas: r.count });
+}
+
+// PATCH /rrhh/liquidaciones/:id/volver-borrador — Matías pidió un cambio.
+export async function volverBorradorLiquidacion(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const liq = await prisma.liquidacion.findFirst({ where: { id, ...withTenant(req.empresaId!) } });
+  if (!liq) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
+  if (liq.estado !== EstadoLiquidacion.PRE_APROBADA) {
+    res.status(400).json({ error: 'Solo una liquidación pre-aprobada puede volver a borrador' }); return;
+  }
+  const updated = await prisma.liquidacion.update({
+    where: { id },
+    data:  { estado: EstadoLiquidacion.BORRADOR, pre_aprobado_por: null, pre_aprobado_at: null },
+  });
+  res.json(mapDecimalsLiquidacion(updated));
+}
+
+const fechaPagoSchema = z.object({
+  ids:        z.array(z.number().int().positive()).min(1),
+  fecha_pago: z.string().min(10),
+});
+
+// PATCH /rrhh/liquidaciones/fecha-pago — cambiar el día de pago (una o varias).
+export async function cambiarFechaPagoLiquidaciones(req: Request, res: Response) {
+  const parsed = fechaPagoSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos' }); return; }
+  const r = await prisma.liquidacion.updateMany({
+    where: { id: { in: parsed.data.ids }, ...withTenant(req.empresaId!), estado: { notIn: [EstadoLiquidacion.PAGADA, EstadoLiquidacion.CANCELADA] } },
+    data:  { fecha_pago: fechaCalendario(parsed.data.fecha_pago) },
+  });
+  res.json({ actualizadas: r.count });
+}
+
+const pagoSchema = z.object({
+  ids:       z.array(z.coerce.number().int().positive()).min(1),
+  cuenta_id: z.coerce.number().int().positive(),
+  fecha:     z.string().min(10),
+});
+
+// POST /rrhh/liquidaciones/pagar — registra el pago: una salida (gasto) por
+// liquidación en la cuenta elegida, con el comprobante si se subió uno (solo
+// cuando se paga una sola). Las BORRADOR/PRE_APROBADA se aprueban en el mismo
+// paso: el comprobante de May es la confirmación de que Matías aprobó.
+export async function pagarLiquidaciones(req: Request, res: Response) {
+  const body = { ...req.body, ids: typeof req.body.ids === 'string' ? JSON.parse(req.body.ids) : req.body.ids };
+  const parsed = pagoSchema.safeParse(body);
+  if (!parsed.success) { res.status(400).json({ error: 'Elegí la cuenta, la fecha y al menos una liquidación' }); return; }
+  const { ids, cuenta_id, fecha } = parsed.data;
+  if (req.file && ids.length > 1) { res.status(400).json({ error: 'El comprobante se sube de a una liquidación' }); return; }
+
+  const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: cuenta_id, deleted_at: null, empresa_id: req.empresaId! } });
+  if (!cuenta) { res.status(400).json({ error: 'La cuenta no es de esta empresa' }); return; }
+
+  try {
+    const pagadas = await prisma.$transaction(async tx => {
+      let n = 0;
+      for (const id of ids) {
+        let liq = await tx.liquidacion.findFirst({ where: { id, ...withTenant(req.empresaId!) }, include: { empleado: true } });
+        if (!liq) throw new ErrorLiquidacion(404, 'Liquidación no encontrada');
+        if (liq.estado === EstadoLiquidacion.PAGADA || liq.estado === EstadoLiquidacion.CANCELADA) {
+          throw new ErrorLiquidacion(400, `La liquidación de ${liq.empleado.apellido} ya está ${liq.estado.toLowerCase()}`);
+        }
+        if (liq.estado !== EstadoLiquidacion.APROBADA) {
+          await aprobarEnTx(tx, id, req.empresaId!, req.user!.id, req.ip);
+          liq = (await tx.liquidacion.findFirst({ where: { id }, include: { empleado: true } }))!;
+        }
+
+        const last = await tx.movimientoCaja.findFirst({ where: { cuenta_id, deleted_at: null }, orderBy: { orden: 'desc' }, select: { orden: true } });
+        await tx.movimientoCaja.create({
+          data: {
+            cuenta_id,
+            evento_id:      liq.evento_id,
+            fecha:          fechaCalendario(fecha),
+            descripcion:    `Liquidación ${liq.empleado.apellido}, ${liq.empleado.nombre} (${liq.fecha_desde.toISOString().slice(0, 10)} a ${liq.fecha_hasta.toISOString().slice(0, 10)})`,
+            // Cajas: el gasto va al HABER.
+            debe:           0,
+            haber:          liq.total_a_cobrar,
+            orden:          (last?.orden ?? 0) + 1,
+            liquidacion_id: id,
+            ...(req.file && { comprobante_data: req.file.buffer, comprobante_nombre: req.file.originalname, comprobante_mime: req.file.mimetype }),
+            created_by:     req.user!.id,
+            updated_by:     req.user!.id,
+          },
+        });
+        if (liq.movimiento_id) {
+          await tx.movimiento.update({ where: { id: liq.movimiento_id }, data: { estado_movimiento: 'PAGADO', updated_by: req.user!.id } });
+        }
+        await tx.liquidacion.update({
+          where: { id },
+          data:  { estado: EstadoLiquidacion.PAGADA, pagado_por: req.user!.id, pagado_at: new Date() },
+        });
+        await registrarAuditoria({
+          usuarioId:   req.user!.id,
+          empresaId:   req.empresaId,
+          accion:      'UPDATE',
+          entidad:     'Liquidacion',
+          entidadId:   id,
+          descripcion: `Registró el pago de la liquidación de ${liq.empleado.apellido}, ${liq.empleado.nombre} desde ${cuenta.nombre}${req.file ? ' con comprobante' : ''}`,
+          ip:          req.ip,
+          tx:          tx as any,
+        });
+        n++;
+      }
+      await recalcularSaldosCaja(cuenta_id, tx as any);
+      return n;
+    }, { timeout: 60_000 });
+    res.json({ pagadas });
+  } catch (err) {
+    if (!responderError(res, err)) throw err;
+  }
+}
+
+// POST /rrhh/liquidaciones/:id/comprobante — subir el comprobante después de pagar.
+export async function subirComprobanteLiquidacion(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (!req.file) { res.status(400).json({ error: 'Falta el archivo' }); return; }
+  const mov = await prisma.movimientoCaja.findFirst({ where: { liquidacion_id: id, deleted_at: null, liquidacion: withTenant(req.empresaId!) } });
+  if (!mov) { res.status(404).json({ error: 'La liquidación todavía no tiene un pago registrado' }); return; }
+  await prisma.movimientoCaja.update({
+    where: { id: mov.id },
+    data:  { comprobante_data: req.file.buffer, comprobante_nombre: req.file.originalname, comprobante_mime: req.file.mimetype, updated_by: req.user!.id },
+  });
+  res.json({ ok: true });
+}
+
+// GET /rrhh/liquidaciones/:id/comprobante
+export async function descargarComprobanteLiquidacion(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const mov = await prisma.movimientoCaja.findFirst({ where: { liquidacion_id: id, deleted_at: null, liquidacion: withTenant(req.empresaId!) } });
+  if (!mov?.comprobante_data) { res.status(404).json({ error: 'Comprobante no encontrado' }); return; }
+  const buffer = Buffer.from(mov.comprobante_data);
+  res.setHeader('Content-Type',        mov.comprobante_mime ?? 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(mov.comprobante_nombre ?? 'comprobante')}"`);
+  res.setHeader('Content-Length',      buffer.length);
+  res.end(buffer);
+}
+
+const pendientesSchema = z.object({
+  hasta:      z.string().min(10),
+  fecha_pago: z.string().min(10).optional(),
+  dry_run:    z.boolean().optional(),
+});
+
+// POST /rrhh/liquidaciones/generar-pendientes — una liquidación por persona
+// con las jornadas aprobadas que todavía no se liquidaron, hasta `hasta`. Cada
+// una arranca el día siguiente a la última liquidación no cancelada de esa
+// persona (o en su primera jornada aprobada), así nunca se paga dos veces.
+export async function generarLiquidacionesPendientes(req: Request, res: Response) {
+  const parsed = pendientesSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Falta la fecha hasta' }); return; }
+  const hasta = fechaCalendario(parsed.data.hasta);
+  const fechaPago = parsed.data.fecha_pago ? fechaCalendario(parsed.data.fecha_pago) : proximoViernes();
+
+  const empleados = await prisma.empleado.findMany({
+    where:   { deleted_at: null, ...withTenant(req.empresaId!), jornadas: { some: { estado: EstadoJornada.APROBADA, deleted_at: null, fecha: { lte: hasta } } } },
+    orderBy: { apellido: 'asc' },
+  });
+
+  const propuestas = [];
+  for (const e of empleados) {
+    const ultima = await prisma.liquidacion.findFirst({
+      where:   { empleado_id: e.id, estado: { not: EstadoLiquidacion.CANCELADA } },
+      orderBy: { fecha_hasta: 'desc' },
+      select:  { fecha_hasta: true },
+    });
+    let desde: Date;
+    if (ultima) {
+      desde = new Date(ultima.fecha_hasta);
+      desde.setUTCDate(desde.getUTCDate() + 1);
+    } else {
+      const primera = await prisma.jornada.findFirst({
+        where: { empleado_id: e.id, estado: EstadoJornada.APROBADA, deleted_at: null }, orderBy: { fecha: 'asc' }, select: { fecha: true },
+      });
+      if (!primera) continue;
+      desde = primera.fecha;
+    }
+    if (desde > hasta) continue;
+
+    const calc = await calcularDesglosePeriodo(e.id, desde, hasta, req.empresaId!);
+    if (!calc || calc.desglose.length === 0) continue;
+    const anticipos = await prisma.anticipo.findMany({ where: { empleado_id: e.id, descontado: false } });
+    const totalAnticipos = round2(anticipos.reduce((s, a) => s + Number(a.monto), 0));
+    propuestas.push({
+      empleado_id:     e.id,
+      empleado_nombre: `${e.apellido}, ${e.nombre}`,
+      fecha_desde:     desde,
+      fecha_hasta:     hasta,
+      jornadas:        calc.desglose.length,
+      horas_normales:  calc.horasNormales,
+      horas_extras:    calc.horasExtras,
+      subtotal_horas:  calc.subtotal,
+      total_anticipos: totalAnticipos,
+      total_a_cobrar:  round2(calc.subtotal - totalAnticipos),
+      sin_valor_hora:  e.tipo_liquidacion === 'LINEAL' && Number(e.valor_hora) === 0,
+      empleado:        e,
+    });
+  }
+
+  const salida = propuestas.map(({ empleado: _e, ...p }) => ({
+    ...p, fecha_desde: p.fecha_desde.toISOString().slice(0, 10), fecha_hasta: p.fecha_hasta.toISOString().slice(0, 10),
+  }));
+  if (parsed.data.dry_run) {
+    res.json({ preview: true, fecha_pago: fechaPago.toISOString().slice(0, 10), liquidaciones: salida });
+    return;
+  }
+
+  let creadas = 0;
+  for (const p of propuestas) {
+    await prisma.liquidacion.create({
+      data: {
+        empleado_id:      p.empleado_id,
+        ...withTenant(req.empresaId!),
+        fecha_desde:      p.fecha_desde,
+        fecha_hasta:      p.fecha_hasta,
+        fecha_pago:       fechaPago,
+        tipo_liquidacion: p.empleado.tipo_liquidacion,
+        horas_normales:   p.horas_normales,
+        horas_extras:     p.horas_extras,
+        valor_hora:       Number(p.empleado.valor_hora),
+        valor_hora_extra: Number(p.empleado.valor_hora_extra),
+        subtotal_horas:   p.subtotal_horas,
+        total_anticipos:  p.total_anticipos,
+        total_descuentos: 0,
+        total_a_cobrar:   p.total_a_cobrar,
+        estado:           EstadoLiquidacion.BORRADOR,
+      },
+    });
+    creadas++;
+  }
+  await registrarAuditoria({
+    usuarioId:   req.user!.id,
+    empresaId:   req.empresaId,
+    accion:      'CREATE',
+    entidad:     'Liquidacion',
+    descripcion: `Generó ${creadas} liquidación(es) pendientes hasta ${parsed.data.hasta}, a pagar el ${fechaPago.toISOString().slice(0, 10)}`,
+    ip:          req.ip,
+    tx:          prisma as any,
+  });
+  res.json({ preview: false, creadas, fecha_pago: fechaPago.toISOString().slice(0, 10), liquidaciones: salida });
 }
 
 export async function cancelarLiquidacion(req: Request, res: Response) {
@@ -976,9 +1308,28 @@ export async function cancelarLiquidacion(req: Request, res: Response) {
     res.status(400).json({ error: 'La liquidación ya está cancelada' }); return;
   }
 
-  const updated = await prisma.liquidacion.update({
-    where: { id },
-    data:  { estado: EstadoLiquidacion.CANCELADA },
+  const updated = await prisma.$transaction(async tx => {
+    // Aprobada: se da de baja el egreso del evento y los anticipos vuelven a
+    // quedar pendientes, para que entren en la próxima liquidación.
+    if (liquidacion.estado === EstadoLiquidacion.APROBADA) {
+      if (liquidacion.movimiento_id) {
+        const mov = await tx.movimiento.update({ where: { id: liquidacion.movimiento_id }, data: { deleted_at: new Date(), updated_by: req.user!.id } });
+        if (mov.rubro_id) await recalcularSaldosRubro(mov.evento_id, Tipo.EGRESO, mov.rubro_id, tx as any);
+      }
+      await tx.anticipo.updateMany({ where: { liquidacion_id: id }, data: { descontado: false, liquidacion_id: null } });
+    }
+    const u = await tx.liquidacion.update({ where: { id }, data: { estado: EstadoLiquidacion.CANCELADA } });
+    await registrarAuditoria({
+      usuarioId:   req.user!.id,
+      empresaId:   req.empresaId,
+      accion:      'UPDATE',
+      entidad:     'Liquidacion',
+      entidadId:   id,
+      descripcion: `Canceló la liquidación #${id} (estaba ${liquidacion.estado.toLowerCase()})`,
+      ip:          req.ip,
+      tx:          tx as any,
+    });
+    return u;
   });
   res.json(mapDecimalsLiquidacion(updated));
 }

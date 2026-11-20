@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-17 · Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-18 · Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -22,7 +22,7 @@
 
 | # | Pilar | Responsables | DOS57 | Enjoy |
 |---|---|---|---|---|
-| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 88% | 83% |
+| 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 88% | 85% |
 | 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 76% | 70% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 73% | 71% |
@@ -39,7 +39,7 @@
 
 ## 01 · RRHH
 
-**DOS57: 88% construido (26,5 de 30) · Enjoy: 83% construido (15 de 18) · En uso: 0%, arranca con la prueba en producción**
+**DOS57: 88% construido (26,5 de 30) · Enjoy: 85% construido (17 de 20) · En uso: 0%, arranca con la prueba en producción**
 
 Responsables: Mayra cierra sueldos de las dos empresas. En DOS57 la alimentan Lorena (presentismo, padrón, siniestros, uniformes), Andrea (jornaleros, adelantos, gastos del mes), Jazmín (parte diario) y Santi. En Enjoy: Male (jornaleros) y Daniel (personal técnico).
 
@@ -62,7 +62,7 @@ Se conecta con: Depósito (parte diario y pañol cargan horas a la gente que est
 | 6 | Parte diario del personal (quién hace qué cada día), que genera las jornadas | ✅ | — | TAREAS_PERSONAL_DIARIO (Jazmín) | Parte Diario |
 | 7 | Jornadas por evento con aprobación (pendiente / aprobada / rechazada) | ✅ | ✅ | Especificación Enjoy §31-32 · Backlog F1-27/29 | RRHH → Jornadas |
 | 8 | Jornalero que carga sus propias horas desde su usuario | ✅ | ✅ | Backlog F1-28 | Rol Jornalero |
-| 9 | Importador del histórico de horas y vales | — | ✅ | HORAS Y VALES MARZO 2026 | RRHH → Importar |
+| 9 | Importador de la planilla de horas y vales: una hoja por persona, horas trabajadas (también las que pasan la medianoche) y vales; da de alta a quien falte | — | ✅ | HORAS Y VALES MARZO 2026 · Reunión con Male (nov 2026) | RRHH → Importar → Horas y vales |
 | 10 | Presentismo diario: citación por día, demora / llegada tarde, aprobación de tardanzas por Matías | ✅ | — | Registro de Faltas (Lorena) | Presentismo |
 | 11 | Semáforo y resumen mensual por persona, con exportación a Excel | ✅ | — | Informe de Lorena a Matías | Presentismo → Mes |
 | 12 | Francos por domingo trabajado, con saldo por persona | ✅ | — | Relevamiento Lorena | Presentismo → Francos |
@@ -73,11 +73,11 @@ Se conecta con: Depósito (parte diario y pañol cargan horas a la gente que est
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 15 | Liquidación de jornaleros: por hora (Enjoy) y por jornada con umbral de horas (DOS57) | ✅ | ✅ | SUELDOS JORNALEROS (Andrea) · Especificación §33 | RRHH → Liquidaciones |
+| 15 | Liquidación de jornaleros: por hora con base de 10 horas por día (Enjoy) y por jornada con umbral de horas (DOS57) | ✅ | ✅ | SUELDOS JORNALEROS (Andrea) · Especificación §33 · Reunión con Male (base de 10 hs) | RRHH → Liquidaciones |
 | 16 | Al aprobar la liquidación se genera el egreso en el evento | ✅ | ✅ | Backlog F1-32 | RRHH → Liquidaciones |
 | 17 | Adelantos, vales, descuentos y multas que se descuentan solos | ✅ | ✅ | Relevamiento Andrea y Lorena | RRHH → Anticipos |
 | 18 | Planilla de adelantos (semana del 20) para imprimir y hacer firmar | 🟡 | — | Relevamiento Andrea | El adelanto se carga, falta la planilla de firma |
-| 19 | Sueldos administrativos: acuerdos, escalafones, aumento manual o por IPC, premio presentismo, premio producción, vacaciones y aguinaldo, préstamos | ✅ | ✅ | SUELDO DOS57 Julio 2026 (Mayra) | RRHH → Sueldos Admin |
+| 19 | Sueldos administrativos: acuerdos, escalafones, aumento manual o por IPC, premio presentismo, premio producción 1 o 2 elegido por evento, antigüedad desde el ingreso, vacaciones y aguinaldo, préstamos | ✅ | ✅ | SUELDO DOS57 Julio 2026 (Mayra) · Respuestas de Mayra (nov 2026) | RRHH → Sueldos Admin |
 | 20 | Viático automático de los choferes según la bitácora de viajes | ✅ | — | Excel de viajes de Luis | RRHH → Sueldos Admin |
 | 21 | Extranjeros: alta como empleado (categoría Extranjero), jornadas, liquidación, costo real del evento ("Staff Extranjeros") y su viático de cena y desayuno, que Andrea paga de la caja cada semana (no va en la liquidación) | ✅ | — | EQUIPO EXTRANJEROS (Andrea) · Relevamiento Jazmín · Respuesta de Andrea (nov 2026) | RRHH → Empleados · Gastos del mes → tipo "Viático extranjeros" |
 | 22 | Premio PAX / premio de equipo | ✅ | — | Relevamiento Andrea | RRHH → Sueldos Admin |
@@ -101,16 +101,25 @@ Se conecta con: Depósito (parte diario y pañol cargan horas a la gente que est
 | 30 | Vacaciones, aguinaldo y extras como conceptos separados en la liquidación, más premios puntuales que Matías agrega por un tiempo | 🟡 | 🟡 | Entrevista Mayra · SUELDO DOS57 Julio 2026 | Hoy vacaciones y aguinaldo van en un solo concepto |
 | 31 | Cierre de sueldos del mes: total a pagar y cuánto va por transferencia y cuánto en efectivo | 🟡 | 🟡 | Entrevista Mayra (conciliación final de la planilla de sueldos) | El resumen mensual da el total; falta separar transferencia y efectivo |
 
+Mayra respondió en noviembre: la antigüedad se cuenta desde el ingreso a la empresa (el sistema ya la toma de la fecha de ingreso del legajo) y el premio de producción 1 o 2 lo pone Matías según el evento (se elige al cargar cada evento del mes).
+
 También confirma cosas que ya están: ítems fijos del acuerdo (básico, incentivo, viático, presentismo, antigüedad), premio de producción por evento del mes, viajes del chofer por tipo, adelanto del 30% del básico, sueldo repartido entre las dos empresas, y que lo que carga Lorena (horas y vales) no deja ver los acuerdos, que solo ven Mayra y Matías. El "recibo casero" para mandar por WhatsApp es el punto 23 (PDF).
+
+### Lo que pidió Male (reunión de noviembre)
+
+| # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
+|---|---|---|---|---|---|
+| 32 | Liquidaciones pendientes de pago para todos de una vez, con fecha de pago (el viernes más próximo), filtro por fecha de pago y una sola entrada por día de pago en el calendario | — | ✅ | Reunión con Male (nov 2026) | RRHH → Liquidaciones → Generar pendientes |
+| 33 | Pre-aprobación y pago: el pedido de transferencias para Matías se arma solo (titular, CUIT, CBU, alias, importe, concepto), se aprueba de a varias y, al subir el comprobante, el pago queda como gasto en la cuenta | — | ✅ | Reunión con Male (nov 2026) · mensaje de WhatsApp de Male | RRHH → Liquidaciones |
 
 ### Para definir con el cliente
 
-- **Antigüedad:** Mayra renueva la fecha de inicio del acuerdo con cada aumento. Hay que confirmar que la antigüedad se cuente desde el ingreso a la empresa y no desde el último acuerdo.
 - **Horas extras negativas:** cuando dan negativo, Matías no las descuenta. ¿El sistema las deja en cero ese mes sin que se arrastre?
-- **Premio de producción 1 o 2** (hasta 7 días o más): ¿lo elige Matías evento por evento, o sale solo de la duración del evento?
 - **Premio presentismo:** hoy lo pierde quien tiene una falta o una llegada tarde rechazada. Confirmar con Lorena y Mayra.
 - **Cortes de demora y llegada tarde:** 6 y 15 minutos, tomados de las marcas de Lorena.
 - **Personas sin alta:** 15 de las 26 hojas de presentismo son de personas que todavía no están en RRHH.
+- **Valor hora de Enjoy:** la planilla de horas no trae el valor hora (dice "según acuerdo"). Hay que cargárselo a cada persona en RRHH → Empleados; sin eso la liquidación da $0.
+- **Pedido de transferencias en DOS57:** ¿Andrea también le manda a Matías un mensaje por persona, o alcanza con el resumen semanal de pagos?
 - **Escalafón:** el número de nivel existe, falta confirmar qué significa.
 - **Choferes:** el presentismo no se pierde por horas. Es una decisión nuestra, falta confirmarla.
 - **Escalafones de julio 2026:** confirmar con Mayra si siguen vigentes o hubo aumento.
@@ -121,7 +130,7 @@ También confirma cosas que ya están: ítems fijos del acuerdo (básico, incent
 
 **DOS57: 76% construido (17,5 de 23) · Enjoy: 70% construido (15,5 de 22) · En uso: 0%**
 
-Responsables: Mayra cierra las dos empresas y maneja los bancos (Galicia, Francés, Nación y Rebanking en Enjoy; Galicia, Nación y Rebanking en DOS57). Chino lleva Bancor de Enjoy. En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
+Responsables: Mayra cierra las dos empresas y lleva Galicia y Nación en las dos, y Francés en Enjoy. Chino lleva Bancor y Rebanking en las dos empresas (respuesta de Mayra, nov 2026). En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
 
 Se conecta con: Administración (caja imputada y cobros de cada evento), Proveedores (pagos de facturas, cuentas corrientes de talleres y proveedores), RRHH (sueldos, adelantos, préstamos al personal), Logística (combustible pagado de caja), Calendario (vencimientos de echeqs, cuotas de AFIP, créditos, SGR, facturas a cobrar).
 
@@ -202,7 +211,7 @@ No se cuentan acá: auditoría de cambios y repositorio de archivos (Varios), ca
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 1 | Presupuesto comercial para el cliente, con estados (borrador, enviado, aprobado) y versiones; en Enjoy, que salga de la ficha técnica, se mande en PDF y se convierta en evento | ✅ | ⬜ | Especificación Enjoy §9-13 · BASE MATRICES RENTAL COST (Flor) | DOS57: Presupuestos · Enjoy: no existe el proyecto comercial previo al evento |
-| 2 | Pre-Macro: asistente de alta del evento con socios, reparto y rubros sugeridos por empresa | ✅ | ✅ | Kick-off ("pre-macro por evento") | Pre-Macro |
+| 2 | Pre-Macro: asistente de alta del evento con socios, reparto y rubros sugeridos por empresa, agrupados bajo su rubro principal (en negrita, con casilla para marcar el grupo entero) | ✅ | ✅ | Kick-off ("pre-macro por evento") · Reunión con Male (nov 2026) | Pre-Macro |
 | 3 | Ficha técnica: rubros con proveedor, presupuesto y estado; pedidos a proveedores; importadores de las planillas | ✅ | ✅ | Ficha de evento · Pedidos de material (Daniel) · Control de Rubros Enjoy | Evento → Ficha |
 | 4 | Biblioteca de rubros configurable por empresa | ✅ | ✅ | Especificación §36 · rubros reales DOS57 (Jazmín) | Configuración |
 | 5 | Estados del evento a lo largo de su vida (planificación, producción, en ejecución, finalizado, cerrado, archivado) | 🟡 | 🟡 | Especificación §16 | Hoy: confirmado / cancelado en el pre-macro, y activo / cerrado en el evento |
@@ -259,12 +268,12 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 1 | Proveedor único por CUIT, que se carga una vez y se usa en todos los eventos | ✅ | ✅ | Especificación Enjoy §3.1 y §35 | Proveedores |
-| 2 | Datos completos: nombre, CUIT, banco, CBU y alias, titular, si factura y qué tipo, servicio | 🟡 | 🟡 | Especificación §35 · Proveedores - Datos (Respuestas) | Proveedores · Faltan dirección, persona de contacto y condición de IVA como dato formal |
+| 2 | Datos completos: empresa, persona de contacto, CUIT, banco, CBU y alias, titular, si factura y qué tipo, servicio | 🟡 | 🟡 | Especificación §35 · Proveedores - Datos (Respuestas) | Proveedores · Faltan dirección y condición de IVA como dato formal |
 | 3 | Ficha del proveedor: eventos donde trabajó, movimientos, total facturado, echeqs | ✅ | ✅ | Especificación §36 | Proveedores → detalle |
 | 4 | En la ficha del proveedor: sus facturas, saldo pendiente y pagos hechos | 🟡 | 🟡 | Especificación §35-36 | Están en Facturas a Pagar filtrando por proveedor, no en su ficha |
 | 5 | Comisionistas con porcentaje de comisión | ✅ | — | Facturación Vallas Partidos - Polaco (Mayra) | Proveedores |
 | 6 | Proveedor habitual y costo estimado por rubro, para que la ficha los sugiera | ⬜ | ⬜ | Especificación §36 (biblioteca de rubros) | — |
-| 7 | Vincular proveedores a los movimientos del evento que llegaron sin proveedor | ✅ | ✅ | Importador de eventos históricos | Evento → Vincular proveedores |
+| 7 | Vincular proveedores a los movimientos del evento que llegaron sin proveedor, buscando por empresa o contacto, o dando de alta uno nuevo; el rubro de la Ficha queda con ese proveedor | ✅ | ✅ | Importador de eventos históricos · Reunión con Male (nov 2026) | Evento → Vincular proveedores |
 
 ### Facturas a pagar
 
@@ -527,7 +536,7 @@ Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un 
 | 5 | Administración: eventos, de la fecha de inicio a la de fin | ✅ | ✅ | — | Calendario |
 | 6 | Administración: días de montaje y desmontaje, diferenciados del evento | 🟡 | 🟡 | Relevamiento Flor (armado → evento → desarme) | Los días se cargan en el evento, pero el calendario no los muestra |
 | 7 | Logística: tareas del cronograma de cada evento (Operación) | ⬜ | ⬜ | Carpeta del evento (Flor) · Planilla de producción (Daniel) | — |
-| 8 | RRHH: jornadas, partes diarios y liquidaciones | ✅ | ✅ | — | Calendario |
+| 8 | RRHH: jornadas, partes diarios y liquidaciones (una entrada por día de pago, que abre el listado de ese día) | ✅ | ✅ | Reunión con Male (nov 2026) | Calendario |
 | 9 | Finanzas: echeqs, cuotas de AFIP y de créditos, facturas a cobrar, rendiciones de caja, saldo bajo, cuentas corrientes sin movimiento | ✅ | ✅ | — | Calendario |
 | 10 | Proveedores: vencimiento de facturas a pagar | ✅ | ✅ | — | Calendario |
 | 11 | Depósito: retornos de stock pendientes, quiebre de stock de uniformes | ✅ | ✅ | — | Calendario |

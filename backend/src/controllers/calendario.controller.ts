@@ -327,27 +327,50 @@ async function resolveStockRetornos(empresaFiltro: number | undefined, desde: Da
   }));
 }
 
+// Un ítem por empresa y día de pago (Male, nov 2026): si el viernes se les
+// paga a N personas, el calendario muestra una sola entrada con el total, y
+// el detalle lleva al listado filtrado por esa fecha. Las liquidaciones viejas
+// sin fecha de pago se agrupan por el último día del período.
 async function resolveLiquidaciones(empresaFiltro: number | undefined, desde: Date, hasta: Date): Promise<CalendarioItem[]> {
   // Liquidacion no tiene soft-delete (sin columna deleted_at).
   const liquidaciones = await prisma.liquidacion.findMany({
     where: {
-      fecha_hasta: { gte: desde, lte: hasta },
-      estado: 'BORRADOR',
+      estado: { in: ['BORRADOR', 'PRE_APROBADA', 'APROBADA'] },
+      OR: [
+        { fecha_pago: { gte: desde, lte: hasta } },
+        { fecha_pago: null, fecha_hasta: { gte: desde, lte: hasta } },
+      ],
       ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
     },
-    include: { empleado: { select: { nombre: true, apellido: true } }, empresa: { select: { nombre: true } } },
+    include: { empresa: { select: { nombre: true } } },
   });
 
-  return liquidaciones.map(l => ({
-    id:             `liquidacion-${l.id}`,
+  const grupos = new Map<string, { fecha: Date; empresa_id: number; empresa_nombre: string; cantidad: number; total: number; estados: Record<string, number>; con_fecha_pago: boolean }>();
+  for (const l of liquidaciones) {
+    const fecha = l.fecha_pago ?? l.fecha_hasta;
+    const clave = `${l.empresa_id}-${fecha.toISOString().slice(0, 10)}`;
+    const g = grupos.get(clave) ?? { fecha, empresa_id: l.empresa_id, empresa_nombre: l.empresa.nombre, cantidad: 0, total: 0, estados: {}, con_fecha_pago: !!l.fecha_pago };
+    g.cantidad++;
+    g.total += Number(l.total_a_cobrar);
+    g.estados[l.estado] = (g.estados[l.estado] ?? 0) + 1;
+    grupos.set(clave, g);
+  }
+
+  return [...grupos.entries()].map(([clave, g]) => ({
+    id:             `liquidaciones-${clave}`,
     tipo:           'LIQUIDACION' as const,
-    titulo:         `Liquidación pendiente — ${l.empleado.apellido}, ${l.empleado.nombre}`,
-    fecha:          l.fecha_hasta,
-    empresa_id:     l.empresa_id,
-    empresa_nombre: l.empresa.nombre,
+    titulo:         `Pago de liquidaciones (${g.cantidad} ${g.cantidad === 1 ? 'persona' : 'personas'})`,
+    fecha:          g.fecha,
+    empresa_id:     g.empresa_id,
+    empresa_nombre: g.empresa_nombre,
     color:          COLORES.LIQUIDACION,
-    urgencia:       'normal' as const,
-    metadata:       { total_a_cobrar: Number(l.total_a_cobrar), evento_id: l.evento_id },
+    urgencia:       (g.estados.BORRADOR ? 'warning' : 'normal') as Urgencia,
+    metadata:       {
+      total_a_cobrar: Math.round(g.total * 100) / 100,
+      cantidad:       g.cantidad,
+      estados:        g.estados,
+      fecha_pago:     g.con_fecha_pago ? g.fecha.toISOString().slice(0, 10) : null,
+    },
   }));
 }
 

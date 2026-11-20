@@ -102,13 +102,13 @@ function ProveedorDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 mt-1">
           <div>
-            <label className={label}>Nombre / Razón social *</label>
+            <label className={label}>Empresa / razón social *</label>
             <input {...f('nombre')} className={input} required minLength={2} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={label}>Alias (nombre corto)</label>
-              <input {...f('alias')} className={input} placeholder="Empresa" />
+              <label className={label}>Contacto (persona)</label>
+              <input {...f('alias')} className={input} placeholder="Con quién se habla" />
             </div>
             <div>
               <label className={label}>CUIT</label>
@@ -208,7 +208,7 @@ export default function ProveedoresPage() {
         <div className="flex items-center gap-1.5 border border-input rounded px-2.5 py-1.5 bg-white">
           <Search size={13} className="text-muted-foreground shrink-0" />
           <input
-            placeholder="Buscar por nombre, alias o CUIT…"
+            placeholder="Buscar por empresa, contacto o CUIT…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="text-sm focus:outline-none w-56"
@@ -240,8 +240,8 @@ export default function ProveedoresPage() {
           <BaseTable className="w-full">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
-                <th className={th}>Nombre</th>
-                <th className={th}>Alias</th>
+                <th className={th}>Empresa</th>
+                <th className={th}>Contacto</th>
                 <th className={th}>CUIT</th>
                 <th className={th}>Categoría</th>
                 <th className={th}>Estado</th>

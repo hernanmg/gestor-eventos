@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { usePreMacro, useUpdatePreMacro, useUpdateRubros, useConfirmarPreMacro } from '@/hooks/usePreMacro';
 import { useUsuarios } from '@/hooks/useUsuarios';
+import { useRubros } from '@/hooks/useRubros';
 import { useAuth } from '@/hooks/useAuth';
 import { modalidadesDe } from '@/lib/modalidades';
 import { Button } from '@/components/ui/button';
@@ -560,18 +561,65 @@ function ResumenScreen({ form, onEdit, onConfirm }: { form: FormState; onEdit: (
 
 // ── Rubros ────────────────────────────────────────────────────────────────────
 
+// Rubros agrupados por su rubro principal (Rubro.grupo, ej. "TÉCNICA Y
+// AUDIOVISUAL"): el principal va en negrita con un check que marca o desmarca
+// todo el grupo (Male, nov 2026: antes no se distinguía cuál era el principal).
+function GruposRubros({ lista, seleccion, onSetMany, grupoDe, RubroRow }: {
+  lista:     RubroSugerido[];
+  seleccion: Record<number, boolean>;
+  onSetMany: (ids: number[], valor: boolean) => void;
+  grupoDe:   (id: number) => { grupo: string | null; orden: number };
+  RubroRow:  (p: { r: RubroSugerido }) => JSX.Element;
+}) {
+  const grupos = new Map<string, RubroSugerido[]>();
+  for (const r of [...lista].sort((a, b) => grupoDe(a.rubro_id).orden - grupoDe(b.rubro_id).orden)) {
+    const g = grupoDe(r.rubro_id).grupo ?? 'Otros';
+    grupos.set(g, [...(grupos.get(g) ?? []), r]);
+  }
+  return (
+    <>
+      {[...grupos.entries()].map(([grupo, rubros]) => {
+        const ids = rubros.map(r => r.rubro_id);
+        const marcados = ids.filter(id => seleccion[id]).length;
+        return (
+          <div key={grupo}>
+            <label className="flex items-center gap-2.5 px-3 py-2 bg-muted/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={marcados === ids.length}
+                ref={el => { if (el) el.indeterminate = marcados > 0 && marcados < ids.length; }}
+                onChange={() => onSetMany(ids, marcados !== ids.length)}
+              />
+              <span className="text-sm font-bold uppercase tracking-wide flex-1">{grupo}</span>
+              <span className="text-xs text-muted-foreground">{marcados}/{ids.length}</span>
+            </label>
+            <div className="divide-y divide-border pl-5">
+              {rubros.map(r => <RubroRow key={r.rubro_id} r={r} />)}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function RubrosScreen({
-  sugeridos, seleccion, onToggle, onBack, onConfirmar, isConfirming, nombreEvento,
+  sugeridos, seleccion, onToggle, onSetMany, onBack, onConfirmar, isConfirming, nombreEvento,
 }: {
   sugeridos:    RubroSugerido[];
   seleccion:    Record<number, boolean>;
   onToggle:     (id: number) => void;
+  onSetMany:    (ids: number[], valor: boolean) => void;
   onBack:       () => void;
   onConfirmar:  () => void;
   isConfirming: boolean;
   nombreEvento: string;
 }) {
   const [mostrarTodos, setMostrarTodos] = useState(false);
+  const { data: rubrosEmpresa = [] } = useRubros('EGRESO');
+  const infoRubro = new Map(rubrosEmpresa.map(r => [r.id, { grupo: r.grupo, orden: r.orden }]));
+  const grupoDe = (id: number) => infoRubro.get(id) ?? { grupo: null, orden: 9999 };
+  const hayGrupos = rubrosEmpresa.some(r => r.grupo);
 
   const sugeridosList = sugeridos.filter(r => r.razon !== null);
   const otrosList     = sugeridos.filter(r => r.razon === null);
@@ -585,6 +633,10 @@ function RubrosScreen({
     </label>
   );
 
+  const lista = (rubros: RubroSugerido[]) => hayGrupos
+    ? <GruposRubros lista={rubros} seleccion={seleccion} onSetMany={onSetMany} grupoDe={grupoDe} RubroRow={RubroRow} />
+    : rubros.map(r => <RubroRow key={r.rubro_id} r={r} />);
+
   return (
     <div className="space-y-4 max-w-2xl pb-20">
       <div>
@@ -594,12 +646,17 @@ function RubrosScreen({
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={mostrarTodos} onChange={e => setMostrarTodos(e.target.checked)} />
-        Mostrar todos en una sola lista
+        Mostrar todos los rubros juntos
       </label>
+      {hayGrupos && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          En negrita, el rubro principal: su casilla marca o desmarca todos los rubros de ese grupo.
+        </p>
+      )}
 
       {mostrarTodos ? (
         <div className="rounded-lg border border-border divide-y divide-border">
-          {[...sugeridos].sort((a, b) => a.rubro_id - b.rubro_id).map(r => <RubroRow key={r.rubro_id} r={r} />)}
+          {hayGrupos ? lista(sugeridos) : [...sugeridos].sort((a, b) => a.rubro_id - b.rubro_id).map(r => <RubroRow key={r.rubro_id} r={r} />)}
         </div>
       ) : (
         <>
@@ -609,7 +666,7 @@ function RubrosScreen({
               <p className="text-xs text-muted-foreground">Basados en las respuestas anteriores</p>
             </div>
             <div className="divide-y divide-border">
-              {sugeridosList.map(r => <RubroRow key={r.rubro_id} r={r} />)}
+              {lista(sugeridosList)}
               {sugeridosList.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">Sin sugerencias.</p>}
             </div>
           </div>
@@ -620,7 +677,7 @@ function RubrosScreen({
               <p className="text-xs text-muted-foreground">No sugeridos — activá los que necesités</p>
             </div>
             <div className="divide-y divide-border">
-              {otrosList.map(r => <RubroRow key={r.rubro_id} r={r} />)}
+              {lista(otrosList)}
             </div>
           </div>
         </>
@@ -739,6 +796,10 @@ export default function PreMacroPage() {
     setSeleccion(s => ({ ...s, [rubroId]: !s[rubroId] }));
   };
 
+  const handleSetRubros = (ids: number[], valor: boolean) => {
+    setSeleccion(s => ({ ...s, ...Object.fromEntries(ids.map(id => [id, valor])) }));
+  };
+
   const handleCrearEvento = async () => {
     setSaveError(null);
     try {
@@ -815,6 +876,7 @@ export default function PreMacroPage() {
             sugeridos={preMacro.rubros_sugeridos ?? []}
             seleccion={seleccion}
             onToggle={handleToggleRubro}
+            onSetMany={handleSetRubros}
             onBack={() => setVista('resumen')}
             onConfirmar={handleCrearEvento}
             isConfirming={rubrosMutation.isPending || confirmarMutation.isPending}

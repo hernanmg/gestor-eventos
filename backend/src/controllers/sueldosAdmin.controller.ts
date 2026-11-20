@@ -28,6 +28,7 @@ function mapDecimalsAcuerdo(a: any) {
     porcentaje_acuerdo:    a.porcentaje_acuerdo    !== null ? Number(a.porcentaje_acuerdo)    : null,
     horas_pendientes_acum: a.horas_pendientes_acum !== null ? Number(a.horas_pendientes_acum) : null,
     valor_premio_produccion: a.valor_premio_produccion !== null ? Number(a.valor_premio_produccion) : null,
+    valor_premio_produccion_2: a.valor_premio_produccion_2 != null ? Number(a.valor_premio_produccion_2) : null,
   };
 }
 
@@ -70,7 +71,7 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-const EMPLEADO_SELECT = { id: true, nombre: true, apellido: true, dni: true, categoria: true } as const;
+const EMPLEADO_SELECT = { id: true, nombre: true, apellido: true, dni: true, categoria: true, fecha_ingreso: true } as const;
 const EMPRESA_SELECT  = { id: true, nombre: true, nombre_corto: true } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -196,6 +197,7 @@ const acuerdoSchema = z.object({
   // (distinto del viático y del sueldo básico). Ver EventoEmpleadoMes.
   cobra_premio_produccion: z.boolean().default(false),
   valor_premio_produccion: z.number().min(0).nullable().optional(),
+  valor_premio_produccion_2: z.number().min(0).nullable().optional(),
 });
 
 export async function createAcuerdo(req: Request, res: Response) {
@@ -234,6 +236,7 @@ export async function createAcuerdo(req: Request, res: Response) {
         categoria_acuerdo:     d.categoria_acuerdo,
         cobra_premio_produccion: d.cobra_premio_produccion,
         valor_premio_produccion: d.valor_premio_produccion ?? null,
+        valor_premio_produccion_2: d.valor_premio_produccion_2 ?? null,
         horas_pendientes_acum: d.horas_pendientes_acum ?? null,
         notas:               d.notas              ?? null,
         created_by:          req.user!.id,
@@ -312,6 +315,7 @@ export async function updateAcuerdo(req: Request, res: Response) {
       ...(d.horas_pendientes_acum !== undefined && { horas_pendientes_acum: d.horas_pendientes_acum }),
       ...(d.cobra_premio_produccion !== undefined && { cobra_premio_produccion: d.cobra_premio_produccion }),
       ...(d.valor_premio_produccion !== undefined && { valor_premio_produccion: d.valor_premio_produccion }),
+      ...(d.valor_premio_produccion_2 !== undefined && { valor_premio_produccion_2: d.valor_premio_produccion_2 }),
       ...(d.notas               !== undefined && { notas: d.notas }),
       ...(d.activo              !== undefined && { activo: d.activo }),
     },
@@ -750,7 +754,7 @@ export async function updateLiquidacionAdmin(req: Request, res: Response) {
 
   const liquidacion = await prisma.liquidacionAdmin.findFirst({
     where:   { id, ...withTenant(req.empresaId!) },
-    include: { acuerdo: true },
+    include: { acuerdo: { include: { empleado: { select: { fecha_ingreso: true } } } } },
   });
   if (!liquidacion) { res.status(404).json({ error: 'Liquidación no encontrada' }); return; }
   if (liquidacion.estado !== EstadoLiquidacionAdmin.BORRADOR) {

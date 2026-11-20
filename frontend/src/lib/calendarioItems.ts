@@ -71,7 +71,7 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'JORNADA':        return `/rrhh?tab=jornadas&fecha=${item.fecha.slice(0, 10)}&estado=PENDIENTE`;
     case 'PARTE_DIARIO':   return `/parte-diario?fecha=${item.fecha.slice(0, 10)}`;
     case 'STOCK_RETORNO':  return m.evento_id ? `/eventos/${m.evento_id}?tab=stock` : '/eventos';
-    case 'LIQUIDACION':    return '/rrhh?tab=liquidaciones';
+    case 'LIQUIDACION':    return m.fecha_pago ? `/rrhh?tab=liquidaciones&fecha_pago=${m.fecha_pago}` : '/rrhh?tab=liquidaciones';
     case 'RENDICION_PENDIENTE': return `/caja/${m.cuenta_id}`;
     case 'SALDO_MINIMO':        return `/caja/${m.cuenta_id}`;
     case 'CTA_CORRIENTE_INACTIVA': return `/cuentas-corrientes/${m.cuenta_id}`;
@@ -98,7 +98,11 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'ECHEQ_COBRO':    return [`Importe: ${m.moneda} ${Number(m.importe).toLocaleString('es-AR')}`];
     case 'JORNADA':        return m.cantidad ? [`${m.cantidad} jornada${m.cantidad !== 1 ? 's' : ''}`] : (m.convocatoria ? [`Convocatoria: ${m.convocatoria}`] : []);
     case 'STOCK_RETORNO':  return [`Evento: ${m.evento_nombre}`, `Ubicación: ${m.ubicacion}`];
-    case 'LIQUIDACION':    return [`Total a cobrar: $${Number(m.total_a_cobrar).toLocaleString('es-AR')}`];
+    case 'LIQUIDACION': {
+      const e = (m.estados ?? {}) as Record<string, number>;
+      const partes = [e.BORRADOR && `${e.BORRADOR} en borrador`, e.PRE_APROBADA && `${e.PRE_APROBADA} pre-aprobada(s)`, e.APROBADA && `${e.APROBADA} aprobada(s)`].filter(Boolean) as string[];
+      return [`Total a pagar: $${Number(m.total_a_cobrar).toLocaleString('es-AR')}`, ...(partes.length ? [partes.join(' · ')] : [])];
+    }
     case 'EVENTO':         return [`Estado: ${m.estado}`];
     case 'RENDICION_PENDIENTE': return [`Responsable: ${m.responsable ?? '—'}`, `${m.dias_transcurridos} día${m.dias_transcurridos !== 1 ? 's' : ''} pendiente`];
     case 'SALDO_MINIMO':        return [`Saldo actual: $${Number(m.saldo_actual).toLocaleString('es-AR')}`, `Mínimo: $${Number(m.saldo_minimo).toLocaleString('es-AR')}`];

@@ -30,7 +30,7 @@ const EMPTY_FORM = {
   premio_incentivo: '', viatico: '', premio_presentismo: '', telefono: '', notas: '',
   viatico_provincial: '', viatico_nacional: '', viatico_nacional_1000: '',
   categoria_acuerdo: 'GENERAL' as CategoriaAcuerdo, porcentaje_acuerdo: '', horas_pendientes_acum: '',
-  cobra_premio_produccion: false, valor_premio_produccion: '',
+  cobra_premio_produccion: false, valor_premio_produccion: '', valor_premio_produccion_2: '',
 };
 
 type Step = 1 | 2 | 3;
@@ -89,6 +89,7 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         notas:               acuerdo.notas ?? '',
         cobra_premio_produccion: acuerdo.cobra_premio_produccion,
         valor_premio_produccion: acuerdo.valor_premio_produccion !== null ? String(acuerdo.valor_premio_produccion) : '',
+        valor_premio_produccion_2: acuerdo.valor_premio_produccion_2 != null ? String(acuerdo.valor_premio_produccion_2) : '',
       });
       // Todo acuerdo tiene al menos 1 split (el 100% a la empresa activa por
       // defecto) — sólo es un split "real" si involucra más de una empresa.
@@ -187,6 +188,7 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
         notas:               form.notas || null,
         cobra_premio_produccion: form.cobra_premio_produccion,
         valor_premio_produccion: form.valor_premio_produccion ? Number(form.valor_premio_produccion) : null,
+        valor_premio_produccion_2: form.valor_premio_produccion_2 ? Number(form.valor_premio_produccion_2) : null,
       };
 
       if (isEdit) {
@@ -467,12 +469,18 @@ function AcuerdoWizardDialog({ open, onClose, empleadosDisponibles, acuerdo }: {
                 Cobra premio de producción
               </label>
               <p className="text-[11px] text-muted-foreground">
-                Monto fijo por cada evento del mes en que participó — distinto del viático y del sueldo básico. Se carga evento por evento al generar la liquidación.
+                Monto fijo por cada evento del mes en que participó — distinto del viático y del sueldo básico. Se carga evento por evento al generar la liquidación, y Matías elige si corresponde el Premio 1 o el 2.
               </p>
               {form.cobra_premio_produccion && (
-                <div>
-                  <label className={labelCls}>Monto por evento ($)</label>
-                  <MoneyInput value={form.valor_premio_produccion} onChange={v => set('valor_premio_produccion', v)} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className={labelCls}>Premio 1 — evento de hasta 7 días ($)</label>
+                    <MoneyInput value={form.valor_premio_produccion} onChange={v => set('valor_premio_produccion', v)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Premio 2 — más de 7 días ($)</label>
+                    <MoneyInput value={form.valor_premio_produccion_2} onChange={v => set('valor_premio_produccion_2', v)} />
+                  </div>
                 </div>
               )}
             </div>

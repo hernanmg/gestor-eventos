@@ -5,7 +5,7 @@ function round2(n: number): number {
 }
 
 // Tabla de antigüedad fija (extraída del Excel real de DOS57) — monto según
-// años completos cumplidos desde AcuerdoSueldo.fecha_inicio. No se persiste
+// años completos cumplidos desde el ingreso (ver fechaAntiguedad). No se persiste
 // en el acuerdo: se recalcula siempre al liquidar, para que un empleado con
 // más antigüedad cobre el escalón correcto sin tener que tocar su acuerdo.
 const TABLA_ANTIGUEDAD = [
@@ -26,6 +26,13 @@ function diferenciaEnAnios(desde: Date, hasta: Date): number {
     (hasta.getUTCMonth() === desde.getUTCMonth() && hasta.getUTCDate() < desde.getUTCDate());
   if (aunNoLlegoAlAniversario) anios--;
   return Math.max(0, anios);
+}
+
+// La antigüedad se cuenta desde el ingreso a la empresa (Mayra, nov 2026):
+// AcuerdoSueldo.fecha_inicio se renueva con cada aumento, así que solo se usa
+// si el empleado no tiene cargada la fecha de ingreso.
+export function fechaAntiguedad(acuerdo: { fecha_inicio: Date; empleado?: { fecha_ingreso?: Date | null } | null }): Date {
+  return acuerdo.empleado?.fecha_ingreso ?? acuerdo.fecha_inicio;
 }
 
 export function calcularAntiguedad(fechaInicio: Date, fechaReferencia: Date = new Date()): { anios: number; monto: number } {
@@ -63,7 +70,9 @@ export interface ResultadoSueldoAdmin {
 }
 
 export function calcularSueldoAdmin(
-  acuerdo:              Pick<AcuerdoSueldo, 'sueldo_basico' | 'horas_acordadas_mes' | 'premio_incentivo' | 'viatico' | 'premio_presentismo' | 'valor_hora_extra' | 'telefono' | 'fecha_inicio' | 'categoria_acuerdo'>,
+  // empleado.fecha_ingreso, si viene, manda para la antigüedad (ver fechaAntiguedad).
+  acuerdo:              Pick<AcuerdoSueldo, 'sueldo_basico' | 'horas_acordadas_mes' | 'premio_incentivo' | 'viatico' | 'premio_presentismo' | 'valor_hora_extra' | 'telefono' | 'fecha_inicio' | 'categoria_acuerdo'>
+                        & { empleado?: { fecha_ingreso?: Date | null } | null },
   horasTrabajadas:      number,
   valesDescuentos:      number = 0,
   vacacionesAguinaldo:  number = 0,
@@ -108,7 +117,7 @@ export function calcularSueldoAdmin(
   const horasExtras         = esChofer ? 0 : (cumpleHoras ? round2(horasTrabajadas - acuerdo.horas_acordadas_mes) : 0);
   const importeHorasExtras  = esChofer ? 0 : round2(horasExtras * Number(acuerdo.valor_hora_extra ?? 0));
   const premioPresentismo   = premioPresentismoOverride ?? (cumpleHoras ? Number(acuerdo.premio_presentismo ?? 0) : 0);
-  const antiguedad          = calcularAntiguedad(acuerdo.fecha_inicio, fechaReferencia);
+  const antiguedad          = calcularAntiguedad(fechaAntiguedad(acuerdo), fechaReferencia);
   const viatico             = viaticoOverride ?? Number(acuerdo.viatico ?? 0);
 
   const subtotalBruto = round2(

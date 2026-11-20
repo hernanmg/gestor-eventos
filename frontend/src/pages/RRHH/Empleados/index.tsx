@@ -74,7 +74,7 @@ const EMPTY: EmpleadoPayload = {
   valor_jornada_completa: null, valor_media_jornada: null,
   umbral_horas_jornada: null, umbral_horas_media: null,
   valor_hora_extra_jornada: null, valor_viaje: null,
-  apodo: '', fecha_nacimiento: '', grupo_sanguineo: '',
+  apodo: '', fecha_nacimiento: '', fecha_ingreso: '', grupo_sanguineo: '',
   contacto_emergencia_nombre: '', contacto_emergencia_tel: '', contacto_emergencia_tel2: '',
   escalafon: null, art: '', tipo_contratacion: '', licencia_conducir: false, equipamiento_asignado: '',
   licencia_categoria: '', licencia_numero: '', licencia_vencimiento: '',
@@ -107,6 +107,7 @@ function empleadoToForm(empleado: Empleado): EmpleadoPayload {
     valor_viaje:              empleado.valor_viaje,
     apodo:                      empleado.apodo ?? '',
     fecha_nacimiento:           empleado.fecha_nacimiento ? empleado.fecha_nacimiento.slice(0, 10) : '',
+    fecha_ingreso:              empleado.fecha_ingreso ? empleado.fecha_ingreso.slice(0, 10) : '',
     grupo_sanguineo:            empleado.grupo_sanguineo ?? '',
     contacto_emergencia_nombre: empleado.contacto_emergencia_nombre ?? '',
     contacto_emergencia_tel:    empleado.contacto_emergencia_tel ?? '',
@@ -190,6 +191,7 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
       valor_viaje:              numOrNull(form.valor_viaje),
       escalafon:                numOrNull(form.escalafon),
       fecha_nacimiento:         form.fecha_nacimiento || null,
+      fecha_ingreso:            form.fecha_ingreso || null,
       licencia_categoria:       form.licencia_categoria || null,
       licencia_numero:          form.licencia_numero || null,
       licencia_vencimiento:     form.licencia_vencimiento || null,
@@ -252,8 +254,8 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
 
             {form.tipo_liquidacion === 'LINEAL' ? (
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={labelCls}>Valor hora</label><MoneyInput {...money('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
-                <div><label className={labelCls}>Valor hora extra</label><MoneyInput {...money('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
+                <div><label className={labelCls}>Valor hora (primeras 10 hs del día)</label><MoneyInput {...money('valor_hora')} className={inputCls} />{fieldError('valor_hora')}</div>
+                <div><label className={labelCls}>Valor hora extra (desde la hora 11)</label><MoneyInput {...money('valor_hora_extra')} className={inputCls} />{fieldError('valor_hora_extra')}</div>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
@@ -276,6 +278,7 @@ function EmpleadoDialog({ open, empleado, onClose }: { open: boolean; empleado: 
             <div className="grid grid-cols-2 gap-3">
               <div><label className={labelCls}>Apodo</label><input {...f('apodo')} className={inputCls} />{fieldError('apodo')}</div>
               <div><label className={labelCls}>Fecha de nacimiento</label><input type="date" {...f('fecha_nacimiento')} className={inputCls} />{fieldError('fecha_nacimiento')}</div>
+              <div><label className={labelCls} title="La antigüedad del sueldo se cuenta desde acá">Fecha de ingreso</label><input type="date" {...f('fecha_ingreso')} className={inputCls} />{fieldError('fecha_ingreso')}</div>
               <div>
                 <label className={labelCls}>Grupo sanguíneo</label>
                 <select {...f('grupo_sanguineo')} className={inputCls}>

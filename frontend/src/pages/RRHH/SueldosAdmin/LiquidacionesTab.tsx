@@ -235,9 +235,10 @@ function BitacoraResumenPanel({ empleadoId, mes, anio, onUsar, autoAplicado = fa
 
 // ── Panel: Premio de producción — eventos del mes (checkboxes + agregar) ─────
 
-function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, esLiderPax = false, open, onClose }: {
-  empleadoId: number; mes: number; anio: number; montoDefault: number | null; esLiderPax?: boolean; open: boolean; onClose: () => void;
+function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, montoDefault2 = null, esLiderPax = false, open, onClose }: {
+  empleadoId: number; mes: number; anio: number; montoDefault: number | null; montoDefault2?: number | null; esLiderPax?: boolean; open: boolean; onClose: () => void;
 }) {
+  const [nivel, setNivel] = useState<1 | 2>(1);
   const [pax, setPax]           = useState('');
   const [valorPax, setValorPax] = useState('');
   const [dias, setDias]         = useState('1');
@@ -258,6 +259,7 @@ function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, esLiderPa
         periodo_mes:   mes,
         periodo_anio:  anio,
         monto_premio:  monto.trim() === '' ? null : Number(monto),
+        nivel_premio:  esLiderPax ? null : nivel,
         ...(esLiderPax && {
           cantidad_pax:    pax.trim() === '' ? null : Math.trunc(Number(pax)),
           valor_por_pax:   valorPax.trim() === '' ? null : Number(valorPax),
@@ -305,6 +307,28 @@ function AgregarEventoMesDialog({ empleadoId, mes, anio, montoDefault, esLiderPa
               <p className="col-span-3 text-xs text-muted-foreground">
                 = {formatCurrency((Number(pax) || 0) * (Number(valorPax) || 0) * (dias.trim() === '' ? 1 : Number(dias) || 0))}
               </p>
+            </div>
+          )}
+          {!esLiderPax && (
+            <div>
+              <label className={labelCls}>Premio (lo elige Matías según el evento)</label>
+              <div className="flex gap-2">
+                {([1, 2] as const).map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => {
+                      setNivel(n);
+                      const v = n === 2 ? montoDefault2 : montoDefault;
+                      setMonto(v !== null ? String(v) : '');
+                    }}
+                    className={cn('flex-1 rounded border px-2 py-1.5 text-xs text-left', nivel === n ? 'border-primary bg-primary/5 font-medium' : 'border-input')}
+                  >
+                    Premio {n} <span className="text-muted-foreground">({n === 1 ? 'hasta 7 días' : 'más de 7 días'})</span>
+                    <span className="block">{formatCurrency((n === 2 ? montoDefault2 : montoDefault) ?? 0)}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <div>
@@ -391,8 +415,8 @@ function PaxRow({ ev, onToggle, onDelete, onLocalTotal }: {
   );
 }
 
-function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault, esLiderPax = false }: {
-  empleadoId: number; mes: number; anio: number; valorDefault: number | null;
+function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault, valorDefault2 = null, esLiderPax = false }: {
+  empleadoId: number; mes: number; anio: number; valorDefault: number | null; valorDefault2?: number | null;
   // Fofi/Nestoras — muestra Pax × valor × días por evento (Premio PAX)
   esLiderPax?: boolean;
 }) {
@@ -444,6 +468,16 @@ function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault, esLiderPax
                 {(ev.evento?.nombre ?? ev.evento_nombre)}
                 {ev.evento?.fecha_inicio && ` (${formatDate(ev.evento.fecha_inicio)})`}
               </span>
+              <select
+                value={ev.nivel_premio ?? ''}
+                onChange={e => updateMut.mutate({ id: ev.id, data: { nivel_premio: e.target.value ? (Number(e.target.value) as 1 | 2) : null } })}
+                className="border border-input rounded px-1 py-0.5 text-xs"
+                title="Premio 1: hasta 7 días · Premio 2: más de 7 días"
+              >
+                <option value="">—</option>
+                <option value="1">Premio 1</option>
+                <option value="2">Premio 2</option>
+              </select>
               <span className={cn(!ev.cobra_premio && 'line-through text-muted-foreground')}>
                 {formatCurrency(ev.monto_premio ?? 0)}
               </span>
@@ -463,7 +497,7 @@ function PremioProduccionPanel({ empleadoId, mes, anio, valorDefault, esLiderPax
       <Button type="button" variant="outline" size="sm" onClick={() => setAddOpen(true)}>+ Agregar evento</Button>
       {addOpen && (
         <AgregarEventoMesDialog
-          empleadoId={empleadoId} mes={mes} anio={anio} montoDefault={esLiderPax ? null : valorDefault} esLiderPax={esLiderPax}
+          empleadoId={empleadoId} mes={mes} anio={anio} montoDefault={esLiderPax ? null : valorDefault} montoDefault2={esLiderPax ? null : valorDefault2} esLiderPax={esLiderPax}
           open onClose={() => setAddOpen(false)}
         />
       )}
@@ -833,6 +867,7 @@ function GenerarDialog({ open, onClose }: { open: boolean; onClose: () => void }
               mes={Number(form.periodo_mes)}
               anio={Number(form.periodo_anio)}
               valorDefault={acuerdoSel.valor_premio_produccion}
+              valorDefault2={acuerdoSel.valor_premio_produccion_2}
               esLiderPax={acuerdoSel.empleado?.categoria === 'FOFI' || acuerdoSel.empleado?.categoria === 'NESTORAS'}
             />
           )}

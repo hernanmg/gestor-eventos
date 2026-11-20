@@ -23,11 +23,15 @@ function horasTrabajadasDeJornada(jornada: Jornada): number {
   return round2(Number(jornada.horas_normales) + Number(jornada.horas_extras));
 }
 
+// Base del valor hora (LINEAL, Enjoy): las primeras 10 horas del día se pagan
+// a valor_hora y el resto a valor_hora_extra (Male, nov 2026 — antes eran 8).
+export const HORAS_BASE_LINEAL = 10;
+
 function calcularLineal(empleado: Empleado, horasTrabajadas: number): ResultadoCalculoJornada {
   const valorHora      = Number(empleado.valor_hora);
   const valorHoraExtra = Number(empleado.valor_hora_extra);
-  const horasNormales  = Math.min(horasTrabajadas, 8);
-  const horasExtras    = Math.max(0, round2(horasTrabajadas - 8));
+  const horasNormales  = Math.min(horasTrabajadas, HORAS_BASE_LINEAL);
+  const horasExtras    = Math.max(0, round2(horasTrabajadas - HORAS_BASE_LINEAL));
   const montoBase      = round2(horasNormales * valorHora);
   const montoExtras    = round2(horasExtras * valorHoraExtra);
 

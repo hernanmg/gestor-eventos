@@ -942,6 +942,22 @@ export async function vincularProveedor(req: Request, res: Response) {
       data:  { proveedor_id: finalProveedorId, updated_by: req.user!.id },
     });
 
+    // Las líneas que salen de un rubro de la Ficha (centro de costos) toman el
+    // proveedor del rubro: si solo se vinculaba la línea, en la Ficha el rubro
+    // seguía "sin proveedor" (Male, nov 2026). Se completa el rubro cuando no
+    // tenía uno; si ya tenía otro, no se pisa.
+    const lineasFicha = await tx.movimiento.findMany({
+      where:  { id: { in: movimientos_ids }, rubro_evento_id: { not: null } },
+      select: { rubro_evento_id: true },
+    });
+    const rubroEventoIds = [...new Set(lineasFicha.map(l => l.rubro_evento_id!))];
+    if (rubroEventoIds.length > 0) {
+      await tx.rubroEvento.updateMany({
+        where: { id: { in: rubroEventoIds }, proveedor_id: null },
+        data:  { proveedor_id: finalProveedorId, updated_by: req.user!.id },
+      });
+    }
+
     await registrarAuditoria({
       usuarioId:    req.user!.id,
       empresaId:    req.empresaId,

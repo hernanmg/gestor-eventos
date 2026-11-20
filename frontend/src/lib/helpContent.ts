@@ -676,6 +676,34 @@ const help: Record<string, HelpContent> = {
     ],
   },
 
+  // ── RRHH: jornadas y liquidaciones de jornaleros ────────────────────────────
+  '/rrhh': {
+    titulo: 'RRHH',
+    descripcion: 'Empleados, jornadas, anticipos y liquidaciones de jornaleros.',
+    secciones: [
+      {
+        titulo: 'Cargar las horas desde la planilla',
+        contenido: 'En Importar → "Horas y vales" subí la planilla HORAS Y VALES del mes (una hoja por persona). Se toman las horas trabajadas de cada día, también las que pasan la medianoche, y los vales de abajo entran como anticipos. Las jornadas quedan aprobadas. Si alguien no está en RRHH, se da de alta como jornalero y hay que cargarle el valor hora. Reimportar el mismo archivo no duplica.',
+      },
+      {
+        titulo: 'Cómo se calcula',
+        contenido: 'Por hora: las primeras 10 horas de cada día se pagan al valor hora y el resto al valor de la hora extra. A eso se le descuentan los adelantos y vales pendientes.',
+      },
+      {
+        titulo: 'Liquidaciones pendientes y fecha de pago',
+        contenido: '"Generar pendientes" arma una liquidación por persona con las jornadas aprobadas que todavía no se liquidaron, con fecha de pago el viernes más próximo (se puede cambiar). El listado se filtra por fecha de pago, y en el Calendario cada día de pago aparece una sola vez con el total; al abrirlo te lleva a ese listado.',
+      },
+      {
+        titulo: 'Pre-aprobación, aprobación y pago',
+        contenido: 'Tildá las liquidaciones y usá "Pedido de transferencias": el sistema arma el mensaje con titular, CUIT, CBU, alias, importe y concepto, listo para copiar y mandarle a Matías por WhatsApp; al copiarlo quedan pre-aprobadas. Cuando Matías aprueba, "Aprobar" (de a una o todas las tildadas). Al pagar, "Registrar pago": elegís la cuenta de la que sale, la fecha y el comprobante; queda como gasto en esa cuenta y la liquidación pasa a Pagada. El PDF individual sigue en cada fila.',
+      },
+    ],
+    links: [
+      { label: 'Importar horas y vales', ruta: '/rrhh/importar' },
+      { label: 'Ver el calendario', ruta: '/calendario' },
+    ],
+  },
+
   // ── Sueldos administrativos ──────────────────────────────────────────────────
   '/rrhh/sueldos-admin': {
     titulo: 'Sueldos Administrativos',
@@ -688,6 +716,14 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Bitácora de Viajes (choferes)',
         contenido: 'Para choferes con viático variable por recorrido (Provincial/Nacional/Nacional +1000km), cargá cada viaje en la Bitácora de Viajes — el viático del mes se calcula solo y reemplaza el monto fijo del acuerdo al generar la liquidación.',
+      },
+      {
+        titulo: 'Premio de producción 1 o 2',
+        contenido: 'En el acuerdo se cargan los dos montos: Premio 1 (evento de hasta 7 días) y Premio 2 (más de 7 días). Al agregar cada evento del mes se elige cuál corresponde, como lo decide Matías evento por evento; el monto se puede retocar a mano.',
+      },
+      {
+        titulo: 'Antigüedad',
+        contenido: 'Se cuenta desde la fecha de ingreso del empleado (RRHH → Empleados), no desde el inicio del acuerdo, que cambia con cada aumento. Si el empleado no tiene la fecha de ingreso cargada, se usa la del acuerdo.',
       },
     ],
   },

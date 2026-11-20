@@ -109,7 +109,7 @@ function EditDialog({ proveedor, open, onClose }: { proveedor: Proveedor; open: 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={label}>Alias</label>
+              <label className={label}>Contacto (persona)</label>
               <input {...f('alias')} className={input} />
             </div>
             <div>
@@ -188,7 +188,7 @@ export default function ProveedorDetallePage() {
             <h1 className="page-title">
               {proveedor.nombre}
               {proveedor.alias && (
-                <span className="text-muted-foreground font-normal text-lg ml-2">({proveedor.alias})</span>
+                <span className="text-muted-foreground font-normal text-lg ml-2">· Contacto: {proveedor.alias}</span>
               )}
             </h1>
             <span className={cn(

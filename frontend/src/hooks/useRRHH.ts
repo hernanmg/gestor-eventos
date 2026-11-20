@@ -61,6 +61,7 @@ export interface EmpleadoPayload {
 
   apodo?:                      string | null;
   fecha_nacimiento?:           string | null;
+  fecha_ingreso?:              string | null;
   grupo_sanguineo?:            string | null;
   contacto_emergencia_nombre?: string | null;
   contacto_emergencia_tel?:    string | null;
@@ -240,6 +241,8 @@ export interface LiquidacionFiltros {
   estado?:      EstadoLiquidacion;
   desde?:       string;
   hasta?:       string;
+  fecha_pago?:  string;
+  pendientes?:  boolean;
 }
 
 export function useLiquidaciones(filtros: LiquidacionFiltros = {}) {
@@ -262,6 +265,7 @@ export interface GenerarLiquidacionPayload {
   fecha_desde: string;
   fecha_hasta: string;
   evento_id?:  number | null;
+  fecha_pago?: string | null;
 }
 
 export function usePreviewLiquidacion(params: { empleado_id?: number; fecha_desde?: string; fecha_hasta?: string }) {
@@ -300,6 +304,97 @@ export function useCancelarLiquidacion() {
   });
 }
 
+// ── Circuito de pago: pre-aprobación (pedido de transferencias) → aprobación → pago
+
+function useLiquidacionesMutation<T, R = unknown>(fn: (data: T) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation<R, Error, T>({
+    mutationFn: fn,
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: LIQUIDACIONES_KEY });
+      qc.invalidateQueries({ queryKey: EMPLEADOS_KEY });
+      qc.invalidateQueries({ queryKey: ['calendario'] });
+    },
+  });
+}
+
+export const usePreAprobarLiquidaciones = () =>
+  useLiquidacionesMutation((ids: number[]) => api.patch('/rrhh/liquidaciones/pre-aprobar', { ids }).then(r => r.data));
+
+export const useAprobarLiquidacionesLote = () =>
+  useLiquidacionesMutation((ids: number[]) => api.patch('/rrhh/liquidaciones/aprobar-lote', { ids }).then(r => r.data));
+
+export const useVolverBorradorLiquidacion = () =>
+  useLiquidacionesMutation((id: number) => api.patch(`/rrhh/liquidaciones/${id}/volver-borrador`).then(r => r.data));
+
+export const useCambiarFechaPagoLiquidaciones = () =>
+  useLiquidacionesMutation((d: { ids: number[]; fecha_pago: string }) => api.patch('/rrhh/liquidaciones/fecha-pago', d).then(r => r.data));
+
+export interface PagarLiquidacionesPayload { ids: number[]; cuenta_id: number; fecha: string; comprobante?: File | null }
+
+export const usePagarLiquidaciones = () =>
+  useLiquidacionesMutation((d: PagarLiquidacionesPayload) => {
+    const fd = new FormData();
+    fd.append('ids', JSON.stringify(d.ids));
+    fd.append('cuenta_id', String(d.cuenta_id));
+    fd.append('fecha', d.fecha);
+    if (d.comprobante) fd.append('comprobante', d.comprobante);
+    return api.post('/rrhh/liquidaciones/pagar', fd).then(r => r.data);
+  });
+
+export const useSubirComprobanteLiquidacion = () =>
+  useLiquidacionesMutation((d: { id: number; file: File }) => {
+    const fd = new FormData();
+    fd.append('comprobante', d.file);
+    return api.post(`/rrhh/liquidaciones/${d.id}/comprobante`, fd).then(r => r.data);
+  });
+
+export async function descargarComprobanteLiquidacion(id: number): Promise<void> {
+  const res = await api.get(`/rrhh/liquidaciones/${id}/comprobante`, { responseType: 'blob' });
+  const disp = String(res.headers['content-disposition'] ?? '');
+  const nombre = decodeURIComponent(disp.match(/filename="([^"]+)"/)?.[1] ?? `comprobante-${id}`);
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface PropuestaLiquidacion {
+  empleado_id:     number;
+  empleado_nombre: string;
+  fecha_desde:     string;
+  fecha_hasta:     string;
+  jornadas:        number;
+  horas_normales:  number;
+  horas_extras:    number;
+  subtotal_horas:  number;
+  total_anticipos: number;
+  total_a_cobrar:  number;
+  sin_valor_hora:  boolean;
+}
+
+export interface GenerarPendientesResponse {
+  preview:       boolean;
+  creadas?:      number;
+  fecha_pago:    string;
+  liquidaciones: PropuestaLiquidacion[];
+}
+
+export const useGenerarLiquidacionesPendientes = () =>
+  useLiquidacionesMutation((d: { hasta: string; fecha_pago?: string; dry_run?: boolean }) =>
+    api.post<GenerarPendientesResponse>('/rrhh/liquidaciones/generar-pendientes', d).then(r => r.data));
+
+// Cuentas de la empresa activa para registrar el pago (efectivo, bancos)
+export function useCuentasEmpresa(empresaId: number | null | undefined) {
+  return useQuery<{ id: number; nombre: string; tipo: string; moneda: string }[]>({
+    queryKey: ['rrhh', 'cuentas-empresa', empresaId],
+    queryFn:  () => api.get(`/rrhh/cuentas-empresa/${empresaId}`).then(r => r.data),
+    enabled:  !!empresaId,
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // IMPORTADORES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -334,6 +429,6 @@ export function useImportarJornadas() {
       formData.append('file', file);
       return api.post(`/rrhh/importar/jornadas?dry_run=${dryRun}`, formData).then(r => r.data);
     },
-    onSuccess: (_data, vars) => { if (!vars.dryRun) invalidateJornadas(qc); },
+    onSuccess: (_data, vars) => { if (!vars.dryRun) { invalidateJornadas(qc); qc.invalidateQueries({ queryKey: EMPLEADOS_KEY }); } },
   });
 }

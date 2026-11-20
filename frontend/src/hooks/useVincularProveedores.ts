@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { fichaKey } from '@/hooks/useFichaEvento';
 
 export interface GrupoSinProveedor {
   concepto:             string;
@@ -56,6 +57,8 @@ export function useVincularProveedor(eventoId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: sinProveedorKey(eventoId) });
       qc.invalidateQueries({ queryKey: ['movimientos', eventoId] });
+      // El rubro de la Ficha también toma el proveedor (ver vincularProveedor)
+      qc.invalidateQueries({ queryKey: fichaKey(eventoId) });
     },
   });
 }

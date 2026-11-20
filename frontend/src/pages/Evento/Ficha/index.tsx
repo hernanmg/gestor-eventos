@@ -1295,7 +1295,8 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
       if (busqueda) {
         const term = busqueda.toLowerCase();
         const matchRubro     = r.rubro.nombre.toLowerCase().includes(term);
-        const matchProveedor = r.proveedor?.nombre.toLowerCase().includes(term) ?? false;
+        const matchProveedor = [r.proveedor?.nombre, r.proveedor?.alias]
+          .some(v => (v ?? '').toLowerCase().includes(term));
         if (!matchRubro && !matchProveedor) return false;
       }
       return true;
@@ -1379,7 +1380,7 @@ export default function FichaEventoPage({ eventoId, evento, initialBusqueda }: {
               {ESTADOS.map(e => <option key={e} value={e}>{ESTADO_LABEL[e]}</option>)}
             </select>
             <input
-              placeholder="Buscar por rubro o proveedor..."
+              placeholder="Buscar por rubro, empresa o contacto..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
               className="border rounded px-2 py-1.5 text-sm w-64"

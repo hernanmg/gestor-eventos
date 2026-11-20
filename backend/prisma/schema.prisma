@@ -162,6 +162,9 @@ enum SemaforoPresentismo {
 
 enum EstadoLiquidacion {
   BORRADOR
+  // Male armó el pedido de transferencias y se lo mandó a Matías (WhatsApp);
+  // falta su aprobación real.
+  PRE_APROBADA
   APROBADA
   PAGADA
   CANCELADA
@@ -969,6 +972,9 @@ model MovimientoCaja {
   // de una única LiquidacionAdmin. Null en cualquier otro movimiento de caja.
   liquidacion_admin_id Int?
   liquidacion_admin    LiquidacionAdmin? @relation("LiquidacionAdminMovimientos", fields: [liquidacion_admin_id], references: [id])
+  // Pago de una liquidación de jornaleros (Liquidacion) — se crea al registrar el pago.
+  liquidacion_id       Int?
+  liquidacion          Liquidacion?      @relation(fields: [liquidacion_id], references: [id])
 
   // ── Vista de Andrea (Caja del mes, DOS57) ─────────────────────────────────────
   // Columna del Excel real (CAJAS_JULIO-2026.xlsx) donde cae este movimiento de
@@ -1857,6 +1863,9 @@ model Empleado {
   valor_hora_extra Decimal           @default(0) @db.Decimal(10, 2)
   estado           EstadoEmpleado    @default(ACTIVO)
   notas            String?
+  // Ingreso a la empresa — la antigüedad se cuenta desde acá (Mayra, nov 2026),
+  // no desde AcuerdoSueldo.fecha_inicio, que se renueva con cada aumento.
+  fecha_ingreso    DateTime?
 
   // ── Modelo de liquidación ────────────────────────────────────────────────────
   // LINEAL (Enjoy): horas_normales × valor_hora + horas_extras × valor_hora_extra.
@@ -2110,6 +2119,14 @@ model Liquidacion {
   total_a_cobrar   Decimal           @db.Decimal(10, 2) // subtotal - anticipos - descuentos
   estado           EstadoLiquidacion @default(BORRADOR)
   observaciones    String?
+  // Día en que se paga (Enjoy paga los viernes). Solo fecha: medianoche UTC.
+  fecha_pago       DateTime?
+  pre_aprobado_por Int?
+  pre_aprobado_at  DateTime?
+  // Pago real: May sube el comprobante y elige la cuenta → MovimientoCaja.
+  pagado_por       Int?
+  pagado_at        DateTime?
+  movimientos_caja MovimientoCaja[]
   // Al aprobar → genera Egreso automático
   movimiento_id    Int?              @unique
   movimiento       Movimiento?       @relation(fields: [movimiento_id], references: [id])
@@ -2119,6 +2136,8 @@ model Liquidacion {
   aprobado_por     Int?
   aprobado_at      DateTime?
   anticipos        Anticipo[]
+
+  @@index([empresa_id, fecha_pago])
 }
 
 // ─── SUELDOS ADMINISTRATIVOS (DOS57) ─────────────────────────────────────────
@@ -2146,65 +2165,68 @@ model EmpleadoEmpresaSplit {
 // (ver validación en updateAcuerdo: no se puede tocar si ya hay liquidaciones
 // APROBADAS, para no invalidar snapshots históricos).
 model AcuerdoSueldo {
-  id                      Int              @id @default(autoincrement())
-  empleado_id             Int              @unique
-  empleado                Empleado         @relation(fields: [empleado_id], references: [id])
-  empresa_id              Int // empresa principal del acuerdo
-  empresa                 Empresa          @relation(fields: [empresa_id], references: [id])
+  id                        Int              @id @default(autoincrement())
+  empleado_id               Int              @unique
+  empleado                  Empleado         @relation(fields: [empleado_id], references: [id])
+  empresa_id                Int // empresa principal del acuerdo
+  empresa                   Empresa          @relation(fields: [empresa_id], references: [id])
   // Acuerdo
-  fecha_inicio            DateTime
-  vigencia_meses          Int? // null = indefinido
-  escalafon               String? // "ADM 1", "ADM 2", "ADM 3"
-  tipo_seguro             String? // "ART", "SANCOR", "FEDERAL PATRONAL"
+  fecha_inicio              DateTime
+  vigencia_meses            Int? // null = indefinido
+  escalafon                 String? // "ADM 1", "ADM 2", "ADM 3"
+  tipo_seguro               String? // "ART", "SANCOR", "FEDERAL PATRONAL"
   // Sueldo base
-  sueldo_basico           Decimal          @db.Decimal(12, 2)
-  horas_acordadas_mes     Int              @default(200)
+  sueldo_basico             Decimal          @db.Decimal(12, 2)
+  horas_acordadas_mes       Int              @default(200)
   // Conceptos fijos (configurables por acuerdo)
-  premio_incentivo        Decimal?         @db.Decimal(12, 2)
-  viatico                 Decimal?         @db.Decimal(12, 2)
-  premio_presentismo      Decimal?         @db.Decimal(12, 2)
+  premio_incentivo          Decimal?         @db.Decimal(12, 2)
+  viatico                   Decimal?         @db.Decimal(12, 2)
+  premio_presentismo        Decimal?         @db.Decimal(12, 2)
   // Horas extras
-  valor_hora_extra        Decimal?         @db.Decimal(10, 2)
+  valor_hora_extra          Decimal?         @db.Decimal(10, 2)
   // Teléfono (algunos empleados lo tienen) — antigüedad NO vive acá: se
   // recalcula siempre desde fecha_inicio con la tabla fija de
   // calcularSueldoAdmin.ts, nunca se persiste en el acuerdo.
-  telefono                Decimal?         @db.Decimal(10, 2)
+  telefono                  Decimal?         @db.Decimal(10, 2)
   // Viático por tipo de recorrido (choferes con bitácora de viajes) — cuando
   // están cargados, el viático efectivo de la liquidación se calcula desde
   // BitacoraViaje en vez de usar el campo `viatico` fijo de arriba. Ver
   // resolverValorPorVuelta() en bitacoraViajes.controller.ts.
-  viatico_provincial      Decimal?         @db.Decimal(10, 2)
-  viatico_nacional        Decimal?         @db.Decimal(10, 2)
-  viatico_nacional_1000   Decimal?         @db.Decimal(10, 2)
+  viatico_provincial        Decimal?         @db.Decimal(10, 2)
+  viatico_nacional          Decimal?         @db.Decimal(10, 2)
+  viatico_nacional_1000     Decimal?         @db.Decimal(10, 2)
   // % de aumento que representa este acuerdo sobre el básico del acuerdo
   // anterior — sólo informativo/histórico, no participa del cálculo mensual
   // (ese es LiquidacionAdmin.porcentaje_aumento_aplicado, que se define al
   // generar cada liquidación, no al renegociar el acuerdo).
-  porcentaje_acuerdo      Decimal?         @db.Decimal(5, 2)
+  porcentaje_acuerdo        Decimal?         @db.Decimal(5, 2)
   // GENERAL = administrativos normales (Mayra, Andre, etc.) — usan horas
   // acordadas/extras para el cálculo. CHOFER = Luis y similares — el sueldo
   // NO depende de horas trabajadas (se registran sólo para control/banco de
   // horas); los premios de viaje salen de BitacoraViaje. Ver
   // calcularSueldoAdmin.ts.
-  categoria_acuerdo       CategoriaAcuerdo @default(GENERAL)
+  categoria_acuerdo         CategoriaAcuerdo @default(GENERAL)
   // Banco de horas acumuladas (empleados CHOFER) — puede ser negativo (se le
   // debe trabajar) o positivo (se le debe pagar/compensar). Se actualiza sólo
   // al APROBAR una liquidación (ver aprobarLiquidacionAdmin), nunca al
   // generar un borrador ni al editarlo.
-  horas_pendientes_acum   Decimal?         @db.Decimal(8, 2)
+  horas_pendientes_acum     Decimal?         @db.Decimal(8, 2)
   // Premio de producción — monto fijo por cada evento del mes en que
   // participó el empleado (distinto del viático y del sueldo básico). Ver
   // EventoEmpleadoMes y calcularSueldoAdmin.ts.
-  cobra_premio_produccion Boolean          @default(false)
-  valor_premio_produccion Decimal?         @db.Decimal(10, 2)
+  cobra_premio_produccion   Boolean          @default(false)
+  // Premio 1 (evento de hasta 7 días) y Premio 2 (más de 7). Cuál corresponde
+  // lo elige Matías evento por evento (EventoEmpleadoMes.nivel_premio).
+  valor_premio_produccion   Decimal?         @db.Decimal(10, 2)
+  valor_premio_produccion_2 Decimal?         @db.Decimal(10, 2)
   // Estado del acuerdo
-  activo                  Boolean          @default(true)
-  notas                   String?
+  activo                    Boolean          @default(true)
+  notas                     String?
   // audit
-  created_at              DateTime         @default(now())
-  updated_at              DateTime         @updatedAt
-  deleted_at              DateTime?
-  created_by              Int?
+  created_at                DateTime         @default(now())
+  updated_at                DateTime         @updatedAt
+  deleted_at                DateTime?
+  created_by                Int?
 
   liquidaciones LiquidacionAdmin[]
 }
@@ -2226,6 +2248,8 @@ model EventoEmpleadoMes {
   periodo_mes      Int
   periodo_anio     Int
   cobra_premio     Boolean  @default(true)
+  // 1 o 2 — lo elige Matías por evento; fija el monto_premio desde el acuerdo.
+  nivel_premio     Int?
   monto_premio     Decimal? @db.Decimal(10, 2)
   // Premio PAX (líderes Fofi/Nestoras): cantidad_pax × valor_por_pax ×
   // dias_trabajados. valor_por_pax lo define Matías por evento (no es fijo).

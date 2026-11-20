@@ -28,6 +28,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// Valor del Premio 1 o 2 según el acuerdo activo del empleado (null si no lo tiene cargado).
+async function montoSegunNivel(empleadoId: number, nivel: 1 | 2): Promise<number | null> {
+  const acuerdo = await prisma.acuerdoSueldo.findFirst({
+    where:  { empleado_id: empleadoId, activo: true, deleted_at: null },
+    select: { valor_premio_produccion: true, valor_premio_produccion_2: true },
+  });
+  const valor = nivel === 2 ? acuerdo?.valor_premio_produccion_2 : acuerdo?.valor_premio_produccion;
+  return valor != null ? Number(valor) : null;
+}
+
 // Reutilizado por generarLiquidacionAdmin (sueldosAdmin.controller.ts) —
 // mismo criterio que calcularResumenBitacora en bitacoraViajes.controller.ts.
 export async function calcularResumenEventosMes(empleadoId: number, mes: number, anio: number) {
@@ -67,6 +77,7 @@ const createSchema = z.object({
   periodo_mes:   z.number().int().min(1).max(12),
   periodo_anio:  z.number().int().min(2000).max(2100),
   monto_premio:  z.number().min(0).nullable().optional(),
+  nivel_premio:  z.union([z.literal(1), z.literal(2)]).nullable().optional(),
   cobra_premio:  z.boolean().default(true),
   cantidad_pax:    z.number().int().min(0).nullable().optional(),
   valor_por_pax:   z.number().min(0).nullable().optional(),
@@ -92,6 +103,11 @@ export async function createEventoEmpleadoMes(req: Request, res: Response) {
     if (!evento) { res.status(400).json({ error: 'Evento no encontrado' }); return; }
   }
 
+  // Premio 1 o 2: si no se mandó un monto a mano, sale del acuerdo.
+  const montoPremio = d.monto_premio !== undefined && d.monto_premio !== null
+    ? d.monto_premio
+    : (d.nivel_premio ? await montoSegunNivel(empleadoId, d.nivel_premio) : null);
+
   try {
     const creado = await prisma.eventoEmpleadoMes.create({
       data: {
@@ -102,7 +118,8 @@ export async function createEventoEmpleadoMes(req: Request, res: Response) {
         periodo_mes:   d.periodo_mes,
         periodo_anio:  d.periodo_anio,
         cobra_premio:  d.cobra_premio,
-        monto_premio:  d.monto_premio ?? null,
+        monto_premio:  montoPremio,
+        nivel_premio:  d.nivel_premio ?? null,
         cantidad_pax:     d.cantidad_pax    ?? null,
         valor_por_pax:    d.valor_por_pax   ?? null,
         dias_trabajados:  d.dias_trabajados ?? 1,
@@ -135,6 +152,7 @@ export async function createEventoEmpleadoMes(req: Request, res: Response) {
 
 const updateSchema = z.object({
   monto_premio:    z.number().min(0).nullable().optional(),
+  nivel_premio:    z.union([z.literal(1), z.literal(2)]).nullable().optional(),
   cobra_premio:    z.boolean().optional(),
   cantidad_pax:    z.number().int().min(0).nullable().optional(),
   valor_por_pax:   z.number().min(0).nullable().optional(),
@@ -160,10 +178,18 @@ export async function updateEventoEmpleadoMes(req: Request, res: Response) {
   const diasTrabajados = d.dias_trabajados !== undefined ? d.dias_trabajados : existing.dias_trabajados;
   const tocaPax = d.cantidad_pax !== undefined || d.valor_por_pax !== undefined || d.dias_trabajados !== undefined;
 
+  // Cambiar de Premio 1 a 2 (o al revés) trae el monto del acuerdo, salvo que
+  // en el mismo pedido venga un monto escrito a mano.
+  const montoPorNivel = d.nivel_premio && d.monto_premio === undefined
+    ? await montoSegunNivel(existing.empleado_id, d.nivel_premio)
+    : undefined;
+
   const updated = await prisma.eventoEmpleadoMes.update({
     where: { id },
     data: {
       ...(d.monto_premio    !== undefined && { monto_premio: d.monto_premio }),
+      ...(d.nivel_premio    !== undefined && { nivel_premio: d.nivel_premio }),
+      ...(montoPorNivel     !== undefined && { monto_premio: montoPorNivel }),
       ...(d.cobra_premio    !== undefined && { cobra_premio: d.cobra_premio }),
       ...(d.cantidad_pax    !== undefined && { cantidad_pax: d.cantidad_pax }),
       ...(d.valor_por_pax   !== undefined && { valor_por_pax: d.valor_por_pax }),

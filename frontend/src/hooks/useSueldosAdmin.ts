@@ -144,6 +144,7 @@ export interface AcuerdoPayload {
   // Premio de producción — monto fijo por evento del mes en que participó.
   cobra_premio_produccion?: boolean;
   valor_premio_produccion?: number | null;
+  valor_premio_produccion_2?: number | null;
 }
 
 export function useCreateAcuerdo() {
@@ -446,6 +447,7 @@ export interface EventoEmpleadoMesPayload {
   periodo_mes:    number;
   periodo_anio:   number;
   monto_premio?:  number | null;
+  nivel_premio?:  1 | 2 | null;
   cobra_premio?:  boolean;
   cantidad_pax?:    number | null;
   valor_por_pax?:   number | null;
@@ -467,7 +469,7 @@ export function useCreateEventoEmpleadoMes(empleadoId: number) {
 export function useUpdateEventoEmpleadoMes() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { monto_premio?: number | null; cobra_premio?: boolean; cantidad_pax?: number | null; valor_por_pax?: number | null; dias_trabajados?: number | null } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { monto_premio?: number | null; nivel_premio?: 1 | 2 | null; cobra_premio?: boolean; cantidad_pax?: number | null; valor_por_pax?: number | null; dias_trabajados?: number | null } }) =>
       api.put(`/rrhh/eventos-mes/${id}`, data).then(r => r.data),
     onSuccess: () => invalidateEventosMes(qc),
   });

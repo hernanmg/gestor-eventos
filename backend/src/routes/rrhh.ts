@@ -9,7 +9,9 @@ import {
   listJornadas, listJornadasEmpleado, createJornada, updateJornada, aprobarJornada, rechazarJornada, deleteJornada,
   listAnticiposEmpleado, createAnticipo, deleteAnticipo,
   listLiquidaciones, getLiquidacion, previewLiquidacion, generarLiquidacion, aprobarLiquidacion, cancelarLiquidacion,
-  exportarLiquidacionPDF,
+  exportarLiquidacionPDF, aprobarLiquidacionesLote, preAprobarLiquidaciones, volverBorradorLiquidacion,
+  cambiarFechaPagoLiquidaciones, pagarLiquidaciones, subirComprobanteLiquidacion, descargarComprobanteLiquidacion,
+  generarLiquidacionesPendientes,
 } from '../controllers/rrhh.controller';
 import { importarEmpleados, importarJornadas, importarHistorialConvocatorias, importarPadron } from '../controllers/rrhhImporter.controller';
 import {
@@ -37,6 +39,22 @@ const uploadExcel = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: 10 * 1024 * 1024 },
 });
+
+// Comprobante de pago de una liquidación (PDF o imagen).
+const uploadComprobante = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Solo se aceptan archivos PDF o imágenes'));
+  },
+});
+function comprobanteMiddleware(req: any, res: any, next: any) {
+  uploadComprobante.single('comprobante')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el comprobante' }); return; }
+    next();
+  });
+}
 
 const router = Router();
 router.use(auth);
@@ -71,11 +89,19 @@ router.delete('/anticipos/:id',          requireRole('ADMIN'), asyncHandler(dele
 // ── Liquidaciones ─────────────────────────────────────────────────────────────
 router.get('/liquidaciones',             requireRole('ADMIN'), asyncHandler(listLiquidaciones));
 router.get('/liquidaciones/preview',     requireRole('ADMIN'), asyncHandler(previewLiquidacion));
+router.post('/liquidaciones/generar-pendientes', requireRole('ADMIN'), asyncHandler(generarLiquidacionesPendientes));
+router.patch('/liquidaciones/pre-aprobar',  requireRole('ADMIN'), asyncHandler(preAprobarLiquidaciones));
+router.patch('/liquidaciones/aprobar-lote', requireRole('ADMIN'), asyncHandler(aprobarLiquidacionesLote));
+router.patch('/liquidaciones/fecha-pago',   requireRole('ADMIN'), asyncHandler(cambiarFechaPagoLiquidaciones));
+router.post('/liquidaciones/pagar',         requireRole('ADMIN'), comprobanteMiddleware, asyncHandler(pagarLiquidaciones));
 router.get('/liquidaciones/:id',         requireRole('ADMIN'), asyncHandler(getLiquidacion));
 router.get('/liquidaciones/:id/pdf',     requireRole('ADMIN'), asyncHandler(exportarLiquidacionPDF));
 router.post('/liquidaciones/generar',    requireRole('ADMIN'), asyncHandler(generarLiquidacion));
 router.patch('/liquidaciones/:id/aprobar',  requireRole('ADMIN'), asyncHandler(aprobarLiquidacion));
 router.patch('/liquidaciones/:id/cancelar', requireRole('ADMIN'), asyncHandler(cancelarLiquidacion));
+router.patch('/liquidaciones/:id/volver-borrador', requireRole('ADMIN'), asyncHandler(volverBorradorLiquidacion));
+router.post('/liquidaciones/:id/comprobante', requireRole('ADMIN'), comprobanteMiddleware, asyncHandler(subirComprobanteLiquidacion));
+router.get('/liquidaciones/:id/comprobante',  requireRole('ADMIN'), asyncHandler(descargarComprobanteLiquidacion));
 
 // ── Importadores ──────────────────────────────────────────────────────────────
 router.post('/importar/empleados',       requireRole('ADMIN'), uploadExcel.single('file'), asyncHandler(importarEmpleados));

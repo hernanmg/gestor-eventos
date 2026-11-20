@@ -17,7 +17,7 @@ export type CategoriaEmpleado = 'CAPITAN' | 'ARMADOR' | 'CHOFER' | 'ADMINISTRATI
   | 'JORNALERO' | 'FOFI' | 'NESTORAS' | 'EXTRANJERO' | 'SERENO' | 'OTRO';
 export type EstadoEmpleado    = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
 export type EstadoJornada     = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
-export type EstadoLiquidacion = 'BORRADOR' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
+export type EstadoLiquidacion = 'BORRADOR' | 'PRE_APROBADA' | 'APROBADA' | 'PAGADA' | 'CANCELADA';
 export type TipoLiquidacion   = 'LINEAL' | 'JORNADA';
 export type TipoAnticipo      = 'ADELANTO' | 'VALE' | 'DESCUENTO' | 'MULTA';
 export type EstadoMovimiento  = 'PENDIENTE' | 'COTIZANDO' | 'CONFIRMADO' | 'PAGADO' | 'CANCELADO';
@@ -160,6 +160,7 @@ export interface ProveedorBusqueda {
   cuit:      string | null;
   categoria: string | null;
   telefono?: string | null;
+  servicio?: string | null;
 }
 
 // ── Configuración de pestañas ─────────────────────────────────────────────────
@@ -1938,6 +1939,8 @@ export interface Empleado {
   // ── Legajo ────────────────────────────────────────────────────────────────────
   apodo:                      string | null;
   fecha_nacimiento:           string | null;
+  // Ingreso a la empresa: de acá se cuenta la antigüedad
+  fecha_ingreso:              string | null;
   grupo_sanguineo:            string | null;
   contacto_emergencia_nombre: string | null;
   contacto_emergencia_tel:    string | null;
@@ -2032,9 +2035,20 @@ export interface Liquidacion {
   movimiento_id:    number | null;
   aprobado_por:     number | null;
   aprobado_at:      string | null;
+  // Día de pago (Enjoy paga los viernes) y circuito pre-aprobación → pago
+  fecha_pago:       string | null;
+  pre_aprobado_por: number | null;
+  pre_aprobado_at:  string | null;
+  pagado_por:       number | null;
+  pagado_at:        string | null;
   created_at:       string;
-  empleado?: { id: number; nombre: string; apellido: string };
+  empleado?: {
+    id: number; nombre: string; apellido: string;
+    dni?: string | null; cuit?: string | null; cbu?: string | null; alias?: string | null; banco?: string | null;
+  };
   evento?:   { id: number; nombre: string } | null;
+  // Pago registrado (salida de la cuenta en Caja)
+  pago?: { movimiento_caja_id: number; cuenta_id: number; cuenta_nombre: string; tiene_comprobante: boolean } | null;
 }
 
 export interface DesgloseJornadaLiquidacion {
@@ -2124,6 +2138,7 @@ export interface AcuerdoSueldo {
   // (distinto del viático y del sueldo básico). Ver EventoEmpleadoMes.
   cobra_premio_produccion: boolean;
   valor_premio_produccion: number | null;
+  valor_premio_produccion_2: number | null;
   activo:              boolean;
   notas:               string | null;
   created_at:          string;
@@ -2157,6 +2172,8 @@ export interface EventoEmpleadoMes {
   periodo_mes:   number;
   periodo_anio:  number;
   cobra_premio:  boolean;
+  // Premio 1 (hasta 7 días) o 2 (más de 7) — lo elige Matías por evento
+  nivel_premio:  1 | 2 | null;
   monto_premio:  number | null;
   // Premio PAX (Fofi/Nestoras): cantidad_pax × valor_por_pax × dias_trabajados
   cantidad_pax:     number | null;

@@ -241,12 +241,15 @@ export async function buscar(req: Request, res: Response) {
       activo:     true,
       deleted_at: null,
       OR: [
-        { nombre:    { contains: q, mode: 'insensitive' } },
-        { alias:     { contains: q, mode: 'insensitive' } },
-        { cuit:      { contains: q, mode: 'insensitive' } },
+        // nombre = empresa / razón social; alias = contacto (la persona).
+        { nombre:         { contains: q, mode: 'insensitive' } },
+        { alias:          { contains: q, mode: 'insensitive' } },
+        { titular_cuenta: { contains: q, mode: 'insensitive' } },
+        { servicio:       { contains: q, mode: 'insensitive' } },
+        { cuit:           { contains: q.replace(/\D/g, '') || q, mode: 'insensitive' } },
       ],
     },
-    select:  { id: true, nombre: true, alias: true, cuit: true, categoria: true, telefono: true },
+    select:  { id: true, nombre: true, alias: true, cuit: true, categoria: true, telefono: true, servicio: true },
     orderBy: { nombre: 'asc' },
     take:    10,
   });

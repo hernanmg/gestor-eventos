@@ -12,7 +12,7 @@ import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/formatters';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { ProveedorBusqueda, Moneda } from '@/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -20,6 +20,10 @@ import type { ProveedorBusqueda, Moneda } from '@/types';
 interface GrupoState {
   proveedorSeleccionado: ProveedorBusqueda | null;
   crearMode:             boolean;
+  // Alta de un proveedor nuevo desde acá: empresa (nombre) y contacto (alias)
+  nuevoNombre?:          string;
+  nuevoContacto?:        string;
+  error?:                string | null;
   applying:              boolean;
   vinculado:             boolean;
   resultado: {
@@ -42,7 +46,7 @@ function GrupoCard({
   onUpdateEstado: (update: Partial<GrupoState>) => void;
   onAplicar:      () => Promise<void>;
 }) {
-  const canApply = estado.proveedorSeleccionado !== null || estado.crearMode;
+  const canApply = estado.proveedorSeleccionado !== null || (estado.crearMode && !!estado.nuevoNombre?.trim());
 
   if (estado.vinculado && estado.resultado) {
     return (
@@ -101,31 +105,49 @@ function GrupoCard({
               className="w-full"
             />
           </div>
+          <p className="text-[11px] text-muted-foreground">Buscá por empresa, contacto o CUIT.</p>
           {!estado.proveedorSeleccionado && (
             <button
               type="button"
-              onClick={() => onUpdateEstado({ crearMode: true, proveedorSeleccionado: null })}
+              onClick={() => onUpdateEstado({ crearMode: true, proveedorSeleccionado: null, nuevoNombre: '', nuevoContacto: '', error: null })}
               className="text-xs text-link hover:underline"
             >
-              + Crear proveedor con este nombre
+              + Proveedor nuevo
             </button>
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
-          <span className="text-sm text-blue-800 flex-1 min-w-0">
-            Crear: <strong className="truncate">{grupo.concepto}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => onUpdateEstado({ crearMode: false })}
-            className="shrink-0 text-blue-600 hover:text-blue-900"
-            title="Cancelar"
-          >
-            <X size={14} />
-          </button>
+        <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-blue-800">Proveedor nuevo</span>
+            <button
+              type="button"
+              onClick={() => onUpdateEstado({ crearMode: false, error: null })}
+              className="shrink-0 text-blue-600 hover:text-blue-900"
+              title="Cancelar"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              autoFocus
+              value={estado.nuevoNombre ?? ''}
+              onChange={e => onUpdateEstado({ nuevoNombre: e.target.value, error: null })}
+              placeholder="Empresa / razón social *"
+              className="w-full border border-input rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <input
+              value={estado.nuevoContacto ?? ''}
+              onChange={e => onUpdateEstado({ nuevoContacto: e.target.value })}
+              placeholder="Contacto (persona)"
+              className="w-full border border-input rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <p className="text-[11px] text-blue-800">Los datos bancarios y el CUIT se completan después en Proveedores.</p>
         </div>
       )}
+      {estado.error && <p className="text-xs text-destructive">{estado.error}</p>}
 
       {/* Apply button */}
       <Button
@@ -194,7 +216,11 @@ export default function VincularProveedoresPage() {
 
     try {
       const payload = estado.crearMode
-        ? { movimientos_ids: grupo.movimientos_ids, proveedor_id: null as null, crear_proveedor: { nombre: grupo.concepto } }
+        ? {
+            movimientos_ids: grupo.movimientos_ids,
+            proveedor_id:    null as null,
+            crear_proveedor: { nombre: estado.nuevoNombre!.trim(), alias: estado.nuevoContacto?.trim() || undefined },
+          }
         : { movimientos_ids: grupo.movimientos_ids, proveedor_id: estado.proveedorSeleccionado!.id };
 
       const result: VincularProveedorResult = await vincularProveedor(payload);
@@ -209,8 +235,8 @@ export default function VincularProveedoresPage() {
           esNuevo:     result.proveedor.es_nuevo,
         },
       });
-    } catch {
-      updateEstado(grupo.concepto, { applying: false });
+    } catch (err) {
+      updateEstado(grupo.concepto, { applying: false, error: getApiErrorMessage(err) ?? 'No se pudo vincular el proveedor' });
     }
   };
 

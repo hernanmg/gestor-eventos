@@ -46,7 +46,7 @@ export const GUIA_PASOS: PasoGuia[] = [
       { id: '1.1', que: 'Proveedores y jornaleros', planilla: 'Exportación actualizada del formulario de Google (Proveedores - Datos)', donde: 'Proveedores → Importar desde formulario', ruta: '/proveedores', revisar: 'Duplicados por DNI o CUIT, proveedores sin CUIT válido, los "A o C según el evento".' },
       { id: '1.2', que: 'Proveedores que no llenaron el formulario', donde: 'Proveedores → Nuevo', ruta: '/proveedores', revisar: 'Los que se usan siempre. "ENJOY", "CANJE" y "DOS 57" aparecen en la ficha como proveedor y no lo son.' },
       { id: '1.3', que: 'Stock del depósito', planilla: 'STOCK DE DEPOSITO ENJOY (último conteo)', donde: 'Stock → Importar catálogo', ruta: '/stock', revisar: 'Un producto por espacio (Depo 1, Depo 2, Altillo…). Tanque y Depo Administración no tienen conteo de enero.' },
-      { id: '1.4', que: 'Horas y vales (histórico)', planilla: 'HORAS Y VALES de cada mes', donde: 'RRHH → Importar', ruta: '/rrhh/importar', revisar: 'Pedir los meses que haya además de marzo.' },
+      { id: '1.4', que: 'Horas y vales (histórico)', planilla: 'HORAS Y VALES de cada mes', donde: 'RRHH → Importar → Horas y vales', ruta: '/rrhh/importar', revisar: 'Pedir los meses que haya además de marzo. Las personas que no estaban se dan de alta solas: cargarles el valor hora (la planilla no lo trae).' },
       { id: '1.5', que: 'Personal fijo', planilla: 'A definir', donde: 'RRHH → Empleados', ruta: '/rrhh', revisar: 'Si entra en esta prueba y con qué archivo.' },
       { id: '1.6', que: 'Uniformes', planilla: 'Planilla de uniformes de Enjoy', donde: 'Uniformes → Importar', ruta: '/uniformes', revisar: 'Todavía no la pasaron.' },
     ],

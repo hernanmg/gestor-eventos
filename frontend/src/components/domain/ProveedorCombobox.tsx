@@ -71,7 +71,8 @@ export default function ProveedorCombobox({ value, onChange, className }: Props)
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onClick={e => e.stopPropagation()}
-        placeholder="Proveedor…"
+        placeholder="Empresa o contacto…"
+        title="Buscá por empresa, contacto o CUIT"
         className="w-full text-xs border border-transparent rounded px-1 py-0.5 focus:border-ring/50 focus:outline-none placeholder:text-muted-foreground/30 bg-transparent hover:bg-accent/30 focus:bg-white transition"
       />
       {open && results.length > 0 && (
@@ -90,9 +91,13 @@ export default function ProveedorCombobox({ value, onChange, className }: Props)
             >
               <div className="font-medium truncate">
                 {r.nombre}
-                {r.alias && <span className="text-muted-foreground ml-1">({r.alias})</span>}
               </div>
-              {r.cuit && <div className="text-muted-foreground font-mono">{r.cuit}</div>}
+              {r.alias && <div className="text-muted-foreground truncate">Contacto: {r.alias}</div>}
+              {(r.cuit || r.servicio) && (
+                <div className="text-muted-foreground truncate">
+                  {r.cuit && <span className="font-mono">{r.cuit}</span>}{r.cuit && r.servicio && ' · '}{r.servicio}
+                </div>
+              )}
             </button>
           ))}
         </div>
