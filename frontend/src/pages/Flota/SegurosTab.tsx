@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, ShieldCheck, Pencil, Trash2, FileText } from 'lucide-react';
+import { Plus, ShieldCheck, Pencil, Trash2, FileText, Upload, CalendarRange } from 'lucide-react';
 import {
   useSegurosFlota, useVehiculosFlota, useCreateSeguroVehiculo, useUpdateSeguroVehiculo, useDeleteSeguroVehiculo,
-  polizaSeguroUrl, type SeguroFiltros, type SeguroPayload,
+  polizaSeguroUrl, useCuadroSeguros, useCuotasSeguroVehiculo, type SeguroFiltros, type SeguroPayload, type ResultadoCuadroSeguros,
 } from '@/hooks/useFlota';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -26,13 +26,17 @@ interface SeguroFormData {
   fecha_inicio:      string;
   fecha_vencimiento: string;
   importe_anual:     string;
+  suma_asegurada:    string;
+  cuota_mensual:     string;
+  modalidad:         string;
+  forma_pago:        string;
   moneda:            Moneda;
   notas:             string;
 }
 
 const EMPTY: SeguroFormData = {
   camion_id: '', aseguradora: '', numero_poliza: '', tipo_cobertura: '', fecha_inicio: '', fecha_vencimiento: '',
-  importe_anual: '', moneda: 'ARS', notas: '',
+  importe_anual: '', suma_asegurada: '', cuota_mensual: '', modalidad: '', forma_pago: '', moneda: 'ARS', notas: '',
 };
 
 function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: SeguroVehiculo | null; onClose: () => void }) {
@@ -48,7 +52,11 @@ function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: Seguro
     setForm(seguro ? {
       camion_id: String(seguro.camion_id), aseguradora: seguro.aseguradora, numero_poliza: seguro.numero_poliza ?? '',
       tipo_cobertura: seguro.tipo_cobertura ?? '', fecha_inicio: seguro.fecha_inicio.slice(0, 10), fecha_vencimiento: seguro.fecha_vencimiento.slice(0, 10),
-      importe_anual: seguro.importe_anual != null ? String(seguro.importe_anual) : '', moneda: seguro.moneda, notas: seguro.notas ?? '',
+      importe_anual: seguro.importe_anual != null ? String(seguro.importe_anual) : '',
+      suma_asegurada: seguro.suma_asegurada != null ? String(seguro.suma_asegurada) : '',
+      cuota_mensual: seguro.cuota_mensual != null ? String(seguro.cuota_mensual) : '',
+      modalidad: seguro.modalidad ?? '', forma_pago: seguro.forma_pago ?? '',
+      moneda: seguro.moneda, notas: seguro.notas ?? '',
     } : EMPTY);
     setArchivo(null);
     setError(null);
@@ -68,6 +76,10 @@ function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: Seguro
       fecha_inicio:      form.fecha_inicio,
       fecha_vencimiento: form.fecha_vencimiento,
       importe_anual:     form.importe_anual ? Number(form.importe_anual) : null,
+      suma_asegurada:    form.suma_asegurada ? Number(form.suma_asegurada) : null,
+      cuota_mensual:     form.cuota_mensual ? Number(form.cuota_mensual) : null,
+      modalidad:         form.modalidad || null,
+      forma_pago:        form.forma_pago || null,
       moneda:            form.moneda,
       notas:             form.notas || null,
       archivo,
@@ -131,6 +143,26 @@ function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: Seguro
                 <option value="EUR">EUR</option>
               </select>
             </div>
+            <div>
+              <label className={labelCls}>Suma asegurada</label>
+              <MoneyInput value={form.suma_asegurada} onChange={v => setForm(p => ({ ...p, suma_asegurada: v }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Cuota mensual</label>
+              <MoneyInput value={form.cuota_mensual} onChange={v => setForm(p => ({ ...p, cuota_mensual: v }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo de seguro</label>
+              <select value={form.modalidad} onChange={e => setForm(p => ({ ...p, modalidad: e.target.value }))} className={selectCls + ' w-full'}>
+                <option value="">—</option>
+                <option value="Individual">Individual</option>
+                <option value="Flota">Flota</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Forma de pago</label>
+              <input value={form.forma_pago} onChange={e => setForm(p => ({ ...p, forma_pago: e.target.value }))} className={inputCls} placeholder="E-Cheq, TC Galicia, Débito…" />
+            </div>
             <div className="col-span-2">
               <label className={labelCls}>Póliza (PDF/imagen)</label>
               <input type="file" accept="application/pdf,image/*" onChange={e => setArchivo(e.target.files?.[0] ?? null)} className="text-sm" />
@@ -151,6 +183,145 @@ function SeguroDialog({ open, seguro, onClose }: { open: boolean; seguro: Seguro
   );
 }
 
+// ── Importar el cuadro de seguros de Mayra ───────────────────────────────────
+
+const ACCION_LABEL: Record<ResultadoCuadroSeguros['vehiculos'][number]['accion'], { label: string; cls: string }> = {
+  ACTUALIZA:            { label: 'Se completa',          cls: 'text-green-700' },
+  SIN_CAMBIOS:          { label: 'Sin cambios',          cls: 'text-muted-foreground' },
+  SIN_VEHICULO:         { label: 'Vehículo no está en Flota', cls: 'text-amber-700' },
+  SIN_POLIZA:           { label: 'Sin póliza cargada',   cls: 'text-amber-700' },
+  ASEGURADORA_DISTINTA: { label: 'Aseguradora distinta', cls: 'text-amber-700' },
+};
+
+function ImportarCuadroDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { preview, importar } = useCuadroSeguros();
+  const [file, setFile] = useState<File | null>(null);
+  const [res, setRes] = useState<ResultadoCuadroSeguros | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (open) { setFile(null); setRes(null); setError(null); } }, [open]);
+
+  const verPreview = async (f: File) => {
+    setFile(f); setError(null); setRes(null);
+    try { setRes(await preview.mutateAsync(f)); } catch (err) { setError(getApiErrorMessage(err)); }
+  };
+  const confirmar = async () => {
+    if (!file) return;
+    setError(null);
+    try { setRes(await importar.mutateAsync(file)); } catch (err) { setError(getApiErrorMessage(err)); }
+  };
+  const aCompletar = res?.vehiculos.filter(v => v.accion === 'ACTUALIZA').length ?? 0;
+  const hayCuotas = !!res && (res.cuotas.nuevas + res.cuotas.actualizadas) > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader><DialogTitle>Importar el cuadro de seguros</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1 text-sm">
+          <p className="text-xs text-muted-foreground">
+            El cuadro de Mayra ("SEGUROS PARQUE AUTOMOTOR" o "Cuadro Seguros Flota") completa cobertura, tipo de seguro, suma asegurada,
+            forma de pago y cuota de cada póliza ya cargada, y trae las cuotas mes a mes de la hoja de pagos. No cambia vencimientos
+            ni pisa datos que ya tengan otro valor: esas diferencias se muestran abajo. Se puede reimportar sin duplicar.
+          </p>
+          <input type="file" accept=".xlsx" onChange={e => e.target.files?.[0] && verPreview(e.target.files[0])} disabled={preview.isPending || importar.isPending} className="text-sm" />
+          {preview.isPending && <p className="text-xs text-muted-foreground">Leyendo la planilla…</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          {res && (
+            <div className="space-y-3">
+              {res.aplicado && <p className="text-green-700 bg-green-50 rounded p-2">Importado: {aCompletar} póliza(s) completadas, {res.cuotas.nuevas} cuota(s) nuevas y {res.cuotas.actualizadas} actualizadas.</p>}
+              <p className="text-xs text-muted-foreground">Hojas: {res.hojas.map(h => `${h.nombre} (${h.tipo === 'CUADRO' ? 'cuadro' : h.tipo === 'PAGOS' ? 'pagos' : 'no reconocida'})`).join(' · ')}</p>
+              {res.vehiculos.length > 0 && (
+                <div className="max-h-[45vh] overflow-y-auto">
+                  <BaseTable className="w-full text-xs">
+                    <thead className="border-b bg-muted/30">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Dominio</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Aseguradora</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Resultado</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {res.vehiculos.map(v => (
+                        <tr key={`${v.hoja}-${v.fila}`}>
+                          <td className="px-2 py-1.5 font-mono" data-label="Dominio">{v.dominio}{v.vehiculo && v.vehiculo !== v.dominio ? <span className="text-muted-foreground"> → {v.vehiculo}</span> : null}</td>
+                          <td className="px-2 py-1.5" data-label="Aseguradora">{v.aseguradora}</td>
+                          <td className={`px-2 py-1.5 font-medium ${ACCION_LABEL[v.accion].cls}`} data-label="Resultado">{ACCION_LABEL[v.accion].label}</td>
+                          <td className="px-2 py-1.5 text-muted-foreground" data-label="Detalle">{[...v.cambios, ...v.avisos].join(' · ') || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </BaseTable>
+                </div>
+              )}
+              {(res.cuotas.nuevas + res.cuotas.actualizadas + res.cuotas.sin_cambios) > 0 && (
+                <p className="text-xs">
+                  Cuotas mes a mes: {res.cuotas.nuevas} nuevas, {res.cuotas.actualizadas} a actualizar, {res.cuotas.sin_cambios} sin cambios
+                  ({res.cuotas.vinculadas_a_poliza} dentro de la vigencia de una póliza cargada).
+                </p>
+              )}
+              {res.cuotas.sin_vehiculo.length > 0 && (
+                <p className="text-xs text-amber-700">Cuotas de vehículos que no están en Flota (no se importan): {res.cuotas.sin_vehiculo.join(', ')}</p>
+              )}
+              {res.errores.length > 0 && <p className="text-xs text-destructive">{res.errores.join(' · ')}</p>}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
+            {res && !res.aplicado && (aCompletar > 0 || hayCuotas) && (
+              <Button size="sm" onClick={confirmar} disabled={importar.isPending}>{importar.isPending ? 'Importando…' : 'Importar'}</Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Cuotas mes a mes de un vehículo ──────────────────────────────────────────
+
+function CuotasDialog({ seguro, onClose }: { seguro: SeguroVehiculo | null; onClose: () => void }) {
+  const { data: cuotas = [], isLoading } = useCuotasSeguroVehiculo(seguro?.camion_id ?? null);
+  if (!seguro) return null;
+  const total = cuotas.reduce((n, c) => n + Number(c.importe), 0);
+  const mes = (iso: string) => new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso));
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Cuotas del seguro — {seguro.camion?.codigo ?? ''}</DialogTitle></DialogHeader>
+        {isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : cuotas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay cuotas cargadas. Salen de la hoja de pagos del cuadro de seguros.</p>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto">
+            <BaseTable className="w-full text-sm">
+              <thead className="border-b bg-muted/30">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Mes</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Aseguradora</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Forma de pago</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Importe</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {cuotas.map(c => (
+                  <tr key={c.id}>
+                    <td className="px-3 py-2 capitalize" data-label="Mes">{mes(c.periodo)}</td>
+                    <td className="px-3 py-2" data-label="Aseguradora">{c.aseguradora}</td>
+                    <td className="px-3 py-2 text-muted-foreground" data-label="Forma de pago">{c.forma_pago ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" data-label="Importe">{formatCurrency(Number(c.importe), 'ARS')}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr><td className="px-3 py-2 font-medium" colSpan={3}>Total</td><td className="px-3 py-2 text-right font-medium tabular-nums">{formatCurrency(total, 'ARS')}</td></tr>
+              </tfoot>
+            </BaseTable>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function SegurosTab() {
   const { user } = useAuth();
   const isAdmin = user?.rol === 'ADMIN';
@@ -160,6 +331,8 @@ export default function SegurosTab() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SeguroVehiculo | null>(null);
+  const [cuadroOpen, setCuadroOpen] = useState(false);
+  const [cuotasDe, setCuotasDe] = useState<SeguroVehiculo | null>(null);
 
   const ordenados = [...seguros].sort((a, b) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime());
 
@@ -181,9 +354,14 @@ export default function SegurosTab() {
           </select>
         </div>
         {isAdmin && (
-          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus size={14} className="mr-1.5" /> Nuevo seguro
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCuadroOpen(true)}>
+              <Upload size={14} className="mr-1.5" /> Importar cuadro de seguros
+            </Button>
+            <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Plus size={14} className="mr-1.5" /> Nuevo seguro
+            </Button>
+          </div>
         )}
       </div>
 
@@ -196,7 +374,7 @@ export default function SegurosTab() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <BaseTable className="w-full text-sm min-w-[900px]">
+          <BaseTable className="w-full text-sm min-w-[1100px]">
             <thead className="border-b bg-muted/30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Vehículo</th>
@@ -204,6 +382,8 @@ export default function SegurosTab() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Póliza</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Cobertura</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Vencimiento</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Suma asegurada</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Cuota / pago</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Importe anual</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Estado</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Acciones</th>
@@ -215,12 +395,18 @@ export default function SegurosTab() {
                   <td className="px-3 py-2.5 font-mono font-medium">{s.camion?.codigo ?? '—'}</td>
                   <td className="px-3 py-2.5">{s.aseguradora}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{s.numero_poliza ?? '-'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{s.tipo_cobertura ?? '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground" data-label="Cobertura">{s.tipo_cobertura ?? '-'}{s.modalidad ? <span className="block text-xs">{s.modalidad}</span> : null}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{formatDate(s.fecha_vencimiento)}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground" data-label="Suma asegurada">{s.suma_asegurada != null ? formatCurrency(Number(s.suma_asegurada), s.moneda) : '-'}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground" data-label="Cuota / pago">
+                    {s.cuota_mensual != null ? formatCurrency(Number(s.cuota_mensual), s.moneda) : '-'}
+                    {s.forma_pago ? <span className="block text-xs">{s.forma_pago}</span> : null}
+                  </td>
                   <td className="px-3 py-2.5 text-muted-foreground">{s.importe_anual != null ? formatCurrency(s.importe_anual, s.moneda) : '-'}</td>
                   <td className="px-3 py-2.5"><SeguroEstadoBadge estado={s.estado} /></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setCuotasDe(s)} title="Cuotas mes a mes"><CalendarRange size={14} /></Button>
                       {s.documento_nombre && (
                         <Button variant="ghost" size="icon" onClick={() => window.open(polizaSeguroUrl(s.id), '_blank')} title="Ver póliza"><FileText size={14} /></Button>
                       )}
@@ -240,6 +426,8 @@ export default function SegurosTab() {
       )}
 
       <SeguroDialog open={dialogOpen} seguro={editing} onClose={() => { setDialogOpen(false); setEditing(null); }} />
+      <ImportarCuadroDialog open={cuadroOpen} onClose={() => setCuadroOpen(false)} />
+      <CuotasDialog seguro={cuotasDe} onClose={() => setCuotasDe(null)} />
     </div>
   );
 }

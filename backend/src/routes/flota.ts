@@ -7,6 +7,7 @@ import {
   uploadDoc,
   listVehiculos, detalleVehiculo, createVehiculo, updateVehiculo, darDeBajaVehiculo,
   listSegurosVehiculo, listSegurosEmpresa, createSeguroVehiculo, updateSeguroVehiculo, deleteSeguroVehiculo, getPolizaSeguro,
+  previewCuadroSeguros, importarCuadroSeguros, listCuotasSeguroVehiculo,
   listPatentesVehiculo, listPatentesEmpresa, createPatenteVehiculo, updatePatenteVehiculo,
   listPeajes, listPeajesVehiculo, createPeaje, deletePeaje,
   listTaller, listTallerVehiculo, createServicioTaller, updateServicioTaller, deleteServicioTaller,
@@ -79,6 +80,10 @@ router.get('/vehiculos/:id/seguros',   asyncHandler(listSegurosVehiculo));
 router.post('/vehiculos/:id/seguros',  requireRole('ADMIN'), docMiddleware('poliza'), asyncHandler(createSeguroVehiculo));
 router.put('/seguros/:id',             requireRole('ADMIN'), docMiddleware('poliza'), asyncHandler(updateSeguroVehiculo));
 router.delete('/seguros/:id',          requireRole('ADMIN'), asyncHandler(deleteSeguroVehiculo));
+router.get('/vehiculos/:id/cuotas-seguro', asyncHandler(listCuotasSeguroVehiculo));
+// Cuadro de seguros de Mayra (suma asegurada, cobertura, forma de pago y cuotas)
+router.post('/cuadro-seguros/preview',  requireRole('ADMIN'), xlsxMiddleware, asyncHandler(previewCuadroSeguros));
+router.post('/cuadro-seguros/importar', requireRole('ADMIN'), xlsxMiddleware, asyncHandler(importarCuadroSeguros));
 
 // ── Patentes ──────────────────────────────────────────────────────────────────
 router.get('/patentes',                 asyncHandler(listPatentesEmpresa));

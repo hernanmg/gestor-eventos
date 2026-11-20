@@ -493,6 +493,38 @@ const help: Record<string, HelpContent> = {
         titulo: 'Multas',
         contenido: 'Cargá multas de tránsito (con vehículo o patente) e internas (ej. vehículo sucio) con fecha, lugar, motivo, vencimiento, monto, pago y medio de pago. Si tildás "Descontarla al empleado", se crea un vale tipo MULTA que entra solo en la próxima liquidación de sueldos; una vez descontada ya no se puede cambiar el monto ni borrarla (sí anularla). En "Informe por empleado / vehículo" tenés el resumen para pasarle a Mati.',
       },
+      {
+        titulo: 'Cuadro de seguros y cuotas',
+        contenido: 'En Seguros, "Importar cuadro de seguros" lee el cuadro de Mayra (SEGUROS PARQUE AUTOMOTOR o Cuadro Seguros Flota). Completa en cada póliza ya cargada la cobertura, si es individual o de flota, la suma asegurada, la forma de pago y la cuota, y trae las cuotas mes a mes de la hoja de pagos (botón del calendario en cada fila). El cuadro no tiene vencimientos: esos siguen saliendo de la pizarra. Si el cuadro dice otra aseguradora que la cargada, o el vehículo no está en Flota, la vista previa lo avisa y no cambia nada. Reimportar no duplica.',
+      },
+    ],
+  },
+
+  // ── Seguro del personal (ART / AP) ──────────────────────────────────────────
+  '/seguros-personal': {
+    titulo: 'Seguro del personal',
+    descripcion: 'Qué póliza cubre a cada persona (ART o accidentes personales), desde cuándo, y qué altas y bajas hay que pedirle al productor.',
+    secciones: [
+      {
+        titulo: 'Pólizas',
+        contenido: 'Cargá las pólizas de la empresa: la ART del personal registrado y las de accidentes personales (AP) de jornaleros, eventuales y extranjeros. Con el vencimiento cargado, la póliza aparece en el Calendario y avisa en la campanita 30 días antes. Se puede adjuntar el PDF y anotar el productor con su teléfono o mail.',
+      },
+      {
+        titulo: 'Alta, cambio y baja',
+        contenido: '"Alta" anota a la persona en una póliza desde una fecha. "Cambiar" la pasa a otra póliza (por ejemplo, un eventual que queda registrado): la anterior se cierra el mismo día. "Baja" la saca del seguro desde una fecha. Todo queda en el historial; si algo se cargó mal, desde el historial se corrigen las fechas o se elimina el registro.',
+      },
+      {
+        titulo: 'Pedido al productor',
+        contenido: 'Cada alta y baja queda pendiente de pedir. "Pedido al productor" arma, por póliza, el mensaje con nombre, CUIL y fecha de cada movimiento: copialo, mandalo por WhatsApp o mail y marcalo como pedido.',
+      },
+      {
+        titulo: 'Tomar del legajo',
+        contenido: 'Para la primera carga: propone en qué póliza anotar a cada persona activa según el "tipo de contratación" del legajo (ART, SANCOR, FEDERAL PATRONAL (AP)…). Lo que no dice ART se propone como accidentes personales; revisalo antes de confirmar. Como es la cobertura que ya existe, no entra en el pedido al productor.',
+      },
+      {
+        titulo: 'Avisos',
+        contenido: 'Una vez cargada la primera póliza, la campanita avisa: pólizas por vencer o vencidas, personas activas sin seguro, personas inactivas que siguen en una póliza (hay que darlas de baja) y movimientos sin pedir al productor.',
+      },
     ],
   },
 

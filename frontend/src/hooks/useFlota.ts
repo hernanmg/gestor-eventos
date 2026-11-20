@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
-  VehiculoFlota, VehiculoFlotaDetalle, SeguroVehiculo, PatenteVehiculo,
+  VehiculoFlota, VehiculoFlotaDetalle, SeguroVehiculo, PatenteVehiculo, CuotaSeguroVehiculo,
   GastoPeaje, ServicioTaller, AlertaFlotaItem, Moneda,
   CarnetEmpleado, ControlSalidaVehiculo, SugerenciaControlSalida, OpcionesControlSalida, EstadoControlSalida,
 } from '@/types';
@@ -126,6 +126,10 @@ export interface SeguroPayload {
   fecha_inicio:      string;
   fecha_vencimiento: string;
   importe_anual?:    number | null;
+  suma_asegurada?:   number | null;
+  cuota_mensual?:    number | null;
+  modalidad?:        string | null;
+  forma_pago?:       string | null;
   moneda?:           Moneda;
   notas?:            string | null;
   archivo?:          File | null;
@@ -135,7 +139,8 @@ function seguroFormData(data: Partial<SeguroPayload>): FormData {
   const fd = new FormData();
   for (const [key, value] of Object.entries(data)) {
     if (key === 'archivo') { if (value) fd.append('poliza', value as File); continue; }
-    if (value !== undefined && value !== null) fd.append(key, String(value));
+    if (value === null) fd.append(key, '');
+    else if (value !== undefined) fd.append(key, String(value));
   }
   return fd;
 }
@@ -532,5 +537,47 @@ export function useAlertasFlota() {
     queryKey: [...KEY, 'alertas'],
     queryFn:  () => api.get<{ items: AlertaFlotaItem[] }>('/flota/alertas').then(r => r.data),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ── Cuadro de seguros de Mayra (suma asegurada, cobertura, forma de pago, cuotas) ──
+
+export interface FilaCuadroSeguros {
+  hoja: string; fila: number; dominio: string; vehiculo: string | null; aseguradora: string;
+  accion: 'ACTUALIZA' | 'SIN_CAMBIOS' | 'SIN_VEHICULO' | 'SIN_POLIZA' | 'ASEGURADORA_DISTINTA';
+  cambios: string[]; avisos: string[];
+}
+
+export interface ResultadoCuadroSeguros {
+  aplicado: boolean;
+  hojas: { nombre: string; tipo: 'CUADRO' | 'PAGOS' | 'IGNORADA' }[];
+  vehiculos: FilaCuadroSeguros[];
+  cuotas: { nuevas: number; actualizadas: number; sin_cambios: number; vinculadas_a_poliza: number; sin_vehiculo: string[] };
+  errores: string[];
+}
+
+export function useCuadroSeguros() {
+  const qc = useQueryClient();
+  const enviar = (file: File, paso: 'preview' | 'importar') => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<ResultadoCuadroSeguros>(`/flota/cuadro-seguros/${paso}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+  };
+  const preview  = useMutation({ mutationFn: (file: File) => enviar(file, 'preview') });
+  const importar = useMutation({
+    mutationFn: (file: File) => enviar(file, 'importar'),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: [...KEY, 'seguros'] });
+      qc.invalidateQueries({ queryKey: [...KEY, 'cuotas-seguro'] });
+    },
+  });
+  return { preview, importar };
+}
+
+export function useCuotasSeguroVehiculo(vehiculoId: number | null) {
+  return useQuery({
+    queryKey: [...KEY, 'cuotas-seguro', vehiculoId],
+    queryFn:  () => api.get<CuotaSeguroVehiculo[]>(`/flota/vehiculos/${vehiculoId}/cuotas-seguro`).then(r => r.data),
+    enabled:  vehiculoId != null,
   });
 }

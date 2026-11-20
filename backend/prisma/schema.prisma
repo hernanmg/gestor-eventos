@@ -337,6 +337,9 @@ model Empresa {
   multas                 Multa[]
   controlesSalida        ControlSalidaVehiculo[]
   premios_puntuales      PremioPuntual[]
+  polizasPersonal        PolizaPersonal[]
+  coberturasEmpleado     CoberturaEmpleado[]
+  cuotasSeguroVehiculo   CuotaSeguroVehiculo[]
 }
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
@@ -1114,8 +1117,8 @@ model Echeq {
 
   pago_factura PagoFactura? @relation("PagoEcheq")
 
-  @@index([empresa_id, fecha_cobro_estimada])
   @@unique([empresa_id, import_key])
+  @@index([empresa_id, fecha_cobro_estimada])
 }
 
 // ─── ACCESO POR EVENTO ────────────────────────────────────────────────────────
@@ -1309,6 +1312,7 @@ model Camion {
   jornadas             Jornada[]
   asignaciones_diarias AsignacionDiaria[]
   seguros              SeguroVehiculo[]
+  cuotasSeguro         CuotaSeguroVehiculo[]
   patentes             PatenteVehiculo[]
   gastos_peaje         GastoPeaje[]
   servicios_taller     ServicioTaller[]
@@ -1332,27 +1336,60 @@ enum EstadoSeguro {
 }
 
 model SeguroVehiculo {
-  id                Int          @id @default(autoincrement())
+  id                Int                   @id @default(autoincrement())
   camion_id         Int
-  camion            Camion       @relation(fields: [camion_id], references: [id])
+  camion            Camion                @relation(fields: [camion_id], references: [id])
   empresa_id        Int
-  empresa           Empresa      @relation(fields: [empresa_id], references: [id])
+  empresa           Empresa               @relation(fields: [empresa_id], references: [id])
   aseguradora       String
   numero_poliza     String?
   tipo_cobertura    String?
   fecha_inicio      DateTime
   fecha_vencimiento DateTime
-  importe_anual     Decimal?     @db.Decimal(12, 2)
-  moneda            Moneda       @default(ARS)
-  estado            EstadoSeguro @default(VIGENTE)
+  importe_anual     Decimal?              @db.Decimal(12, 2)
+  // Del cuadro de seguros de Mayra (SEGUROS PARQUE AUTOMOTOR): suma asegurada,
+  // "Individual" o "Flota", forma de pago ("E-Cheq", "TC Galicia", "Débito…")
+  // y la cuota del mes que figura en el cuadro.
+  suma_asegurada    Decimal?              @db.Decimal(14, 2)
+  modalidad         String?
+  forma_pago        String?
+  cuota_mensual     Decimal?              @db.Decimal(12, 2)
+  moneda            Moneda                @default(ARS)
+  estado            EstadoSeguro          @default(VIGENTE)
+  cuotas            CuotaSeguroVehiculo[]
   documento_data    Bytes? // póliza en PDF — mismo patrón que Factura.pdf_data
   documento_nombre  String?
   documento_mime    String?
   notas             String?
-  created_at        DateTime     @default(now())
-  updated_at        DateTime     @updatedAt
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
   deleted_at        DateTime?
   created_by        Int?
+}
+
+// Cuotas mes a mes de los seguros de la flota (hoja PAGOS del cuadro de Mayra).
+// Van por vehículo + aseguradora + mes: el cuadro trae cuotas de pólizas
+// anteriores que no siempre están cargadas como SeguroVehiculo, así que el
+// vínculo a la póliza (seguro_id) es opcional y se resuelve por vigencia.
+model CuotaSeguroVehiculo {
+  id          Int             @id @default(autoincrement())
+  empresa_id  Int
+  empresa     Empresa         @relation(fields: [empresa_id], references: [id])
+  camion_id   Int
+  camion      Camion          @relation(fields: [camion_id], references: [id])
+  seguro_id   Int?
+  seguro      SeguroVehiculo? @relation(fields: [seguro_id], references: [id])
+  periodo     DateTime // primer día del mes, medianoche UTC
+  aseguradora String
+  forma_pago  String?
+  importe     Decimal         @db.Decimal(12, 2)
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+  deleted_at  DateTime?
+  created_by  Int?
+
+  @@unique([camion_id, periodo, aseguradora])
+  @@index([empresa_id])
 }
 
 enum TipoPatente {
@@ -1973,7 +2010,8 @@ model Empleado {
   multas                Multa[]
   controles_salida      ControlSalidaVehiculo[]
   novedades             Novedad[]
-  premios_puntuales PremioPuntual[]
+  premios_puntuales     PremioPuntual[]
+  coberturas            CoberturaEmpleado[]
 }
 
 model Jornada {
@@ -3309,6 +3347,65 @@ model RepartoLineaGasto {
   // Si la parte tiene CuentaCorriente → movimiento DEBE creado automáticamente
   movimiento_ccc_id Int?
   movimiento_ccc    MovimientoCCC?    @relation(fields: [movimiento_ccc_id], references: [id])
+}
+
+// ─── SEGURO DEL PERSONAL (ART / AP) ──────────────────────────────────────────
+// Cada empresa tiene sus pólizas: la ART cubre al personal registrado y las de
+// accidentes personales (AP) a jornaleros, eventuales y extranjeros (Andrea:
+// "cada chico va a tener su tipo de seguro"). El empleado se anota en una
+// póliza con fecha de alta y, cuando sale, fecha de baja — el historial queda.
+// Las altas y bajas se le piden al productor por mensaje: *_informada_at marca
+// si ya se le pidió.
+
+enum TipoSeguroPersonal {
+  ART
+  AP
+}
+
+model PolizaPersonal {
+  id                 Int                 @id @default(autoincrement())
+  empresa_id         Int
+  empresa            Empresa             @relation(fields: [empresa_id], references: [id])
+  tipo               TipoSeguroPersonal
+  aseguradora        String
+  numero_poliza      String?
+  productor          String?
+  productor_contacto String? // teléfono o mail para pedir altas y bajas
+  fecha_inicio       DateTime? // fecha de calendario (medianoche UTC)
+  fecha_vencimiento  DateTime?
+  documento_data     Bytes?
+  documento_nombre   String?
+  documento_mime     String?
+  notas              String?
+  coberturas         CoberturaEmpleado[]
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+  deleted_at         DateTime?
+  created_by         Int?
+
+  @@index([empresa_id])
+}
+
+model CoberturaEmpleado {
+  id                Int            @id @default(autoincrement())
+  empresa_id        Int
+  empresa           Empresa        @relation(fields: [empresa_id], references: [id])
+  empleado_id       Int
+  empleado          Empleado       @relation(fields: [empleado_id], references: [id])
+  poliza_id         Int
+  poliza            PolizaPersonal @relation(fields: [poliza_id], references: [id])
+  fecha_alta        DateTime // fecha de calendario
+  fecha_baja        DateTime? // null = sigue cubierto
+  alta_informada_at DateTime? // cuándo se le pidió el alta al productor
+  baja_informada_at DateTime?
+  notas             String?
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
+  created_by        Int?
+
+  @@index([empleado_id])
+  @@index([poliza_id])
 }
 
 // ─── SINIESTROS DE EMPLEADOS (ART, DOS57 — pantalla de Andrea) ───────────────

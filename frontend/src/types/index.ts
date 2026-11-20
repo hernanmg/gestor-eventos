@@ -1125,11 +1125,90 @@ export interface SeguroVehiculo {
   fecha_inicio:      string;
   fecha_vencimiento: string;
   importe_anual:     number | null;
+  // Del cuadro de seguros de Mayra
+  suma_asegurada?:   number | string | null;
+  cuota_mensual?:    number | string | null;
+  modalidad?:        string | null; // "Individual" | "Flota"
+  forma_pago?:       string | null;
   moneda:            Moneda;
   estado:            EstadoSeguro;
   documento_nombre:  string | null;
   notas:             string | null;
   created_at?:       string;
+}
+
+// Cuota mes a mes de un seguro de la flota (hoja PAGOS del cuadro de Mayra)
+export interface CuotaSeguroVehiculo {
+  id:          number;
+  periodo:     string; // primer día del mes (UTC)
+  aseguradora: string;
+  forma_pago:  string | null;
+  importe:     number | string;
+  seguro_id:   number | null;
+}
+
+// ── Seguro del personal (ART / AP) ──
+export type TipoSeguroPersonal = 'ART' | 'AP';
+
+export interface PolizaPersonal {
+  id:                 number;
+  tipo:               TipoSeguroPersonal;
+  aseguradora:        string;
+  numero_poliza:      string | null;
+  productor:          string | null;
+  productor_contacto: string | null;
+  fecha_inicio:       string | null;
+  fecha_vencimiento:  string | null;
+  documento_nombre:   string | null;
+  notas:              string | null;
+  cubiertos:          number;
+  estado_vencimiento: EstadoVencimiento | null;
+}
+
+export interface CoberturaEmpleado {
+  id:                number;
+  empleado_id:       number;
+  poliza_id:         number;
+  fecha_alta:        string;
+  fecha_baja:        string | null;
+  alta_informada_at: string | null;
+  baja_informada_at: string | null;
+  notas:             string | null;
+  poliza: { id: number; tipo: TipoSeguroPersonal; aseguradora: string; numero_poliza: string | null; fecha_vencimiento: string | null };
+}
+
+export type EstadoSeguroPersona = EstadoVencimiento | 'SIN_VENCIMIENTO' | 'SIN_SEGURO';
+
+export interface PersonaSeguro {
+  id:                number;
+  nombre:            string;
+  apellido:          string;
+  apodo:             string | null;
+  cuit:              string | null;
+  dni:               string | null;
+  estado:            'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
+  categoria:         string;
+  tipo_contratacion: string | null;
+  fecha_ingreso:     string | null;
+  cobertura_actual:  CoberturaEmpleado | null;
+  ultima_cobertura:  CoberturaEmpleado | null;
+  historial:         CoberturaEmpleado[];
+  estado_seguro:     EstadoSeguroPersona;
+}
+
+export interface PedidoProductorGrupo {
+  poliza: { id: number; tipo: TipoSeguroPersonal; aseguradora: string; numero_poliza: string | null; productor: string | null; productor_contacto: string | null };
+  altas:  { cobertura_id: number; empleado: string; documento: string | null; fecha: string }[];
+  bajas:  { cobertura_id: number; empleado: string; documento: string | null; fecha: string }[];
+  texto:  string;
+}
+
+export interface SugerenciasLegajo {
+  items: {
+    empleado_id: number; empleado: string; texto_legajo: string | null;
+    tipo: TipoSeguroPersonal | null; aseguradora: string | null; poliza_id: number | null; fecha_ingreso: string | null;
+  }[];
+  polizas_a_crear: { tipo: TipoSeguroPersonal; aseguradora: string; empleados: number }[];
 }
 
 export interface PatenteVehiculo {
@@ -2642,7 +2721,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 

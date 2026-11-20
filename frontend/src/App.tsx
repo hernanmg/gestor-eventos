@@ -49,6 +49,7 @@ import GastosOperativosPage from '@/pages/GastosOperativos';
 import NovedadesPage from '@/pages/Novedades';
 import GuiaCargaPage from '@/pages/GuiaCarga';
 import SiniestrosPage       from '@/pages/Siniestros';
+import SegurosPersonalPage  from '@/pages/SegurosPersonal';
 import UniformesPage        from '@/pages/Uniformes';
 import TarjetaCorporativaPage from '@/pages/TarjetaCorporativa';
 import { useAuth }          from '@/hooks/useAuth';
@@ -124,6 +125,7 @@ export default function App() {
             <Route path="/guia-carga"              element={<GuiaCargaPage />} />
             <Route path="/siniestros"              element={<SiniestrosPage />} />
             <Route path="/siniestros/:id"          element={<SiniestrosPage />} />
+            <Route path="/seguros-personal"        element={<SegurosPersonalPage />} />
             <Route path="/uniformes"               element={<UniformesPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/cheques"                 element={<ChequesPage />} />

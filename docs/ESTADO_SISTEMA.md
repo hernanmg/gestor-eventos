@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-20 · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-20 · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -28,7 +28,7 @@
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 73% | 71% |
 | 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 78%* | 82% |
 | 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
-| 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 61% | 50% |
+| 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 89% | 63% |
 | 08 | Marketing | Vicky | pendiente de relevar | |
 | 09 | Comunicación | Vicky | pendiente de relevar | |
 | 10 | Novedades | Santi (flota), Florencia (eventos), todos | 75% | 75% |
@@ -414,7 +414,7 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 
 ## 07 · Seguros
 
-**DOS57: 61% construido (5,5 de 9) · Enjoy: 50% construido (4 de 8) · En uso: 0%**
+**DOS57: 89% construido (8 de 9) · Enjoy: 63% construido (5 de 8) · En uso: 0%**
 
 Responsables: Lorena (pólizas y siniestros de la flota, siniestros del personal), Andrea (ART/AP del personal y altas y bajas con el productor), Mayra (cuadro de seguros y pagos de las dos empresas).
 
@@ -424,8 +424,8 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
-| 1 | Seguro de cada empleado (ART si está registrado, AP si no): aseguradora, póliza, vencimiento y aviso | ⬜ | ⬜ | Relevamiento Andrea y Santi · Entrevista Mayra | Hoy solo hay un texto con el nombre de la aseguradora en el legajo |
-| 2 | Alta y baja de los eventuales en el seguro de AP por evento o viaje, con el pedido al productor | ⬜ | ❓ | Relevamiento Andrea ("dar de alta a todos porque viajaban") | — |
+| 1 | Seguro de cada empleado (ART si está registrado, AP si no): aseguradora, póliza, vencimiento y aviso | ✅ | ✅ | Relevamiento Andrea y Santi · Entrevista Mayra · Datos Personales (Lorena) | Seguro del personal: pólizas de la empresa, en cuál está cada persona y desde cuándo, aviso de vencimiento, de personal sin seguro y de inactivos que siguen anotados; primera carga desde el legajo |
+| 2 | Alta y baja de los eventuales en el seguro de AP por evento o viaje, con el pedido al productor | 🟡 | ❓ | Relevamiento Andrea ("dar de alta a todos porque viajaban") | Seguro del personal: altas y bajas con fecha y el mensaje para el productor listo para copiar; falta armar la lista a partir de quién viaja a cada evento |
 | 3 | Siniestros del personal (ART): datos del accidente, póliza, diagnóstico, alta médica, documentos y gastos; importador | ✅ | — | 2026_Informe Siniestros Personal (Lorena) | Siniestros |
 
 ### Vehículos
@@ -434,8 +434,8 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 |---|---|---|---|---|---|
 | 4 | Seguro por vehículo: aseguradora, póliza, cobertura, vigencia, importe anual y PDF de la póliza | ✅ | ✅ | SEGUROS PARQUE AUTOMOTOR DOS57 2025 · Info Flotas (Mayra) · pizarra (Lorena) | Flota → Seguros |
 | 5 | Vencimiento de las pólizas con semáforo, calendario y aviso a quien lleva la documentación | ✅ | ✅ | Relevamiento Lorena | Flota → Seguros · Calendario |
-| 6 | Cuotas de cada póliza mes a mes, con forma de pago (echeq, débito, tarjeta) y suma asegurada | 🟡 | 🟡 | Cuadro Seguros Flota, hoja PAGOS (Mayra) | Se guarda el importe anual; faltan las cuotas mes a mes y la suma asegurada |
-| 7 | Importador del cuadro de seguros de Mayra | 🟡 | ⬜ | SEGUROS PARQUE AUTOMOTOR · Info Flotas (Mayra) | En DOS57 la pizarra de Lorena actualiza aseguradora y vencimiento; el cuadro de Mayra no se importa |
+| 6 | Cuotas de cada póliza mes a mes, con forma de pago (echeq, débito, tarjeta) y suma asegurada | ✅ | 🟡 | Cuadro Seguros Flota, hoja PAGOS (Mayra) | Flota → Seguros: suma asegurada, cuota, forma de pago y cuotas mes a mes. Enjoy: se pueden cargar a mano, pero no hay cuadro de pagos para importar |
+| 7 | Importador del cuadro de seguros de Mayra | ✅ | ⬜ | SEGUROS PARQUE AUTOMOTOR · Cuadro Seguros Flota · Info Flotas (Mayra) | Flota → Seguros → Importar cuadro de seguros: completa cada póliza y trae las cuotas, avisa diferencias sin pisarlas. Enjoy: falta su cuadro (Info Flotas solo trae el nombre de la aseguradora) |
 | 8 | Siniestros de vehículos: número, chofer, vehículo, seguro, daños, denuncia, tercero, estado; importador | ✅ | ✅ | 2026_Informe siniestros vehiculos (Lorena) | Siniestros |
 
 ### Eventos
@@ -446,7 +446,8 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 
 ### Para definir con el cliente
 
-- **ART/AP del personal** (puntos 1 y 2): ¿quién es el productor? ¿El alta y la baja se le piden por mail o WhatsApp? ¿Alcanza con que el sistema arme la lista de quién viaja a cada evento?
+- **ART/AP del personal** (puntos 1 y 2): en el legajo, "SANCOR" se tomó como accidentes personales (en el informe de siniestros aparece con jornaleros, fofis y extranjeros): ¿es así? ¿Alcanza con que el sistema arme la lista de quién viaja a cada evento para pedir las altas?
+- **Cuadro de seguros**: el cuadro 2025 tiene otra aseguradora que la pizarra 2026 en 4 vehículos (la Sprinter AF728AT y la plancha AG958JV: Federación Patronal en el cuadro, San Cristóbal en la pizarra; el Volvo FTL303 y la Toyota KEX251: Experta en el cuadro, San Cristóbal en la pizarra). Además, 7 vehículos y 2 trailers no están en Flota: los autos de Andre, Mayra, Lore y Nico, la Amarok NSN325, la Ranger IHX980 con su trailer, el trailer de Enjoy y el semi AA830QO, que en la pizarra figura como AA830GU. El Mercedes azul WNO918 no tiene la póliza cargada porque en la pizarra el vencimiento es ilegible. ¿Hay un cuadro 2026? ¿Los autos personales se llevan en Flota?
 - **Enjoy** (punto 2): ¿su personal eventual también se da de alta en AP por evento?
 - **Seguros del evento** (punto 9): ¿quién los gestiona? ¿El predio pide certificado de cobertura?
 - **Otros seguros** de la empresa (depósito, material, equipos): ¿existen y se quieren llevar acá?

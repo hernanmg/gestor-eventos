@@ -7,6 +7,7 @@ import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { recalcularSaldoCCC } from '../lib/recalcularSaldoCCC';
 import { importarPizarraFlota, generarPlantillaPizarra, parsePlanillaPizarra } from '../lib/flotaPizarraImporter';
+import { procesarCuadroSeguros } from '../lib/cuadroSegurosImporter';
 import { normalizarPatente } from '../lib/normalizarPatente';
 import { estadoVencimiento, hoyUTC, parseFechaCalendario, requiereTecnica, DIAS_AVISO_VENCIMIENTO } from '../lib/vencimientos';
 
@@ -300,9 +301,21 @@ const seguroSchema = z.object({
   fecha_inicio:      z.string().min(1),
   fecha_vencimiento: z.string().min(1),
   importe_anual:     z.number().nullable().optional(),
+  suma_asegurada:    z.number().nullable().optional(),
+  cuota_mensual:     z.number().nullable().optional(),
+  modalidad:         z.string().nullable().optional(),
+  forma_pago:        z.string().nullable().optional(),
   moneda:            z.enum(['ARS', 'USD', 'EUR']).optional(),
   notas:             z.string().nullable().optional(),
 });
+
+// multipart: los montos llegan como string ('' = sin dato)
+function montoMultipart(v: unknown, enUpdate: boolean): number | null | undefined {
+  if (v === undefined) return enUpdate ? undefined : undefined;
+  if (v === null || v === '') return enUpdate ? null : undefined;
+  const n = parseFloat(String(v));
+  return isNaN(n) ? undefined : n;
+}
 
 function computeEstadoSeguro(fechaVencimiento: Date): EstadoSeguro {
   const hoy = new Date();
@@ -317,7 +330,7 @@ export async function listSegurosVehiculo(req: Request, res: Response) {
   const seguros = await prisma.seguroVehiculo.findMany({
     where:   { camion_id: camionId, deleted_at: null, ...withTenant(req.empresaId!) },
     orderBy: { fecha_vencimiento: 'desc' },
-    select:  { id: true, camion_id: true, aseguradora: true, numero_poliza: true, tipo_cobertura: true, fecha_inicio: true, fecha_vencimiento: true, importe_anual: true, moneda: true, estado: true, documento_nombre: true, notas: true, created_at: true },
+    select:  { id: true, camion_id: true, aseguradora: true, numero_poliza: true, tipo_cobertura: true, fecha_inicio: true, fecha_vencimiento: true, importe_anual: true, suma_asegurada: true, cuota_mensual: true, modalidad: true, forma_pago: true, moneda: true, estado: true, documento_nombre: true, notas: true, created_at: true },
   });
   res.json(seguros);
 }
@@ -349,7 +362,11 @@ export async function createSeguroVehiculo(req: Request, res: Response) {
   const b = req.body;
   const parsed = seguroSchema.safeParse({
     ...b,
-    importe_anual: b.importe_anual ? parseFloat(b.importe_anual) : undefined,
+    importe_anual:  montoMultipart(b.importe_anual, false),
+    suma_asegurada: montoMultipart(b.suma_asegurada, false),
+    cuota_mensual:  montoMultipart(b.cuota_mensual, false),
+    modalidad:      b.modalidad || undefined,
+    forma_pago:     b.forma_pago || undefined,
   });
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
@@ -367,6 +384,10 @@ export async function createSeguroVehiculo(req: Request, res: Response) {
       fecha_inicio:      new Date(d.fecha_inicio),
       fecha_vencimiento: fechaVencimiento,
       importe_anual:     d.importe_anual  ?? null,
+      suma_asegurada:    d.suma_asegurada ?? null,
+      cuota_mensual:     d.cuota_mensual  ?? null,
+      modalidad:         d.modalidad      ?? null,
+      forma_pago:        d.forma_pago     ?? null,
       moneda:            d.moneda ?? 'ARS',
       estado:            computeEstadoSeguro(fechaVencimiento),
       documento_data:    req.file?.buffer       ?? null,
@@ -393,7 +414,11 @@ export async function updateSeguroVehiculo(req: Request, res: Response) {
   const b = req.body;
   const parsed = seguroSchema.partial().safeParse({
     ...b,
-    importe_anual: b.importe_anual !== undefined ? (b.importe_anual ? parseFloat(b.importe_anual) : null) : undefined,
+    importe_anual:  montoMultipart(b.importe_anual, true),
+    suma_asegurada: montoMultipart(b.suma_asegurada, true),
+    cuota_mensual:  montoMultipart(b.cuota_mensual, true),
+    modalidad:      b.modalidad  !== undefined ? (b.modalidad  || null) : undefined,
+    forma_pago:     b.forma_pago !== undefined ? (b.forma_pago || null) : undefined,
   });
   if (!parsed.success) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
@@ -410,6 +435,10 @@ export async function updateSeguroVehiculo(req: Request, res: Response) {
       ...(d.fecha_inicio      !== undefined && { fecha_inicio: new Date(d.fecha_inicio) }),
       ...(d.fecha_vencimiento !== undefined && { fecha_vencimiento: fechaVencimiento, estado: computeEstadoSeguro(fechaVencimiento) }),
       ...(d.importe_anual     !== undefined && { importe_anual: d.importe_anual }),
+      ...(d.suma_asegurada    !== undefined && { suma_asegurada: d.suma_asegurada }),
+      ...(d.cuota_mensual     !== undefined && { cuota_mensual: d.cuota_mensual }),
+      ...(d.modalidad         !== undefined && { modalidad: d.modalidad }),
+      ...(d.forma_pago        !== undefined && { forma_pago: d.forma_pago }),
       ...(d.moneda            !== undefined && { moneda: d.moneda }),
       ...(d.notas             !== undefined && { notas: d.notas }),
       ...(req.file && { documento_data: req.file.buffer, documento_nombre: req.file.originalname, documento_mime: req.file.mimetype }),
@@ -1029,4 +1058,37 @@ export async function importarPizarra(req: Request, res: Response) {
   });
 
   res.json(resultado);
+}
+
+// ── Cuadro de seguros de Mayra ───────────────────────────────────────────────
+// POST /api/flota/cuadro-seguros/preview y /importar (multipart, campo `file`).
+// Mismo procesamiento: la vista previa no escribe.
+
+export async function previewCuadroSeguros(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Elegí el cuadro de seguros (.xlsx)' }); return; }
+  res.json(await procesarCuadroSeguros(req.file.buffer, req.empresaId!, req.user!.id, false));
+}
+
+export async function importarCuadroSeguros(req: Request, res: Response) {
+  if (!req.file) { res.status(400).json({ error: 'Elegí el cuadro de seguros (.xlsx)' }); return; }
+  const r = await procesarCuadroSeguros(req.file.buffer, req.empresaId!, req.user!.id, true);
+  const actualizados = r.vehiculos.filter(v => v.accion === 'ACTUALIZA').length;
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'IMPORT', entidad: 'SeguroVehiculo',
+    descripcion: `Importó el cuadro de seguros (${req.file.originalname}) — ${actualizados} póliza(s) completadas, ${r.cuotas.nuevas} cuota(s) nuevas, ${r.cuotas.actualizadas} actualizadas`,
+    datosDespues: { vehiculos: r.vehiculos.map(v => ({ dominio: v.dominio, accion: v.accion, cambios: v.cambios })), cuotas: r.cuotas },
+    ip: req.ip, tx: prisma,
+  });
+  res.json(r);
+}
+
+// GET /api/flota/vehiculos/:id/cuotas-seguro — cuotas mes a mes (hoja PAGOS)
+export async function listCuotasSeguroVehiculo(req: Request, res: Response) {
+  const camionId = Number(req.params.id);
+  const cuotas = await prisma.cuotaSeguroVehiculo.findMany({
+    where:   { camion_id: camionId, deleted_at: null, ...withTenant(req.empresaId!) },
+    orderBy: { periodo: 'desc' },
+    select:  { id: true, periodo: true, aseguradora: true, forma_pago: true, importe: true, seguro_id: true },
+  });
+  res.json(cuotas);
 }

@@ -4,9 +4,10 @@ import { updateEstadoSeguros } from './flota.controller';
 import { ubicarPeriodo, periodoAnterior, rangoSemanaFija } from './combustible.controller';
 import { EMPRESAS } from '../lib/empresasConstants';
 import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
-import { DIAS_AVISO_VENCIMIENTO, hoyUTC } from '../lib/vencimientos';
+import { DIAS_AVISO_VENCIMIENTO, hoyUTC, estadoVencimiento } from '../lib/vencimientos';
 import { novedadesParaAvisar } from './novedades.controller';
 import { avisoChequesViernes } from './cheques.controller';
+import { resumenSegurosPersonal } from './segurosPersonal.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -806,6 +807,49 @@ async function resolveDocumentacionFlota(req: Request): Promise<NotificacionItem
   ];
 }
 
+// Seguro del personal (ART/AP) — sólo ADMIN/OPERADOR y sólo si la empresa ya
+// cargó alguna póliza (antes de eso, "todos sin seguro" sería ruido).
+async function resolveSegurosPersonal(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN' && req.user!.rol !== 'OPERADOR') return [];
+  const empresaId = req.empresaId!;
+  const hayPolizas = await prisma.polizaPersonal.count({ where: { empresa_id: empresaId, deleted_at: null } });
+  if (hayPolizas === 0) return [];
+  const r = await resumenSegurosPersonal(empresaId);
+  const ahora = new Date();
+  const fmt = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+  const items: NotificacionItem[] = [];
+  for (const p of r.polizas) {
+    const est = estadoVencimiento(p.fecha_vencimiento);
+    if (est !== 'VENCIDO' && est !== 'POR_VENCER') continue;
+    items.push({
+      id: `seguro-personal-${p.id}`, tipo: 'SEGURO_PERSONAL_VENCE',
+      titulo: `Póliza ${p.tipo} ${p.aseguradora}`,
+      descripcion: `${est === 'VENCIDO' ? 'Venció' : 'Vence'} el ${fmt(p.fecha_vencimiento!)}`,
+      urgencia: est === 'VENCIDO' ? 'critical' : 'warning',
+      link: '/seguros-personal', fecha: p.fecha_vencimiento!,
+    });
+  }
+  if (r.sinSeguro > 0) items.push({
+    id: 'seguro-personal-sin-seguro', tipo: 'PERSONAL_SIN_SEGURO',
+    titulo: `${r.sinSeguro} persona${r.sinSeguro === 1 ? '' : 's'} activa${r.sinSeguro === 1 ? '' : 's'} sin seguro`,
+    descripcion: 'No están anotadas en ninguna póliza ART ni AP',
+    urgencia: 'warning', link: '/seguros-personal?filtro=sin_seguro', fecha: ahora,
+  });
+  if (r.inactivosCubiertos > 0) items.push({
+    id: 'seguro-personal-inactivos', tipo: 'PERSONAL_INACTIVO_CON_SEGURO',
+    titulo: `${r.inactivosCubiertos} persona${r.inactivosCubiertos === 1 ? '' : 's'} inactiva${r.inactivosCubiertos === 1 ? '' : 's'} sigue${r.inactivosCubiertos === 1 ? '' : 'n'} en una póliza`,
+    descripcion: 'Hay que darlas de baja del seguro',
+    urgencia: 'warning', link: '/seguros-personal?filtro=inactivos', fecha: ahora,
+  });
+  if (r.pendientesPedido > 0) items.push({
+    id: 'seguro-personal-pedido', tipo: 'SEGURO_PERSONAL_PEDIDO',
+    titulo: `${r.pendientesPedido} alta${r.pendientesPedido === 1 ? '' : 's'}/baja${r.pendientesPedido === 1 ? '' : 's'} sin pedir al productor`,
+    descripcion: 'Armá el pedido desde Seguro del personal',
+    urgencia: 'info', link: '/seguros-personal?pedido=1', fecha: ahora,
+  });
+  return items;
+}
+
 // ── Endpoint principal ────────────────────────────────────────────────────────
 
 export async function getNotificaciones(req: Request, res: Response) {
@@ -846,6 +890,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveResumenPagosObservados(req),
     resolveNovedades(req),
     resolveChequesViernes(req),
+    resolveSegurosPersonal(req),
   ]);
 
   const items = resultados

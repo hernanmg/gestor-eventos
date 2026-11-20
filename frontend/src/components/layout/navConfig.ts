@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -110,6 +110,7 @@ export function useNavModel(user: MeResponse): NavModel {
     parte:       { to: '/parte-diario',      label: 'Parte Diario',       icon: ClipboardCheck, group: 'personas' },
     uniformes:   { to: '/uniformes',         label: 'Uniformes',          icon: Shirt,          group: 'personas' },
     siniestros:  { to: '/siniestros',        label: 'Siniestros',         icon: Ambulance,      group: 'personas' },
+    segPersonal: { to: '/seguros-personal',  label: 'Seguro del personal', icon: ShieldCheck,   group: 'personas' },
     config:      { to: '/configuracion',     label: 'Configuración',      icon: Settings,       group: 'sistema' },
     configEmp:   { to: '/configuracion/empresa', label: 'Config. de empresa', icon: Palette,    group: 'sistema' },
     auditoria:   { to: '/auditoria',         label: 'Auditoría',          icon: ClipboardList,  group: 'sistema' },
@@ -157,9 +158,9 @@ export function useNavModel(user: MeResponse): NavModel {
   // fuente única para esto y para el redirect post-login).
   switch (user.homeRoute) {
     case '/gastos-operativos':
-      return flat([I.gastos, I.rrhh, I.caja, I.calendario]);
+      return flat([I.gastos, I.rrhh, I.segPersonal, I.caja, I.calendario]);
     case '/presentismo':
-      return flat([I.presentismo, I.siniestros, I.uniformes, { ...I.flota, label: 'Flota y Seguros' }, I.calendario]);
+      return flat([I.presentismo, I.siniestros, I.segPersonal, I.uniformes, { ...I.flota, label: 'Flota y Seguros' }, I.calendario]);
     case '/combustible':
       return flat([I.combustible, I.flota, I.bitacora, I.movDiario, I.calendario]);
     case '/parte-diario':
@@ -230,6 +231,8 @@ export function useNavModel(user: MeResponse): NavModel {
     (esAdmin || tienePermiso(user, 'UNIFORMES')) && I.uniformes,
     // Siniestros de personal — Lorena tiene su menú acotado y Andrea lo ve embebido en Gastos del mes
     dos57 && adminOOper && I.siniestros,
+    // Seguro del personal (ART/AP) — ambas empresas
+    adminOOper && I.segPersonal,
     // Sistema
     esAdmin && I.config,
     user.puedeCambiarEmpresa && I.configEmp,

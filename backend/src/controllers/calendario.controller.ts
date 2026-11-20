@@ -16,7 +16,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -67,6 +67,8 @@ const COLORES: Record<TipoCalendario, string> = {
   NOVEDAD:              '#BE123C',
   MONTAJE:              '#5B7BA6',
   CUMPLEANOS:           '#DB2777',
+  // Semáforo real por item — default acá.
+  SEGURO_PERSONAL_VENCE: '#F59E0B',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -100,6 +102,7 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   novedades:       'NOVEDAD',
   montajes:        'MONTAJE',
   cumpleanos:      'CUMPLEANOS',
+  seguros_personal: 'SEGURO_PERSONAL_VENCE',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -914,6 +917,36 @@ async function resolveCarnetsVence(empresaFiltro: number | undefined, desde: Dat
   });
 }
 
+// Pólizas del personal (ART/AP) — vencimiento con el mismo semáforo que los
+// seguros de la flota. Enlaza a /seguros-personal (ADMIN y OPERADOR).
+async function resolveSegurosPersonalVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const polizas = await prisma.polizaPersonal.findMany({
+    where: {
+      deleted_at: null,
+      fecha_vencimiento: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: {
+      empresa: { select: { nombre: true } },
+      coberturas: { where: { deleted_at: null, fecha_baja: null }, select: { id: true } },
+    },
+  });
+  return polizas.map(p => {
+    const vencida = p.fecha_vencimiento! < hoy;
+    return {
+      id:             `seguro-personal-${p.id}`,
+      tipo:           'SEGURO_PERSONAL_VENCE' as const,
+      titulo:         `Póliza ${p.tipo} ${p.aseguradora} (${p.coberturas.length} persona${p.coberturas.length === 1 ? '' : 's'})`,
+      fecha:          p.fecha_vencimiento!,
+      empresa_id:     p.empresa_id,
+      empresa_nombre: p.empresa.nombre,
+      color:          vencida ? '#DC2626' : '#F59E0B',
+      urgencia:       vencida ? 'critical' as const : computeUrgencia(p.fecha_vencimiento!, hoy),
+      metadata:       { poliza_id: p.id, tipo: p.tipo, cubiertos: p.coberturas.length },
+    };
+  });
+}
+
 async function resolveMultasVence(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
   const multas = await prisma.multa.findMany({
     where: {
@@ -1168,6 +1201,7 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('TECNICA_VENCE'))  tareas.push(resolveTecnicaVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('CARNET_VENCE'))   tareas.push(resolveCarnetsVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('MULTA_VENCE'))    tareas.push(resolveMultasVence(empresaFiltro, desde, hasta, hoyUTC));
+  if (tiposActivos.has('SEGURO_PERSONAL_VENCE') && isAdminOOperador) tareas.push(resolveSegurosPersonalVence(empresaFiltro, desde, hasta, hoyUTC));
   if (tiposActivos.has('CONTROL_SALIDA')) tareas.push(resolveControlesSalida(empresaFiltro, desde, hasta, hoyUTC));
   // Libro de novedades — lo ven todos los que entran al calendario
   if (tiposActivos.has('NOVEDAD'))        tareas.push(resolveNovedades(empresaFiltro, desde, hasta));

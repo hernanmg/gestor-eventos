@@ -36,6 +36,7 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   CONTROL_SALIDA:       'Control de salida',
   NOVEDAD:              'Novedades',
   CUMPLEANOS:           'Cumpleaños',
+  SEGURO_PERSONAL_VENCE: 'Seguro del personal',
 };
 
 export const COLORES: Record<TipoCalendario, string> = {
@@ -68,6 +69,7 @@ export const COLORES: Record<TipoCalendario, string> = {
   CONTROL_SALIDA:       '#0E7490',
   NOVEDAD:              '#BE123C',
   CUMPLEANOS:           '#DB2777',
+  SEGURO_PERSONAL_VENCE: '#F59E0B',
 };
 
 // ── Links de navegación por tipo ──────────────────────────────────────────────
@@ -105,6 +107,7 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'EXCEDENTE_PENDIENTE': return '/gastos-operativos?tab=excedente-horas';
     case 'SINIESTRO_PENDIENTE': return `/siniestros/${m.siniestro_id}`;
     case 'CUMPLEANOS':     return '/rrhh?tab=empleados';
+    case 'SEGURO_PERSONAL_VENCE': return '/seguros-personal';
     default:               return '/calendario';
   }
 }
@@ -126,6 +129,7 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'SALDO_MINIMO':        return [`Saldo actual: $${Number(m.saldo_actual).toLocaleString('es-AR')}`, `Mínimo: $${Number(m.saldo_minimo).toLocaleString('es-AR')}`];
     case 'CTA_CORRIENTE_INACTIVA': return [`Saldo: ${m.moneda} ${Number(m.saldo_actual).toLocaleString('es-AR')}`, `${m.dias_sin_actividad} días sin actividad`];
     case 'SEGURO_VENCE':   return [`Estado: ${m.estado}`];
+    case 'SEGURO_PERSONAL_VENCE': return [`${m.cubiertos} persona${m.cubiertos === 1 ? '' : 's'} anotada${m.cubiertos === 1 ? '' : 's'}`];
     case 'PATENTE_VENCE':  return [];
     case 'TALLER_RETIRO':  return m.taller_nombre ? [`Taller: ${m.taller_nombre}`] : [];
     case 'CUOTA_AFIP':     return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
