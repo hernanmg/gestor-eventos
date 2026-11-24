@@ -93,6 +93,38 @@ function UbicacionBadge({ ubicacion }: { ubicacion: UbicacionStock }) {
 
 const inputCls = 'w-full text-xs border border-transparent rounded px-1 py-0.5 focus:border-ring/50 focus:outline-none bg-transparent hover:bg-accent/30 focus:bg-white transition';
 
+// ── Proveedor sugerido para el rubro (Proveedores, punto 6) ─────────────────
+// Sin proveedor elegido: el habitual del rubro (Configuración → Rubros) y los
+// más usados en ese rubro en otros eventos. Al tocarlo se asigna, con su
+// contacto y, si el presupuesto está vacío, el costo estimado o el último.
+function SugerenciaProveedor({ re, onElegir }: {
+  re: RubroEvento;
+  onElegir: (p: ProveedorBusqueda, costo: number | null) => void;
+}) {
+  const s = re.sugerencia;
+  if (re.proveedor || !s) return null;
+  const opciones: { p: ProveedorBusqueda; detalle: string; costo: number | null; habitual: boolean }[] = [];
+  if (s.habitual) opciones.push({ p: s.habitual, detalle: 'habitual', costo: s.costo_estimado, habitual: true });
+  for (const u of s.usados) {
+    if (opciones.some(o => o.p.id === u.proveedor.id)) continue;
+    opciones.push({ p: u.proveedor, detalle: `${u.eventos} evento${u.eventos === 1 ? '' : 's'} · último: ${u.ultimo_evento.nombre}`, costo: u.ultimo_costo, habitual: false });
+  }
+  if (!opciones.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {opciones.slice(0, 3).map(o => (
+        <button
+          key={o.p.id} type="button" onClick={() => onElegir(o.p, o.costo)}
+          title={`${o.detalle}${o.costo != null ? ` · ${o.costo.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}` : ''} — tocá para asignarlo`}
+          className={cn('max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] hover:bg-accent', o.habitual ? 'border-primary/40 bg-primary/5 text-primary' : 'text-muted-foreground')}
+        >
+          {o.habitual ? '★ ' : '+ '}{o.p.nombre}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Tabla de PedidoItems (pedido técnico del proveedor externo) ──────────────
 
 function pedidoItemToLocal(item: PedidoItem) {
@@ -914,11 +946,13 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
     setPresupuesto(re.presupuesto !== null ? String(re.presupuesto) : '');
   }, [re]);
 
-  const handleProveedorChange = (v: ProveedorBusqueda | null) => {
+  const handleProveedorChange = (v: ProveedorBusqueda | null, costo?: number | null) => {
     const data: Record<string, unknown> = { proveedor_id: v?.id ?? null };
     // Pre-cargar contacto solo si todavía no hay uno cargado a mano
     if (v && !re.contacto_nombre)   data.contacto_nombre   = v.nombre;
     if (v && !re.contacto_telefono && v.telefono) data.contacto_telefono = v.telefono;
+    // Desde la sugerencia: el costo estimado (o el último) como presupuesto, si estaba vacío
+    if (v && costo != null && re.presupuesto === null) data.presupuesto = costo;
     updateRe.mutate({ id: re.id, data });
   };
 
@@ -944,7 +978,8 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
           {re.usa_stock_propio && <Warehouse size={11} className="inline-block ml-1.5 text-muted-foreground align-text-top" />}
         </td>
         <td className={cn(cell, 'w-40')}>
-          <ProveedorCombobox value={re.proveedor} onChange={handleProveedorChange} />
+          <ProveedorCombobox value={re.proveedor} onChange={v => handleProveedorChange(v)} />
+          {!noVa && <SugerenciaProveedor re={re} onElegir={handleProveedorChange} />}
         </td>
         <td className={cn(cell, 'w-32')}>
           <select
@@ -975,6 +1010,7 @@ function RubroEventoRow({ eventoId, evento, re, expanded, onToggleExpand }: {
             value={presupuesto}
             onChange={e => setPresupuesto(e.target.value)}
             onBlur={() => saveField('presupuesto', presupuesto !== '' ? parseMoney(presupuesto) : null)}
+            placeholder={re.sugerencia?.costo_estimado != null ? `est. ${re.sugerencia.costo_estimado.toLocaleString('es-AR')}` : undefined}
             type="text" inputMode="decimal"
             className={cn(inputCls, 'text-right')}
           />
@@ -1036,6 +1072,12 @@ function RubroEventoCard({ eventoId, evento, re, expanded, onToggleExpand }: {
               value={re.proveedor}
               onChange={v => updateRe.mutate({ id: re.id, data: { proveedor_id: v?.id ?? null } })}
             />
+            <SugerenciaProveedor re={re} onElegir={(p, costo) => updateRe.mutate({ id: re.id, data: {
+              proveedor_id: p.id,
+              ...(!re.contacto_nombre ? { contacto_nombre: p.nombre } : {}),
+              ...(!re.contacto_telefono && p.telefono ? { contacto_telefono: p.telefono } : {}),
+              ...(costo != null && re.presupuesto === null ? { presupuesto: costo } : {}),
+            } })} />
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-0.5">Estado</label>

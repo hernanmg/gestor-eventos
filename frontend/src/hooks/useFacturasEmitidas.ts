@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
   FacturaEmitida, FacturasEmitidasResponse, ResumenFacturasEmitidas, ClienteFacturacionBusqueda,
-  CobroFacturaEmitida, TipoComprobanteEmitido, CondicionCliente, EstadoFacturaEmitida, Moneda,
+  CobroFacturaEmitida, TipoComprobanteEmitido, CondicionCliente, EstadoFacturaEmitida, Moneda, ChequeRecibidoInput,
 } from '@/types';
 
 const KEY = ['facturas-emitidas'] as const;
@@ -138,13 +138,14 @@ export interface CobroPayload {
   cuenta_destino_id?: number | null;
   referencia?:        string | null;
   notas?:             string | null;
+  cheques?:           ChequeRecibidoInput[];
 }
 
 export function useRegistrarCobro(facturaId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CobroPayload) => api.post<CobroFacturaEmitida>(`/facturas-emitidas/${facturaId}/cobros`, data).then(r => r.data),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: KEY }); invalidateGlobales(qc); },
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['cheques-recibidos'] }); invalidateGlobales(qc); },
   });
 }
 
@@ -152,7 +153,7 @@ export function useEliminarCobro() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (cobroId: number) => api.delete(`/facturas-emitidas/cobros/${cobroId}`),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: KEY }); invalidateGlobales(qc); },
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['cheques-recibidos'] }); invalidateGlobales(qc); },
   });
 }
 

@@ -190,6 +190,18 @@ export interface Rubro {
   es_sistema:  boolean;
   created_at:  string;
   updated_at:  string;
+  // Proveedor habitual y costo estimado (la Ficha del evento los sugiere)
+  proveedor_habitual_id?: number | null;
+  proveedor_habitual?:    ProveedorBusqueda | null;
+  costo_estimado?:        number | null;
+  costo_moneda?:          Moneda;
+}
+
+// Sugerencia de proveedor para un rubro de la Ficha
+export interface SugerenciaProveedorRubro {
+  habitual: ProveedorBusqueda | null;
+  costo_estimado: number | null; costo_moneda: Moneda;
+  usados: { proveedor: ProveedorBusqueda; eventos: number; ultimo_evento: { id: number; nombre: string; fecha: string | null }; ultimo_costo: number | null }[];
 }
 
 // ── Ficha de Evento (Enjoy) ────────────────────────────────────────────────────
@@ -262,6 +274,7 @@ export interface RubroEvento {
   asignaciones_stock: RubroEventoAsignacionStock[];
   // Lo cargado en Egresos para este rubro (sin cancelados); null = sin líneas
   costos: { lineas: number; real: number; falta_pagar: number } | null;
+  sugerencia?: SugerenciaProveedorRubro | null;
 }
 
 // Vista liviana de GET /ficha/resumen — sin pedido_items
@@ -1850,6 +1863,7 @@ export interface CobroFacturaEmitida {
   referencia:         string | null;
   notas:              string | null;
   created_at:         string;
+  cheques?:           { id: number; formato: FormatoCheque; numero: string; banco: string | null; importe: number; fecha_pago: string; estado: EstadoChequeRecibido }[];
 }
 
 export interface RepartoFacturaEmitida {
@@ -2724,7 +2738,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 
@@ -3784,4 +3798,66 @@ export interface OrdenPagoDetalle {
   facturas: { id: number; orden_item: number; factura_id: number; importe: number; factura: FacturaParaOrdenPago }[];
   medios: { id: number; orden_item: number; medio_pago: MedioPago; numero: string | null; banco: string | null; fecha_pago: string; importe: number }[];
   pagos: { id: number; factura_id: number; importe: number; medio_pago: MedioPago; referencia: string | null; echeq_id: number | null; fecha_pago: string }[];
+}
+
+// ── Agenda de pagos fijos (/pagos-fijos) ─────────────────────────────────────
+export type EstadoPagoFijo = 'PENDIENTE' | 'PAGADO' | 'DEBITADO' | 'A_FAVOR' | 'NO_CORRESPONDE';
+
+export interface PagoFijoConcepto {
+  id: number; grupo: string; nombre: string; referencia: string | null; medio_pago: string | null;
+  cuenta_id: number | null; cuenta: { id: number; nombre: string } | null;
+  dia_vencimiento: number | null; monto_estimado: number | null; moneda: Moneda; activo: boolean; notas: string | null;
+}
+
+export interface PagoFijoFila {
+  pago_fijo_id: number; mes_id: number | null; grupo: string; nombre: string; referencia: string | null;
+  medio_pago: string | null; cuenta_id: number | null; cuenta_nombre: string | null; moneda: Moneda;
+  vencimiento: string | null; monto: number | null; monto_estimado: number | null; estado: EstadoPagoFijo;
+  vencido: boolean; fecha_pago: string | null; notas: string | null; movimiento_caja_id: number | null; activo: boolean;
+}
+
+export interface PagoFijoOtro {
+  origen: 'AFIP' | 'CREDITO' | 'ESPACIO'; id: number; nombre: string; detalle: string;
+  vencimiento: string | null; monto: number; pagado: boolean; vencido: boolean; ruta: string;
+}
+
+export interface AgendaPagosFijos {
+  periodo: string; filas: PagoFijoFila[]; otros: PagoFijoOtro[];
+  totales: { total: number; pagado: number; pendiente: number; vencido: number; sin_monto: number; cantidad_pendientes: number; cantidad_vencidos: number };
+}
+
+export interface ImportPagosFijosResultado {
+  hojas: string[]; elegidas: string[];
+  secciones: { clave: string; titulo: string; grupo: string; importable: boolean; por_defecto: boolean; aviso: string | null;
+    conceptos: { nombre: string; medio_pago: string | null; referencia: string | null; ultimo_monto: number | null }[]; meses_con_datos: number }[];
+  omitidos: { afip: number; datos_de_acceso: number };
+  aplicado: boolean; conceptos_creados: number; conceptos_actualizados: number; meses_creados: number; meses_actualizados: number;
+}
+
+// ── Cheques recibidos de clientes (Cheques → Recibidos) ──────────────────────
+export type EstadoChequeRecibido = 'EN_CARTERA' | 'EN_CUSTODIA' | 'DEPOSITADO' | 'ACREDITADO' | 'VENDIDO' | 'ENDOSADO' | 'RECHAZADO';
+
+export interface ChequeRecibido {
+  id: number; formato: FormatoCheque; numero: string; banco: string | null; librador: string; librador_cuit: string | null;
+  importe: number; moneda: Moneda; fecha_emision: string | null; fecha_pago: string; estado: EstadoChequeRecibido; fecha_estado: string | null;
+  factura_emitida_id: number | null; cobro_id: number | null;
+  factura_emitida: { id: number; numero: string | null; punto_venta: number; tipo_comprobante: TipoComprobanteEmitido; cliente_nombre: string } | null;
+  cuenta_id: number | null; cuenta: { id: number; nombre: string } | null; movimiento_caja_id: number | null;
+  banco_descuento: string | null; tasa_descuento: number | null; monto_neto: number | null;
+  endosado_a: string | null; proveedor_id: number | null; proveedor: { id: number; nombre: string } | null;
+  motivo_rechazo: string | null; notas: string | null;
+  dias_para_pago: number; accion: 'DEPOSITAR_YA' | 'PROXIMO' | 'VENCIDO' | null;
+}
+
+export interface ChequesRecibidosRespuesta {
+  cheques: ChequeRecibido[];
+  resumen: {
+    en_la_empresa: { cantidad: number; total: number }; en_cartera: { cantidad: number; total: number };
+    en_custodia: { cantidad: number; total: number }; depositar_ya: { cantidad: number; total: number };
+    proximos_7_dias: { cantidad: number; total: number }; vencidos: { cantidad: number };
+  };
+}
+
+export interface ChequeRecibidoInput {
+  formato: FormatoCheque; numero: string; banco?: string | null; importe: number; fecha_pago: string; fecha_emision?: string | null; notas?: string | null;
 }

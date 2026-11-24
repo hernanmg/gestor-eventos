@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { fmtDate } from '../lib/excelExporter';
+import { agendaDelMes } from './pagosFijos.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 // No hay tabla propia — el calendario solo agrega fechas de modelos existentes,
@@ -16,7 +17,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -69,6 +70,8 @@ const COLORES: Record<TipoCalendario, string> = {
   CUMPLEANOS:           '#DB2777',
   // Semáforo real por item — default acá.
   SEGURO_PERSONAL_VENCE: '#F59E0B',
+  PAGO_FIJO:            '#0F766E',
+  CHEQUE_RECIBIDO:      '#15803D',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -103,6 +106,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   montajes:        'MONTAJE',
   cumpleanos:      'CUMPLEANOS',
   seguros_personal: 'SEGURO_PERSONAL_VENCE',
+  pagos_fijos:     'PAGO_FIJO',
+  cheques_recibidos: 'CHEQUE_RECIBIDO',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -706,6 +711,58 @@ async function resolveGastosEspacio(empresaFiltro: number | undefined, desde: Da
 // días — pantalla de Andrea. Mismo criterio de anclaje a "hoy" que
 // resolveRendicionesPendientes/resolveSaldosMinimos: es una condición vigente,
 // no un vencimiento de negocio puntual.
+// Pagos fijos pendientes del mes (agenda de Finanzas). El mes no se genera:
+// sale de agendaDelMes, que arma lo pendiente con el día habitual del concepto.
+async function resolvePagosFijos(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const periodos: string[] = [];
+  const d = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth(), 1));
+  while (d <= hasta) {
+    periodos.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+  }
+  const empresas = new Map((await prisma.empresa.findMany({ select: { id: true, nombre: true } })).map(e => [e.id, e.nombre]));
+  const items: CalendarioItem[] = [];
+  for (const periodo of periodos) {
+    for (const f of await agendaDelMes(empresaFiltro, periodo)) {
+      if (f.estado !== 'PENDIENTE' || !f.vencimiento || f.vencimiento < desde || f.vencimiento > hasta) continue;
+      items.push({
+        id:             `pago-fijo-${f.pago_fijo_id}-${periodo}`,
+        tipo:           'PAGO_FIJO',
+        titulo:         `${f.nombre}${f.monto != null ? ` — $${f.monto.toLocaleString('es-AR')}` : ''}`,
+        fecha:          f.vencimiento,
+        empresa_id:     f.empresa_id,
+        empresa_nombre: empresas.get(f.empresa_id) ?? '',
+        color:          COLORES.PAGO_FIJO,
+        urgencia:       computeUrgencia(f.vencimiento, hoy),
+        metadata:       { pago_fijo_id: f.pago_fijo_id, periodo, monto: f.monto, medio_pago: f.medio_pago, grupo: f.grupo },
+      });
+    }
+  }
+  return items;
+}
+
+// Cheques de clientes que siguen en la empresa (cartera, custodia, depositados), por fecha de pago.
+async function resolveChequesRecibidos(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const cheques = await prisma.chequeRecibido.findMany({
+    where: {
+      deleted_at: null, estado: { in: ['EN_CARTERA', 'EN_CUSTODIA', 'DEPOSITADO'] }, fecha_pago: { gte: desde, lte: hasta },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { empresa: { select: { nombre: true } } },
+  });
+  return cheques.map(c => ({
+    id:             `cheque-recibido-${c.id}`,
+    tipo:           'CHEQUE_RECIBIDO' as const,
+    titulo:         `${c.formato === 'ECHEQ' ? 'Echeq' : 'Cheque'} de ${c.librador} — $${Number(c.importe).toLocaleString('es-AR')}`,
+    fecha:          c.fecha_pago,
+    empresa_id:     c.empresa_id,
+    empresa_nombre: c.empresa.nombre,
+    color:          COLORES.CHEQUE_RECIBIDO,
+    urgencia:       c.estado === 'EN_CARTERA' ? computeUrgencia(c.fecha_pago, hoy) : 'normal',
+    metadata:       { cheque_id: c.id, importe: Number(c.importe), moneda: c.moneda, estado: c.estado, numero: c.numero },
+  }));
+}
+
 async function resolveSiniestrosPendientes(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
   if (hoy < desde || hoy > hasta) return [];
 
@@ -1188,6 +1245,10 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('FACTURA_EMITIDA_VENCE') && isAdmin) tareas.push(resolveFacturasEmitidas(empresaFiltro, desde, hasta, hoyUTC));
   // GASTO_ESPACIO_VENCE enlaza a /espacios-compartidos, exclusivo de ADMIN.
   if (tiposActivos.has('GASTO_ESPACIO_VENCE') && isAdmin) tareas.push(resolveGastosEspacio(empresaFiltro, desde, hasta, hoyUTC));
+  // PAGO_FIJO enlaza a /pagos-fijos, exclusivo de ADMIN.
+  if (tiposActivos.has('PAGO_FIJO') && isAdmin) tareas.push(resolvePagosFijos(empresaFiltro, desde, hasta, hoyUTC));
+  // CHEQUE_RECIBIDO enlaza a /cheques (ADMIN).
+  if (tiposActivos.has('CHEQUE_RECIBIDO') && isAdmin) tareas.push(resolveChequesRecibidos(empresaFiltro, desde, hasta, hoyUTC));
   // SINIESTRO_PENDIENTE/EXCEDENTE_PENDIENTE enlazan a /gastos-operativos —
   // visibles para ADMIN y OPERADOR de DOS57 (misma matriz de esa pantalla).
   const isAdminOOperador = isAdmin || req.user!.rol === 'OPERADOR';

@@ -7,6 +7,7 @@ import { UMBRAL_FACTURA_SIN_PDF } from './libroCompras.controller';
 import { DIAS_AVISO_VENCIMIENTO, hoyUTC, estadoVencimiento } from '../lib/vencimientos';
 import { novedadesParaAvisar } from './novedades.controller';
 import { avisoChequesViernes } from './cheques.controller';
+import { avisoChequesRecibidos } from './chequesRecibidos.controller';
 import { resumenSegurosPersonal } from './segurosPersonal.controller';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -710,6 +711,28 @@ async function resolveChequesViernes(req: Request): Promise<NotificacionItem[]> 
   }];
 }
 
+// Cheques de clientes en cartera que se pagan mañana (o ya se pueden cobrar):
+// Mayra los pone en custodia el día anterior para que se acrediten ese día.
+async function resolveChequesRecibidos(req: Request): Promise<NotificacionItem[]> {
+  if (req.user!.rol !== 'ADMIN') return [];
+  const aviso = await avisoChequesRecibidos(req.empresaId!);
+  if (!aviso) return [];
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`;
+  const partes = [
+    aviso.manana ? `${aviso.manana} se paga${aviso.manana === 1 ? '' : 'n'} mañana` : null,
+    aviso.atrasados ? `${aviso.atrasados} ya se puede${aviso.atrasados === 1 ? '' : 'n'} cobrar y sigue${aviso.atrasados === 1 ? '' : 'n'} en cartera` : null,
+  ].filter(Boolean);
+  return [{
+    id:          `cheques-recibidos-${aviso.cheques.map(c => c.id).join('-')}`,
+    tipo:        'CHEQUES_RECIBIDOS',
+    titulo:      `Cheques para depositar o poner en custodia: ${fmt(aviso.total)}`,
+    descripcion: `${partes.join(' · ')} · ${aviso.cheques.slice(0, 4).map(c => `${c.librador} ${fmt(Number(c.importe))}`).join(' · ')}`,
+    urgencia:    aviso.atrasados ? 'critical' : 'warning',
+    link:        '/cheques?tab=recibidos',
+    fecha:       aviso.cheques[0].fecha_pago,
+  }];
+}
+
 // Libro de novedades: las graves (ALTA/CRITICA) sin resolver le llegan al
 // administrador general y a quienes figuren en "avisar a" de su tipo; además,
 // cada uno ve las que le asignaron como responsable (de cualquier gravedad).
@@ -890,6 +913,7 @@ export async function getNotificaciones(req: Request, res: Response) {
     resolveResumenPagosObservados(req),
     resolveNovedades(req),
     resolveChequesViernes(req),
+    resolveChequesRecibidos(req),
     resolveSegurosPersonal(req),
   ]);
 

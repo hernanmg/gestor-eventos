@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-23 · Comparativo de presupuestos de proveedores, que se convierte en la orden de compra · Lo que llega de una orden de compra se suma al stock · Ficha del proveedor con lo que se le debe, sus facturas, pagos y órdenes · 2026-11-20: Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-24 · Agenda de pagos fijos del mes · Cheques recibidos de clientes ligados a la factura, con aviso para custodia o depósito · Proveedor habitual y costo estimado por rubro, sugeridos en la Ficha · 2026-11-23: Comparativo de presupuestos de proveedores, que se convierte en la orden de compra · Lo que llega de una orden de compra se suma al stock · Ficha del proveedor con lo que se le debe, sus facturas, pagos y órdenes · 2026-11-20: Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -23,9 +23,9 @@
 | # | Pilar | Responsables | DOS57 | Enjoy |
 |---|---|---|---|---|
 | 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 92% | 90% |
-| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 89% | 82% |
+| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 93% | 86% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
-| 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 91% | 90% |
+| 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 97% | 97% |
 | 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 81%* | 86% |
 | 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
 | 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 89% | 63% |
@@ -128,7 +128,7 @@ También confirma cosas que ya están: ítems fijos del acuerdo (básico, incent
 
 ## 02 · Finanzas
 
-**DOS57: 89% construido (20,5 de 23) · Enjoy: 82% construido (18 de 22) · En uso: 0%**
+**DOS57: 93% construido (21,5 de 23) · Enjoy: 86% construido (19 de 22) · En uso: 0%**
 
 Responsables: Mayra cierra las dos empresas y lleva Galicia y Nación en las dos, y Francés en Enjoy. Chino lleva Bancor y Rebanking en las dos empresas (respuesta de Mayra, nov 2026). En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
 
@@ -154,7 +154,7 @@ No se cuentan acá: órdenes de compra y comparativos de proveedores (Proveedore
 | 7 | Cheques físicos (chequera del Francés, poco uso) | ✅ | ✅ | Cheques Pendientes - GALICIA · Entrevista Mayra | Cheques: cada cheque dice si es echeq o físico |
 | 8 | Cheques emitidos de la empresa por banco, también los que no son de un evento, separando los de financiamiento con SGR (cheque propio o avalado) | ✅ | ✅ | Entrevista Mayra ("las que llevo casi todos los días") · Cheques Pendientes - GALICIA | Cheques: por banco, agrupados por fecha de pago con el total del día, financiamiento en verde, "debitado" con la fecha en que entró. Los cheques de los eventos y de los pagos de facturas aparecen solos. Importa la planilla de cheques de cada banco, desde 2021 |
 | 9 | Aviso de los jueves: cheques que caen el viernes y cuánto hay que cubrir en el banco | ✅ | ✅ | Entrevista Mayra | Campanita, jueves y viernes, con el total por banco y los avalados (incluye el fin de semana). Cheques muestra lo mismo todos los días |
-| 10 | Echeqs recibidos de clientes ligados a la factura que cobran, con aviso para depositarlos o ponerlos en custodia antes del vencimiento | 🟡 | 🟡 | Entrevista Mayra | Se registra el cobro de la factura, pero el echeq recibido no queda ligado con su vencimiento |
+| 10 | Echeqs recibidos de clientes ligados a la factura que cobran, con aviso para depositarlos o ponerlos en custodia antes del vencimiento | ✅ | ✅ | Entrevista Mayra · hoja RECIBIDOS de Cheques Pendientes - GALICIA | Cheques → Recibidos: se cargan en el cobro de la factura y quedan en cartera con su fecha de pago; la campanita avisa el día anterior para ponerlos en custodia o depositarlos; acreditados o vendidos entran a Caja Global; también se endosan o se marcan rechazados. Importa la hoja RECIBIDOS |
 
 ### Deudas y compromisos
 
@@ -166,7 +166,7 @@ No se cuentan acá: órdenes de compra y comparativos de proveedores (Proveedore
 | 14 | SGR: cupo y vinculación | ✅ | ✅ | Vinculación SGR Enjoy-Dos57 (Mayra) | AFIP / Créditos |
 | 15 | Cuentas corrientes con terceros (Layher, talleres, vallas, Polo 52 / Jiménez, Agesta, Airasca, Zamora): facturas, pagos, notas de débito y saldo | ✅ | ✅ | CTAS CTES ESPECIALES y CTAS CTES VARIAS · Entrevista Mayra | Cuentas Corrientes |
 | 16 | Cuentas personales de los socios (Matías, Pollo) y Blueteam en dólares | ✅ | ✅ | Blueteam · Entrevista Mayra | Cuentas Corrientes |
-| 17 | Agenda de pagos fijos del mes (servicios, expensas, débitos automáticos) con vencimiento, medio de pago y estado | 🟡 | 🟡 | PLANILLA PAGOS MENSUALES TOTALES (Mayra) | Están los gastos fijos de los espacios compartidos y las cuotas de AFIP; falta la agenda general |
+| 17 | Agenda de pagos fijos del mes (servicios, expensas, débitos automáticos) con vencimiento, medio de pago y estado | ✅ | ✅ | PLANILLA PAGOS MENSUALES TOTALES (Mayra) | Pagos fijos: mes a mes, por grupo, con vencimiento, medio y estado (pagado, debitado, a favor); al pagarlo se puede asentar en Caja Global. Suma las cuotas de AFIP, los créditos y los gastos de los espacios compartidos del mes, y aparece en el Calendario. Importa la planilla sin guardar usuarios ni claves |
 | 18 | Tarjeta corporativa: consumos por responsable, personal o empresa, "se descontó", importador | ✅ | ✅ | Tarjeta Corporativa DOS57 y ENJOY 2026 (Santi) · Entrevista Mayra | Tarjeta Corp. |
 
 ### Cobranzas y cierre
@@ -189,7 +189,8 @@ La especificación de Enjoy (§44) las deja fuera de la primera etapa: conciliac
 - **Cheques de la empresa** (punto 8): ya se pueden cargar de cualquier banco. Falta confirmar si los de Bancor los carga Chino o Mayra.
 - **Aviso de los jueves** (punto 9): hoy les llega a los administradores. ¿Le tiene que llegar a alguien más, por ejemplo a Chino por Bancor?
 - **Leasings** (punto 13): ¿cuántos hay y con quién?
-- **Pagos fijos** (punto 17): ¿incluye los gastos personales de los socios (servicios de Matías y Pollo) o solo los de la empresa? Ojo: esa planilla tiene claves fiscales escritas; el sistema no debería guardarlas.
+- **Pagos fijos** (punto 17): ¿incluye los gastos personales de los socios (servicios de Matías y Pollo) o solo los de la empresa? Hoy se pueden cargar en un grupo aparte ("Matías personal") y el importador no los trae si no se eligen. La planilla tiene usuarios y claves escritos: el sistema no los guarda. El coworking ya se lleva en Espacios compartidos: ¿se deja ahí?
+- **Cheques recibidos** (punto 10): ¿quién los pone en custodia o los deposita (Mayra, Chino por Bancor)? ¿Se endosan a proveedores seguido? La planilla de recibidos llega hasta 2023: ¿se siguen anotando en otro lado?
 - **Talleres** (punto 20): ¿hay otros clientes fijos que funcionen igual?
 - **Facturas de venta importadas** (punto 21): la diferencia entre lo facturado y lo que entró al banco (casi siempre retenciones) queda anotada en cada cobro. ¿Hace falta llevar las retenciones aparte, con su certificado? ¿Enjoy lleva la misma planilla de ventas que DOS57?
 
@@ -256,7 +257,7 @@ No se cuentan acá: auditoría de cambios y repositorio de archivos (Varios), ca
 
 ## 04 · Proveedores
 
-**DOS57: 91% construido (14,5 de 16) · Enjoy: 90% construido (13,5 de 15) · En uso: 0%**
+**DOS57: 97% construido (15,5 de 16) · Enjoy: 97% construido (14,5 de 15) · En uso: 0%**
 
 Responsables: Mayra (ambas). En DOS57, Andrea (proveedores y jornaleros), Santi y Nico (libro de compras). En Enjoy, Male (formulario de proveedores) y Nico (facturas, con Male).
 
@@ -273,7 +274,7 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 | 3 | Ficha del proveedor: eventos donde trabajó, movimientos, total facturado, echeqs | ✅ | ✅ | Especificación §36 | Proveedores → detalle |
 | 4 | En la ficha del proveedor: sus facturas, saldo pendiente y pagos hechos | ✅ | ✅ | Especificación §35-36 | Proveedores → ficha: lo que se le debe y lo vencido, sus facturas, los pagos hechos y sus órdenes de compra y de pago |
 | 5 | Comisionistas con porcentaje de comisión | ✅ | — | Facturación Vallas Partidos - Polaco (Mayra) | Proveedores |
-| 6 | Proveedor habitual y costo estimado por rubro, para que la ficha los sugiera | ⬜ | ⬜ | Especificación §36 (biblioteca de rubros) | — |
+| 6 | Proveedor habitual y costo estimado por rubro, para que la ficha los sugiera | ✅ | ✅ | Especificación §36 (biblioteca de rubros) | Configuración → Rubros: proveedor habitual y costo estimado de cada rubro de egresos. La Ficha del evento los sugiere, junto con los proveedores más usados en ese rubro en otros eventos y lo último que costaron |
 | 7 | Vincular proveedores a los movimientos del evento que llegaron sin proveedor, buscando por empresa o contacto, o dando de alta uno nuevo; el rubro de la Ficha queda con ese proveedor | ✅ | ✅ | Importador de eventos históricos · Reunión con Male (nov 2026) | Evento → Vincular proveedores |
 
 ### Facturas a pagar
@@ -300,7 +301,7 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 - **Comparativo de presupuestos** (punto 15): no tenemos un ejemplo del cuadro que arma Mayra. Hoy compara precio por artículo y total con IVA, con entrega, plazo y forma de pago de cada proveedor. ¿Le falta algo (flete aparte, descuentos, otra moneda por proveedor)? ¿Quién elige: Matías, o el administrador que lo arma?
 - **Órdenes de compra** (punto 14): hoy emite y coteja el administrador; los operadores (por ejemplo, Jazmín) arman borradores y registran la recepción. ¿Es así, o la autoriza alguien en particular (Matías, el Pollo)? ¿Se usan para toda compra o solo para las grandes?
 - **Orden de pago** (punto 16): hoy cualquier administrador la arma y la revisa, y la autoriza Matías (o quien tenga el permiso de aprobar pagos). ¿Es así? ¿Se usa para todo pago a proveedores o sólo para algunos?
-- **Proveedor habitual por rubro** (punto 6): ¿lo cargan ellos o alcanza con que el sistema sugiera el último proveedor usado en ese rubro?
+- **Proveedor habitual por rubro** (punto 6): hoy se puede cargar el habitual y el costo estimado de cada rubro, y si no se carga, la Ficha sugiere los más usados. ¿Lo van a cargar, o alcanza con la sugerencia?
 
 ---
 

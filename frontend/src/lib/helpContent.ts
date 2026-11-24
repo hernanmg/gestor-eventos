@@ -188,6 +188,14 @@ const help: Record<string, HelpContent> = {
         contenido: 'Hacé clic en "Inicializar ficha" — se crean automáticamente todos los rubros de egresos configurados para tu empresa, en estado Pendiente. A partir de ahí asignales proveedor, estado, contacto y quién coordina cada uno.',
       },
       {
+        titulo: 'Proveedor sugerido',
+        contenido: [
+          'Debajo del proveedor de cada rubro vacío aparecen sugerencias: con ★ el proveedor habitual del rubro y con + los que más se usaron en ese rubro en otros eventos (al pasar el mouse se ve en cuántos y el último). Al tocar uno se asigna con su contacto y, si el presupuesto está vacío, con el costo estimado del rubro o lo último que costó. El habitual y el costo estimado se cargan en ',
+          { texto: 'Configuración → Rubros', ruta: '/configuracion' },
+          '.',
+        ],
+      },
+      {
         titulo: 'Pedido técnico',
         contenido: 'Cada rubro puede tener uno o más ítems de pedido (cantidad, material, días de uso, horarios de llegada y retiro). Hacé clic en "Pedido" para expandir y cargar el detalle — se guarda automáticamente al salir de cada campo.',
       },
@@ -435,7 +443,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: '¿Para qué sirve?',
-        contenido: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una. Podés registrar cobros parciales — el sistema actualiza el estado automáticamente (Emitida → Cobrada parcial → Cobrada). Si una factura corresponde a un evento, vinculala para tener todo centralizado.',
+        contenido: 'Registrá todas las facturas que emitís a tus clientes y seguí el estado de cobro de cada una. Podés registrar cobros parciales — el sistema actualiza el estado automáticamente (Emitida → Cobrada parcial → Cobrada). Si una factura corresponde a un evento, vinculala para tener todo centralizado. Si el cliente paga con echeqs o cheques, cargalos en el cobro: quedan en Cheques → Recibidos con su fecha de pago y el aviso para depositarlos o ponerlos en custodia.',
       },
       {
         titulo: 'Vencimientos',
@@ -582,6 +590,37 @@ const help: Record<string, HelpContent> = {
         titulo: 'Cotejo con la factura',
         contenido: 'Cuando llega la factura del proveedor, vinculala a la orden (desde la orden o desde la factura en Facturas a Pagar). El cotejo compara lo pedido con lo facturado, sumando todas las facturas de la orden. Si coincide, "Cotejada: cerrar la orden"; si hay diferencia, se cierra igual anotando el motivo. En la factura también se ve si coincide con su orden antes de aprobarla o pagarla.',
         veTambien: [{ texto: 'Facturas a Pagar', ruta: '/facturas' }, { texto: 'Órdenes de pago', ruta: '/ordenes-pago' }],
+      },
+    ],
+  },
+
+  // ── Pagos fijos ─────────────────────────────────────────────────────────────
+  '/pagos-fijos': {
+    titulo: 'Pagos fijos',
+    descripcion: 'La agenda de lo que se paga todos los meses (servicios, expensas, impuestos, VEP, débitos automáticos, tarjeta): cuándo vence, cómo se paga y si ya se pagó.',
+    secciones: [
+      {
+        titulo: 'Cargar los pagos fijos',
+        contenido: '"+ Pago fijo": qué se paga, el grupo (Empresa, Coworking…), el n° de cliente o contrato, el día del mes en que vence, el monto habitual (vacío si cambia cada mes) y cómo se paga. Se cargan una vez y aparecen solos en todos los meses. Si la planilla de pagos mensuales ya existe, "Importar planilla" los trae con lo registrado en cada mes. No anotes usuarios ni claves: el sistema no los guarda.',
+      },
+      {
+        titulo: 'Registrar el pago del mes',
+        contenido: [
+          'Con las flechas se cambia de mes. "Registrar pago" en cada fila: pagado, debitado, a favor (por ejemplo, el IVA con saldo a favor) o no corresponde ese mes; el monto real y la fecha. Si se marca "Asentar el gasto en Caja Global", queda como gasto en esa cuenta de ',
+          { texto: 'Caja Global', ruta: '/caja' },
+          '; si después se corrige el monto o se vuelve a pendiente, el gasto se corrige o se borra solo. Lo que pasó la fecha sin registrar aparece como vencido.',
+        ],
+      },
+      {
+        titulo: 'Lo que vence desde otros módulos',
+        contenido: [
+          'Abajo, "También vence este mes" muestra las cuotas de los planes de AFIP y de los créditos y los gastos de los espacios compartidos, para ver todo junto; se pagan en ',
+          { texto: 'AFIP / Créditos', ruta: '/afip-prestamos' },
+          ' y en ',
+          { texto: 'Espacios compartidos', ruta: '/espacios-compartidos' },
+          '. Los pagos fijos pendientes también aparecen en el Calendario.',
+        ],
+        veTambien: [{ texto: 'Calendario', ruta: '/calendario' }, { texto: 'Cheques', ruta: '/cheques' }],
       },
     ],
   },
@@ -836,7 +875,7 @@ const help: Record<string, HelpContent> = {
   // ── AFIP y Créditos Bancarios ────────────────────────────────────────────────
   '/cheques': {
     titulo: 'Cheques',
-    descripcion: 'Los cheques que emite la empresa, por banco: los de pago a proveedores y los de financiamiento con SGR, sean de un evento o no. Reemplaza las planillas de cheques pendientes de cada banco.',
+    descripcion: 'Dos pestañas: "Emitidos", los cheques que emite la empresa por banco (pagos a proveedores y financiamiento con SGR, sean de un evento o no), y "Recibidos", la cartera de cheques y echeqs con los que pagan los clientes. Reemplaza las planillas de cheques pendientes y la hoja RECIBIDOS de cada banco.',
     secciones: [
       {
         titulo: 'Cargar un cheque',
@@ -857,6 +896,18 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Aviso de los jueves',
         contenido: 'Jueves y viernes la campanita avisa cuánto hay que cubrir por los cheques que caen ese viernes o el fin de semana, separado por banco y contando los avalados. La tarjeta "A cubrir el viernes" muestra lo mismo todos los días; al tocarla, filtra esos cheques.',
+      },
+      {
+        titulo: 'Recibidos: la cartera de cheques de clientes',
+        contenido: [
+          'Cuando un cliente paga con echeqs o cheques, cargalos al registrar el cobro en ',
+          { texto: 'Facturas a Cobrar', ruta: '/facturas-emitidas' },
+          ' (forma de cobro Echeq o Cheque físico → "Agregar" cada uno con número, banco, importe y fecha de pago): quedan en la cartera ligados a esa factura. Los que no pagan una factura se cargan con "Cheque recibido". La hoja RECIBIDOS de la planilla del banco se importa con "Importar planilla".',
+        ],
+      },
+      {
+        titulo: 'Custodia, depósito, venta y endoso',
+        contenido: 'El día anterior a la fecha de pago la campanita avisa los que siguen en cartera: "Custodia" (se acredita solo ese día) o "Cambiar… → Depositado". Cuando entra la plata, "Acreditado" con la cuenta: el ingreso queda asentado en Caja Global. También se pueden vender (con lo que entró neto y la tasa), endosar a un proveedor o marcar rechazados; "Volver a cartera" deshace y borra el ingreso de la caja. Un echeq se puede depositar hasta 30 días después de la fecha de pago: pasado eso se marca en rojo. Si se rechaza un cheque de una factura, la factura sigue cobrada hasta que se elimine ese cobro.',
       },
     ],
     links: [{ label: 'SGR (AFIP / Créditos)', ruta: '/afip-prestamos?tab=sgr' }, { label: 'Ver el calendario', ruta: '/calendario' }],
@@ -1067,7 +1118,7 @@ const help: Record<string, HelpContent> = {
     secciones: [
       {
         titulo: 'Rubros de egresos e ingresos',
-        contenido: 'Creá, renombrá, reordená (arrastrando) o desactivá los rubros de egresos e ingresos de tu empresa. Cada rubro activo aparece como una pestaña en todos los eventos. Los rubros del sistema no se pueden eliminar ni desactivar.',
+        contenido: 'Creá, renombrá, reordená (arrastrando) o desactivá los rubros de egresos e ingresos de tu empresa. Cada rubro activo aparece como una pestaña en todos los eventos. Los rubros del sistema no se pueden eliminar ni desactivar. En los de egresos se puede cargar el proveedor habitual y el costo estimado: la Ficha de cada evento los sugiere al elegir el proveedor de ese rubro.',
       },
       {
         titulo: 'Usuarios',

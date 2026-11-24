@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { chequeInputSchema, crearChequesDeCobro, chequesQueTraban, ErrorCheque } from './chequesRecibidos.controller';
 import multer from 'multer';
 import { z } from 'zod';
 import { EstadoFacturaEmitida, Moneda } from '@prisma/client';
@@ -74,6 +75,8 @@ const cobroSchema = z.object({
   cuenta_destino_id: z.number().int().positive().nullable().optional(),
   referencia:        z.string().nullable().optional(),
   notas:             z.string().nullable().optional(),
+  // Cheques / echeqs con los que pagó: quedan en la cartera ligados a la factura
+  cheques:           z.array(chequeInputSchema).optional(),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -254,7 +257,13 @@ export async function detail(req: Request, res: Response) {
     where:   { id, deleted_at: null, ...withTenant(req.empresaId!) },
     include: {
       evento:   { select: { id: true, nombre: true, estado: true } },
-      cobros:   { include: { cuenta_destino: { select: { id: true, nombre: true } } }, orderBy: { fecha: 'desc' } },
+      cobros:   {
+        include: {
+          cuenta_destino: { select: { id: true, nombre: true } },
+          cheques: { where: { deleted_at: null }, select: { id: true, formato: true, numero: true, banco: true, importe: true, fecha_pago: true, estado: true }, orderBy: { fecha_pago: 'asc' } },
+        },
+        orderBy: { fecha: 'desc' },
+      },
       repartos: true,
     },
   });
@@ -550,21 +559,36 @@ export async function registrarCobro(req: Request, res: Response) {
     const cuenta = await prisma.cuentaBancaria.findFirst({ where: { id: d.cuenta_destino_id, deleted_at: null, ...withTenant(req.empresaId!) } });
     if (!cuenta) { res.status(400).json({ error: 'Cuenta destino no encontrada' }); return; }
   }
+  const cheques = d.cheques ?? [];
+  if (cheques.length) {
+    const suma = cheques.reduce((s, c) => s + c.importe, 0);
+    if (Math.abs(suma - d.monto) > 0.01) {
+      res.status(400).json({ error: `Los cheques suman $${suma.toFixed(2)} y el cobro es de $${d.monto.toFixed(2)}` }); return;
+    }
+  }
 
-  const result = await prisma.$transaction(async tx => {
+  let result;
+  try { result = await prisma.$transaction(async tx => {
     const cobro = await tx.cobroFacturaEmitida.create({
       data: {
         factura_emitida_id: facturaId,
         fecha:              new Date(d.fecha),
         monto:               d.monto,
         moneda:              factura.moneda,
-        forma_cobro:         d.forma_cobro       ?? null,
+        forma_cobro:         d.forma_cobro       ?? (cheques.length ? 'Echeq' : null),
         cuenta_destino_id:   d.cuenta_destino_id ?? null,
         referencia:          d.referencia        ?? null,
         notas:               d.notas             ?? null,
         created_by:          req.user!.id,
       },
     });
+
+    if (cheques.length) {
+      await crearChequesDeCobro(tx, cheques, {
+        empresaId: factura.empresa_id, facturaId, cobroId: cobro.id, librador: factura.cliente_nombre,
+        libradorCuit: factura.cliente_cuit, moneda: factura.moneda, usuarioId: req.user!.id,
+      });
+    }
 
     const { nuevoEstado } = await recalcularFacturaEmitida(facturaId, tx);
 
@@ -574,14 +598,17 @@ export async function registrarCobro(req: Request, res: Response) {
       accion:       'CREATE',
       entidad:      'CobroFacturaEmitida',
       entidadId:    cobro.id,
-      descripcion:  `Cobro de $${d.monto} registrado en factura emitida #${facturaId} (${factura.cliente_nombre})`,
-      datosDespues: { monto: d.monto, forma_cobro: d.forma_cobro, nuevoEstado },
+      descripcion:  `Cobro de $${d.monto} registrado en factura emitida #${facturaId} (${factura.cliente_nombre})${cheques.length ? ` con ${cheques.length} cheque(s)` : ''}`,
+      datosDespues: { monto: d.monto, forma_cobro: d.forma_cobro, nuevoEstado, cheques: cheques.map(c => c.numero) },
       ip:           req.ip,
       tx:           tx as any,
     });
 
     return { ...cobro, monto: Number(cobro.monto) };
-  });
+  }); } catch (e) {
+    if (e instanceof ErrorCheque) { res.status(e.status).json({ error: e.message }); return; }
+    throw e;
+  }
 
   res.status(201).json(result);
 }
@@ -595,8 +622,15 @@ export async function eliminarCobro(req: Request, res: Response) {
     include: { factura_emitida: { select: { id: true, cliente_nombre: true } } },
   });
   if (!cobro) { res.status(404).json({ error: 'Cobro no encontrado' }); return; }
+  const traban = await chequesQueTraban(cobroId);
+  if (traban.length) {
+    res.status(409).json({ error: `No se puede eliminar: el cheque ${traban.map(t => t.numero).join(', ')} ya no está en la cartera (${traban.map(t => t.estado.toLowerCase().replace('_', ' ')).join(', ')}). Volvelo a "en cartera" en Cheques → Recibidos.` });
+    return;
+  }
 
   await prisma.$transaction(async tx => {
+    // Los cheques que entraron con este cobro se van con él
+    await tx.chequeRecibido.updateMany({ where: { cobro_id: cobroId, deleted_at: null }, data: { deleted_at: new Date(), updated_by: req.user!.id } });
     await tx.cobroFacturaEmitida.delete({ where: { id: cobroId } });
     await recalcularFacturaEmitida(cobro.factura_emitida_id, tx);
 

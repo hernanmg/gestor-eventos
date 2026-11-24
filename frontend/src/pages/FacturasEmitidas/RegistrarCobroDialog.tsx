@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Plus, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { useRegistrarCobro } from '@/hooks/useFacturasEmitidas';
 import { useCuentasEmpresa } from '@/hooks/useCaja';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import MoneyInput from '@/components/ui/MoneyInput';
 import { formatCurrency } from '@/lib/formatters';
 import { FORMAS_PAGO } from './labels';
-import type { Moneda } from '@/types';
+import type { Moneda, FormatoCheque } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -28,6 +28,12 @@ export default function RegistrarCobroDialog({ facturaId, saldoPendiente, moneda
     notas:              '',
   });
   const [error, setError] = useState<string | null>(null);
+  // Pagó con cheques / echeqs: cada uno entra a la cartera (Cheques → Recibidos) ligado a esta factura
+  const [cheques, setCheques] = useState<{ numero: string; banco: string; importe: string; fecha_pago: string }[]>([]);
+  const conCheques = /cheque|echeq/i.test(form.forma_cobro);
+  const formato: FormatoCheque = /f[ií]sico/i.test(form.forma_cobro) ? 'FISICO' : 'ECHEQ';
+  const sumaCheques = cheques.reduce((s, c) => s + (Number(c.importe) || 0), 0);
+  const setCheque = (i: number, k: 'numero' | 'banco' | 'importe' | 'fecha_pago', v: string) => setCheques(p => p.map((c, j) => (j === i ? { ...c, [k]: v } : c)));
   const { data: cuentas = [] } = useCuentasEmpresa();
   const cobrarMut = useRegistrarCobro(facturaId);
 
@@ -42,6 +48,9 @@ export default function RegistrarCobroDialog({ facturaId, saldoPendiente, moneda
     if (!monto || monto <= 0)          { setError('El monto debe ser mayor a 0'); return; }
     if (monto > saldoPendiente + 0.01) { setError(`No puede superar el saldo pendiente (${formatCurrency(saldoPendiente, moneda)})`); return; }
     if (!form.fecha)                   { setError('La fecha es obligatoria'); return; }
+    const chequesValidos = conCheques ? cheques.filter(c => c.numero.trim() || c.importe) : [];
+    if (chequesValidos.some(c => !c.numero.trim() || !Number(c.importe) || !c.fecha_pago)) { setError('A cada cheque le falta el número, el importe o la fecha de pago'); return; }
+    if (chequesValidos.length && Math.abs(sumaCheques - monto) > 0.01) { setError(`Los cheques suman ${formatCurrency(sumaCheques, moneda)} y el cobro es de ${formatCurrency(monto, moneda)}`); return; }
 
     try {
       await cobrarMut.mutateAsync({
@@ -51,6 +60,7 @@ export default function RegistrarCobroDialog({ facturaId, saldoPendiente, moneda
         cuenta_destino_id: form.cuenta_destino_id ? Number(form.cuenta_destino_id) : null,
         referencia:        form.referencia || null,
         notas:             form.notas || null,
+        cheques:           chequesValidos.length ? chequesValidos.map(c => ({ formato, numero: c.numero.trim(), banco: c.banco || null, importe: Number(c.importe), fecha_pago: c.fecha_pago })) : undefined,
       });
       onClose();
     } catch (err: any) {
@@ -91,6 +101,25 @@ export default function RegistrarCobroDialog({ facturaId, saldoPendiente, moneda
               {FORMAS_PAGO.map(fc => <option key={fc} value={fc}>{fc}</option>)}
             </select>
           </div>
+          {conCheques && (
+            <div className="col-span-2 rounded border p-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">{formato === 'FISICO' ? 'Cheques' : 'Echeqs'} recibidos</span>
+                <button type="button" onClick={() => setCheques(p => [...p, { numero: '', banco: '', importe: p.length ? '' : form.monto, fecha_pago: '' }])} className="text-xs text-link hover:underline inline-flex items-center gap-0.5"><Plus size={12} />Agregar</button>
+              </div>
+              {cheques.length === 0 && <p className="text-[11px] text-muted-foreground">Cargalos para que queden en la cartera con su fecha de pago y avise antes de depositarlos.</p>}
+              {cheques.map((c, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-1.5 items-end">
+                  <div><label className={label}>N°</label><input value={c.numero} onChange={e => setCheque(i, 'numero', e.target.value)} className={input} /></div>
+                  <div><label className={label}>Banco</label><input value={c.banco} onChange={e => setCheque(i, 'banco', e.target.value)} className={input} /></div>
+                  <div><label className={label}>Importe</label><MoneyInput value={c.importe} onChange={v => setCheque(i, 'importe', v)} className={input} /></div>
+                  <div><label className={label}>Fecha de pago</label><input type="date" value={c.fecha_pago} onChange={e => setCheque(i, 'fecha_pago', e.target.value)} className={input} /></div>
+                  <button type="button" onClick={() => setCheques(p => p.filter((_, j) => j !== i))} className="p-1.5 text-muted-foreground hover:text-destructive" aria-label="Quitar"><X size={14} /></button>
+                </div>
+              ))}
+              {cheques.length > 0 && Math.abs(sumaCheques - monto) > 0.01 && <p className="text-[11px] text-amber-700">Suman {formatCurrency(sumaCheques, moneda)}: tienen que sumar el monto del cobro.</p>}
+            </div>
+          )}
           <div className="col-span-2">
             <label className={label}>Cuenta destino</label>
             <select value={form.cuenta_destino_id} onChange={e => setForm(f => ({ ...f, cuenta_destino_id: e.target.value }))} className={input}>

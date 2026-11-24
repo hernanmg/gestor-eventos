@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, ShoppingCart, HandCoins, Scale, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, ShoppingCart, HandCoins, Scale, CalendarCheck, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -100,6 +100,7 @@ export function useNavModel(user: MeResponse): NavModel {
     ordenesPago: { to: '/ordenes-pago',      label: 'Órdenes de pago',    icon: HandCoins,      group: 'finanzas' },
     comparativos: { to: '/comparativos',     label: 'Comparativos de compra', icon: Scale,       group: 'finanzas' },
     cheques:     { to: '/cheques',           label: 'Cheques',            icon: ScrollText,     group: 'finanzas' },
+    pagosFijos:  { to: '/pagos-fijos',       label: 'Pagos fijos',        icon: CalendarCheck,  group: 'finanzas' },
     afip:        { to: '/afip-prestamos',    label: 'AFIP / Créditos',    icon: Landmark,       group: 'finanzas' },
     cierre:      { to: '/cierre-contable',   label: 'Cierre Contable',    icon: FileSpreadsheet, group: 'finanzas' },
     stock:       { to: '/stock',             label: 'Stock',              icon: Package,        group: 'operaciones', badge: stockQuiebres, tone: 'red' },
@@ -225,6 +226,7 @@ export function useNavModel(user: MeResponse): NavModel {
     // Órdenes de pago — mismo acceso que Facturas a Pagar
     (esAdmin || tienePermiso(user, 'FACTURAS')) && I.ordenesPago,
     esAdmin && I.cheques,
+    esAdmin && I.pagosFijos,
     esAdmin && I.afip,
     esAdmin && I.cierre,
     // Operaciones

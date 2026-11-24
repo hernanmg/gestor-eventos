@@ -33,6 +33,8 @@ import { cn } from '@/lib/utils';
 import type { TabConfig, Tipo, Usuario, Rol, CategoriaStock, Rubro, AreaMacro, Permiso } from '@/types';
 import { PERMISOS } from '@/lib/permisos';
 import BaseTable from '@/components/ui/BaseTable';
+import ProveedorCombobox from '@/components/domain/ProveedorCombobox';
+import MoneyInput from '@/components/ui/MoneyInput';
 import PageHeader from '@/components/ui/PageHeader';
 import TabStrip from '@/components/ui/TabStrip';
 
@@ -288,15 +290,24 @@ function TabsSection() {
 // ── Sortable rubro row ────────────────────────────────────────────────────────
 
 function SortableRubroRow({
-  rubro, onToggle, onDelete,
+  rubro, onToggle, onDelete, conHabitual,
 }: {
   rubro:    Rubro;
   onToggle: (rubro: Rubro) => void;
   onDelete: (rubro: Rubro) => void;
+  conHabitual?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(rubro.nombre);
   const updateRubro = useUpdateRubro();
+  const [costo, setCosto] = useState(rubro.costo_estimado != null ? String(rubro.costo_estimado) : '');
+  useEffect(() => setCosto(rubro.costo_estimado != null ? String(rubro.costo_estimado) : ''), [rubro.costo_estimado]);
+  // MoneyInput entrega el valor recién al salir del campo: se guarda ahí mismo
+  const guardarCosto = (texto: string) => {
+    setCosto(texto);
+    const v = texto === '' ? null : Number(texto);
+    if (v !== (rubro.costo_estimado ?? null)) updateRubro.mutate({ id: rubro.id, data: { costo_estimado: v } });
+  };
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rubro.id });
 
@@ -389,6 +400,19 @@ function SortableRubroRow({
           </div>
         )}
       </td>
+      {conHabitual && (
+        <>
+          <td className="px-3 py-2 w-56">
+            <ProveedorCombobox
+              value={rubro.proveedor_habitual ?? null}
+              onChange={v => updateRubro.mutate({ id: rubro.id, data: { proveedor_habitual_id: v?.id ?? null } })}
+            />
+          </td>
+          <td className="px-3 py-2 w-36">
+            <MoneyInput value={costo} onChange={guardarCosto} className="w-full border rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-ring" placeholder="—" />
+          </td>
+        </>
+      )}
     </tr>
   );
 }
@@ -445,17 +469,22 @@ function DraggableRubroGroup({
                   <th className="px-2 py-2 w-8" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-32" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                  {tipo === 'EGRESO' && <>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground" title="La Ficha del evento lo sugiere para este rubro">Proveedor habitual</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground" title="Se propone como presupuesto en la Ficha">Costo estimado</th>
+                  </>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {items.length === 0 ? (
-                  <tr><td colSpan={3} className="px-3 py-4 text-center text-sm text-muted-foreground">Sin rubros configurados.</td></tr>
+                  <tr><td colSpan={tipo === 'EGRESO' ? 5 : 3} className="px-3 py-4 text-center text-sm text-muted-foreground">Sin rubros configurados.</td></tr>
                 ) : items.map(rubro => (
                   <SortableRubroRow
                     key={rubro.id}
                     rubro={rubro}
                     onToggle={handleToggle}
                     onDelete={handleDelete}
+                    conHabitual={tipo === 'EGRESO'}
                   />
                 ))}
               </tbody>

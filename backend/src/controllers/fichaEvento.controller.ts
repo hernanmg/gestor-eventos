@@ -115,10 +115,73 @@ export async function getFicha(req: Request, res: Response) {
     costos.set(m.rubro_id!, c);
   }
 
+  const sugerencias = await sugerenciasProveedor(req.empresaId!, eventoId, rubrosEvento.map(re => re.rubro_id));
+
   res.json(await Promise.all(rubrosEvento.map(async re => ({
     ...(await mapRubroEvento(re, req.empresaId!)),
     costos: costos.get(re.rubro_id) ?? null,
+    sugerencia: sugerencias.get(re.rubro_id) ?? null,
   }))));
+}
+
+// ── Proveedor habitual por rubro (Proveedores, punto 6) ──────────────────────
+// Para cada rubro de la ficha: el proveedor habitual y el costo estimado
+// cargados en el rubro (Configuración → Rubros) y, además, los proveedores
+// que más se usaron en ese rubro en otros eventos de la empresa (en la Ficha o
+// en los egresos), con lo último que se presupuestó o se gastó.
+const PROV_SELECT = { id: true, nombre: true, alias: true, cuit: true, categoria: true, telefono: true } as const;
+
+export async function sugerenciasProveedor(empresaId: number, eventoId: number | null, rubroIds: number[]) {
+  const out = new Map<number, {
+    habitual: { id: number; nombre: string; alias: string | null; cuit: string | null; categoria: string | null; telefono: string | null } | null;
+    costo_estimado: number | null; costo_moneda: string;
+    usados: { proveedor: { id: number; nombre: string; alias: string | null; cuit: string | null; categoria: string | null; telefono: string | null }; eventos: number; ultimo_evento: { id: number; nombre: string; fecha: Date | null }; ultimo_costo: number | null }[];
+  }>();
+  if (!rubroIds.length) return out;
+  const [rubros, fichas, movs] = await Promise.all([
+    prisma.rubro.findMany({ where: { id: { in: rubroIds }, empresa_id: empresaId }, select: { id: true, costo_estimado: true, costo_moneda: true, proveedor_habitual: { select: PROV_SELECT } } }),
+    prisma.rubroEvento.findMany({
+      where: {
+        empresa_id: empresaId, rubro_id: { in: rubroIds }, deleted_at: null, proveedor_id: { not: null },
+        estado: { notIn: ['NO_VA', 'CANCELADO'] }, evento: { deleted_at: null }, ...(eventoId ? { evento_id: { not: eventoId } } : {}),
+      },
+      select: { rubro_id: true, evento_id: true, presupuesto: true, proveedor: { select: PROV_SELECT }, evento: { select: { id: true, nombre: true, fecha_inicio: true } } },
+    }),
+    prisma.movimiento.findMany({
+      where: {
+        rubro_id: { in: rubroIds }, tipo: 'EGRESO', deleted_at: null, proveedor_id: { not: null }, estado_movimiento: { not: 'CANCELADO' },
+        evento: { empresa_id: empresaId, deleted_at: null }, ...(eventoId ? { evento_id: { not: eventoId } } : {}),
+      },
+      select: { rubro_id: true, evento_id: true, debe: true, haber: true, proveedor: { select: PROV_SELECT }, evento: { select: { id: true, nombre: true, fecha_inicio: true } } },
+    }),
+  ]);
+  type Uso = { proveedor: typeof fichas[number]['proveedor'] & {}; eventos: Map<number, { id: number; nombre: string; fecha: Date | null; costo: number }> };
+  const usos = new Map<number, Map<number, Uso>>(); // rubro → proveedor → uso
+  const sumar = (rubroId: number, prov: Uso['proveedor'], ev: { id: number; nombre: string; fecha_inicio: Date | null }, costo: number, pisar: boolean) => {
+    const porProv = usos.get(rubroId) ?? new Map<number, Uso>();
+    const u = porProv.get(prov.id) ?? { proveedor: prov, eventos: new Map() };
+    const e = u.eventos.get(ev.id) ?? { id: ev.id, nombre: ev.nombre, fecha: ev.fecha_inicio, costo: 0 };
+    // El presupuesto de la ficha manda; si no hay, la suma de lo gastado en el evento
+    e.costo = pisar ? (costo || e.costo) : (e.costo + costo);
+    u.eventos.set(ev.id, e);
+    porProv.set(prov.id, u);
+    usos.set(rubroId, porProv);
+  };
+  for (const m of movs) if (m.proveedor && m.evento) sumar(m.rubro_id!, m.proveedor, m.evento, Number(m.debe) + Number(m.haber), false);
+  for (const f of fichas) if (f.proveedor) sumar(f.rubro_id, f.proveedor, f.evento, f.presupuesto != null ? Number(f.presupuesto) : 0, true);
+
+  for (const r of rubros) {
+    const usados = [...(usos.get(r.id)?.values() ?? [])].map(u => {
+      const evs = [...u.eventos.values()].sort((a, b) => (b.fecha?.getTime() ?? 0) - (a.fecha?.getTime() ?? 0));
+      return { proveedor: u.proveedor, eventos: evs.length, ultimo_evento: { id: evs[0].id, nombre: evs[0].nombre, fecha: evs[0].fecha }, ultimo_costo: evs[0].costo || null };
+    }).sort((a, b) => b.eventos - a.eventos || (b.ultimo_evento.fecha?.getTime() ?? 0) - (a.ultimo_evento.fecha?.getTime() ?? 0)).slice(0, 3);
+    if (!r.proveedor_habitual && r.costo_estimado == null && !usados.length) continue;
+    out.set(r.id, {
+      habitual: r.proveedor_habitual, costo_estimado: r.costo_estimado == null ? null : Number(r.costo_estimado), costo_moneda: r.costo_moneda,
+      usados,
+    });
+  }
+  return out;
 }
 
 // POST /api/eventos/:id/ficha/sincronizar-costos — genera/actualiza las líneas

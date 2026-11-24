@@ -38,7 +38,7 @@ export function useCreateRubro() {
 export function useUpdateRubro() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { nombre?: string; descripcion?: string | null; orden?: number } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { nombre?: string; descripcion?: string | null; orden?: number; proveedor_habitual_id?: number | null; costo_estimado?: number | null; costo_moneda?: 'ARS' | 'USD' } }) =>
       api.put(`/rubros/${id}`, data).then(r => r.data),
     onSuccess: () => invalidateBoth(qc),
   });

@@ -37,6 +37,8 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
   NOVEDAD:              'Novedades',
   CUMPLEANOS:           'Cumpleaños',
   SEGURO_PERSONAL_VENCE: 'Seguro del personal',
+  PAGO_FIJO:            'Pagos fijos',
+  CHEQUE_RECIBIDO:      'Cheques recibidos',
 };
 
 export const COLORES: Record<TipoCalendario, string> = {
@@ -70,6 +72,8 @@ export const COLORES: Record<TipoCalendario, string> = {
   NOVEDAD:              '#BE123C',
   CUMPLEANOS:           '#DB2777',
   SEGURO_PERSONAL_VENCE: '#F59E0B',
+  PAGO_FIJO:            '#0F766E',
+  CHEQUE_RECIBIDO:      '#15803D',
 };
 
 // ── Links de navegación por tipo ──────────────────────────────────────────────
@@ -108,6 +112,8 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'SINIESTRO_PENDIENTE': return `/siniestros/${m.siniestro_id}`;
     case 'CUMPLEANOS':     return '/rrhh?tab=empleados';
     case 'SEGURO_PERSONAL_VENCE': return '/seguros-personal';
+    case 'PAGO_FIJO':      return `/pagos-fijos?periodo=${m.periodo}`;
+    case 'CHEQUE_RECIBIDO': return '/cheques?tab=recibidos';
     default:               return '/calendario';
   }
 }
@@ -131,6 +137,8 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'SEGURO_VENCE':   return [`Estado: ${m.estado}`];
     case 'SEGURO_PERSONAL_VENCE': return [`${m.cubiertos} persona${m.cubiertos === 1 ? '' : 's'} anotada${m.cubiertos === 1 ? '' : 's'}`];
     case 'PATENTE_VENCE':  return [];
+    case 'PAGO_FIJO':      return [m.grupo, ...(m.medio_pago ? [m.medio_pago] : [])];
+    case 'CHEQUE_RECIBIDO': return [`N° ${m.numero}`, m.estado === 'EN_CARTERA' ? 'En cartera: depositarlo o ponerlo en custodia' : m.estado === 'EN_CUSTODIA' ? 'En custodia' : 'Depositado'];
     case 'TALLER_RETIRO':  return m.taller_nombre ? [`Taller: ${m.taller_nombre}`] : [];
     case 'CUOTA_AFIP':     return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];
     case 'CUOTA_PRESTAMO': return [`Importe: $${Number(m.total_cuota).toLocaleString('es-AR')}`];

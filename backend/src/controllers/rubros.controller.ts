@@ -23,8 +23,9 @@ export async function listRubros(req: Request, res: Response) {
       ...(activo !== undefined ? { activo: activo === 'true' } : (inclInactivos ? {} : { activo: true })),
     },
     orderBy: [{ tipo: 'asc' }, { orden: 'asc' }],
+    include: { proveedor_habitual: { select: { id: true, nombre: true, alias: true, cuit: true, categoria: true, telefono: true } } },
   });
-  res.json(rubros);
+  res.json(rubros.map(r => ({ ...r, costo_estimado: r.costo_estimado == null ? null : Number(r.costo_estimado) })));
 }
 
 // ── POST /rubros ──────────────────────────────────────────────────────────────
@@ -77,6 +78,9 @@ const updateSchema = z.object({
   nombre:      z.string().min(1).optional(),
   descripcion: z.string().nullable().optional(),
   orden:       z.number().int().min(1).optional(),
+  proveedor_habitual_id: z.number().int().nullable().optional(),
+  costo_estimado:        z.number().nonnegative().nullable().optional(),
+  costo_moneda:          z.enum(['ARS', 'USD']).optional(),
 });
 
 export async function updateRubro(req: Request, res: Response) {
@@ -89,7 +93,11 @@ export async function updateRubro(req: Request, res: Response) {
   const rubro = await prisma.rubro.findFirst({ where: { id, deleted_at: null, ...withTenant(req.empresaId!) } });
   if (!rubro) { res.status(404).json({ error: 'Rubro no encontrado' }); return; }
 
-  const { nombre, descripcion, orden } = parsed.data;
+  const { nombre, descripcion, orden, proveedor_habitual_id, costo_estimado, costo_moneda } = parsed.data;
+  if (proveedor_habitual_id) {
+    const p = await prisma.proveedor.findFirst({ where: { id: proveedor_habitual_id, deleted_at: null, ...withTenant(req.empresaId!) } });
+    if (!p) { res.status(400).json({ error: 'Proveedor no encontrado' }); return; }
+  }
 
   if (nombre && nombre !== rubro.nombre) {
     const dup = await prisma.rubro.findFirst({
@@ -104,9 +112,12 @@ export async function updateRubro(req: Request, res: Response) {
       ...(nombre      !== undefined && { nombre }),
       ...(descripcion !== undefined && { descripcion }),
       ...(orden       !== undefined && { orden }),
+      ...(proveedor_habitual_id !== undefined && { proveedor_habitual_id }),
+      ...(costo_estimado        !== undefined && { costo_estimado }),
+      ...(costo_moneda          !== undefined && { costo_moneda }),
     },
   });
-  res.json(updated);
+  res.json({ ...updated, costo_estimado: updated.costo_estimado == null ? null : Number(updated.costo_estimado) });
 }
 
 // ── PATCH /rubros/reordenar ───────────────────────────────────────────────────

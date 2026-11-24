@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Check, RotateCcw, Ban, AlertTriangle, CalendarClock, Upload } from 'lucide-react';
 import ImportarChequesDialog from './ImportarChequesDialog';
+import ChequesRecibidos from './Recibidos';
+import TabStrip from '@/components/ui/TabStrip';
+import { useChequesRecibidos } from '@/hooks/useChequesRecibidos';
 import PageHeader from '@/components/ui/PageHeader';
 import BaseTable from '@/components/ui/BaseTable';
 import MoneyInput from '@/components/ui/MoneyInput';
@@ -224,7 +227,25 @@ function DebitarDialog({ cheque, onClose }: { cheque: ChequeEmpresa; onClose: ()
 
 type FiltroEstado = EstadoEcheq | 'TODOS';
 
+// Dos pestañas: los cheques que emite la empresa y los que recibe de los clientes.
 export default function ChequesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'recibidos' ? 'recibidos' : 'emitidos';
+  const { data: recibidos } = useChequesRecibidos({ vista: 'cartera' });
+  const strip = (
+    <TabStrip
+      items={[
+        { key: 'emitidos', label: 'Emitidos' },
+        { key: 'recibidos', label: 'Recibidos', badge: recibidos?.resumen.depositar_ya.cantidad ? <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{recibidos.resumen.depositar_ya.cantidad}</span> : undefined },
+      ]}
+      value={tab}
+      onChange={k => setSearchParams(p => { const n = new URLSearchParams(p); if (k === 'recibidos') n.set('tab', 'recibidos'); else n.delete('tab'); return n; }, { replace: true })}
+    />
+  );
+  return tab === 'recibidos' ? <ChequesRecibidos tabs={strip} /> : <ChequesEmitidos tabs={strip} />;
+}
+
+function ChequesEmitidos({ tabs }: { tabs: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const viernesParam = searchParams.get('viernes');
 
@@ -287,6 +308,7 @@ export default function ChequesPage() {
           </div>
         }
       />
+      {tabs}
 
       {/* Bloque del viernes + bancos */}
       {resumen && (

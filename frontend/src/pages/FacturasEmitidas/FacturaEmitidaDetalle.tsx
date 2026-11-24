@@ -4,8 +4,6 @@ import {
   Plus, Trash2, AlertTriangle, Download, Eye, Loader2, FileText,
   ExternalLink, XCircle, Ban, Pencil,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   useFacturaEmitida, useUpdateFacturaEmitida, useAnularFacturaEmitida, useMarcarIncobrable,
   useEliminarCobro, useUploadPdfFacturaEmitida, type FacturaEmitidaPayload,
@@ -17,16 +15,18 @@ import MonedaTasaCambio from '@/components/ui/MonedaTasaCambio';
 import MoneyInput from '@/components/ui/MoneyInput';
 import CuitInput from '@/components/ui/CuitInput';
 import RegistrarCobroDialog from './RegistrarCobroDialog';
+import { ESTADO_RECIBIDO } from '@/pages/Cheques/Recibidos';
 import { TIPO_COMPROBANTE_LABEL, TIPOS_COMPROBANTE_EMITIBLES, CONDICION_CLIENTE_LABEL, FORMAS_PAGO } from './labels';
 import api from '@/lib/api';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, formatDate } from '@/lib/formatters';
 import type { CobroFacturaEmitida, CondicionCliente, Moneda, TipoComprobanteEmitido } from '@/types';
 import { cn } from '@/lib/utils';
 import BaseTable from '@/components/ui/BaseTable';
 
 function fmt(date: string | null | undefined) {
   if (!date) return '—';
-  return format(new Date(date), 'dd/MM/yyyy', { locale: es });
+  // Fechas de calendario (medianoche UTC): se leen en UTC, no en hora local
+  return formatDate(date);
 }
 
 function Row({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -206,7 +206,14 @@ function FilaCobro({ cobro, moneda }: { cobro: CobroFacturaEmitida; moneda: Mone
     <tr className="border-b border-border last:border-0 text-sm">
       <td className="py-2 px-3">{fmt(cobro.fecha)}</td>
       <td className="py-2 px-3 font-medium">{formatCurrency(cobro.monto, moneda)}</td>
-      <td className="py-2 px-3">{cobro.forma_cobro ?? '—'}</td>
+      <td className="py-2 px-3">
+        {cobro.forma_cobro ?? '—'}
+        {cobro.cheques?.map(ch => (
+          <div key={ch.id} className="text-[11px] text-muted-foreground">
+            N° {ch.numero} · {formatCurrency(ch.importe, moneda)} · paga {fmt(ch.fecha_pago)} · <Link to="/cheques?tab=recibidos" className="text-link hover:underline">{ESTADO_RECIBIDO[ch.estado].label.toLowerCase()}</Link>
+          </div>
+        ))}
+      </td>
       <td className="py-2 px-3 text-muted-foreground">{cobro.cuenta_destino?.nombre ?? '—'}</td>
       <td className="py-2 px-3 text-muted-foreground">{cobro.referencia ?? '—'}</td>
       <td className="py-2 px-3 text-right">
