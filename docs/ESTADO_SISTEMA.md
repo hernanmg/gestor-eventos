@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-20 · Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-23 · Comparativo de presupuestos de proveedores, que se convierte en la orden de compra · Lo que llega de una orden de compra se suma al stock · Ficha del proveedor con lo que se le debe, sus facturas, pagos y órdenes · 2026-11-20: Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -25,8 +25,8 @@
 | 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 92% | 90% |
 | 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 89% | 82% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
-| 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 81% | 80% |
-| 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 78%* | 82% |
+| 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 91% | 90% |
+| 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 81%* | 86% |
 | 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
 | 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 89% | 63% |
 | 08 | Marketing | Vicky | pendiente de relevar | |
@@ -256,7 +256,7 @@ No se cuentan acá: auditoría de cambios y repositorio de archivos (Varios), ca
 
 ## 04 · Proveedores
 
-**DOS57: 81% construido (13 de 16) · Enjoy: 80% construido (12 de 15) · En uso: 0%**
+**DOS57: 91% construido (14,5 de 16) · Enjoy: 90% construido (13,5 de 15) · En uso: 0%**
 
 Responsables: Mayra (ambas). En DOS57, Andrea (proveedores y jornaleros), Santi y Nico (libro de compras). En Enjoy, Male (formulario de proveedores) y Nico (facturas, con Male).
 
@@ -271,7 +271,7 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 | 1 | Proveedor único por CUIT, que se carga una vez y se usa en todos los eventos | ✅ | ✅ | Especificación Enjoy §3.1 y §35 | Proveedores |
 | 2 | Datos completos: empresa, persona de contacto, CUIT, banco, CBU y alias, titular, si factura y qué tipo, servicio | 🟡 | 🟡 | Especificación §35 · Proveedores - Datos (Respuestas) | Proveedores · Faltan dirección y condición de IVA como dato formal |
 | 3 | Ficha del proveedor: eventos donde trabajó, movimientos, total facturado, echeqs | ✅ | ✅ | Especificación §36 | Proveedores → detalle |
-| 4 | En la ficha del proveedor: sus facturas, saldo pendiente y pagos hechos | 🟡 | 🟡 | Especificación §35-36 | Están en Facturas a Pagar filtrando por proveedor, no en su ficha |
+| 4 | En la ficha del proveedor: sus facturas, saldo pendiente y pagos hechos | ✅ | ✅ | Especificación §35-36 | Proveedores → ficha: lo que se le debe y lo vencido, sus facturas, los pagos hechos y sus órdenes de compra y de pago |
 | 5 | Comisionistas con porcentaje de comisión | ✅ | — | Facturación Vallas Partidos - Polaco (Mayra) | Proveedores |
 | 6 | Proveedor habitual y costo estimado por rubro, para que la ficha los sugiera | ⬜ | ⬜ | Especificación §36 (biblioteca de rubros) | — |
 | 7 | Vincular proveedores a los movimientos del evento que llegaron sin proveedor, buscando por empresa o contacto, o dando de alta uno nuevo; el rubro de la Ficha queda con ese proveedor | ✅ | ✅ | Importador de eventos históricos · Reunión con Male (nov 2026) | Evento → Vincular proveedores |
@@ -292,11 +292,12 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 14 | Órdenes de compra a proveedores: número, artículos, entrega, plazo y forma de pago (echeqs), en PDF; que Mayra pueda cotejar lo pedido con la factura antes de pagar | ✅ | ✅ | Ordenes de Compra y Pago · Entrevista Mayra (compras a Layher, lo que pide Jazmín) | Órdenes de compra: borrador, emisión con PDF, recepción de lo que llegó y cotejo con las facturas vinculadas (también se ve en la factura) |
-| 15 | Comparativo de presupuestos de proveedores para decidir una compra | ⬜ | ⬜ | Entrevista Mayra ("los que yo les presento en comparativa para las compras") | — |
+| 15 | Comparativo de presupuestos de proveedores para decidir una compra | ✅ | ✅ | Entrevista Mayra ("los que yo les presento en comparativa para las compras") | Comparativos de compra: los artículos con el precio de cada proveedor, el más barato marcado, el PDF para presentarlo, la elección con su motivo y la orden de compra armada con la cotización elegida |
 | 16 | Orden de pago al proveedor: facturas que se pagan juntas, medio de pago de cada una (echeq y número), totales, y quién la elaboró, revisó y autorizó, en PDF | ✅ | ✅ | Ordenes de Compra y Pago, hojas de orden de pago (Mayra) | Órdenes de pago: se eligen las facturas pendientes del proveedor y los echeqs o transferencias; se revisa, se autoriza y, al registrar el pago, queda en cada factura y los echeqs en Cheques |
 
 ### Para definir con el cliente
 
+- **Comparativo de presupuestos** (punto 15): no tenemos un ejemplo del cuadro que arma Mayra. Hoy compara precio por artículo y total con IVA, con entrega, plazo y forma de pago de cada proveedor. ¿Le falta algo (flete aparte, descuentos, otra moneda por proveedor)? ¿Quién elige: Matías, o el administrador que lo arma?
 - **Órdenes de compra** (punto 14): hoy emite y coteja el administrador; los operadores (por ejemplo, Jazmín) arman borradores y registran la recepción. ¿Es así, o la autoriza alguien en particular (Matías, el Pollo)? ¿Se usan para toda compra o solo para las grandes?
 - **Orden de pago** (punto 16): hoy cualquier administrador la arma y la revisa, y la autoriza Matías (o quien tenga el permiso de aprobar pagos). ¿Es así? ¿Se usa para todo pago a proveedores o sólo para algunos?
 - **Proveedor habitual por rubro** (punto 6): ¿lo cargan ellos o alcanza con que el sistema sugiera el último proveedor usado en ese rubro?
@@ -305,7 +306,7 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 
 ## 05 · Depósito
 
-**DOS57: 78% construido (14 de 18)\* · Enjoy: 82% construido (11,5 de 14) · En uso: 0%**
+**DOS57: 81% construido (14,5 de 18)\* · Enjoy: 86% construido (12 de 14) · En uso: 0%**
 
 \* Sergio (Pollo) y Verónica, responsables del depósito de DOS57, todavía no fueron relevados. Lo de DOS57 sale de Jazmín y de las planillas de stock. Cuando se los releve, el total puede crecer.
 
@@ -322,7 +323,7 @@ No se cuentan acá, para no contar dos veces: remitos y comidas (Logística), pr
 | 1 | Catálogo de stock: códigos propios y Layher, nombre técnico e interno, peso, valor, pieza crítica, foto | ✅ | ✅ | DOS57_STOCK_2026_GENERAL (Jazmín) · STOCK DE DEPOSITO ENJOY (Daniel) | Stock → Productos |
 | 2 | Importadores del catálogo: Layher en DOS57, por espacio y período en Enjoy | ✅ | ✅ | Mismas planillas | Stock → Importar |
 | 3 | Varios depósitos y ubicación de cada pieza (principal, depósito del Pollo, herrería, techos; en Enjoy por espacio) | 🟡 | ✅ | Relevamiento Jazmín | Enjoy tiene el espacio por producto; en DOS57 el catálogo no distingue depósitos |
-| 4 | Ingreso de compras al stock general | 🟡 | 🟡 | Relevamiento Jazmín · Entrevista Mayra ("ingresar al stock una vez que llega") | La orden de compra registra lo que llegó (Proveedores, punto 14), pero no lo suma al stock; el total se corrige a mano |
+| 4 | Ingreso de compras al stock general | ✅ | ✅ | Relevamiento Jazmín · Entrevista Mayra ("ingresar al stock una vez que llega") | Al registrar la recepción de la orden de compra (Proveedores, punto 14) se elige el producto de cada artículo y lo recibido se suma a su stock; si se corrige, se ajusta la diferencia |
 | 5 | Material Layher que se cruza con otros (Agesta, Airasca, Zamora, Jofre): alquilado, prestado, vendido o comprado, que se suma o se resta del stock por un tiempo | ⬜ | — | Relevamiento Jazmín · Entrevista Mayra · Conciliación AIRASCA · Cuadro Cruce de Material BB | El estado "alquilado" está previsto, falta la carga |
 | 6 | Conteo periódico: stock físico contra el sistema | 🟡 | 🟡 | Conteos por período de Enjoy · Relevamiento Jazmín | Los conteos entran por el importador; falta cargarlos en pantalla |
 | 7 | Activos propios por sector (oficinas, depósito, taller), bien de uso o bien de capital, y a quién se entregó cada computadora o celular | 🟡 | 🟡 | Stock Polo 52 - Dos57 2023 · Planilla Stocks - Celulares + Notebook · Entrevista Mayra | Stock → Activos tiene ubicación y responsable; faltan bien de uso o capital y la entrega a cada persona |

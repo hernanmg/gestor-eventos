@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { Proveedor, ProveedorBusqueda } from '@/types';
+import type { Proveedor, ProveedorBusqueda, ProveedorCuenta } from '@/types';
 
 const KEY      = ['proveedores'];
 const detailKey = (id: number) => ['proveedores', id];
@@ -37,6 +37,16 @@ export function useProveedorDetalle(id: number) {
   }>({
     queryKey:  detailKey(id),
     queryFn:   () => api.get(`/proveedores/${id}`).then(r => r.data),
+    staleTime: 30 * 1000,
+  });
+}
+
+// Facturas, saldo, pagos y órdenes del proveedor (acceso de Facturas a Pagar)
+export function useProveedorCuenta(id: number, enabled: boolean) {
+  return useQuery<ProveedorCuenta>({
+    queryKey:  ['proveedores', id, 'cuenta'],
+    queryFn:   () => api.get(`/proveedores/${id}/cuenta`).then(r => r.data),
+    enabled,
     staleTime: 30 * 1000,
   });
 }

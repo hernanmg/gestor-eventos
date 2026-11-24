@@ -15,6 +15,14 @@ const ESTADO_CLASS: Record<EstadoAsignacion, string> = {
   CANCELADA:   'bg-red-100 text-red-700',
 };
 
+const TIPO_MOV: Record<string, string> = {
+  SALIDA_DEPOSITO:             'Salida a evento',
+  RETORNO_DEPOSITO:            'Vuelta al depósito',
+  TRANSFERENCIA_ENTRE_EVENTOS: 'Entre eventos',
+  INGRESO_COMPRA:              'Compra recibida',
+  AJUSTE_COMPRA:               'Corrección de compra',
+};
+
 function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <div className="rounded-lg border bg-white p-4 text-center">
@@ -176,7 +184,7 @@ export default function ProductoDetallePage() {
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
-                        {m.tipo}
+                        {TIPO_MOV[m.tipo] ?? m.tipo}
                       </span>
                     </td>
                     <td className={cn('px-3 py-2 text-right font-semibold text-sm', m.cantidad > 0 ? 'text-green-700' : m.cantidad < 0 ? 'text-red-600' : 'text-muted-foreground')}>

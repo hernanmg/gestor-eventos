@@ -3685,6 +3685,10 @@ export interface OrdenCompraItem {
   precio_unitario:   number | string;
   total:             number | string;
   cantidad_recibida: number | string | null;
+  // Producto del stock al que se suma lo recibido
+  producto_id?:       number | null;
+  cantidad_ingresada?: number;
+  producto?:          { id: number; nombre: string; codigo_interno: string | null; stock_total: number; unidad: string } | null;
 }
 
 export interface OrdenCompraDetalle {
@@ -3704,6 +3708,53 @@ export interface OrdenCompraDetalle {
     faltantes: { orden_item: number; descripcion: string; pedido: number; recibido: number }[];
     items_sin_controlar: number;
   };
+}
+
+// ── Comparativo de presupuestos de proveedores (/comparativos) ───────────────
+export type EstadoComparativo = 'ABIERTO' | 'DECIDIDO' | 'ANULADO';
+
+export interface ComparativoResumen {
+  id: number; numero: number; numero_formateado: string; fecha: string; titulo: string; estado: EstadoComparativo; moneda: Moneda;
+  evento: { id: number; nombre: string } | null; cant_items: number;
+  cotizaciones: { id: number; proveedor: string; total: number; mas_barata: boolean }[];
+  elegida: { proveedor: string; total: number } | null;
+  orden_compra: { id: number; numero: string } | null;
+}
+
+export interface CotizacionProveedorDetalle {
+  id: number; orden: number; proveedor_id: number; proveedor: { id: number; nombre: string; cuit: string | null };
+  referencia: string | null; fecha: string | null; validez: string | null; plazo_entrega: string | null; plazo_pago: string | null; forma_pago: string | null;
+  iva_porcentaje: number; notas: string | null; precios: (number | null)[]; subtotal: number; total: number;
+}
+
+export interface ComparativoDetalle {
+  id: number; numero: number; numero_formateado: string; fecha: string; titulo: string; estado: EstadoComparativo; moneda: Moneda;
+  evento_id: number | null; evento: { id: number; nombre: string } | null; notas: string | null;
+  cotizacion_elegida_id: number | null; motivo_eleccion: string | null; decidido_at: string | null;
+  items: { id: number; orden_item: number; codigo: string | null; descripcion: string; cantidad: number }[];
+  cotizaciones: CotizacionProveedorDetalle[];
+  orden_compra: { id: number; numero: string; estado: EstadoOrdenCompra } | null;
+  analisis: {
+    minimos: (number | null)[];
+    cotizaciones: { id: number; cotizados: number; completa: boolean; mas_bajos: number; total: number }[];
+    mas_baratas: number[]; hay_completas: boolean; subtotal_optimo: number;
+  };
+}
+
+// ── Cuenta del proveedor (ficha: facturas, saldo, pagos y órdenes) ───────────
+export interface ProveedorCuenta {
+  saldo: { moneda: Moneda; facturado: number; pagado: number; pendiente: number; vencido: number; facturas_pendientes: number }[];
+  facturas: {
+    id: number; numero_factura: string; tipo_factura: string; fecha_emision: string; fecha_vencimiento: string | null;
+    importe_total: number; importe_pendiente: number; moneda: Moneda; estado: EstadoFactura; vencida: boolean;
+    evento: { id: number; nombre: string } | null; orden_compra: { id: number; numero: string } | null;
+  }[];
+  pagos: {
+    id: number; fecha_pago: string; importe: number; moneda: Moneda; medio_pago: MedioPago; referencia: string | null;
+    factura: { id: number; numero_factura: string; tipo_factura: string }; orden_pago: { id: number; numero: string } | null;
+  }[];
+  ordenes_compra: { id: number; numero: string; fecha: string; estado: EstadoOrdenCompra; total: number; moneda: Moneda; evento: { id: number; nombre: string } | null }[];
+  ordenes_pago: { id: number; numero: string; fecha: string; estado: EstadoOrdenPago; total: number; moneda: Moneda; concepto: string | null }[];
 }
 
 // ── Órdenes de pago a proveedores (/ordenes-pago) ────────────────────────────

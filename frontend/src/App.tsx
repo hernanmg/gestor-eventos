@@ -52,6 +52,7 @@ import SiniestrosPage       from '@/pages/Siniestros';
 import SegurosPersonalPage  from '@/pages/SegurosPersonal';
 import OrdenesCompraPage    from '@/pages/OrdenesCompra';
 import OrdenesPagoPage      from '@/pages/OrdenesPago';
+import ComparativosPage     from '@/pages/Comparativos';
 import UniformesPage        from '@/pages/Uniformes';
 import TarjetaCorporativaPage from '@/pages/TarjetaCorporativa';
 import { useAuth }          from '@/hooks/useAuth';
@@ -130,6 +131,7 @@ export default function App() {
             <Route path="/seguros-personal"        element={<SegurosPersonalPage />} />
             <Route path="/ordenes-compra"          element={<OrdenesCompraPage />} />
             <Route path="/ordenes-pago"            element={<OrdenesPagoPage />} />
+            <Route path="/comparativos"            element={<ComparativosPage />} />
             <Route path="/uniformes"               element={<UniformesPage />} />
             <Route path="/afip-prestamos"          element={<AFIPPrestamosPage />} />
             <Route path="/cheques"                 element={<ChequesPage />} />

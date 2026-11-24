@@ -339,6 +339,7 @@ model Empresa {
   premios_puntuales      PremioPuntual[]
   polizasPersonal        PolizaPersonal[]
   ordenesCompra          OrdenCompra[]
+  comparativosCompra     ComparativoCompra[]
   ordenesPago            OrdenPago[]
   coberturasEmpleado     CoberturaEmpleado[]
   cuotasSeguroVehiculo   CuotaSeguroVehiculo[]
@@ -490,6 +491,7 @@ model Evento {
   presupuestos           PresupuestoEvento[]
   remitos                RemitoEvento[]
   ordenesCompra          OrdenCompra[]
+  comparativosCompra     ComparativoCompra[]
   siniestros_empleado    SiniestroEmpleado[]
   eventos_empleado_mes   EventoEmpleadoMes[]
   controles_salida       ControlSalidaVehiculo[]
@@ -1019,16 +1021,16 @@ model MovimientoCaja {
 // ─── PROVEEDORES ─────────────────────────────────────────────────────────────
 
 model Proveedor {
-  id                  Int           @id @default(autoincrement())
+  id                  Int                   @id @default(autoincrement())
   empresa_id          Int
-  empresa             Empresa       @relation(fields: [empresa_id], references: [id])
+  empresa             Empresa               @relation(fields: [empresa_id], references: [id])
   nombre              String
   alias               String?
-  cuit                String?       @unique
+  cuit                String?               @unique
   categoria           String?
   telefono            String?
   notas               String?
-  activo              Boolean       @default(true)
+  activo              Boolean               @default(true)
   // Datos del formulario de Google (Enjoy) — ver importarProveedoresFormulario.
   // `alias` de arriba es el nombre corto comercial; el alias del CBU va en alias_bancario.
   // `dni` es la clave de upsert cuando el CUIT del formulario no es válido (< 11 dígitos).
@@ -1046,12 +1048,13 @@ model Proveedor {
   servicio            String?
   // Comisionista (ej. "Polaco") — cobra un % sobre facturas emitidas donde
   // participa del reparto. Ver POST /api/facturas-emitidas.
-  es_comisionista     Boolean       @default(false)
-  porcentaje_comision Decimal?      @db.Decimal(5, 2)
+  es_comisionista     Boolean               @default(false)
+  porcentaje_comision Decimal?              @db.Decimal(5, 2)
   ordenesCompra       OrdenCompra[]
   ordenesPago         OrdenPago[]
-  created_at          DateTime      @default(now())
-  updated_at          DateTime      @updatedAt
+  cotizaciones        CotizacionProveedor[]
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
   deleted_at          DateTime?
   created_by          Int?
   updated_by          Int?
@@ -1081,15 +1084,15 @@ enum EstadoOrdenCompra {
 }
 
 model OrdenCompra {
-  id                   Int               @id @default(autoincrement())
+  id                   Int                @id @default(autoincrement())
   empresa_id           Int
-  empresa              Empresa           @relation(fields: [empresa_id], references: [id])
+  empresa              Empresa            @relation(fields: [empresa_id], references: [id])
   numero               Int // correlativo por empresa
   fecha                DateTime // fecha de calendario
   proveedor_id         Int
-  proveedor            Proveedor         @relation(fields: [proveedor_id], references: [id])
+  proveedor            Proveedor          @relation(fields: [proveedor_id], references: [id])
   evento_id            Int?
-  evento               Evento?           @relation(fields: [evento_id], references: [id])
+  evento               Evento?            @relation(fields: [evento_id], references: [id])
   // Datos del proveedor tal como salen en la orden (la planilla los repite)
   contacto             String?
   telefono             String?
@@ -1101,12 +1104,12 @@ model OrdenCompra {
   plazo_pago           String? // "30-45-60 días"
   forma_pago           String? // "Echeqs"
   referencia_proveedor String? // n° de presupuesto o referencia que pone el proveedor
-  moneda               Moneda            @default(ARS)
-  iva_porcentaje       Decimal           @default(21) @db.Decimal(5, 2)
-  subtotal             Decimal           @default(0) @db.Decimal(15, 2)
-  iva                  Decimal           @default(0) @db.Decimal(15, 2)
-  total                Decimal           @default(0) @db.Decimal(15, 2)
-  estado               EstadoOrdenCompra @default(BORRADOR)
+  moneda               Moneda             @default(ARS)
+  iva_porcentaje       Decimal            @default(21) @db.Decimal(5, 2)
+  subtotal             Decimal            @default(0) @db.Decimal(15, 2)
+  iva                  Decimal            @default(0) @db.Decimal(15, 2)
+  total                Decimal            @default(0) @db.Decimal(15, 2)
+  estado               EstadoOrdenCompra  @default(BORRADOR)
   emitida_at           DateTime?
   emitida_por          Int?
   recibida_at          DateTime?
@@ -1114,8 +1117,9 @@ model OrdenCompra {
   notas_cotejo         String?
   items                OrdenCompraItem[]
   facturas             Factura[]
-  created_at           DateTime          @default(now())
-  updated_at           DateTime          @updatedAt
+  comparativo          ComparativoCompra?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
   deleted_at           DateTime?
   created_by           Int?
 
@@ -1124,18 +1128,101 @@ model OrdenCompra {
 }
 
 model OrdenCompraItem {
-  id                Int         @id @default(autoincrement())
-  orden_id          Int
-  orden             OrdenCompra @relation(fields: [orden_id], references: [id], onDelete: Cascade)
-  orden_item        Int // 1, 2, 3… como la columna Nº
-  codigo            String?
-  descripcion       String
-  cantidad          Decimal     @db.Decimal(12, 2)
-  precio_unitario   Decimal     @db.Decimal(15, 2)
-  total             Decimal     @db.Decimal(15, 2)
-  cantidad_recibida Decimal?    @db.Decimal(12, 2) // null = todavía no se controló
+  id                 Int         @id @default(autoincrement())
+  orden_id           Int
+  orden              OrdenCompra @relation(fields: [orden_id], references: [id], onDelete: Cascade)
+  orden_item         Int // 1, 2, 3… como la columna Nº
+  codigo             String?
+  descripcion        String
+  cantidad           Decimal     @db.Decimal(12, 2)
+  precio_unitario    Decimal     @db.Decimal(15, 2)
+  total              Decimal     @db.Decimal(15, 2)
+  cantidad_recibida  Decimal?    @db.Decimal(12, 2) // null = todavía no se controló
+  // Producto del stock general al que se suma lo recibido (Depósito, punto 4).
+  // cantidad_ingresada = lo que ya se sumó; al corregir la recepción se ajusta
+  // la diferencia con un MovimientoStock INGRESO_COMPRA.
+  producto_id        Int?
+  producto           Producto?   @relation(fields: [producto_id], references: [id])
+  cantidad_ingresada Int         @default(0)
 
   @@index([orden_id])
+}
+
+// ─── COMPARATIVO DE PRESUPUESTOS ──────────────────────────────────────────────
+// Lo que Mayra arma "en comparativa para las compras": los mismos artículos
+// cotizados por varios proveedores, para que se decida a quién comprarle. La
+// cotización elegida se convierte en una orden de compra en borrador.
+
+enum EstadoComparativo {
+  ABIERTO // se cargan cotizaciones
+  DECIDIDO // se eligió una cotización
+  ANULADO
+}
+
+model ComparativoCompra {
+  id                    Int                   @id @default(autoincrement())
+  empresa_id            Int
+  empresa               Empresa               @relation(fields: [empresa_id], references: [id])
+  numero                Int // correlativo por empresa
+  fecha                 DateTime // fecha de calendario
+  titulo                String // qué se compra ("Caños para la estructura del escenario")
+  evento_id             Int?
+  evento                Evento?               @relation(fields: [evento_id], references: [id])
+  moneda                Moneda                @default(ARS)
+  notas                 String?
+  estado                EstadoComparativo     @default(ABIERTO)
+  // Elección (sin relación: la cotización es hija de este mismo comparativo)
+  cotizacion_elegida_id Int?
+  motivo_eleccion       String?
+  decidido_por          Int?
+  decidido_at           DateTime?
+  // Orden de compra armada con la cotización elegida
+  orden_compra_id       Int?                  @unique
+  orden_compra          OrdenCompra?          @relation(fields: [orden_compra_id], references: [id])
+  items                 ComparativoItem[]
+  cotizaciones          CotizacionProveedor[]
+  created_at            DateTime              @default(now())
+  updated_at            DateTime              @updatedAt
+  deleted_at            DateTime?
+  created_by            Int?
+
+  @@unique([empresa_id, numero])
+}
+
+model ComparativoItem {
+  id             Int               @id @default(autoincrement())
+  comparativo_id Int
+  comparativo    ComparativoCompra @relation(fields: [comparativo_id], references: [id], onDelete: Cascade)
+  orden_item     Int
+  codigo         String?
+  descripcion    String
+  cantidad       Decimal           @db.Decimal(12, 2)
+
+  @@index([comparativo_id])
+}
+
+model CotizacionProveedor {
+  id             Int               @id @default(autoincrement())
+  comparativo_id Int
+  comparativo    ComparativoCompra @relation(fields: [comparativo_id], references: [id], onDelete: Cascade)
+  orden          Int // columna en el cuadro
+  proveedor_id   Int
+  proveedor      Proveedor         @relation(fields: [proveedor_id], references: [id])
+  referencia     String? // n° de presupuesto del proveedor
+  fecha          DateTime?
+  validez        String? // "15 días"
+  plazo_entrega  String?
+  plazo_pago     String?
+  forma_pago     String?
+  iva_porcentaje Decimal           @default(21) @db.Decimal(5, 2)
+  // Precio unitario de cada ítem, en el orden de los ítems: [12500, null, 800]
+  // (null = ese proveedor no lo cotizó). Se guarda junto con los ítems.
+  precios        Json
+  subtotal       Decimal           @db.Decimal(15, 2)
+  total          Decimal           @db.Decimal(15, 2)
+  notas          String?
+
+  @@index([comparativo_id])
 }
 
 // ─── ÓRDENES DE PAGO ──────────────────────────────────────────────────────────
@@ -1347,9 +1434,10 @@ model Producto {
   historial_stock   Json?
   informe_situacion String? // Col H del Excel de Enjoy: "VER FALTANTE", "Reparar", "COMPRAR", etc.
 
-  asignaciones AsignacionStock[]
-  movimientos  MovimientoStock[]
-  cunas        CunaProducto[]
+  asignaciones     AsignacionStock[]
+  movimientos      MovimientoStock[]
+  cunas            CunaProducto[]
+  itemsOrdenCompra OrdenCompraItem[]
 
   @@unique([codigo_interno, empresa_id])
   @@unique([codigo_externo, empresa_id])

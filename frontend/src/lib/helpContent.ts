@@ -472,13 +472,15 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Pedidos y pagos al proveedor',
         contenido: [
-          'Lo que se le pide va en ',
+          'Los presupuestos de varios proveedores se comparan en ',
+          { texto: 'Comparativos de compra', ruta: '/comparativos' },
+          '. Lo que se le pide va en ',
           { texto: 'Órdenes de compra', ruta: '/ordenes-compra' },
           ' (con PDF para mandarle), sus facturas en ',
           { texto: 'Facturas a Pagar', ruta: '/facturas' },
           ' y los pagos agrupados en ',
           { texto: 'Órdenes de pago', ruta: '/ordenes-pago' },
-          '. Cargá el CBU y el alias en el proveedor: la orden de pago los muestra.',
+          '. Cargá el CBU y el alias en el proveedor: la orden de pago los muestra. En la ficha de cada proveedor está todo junto: cuánto se le debe, sus facturas, pagos y órdenes.',
         ],
       },
     ],
@@ -557,6 +559,14 @@ const help: Record<string, HelpContent> = {
         contenido: '"Nueva orden" la crea en borrador con el próximo número de la empresa. Elegí el proveedor: se completan contacto, teléfono, entrega y plazo de su última orden. Cargá los artículos con cantidad y precio; el subtotal, el IVA y el total se calculan solos. Mientras es borrador se puede corregir (por ejemplo, cuando el depósito cambia un material o agrega la referencia del proveedor).',
       },
       {
+        titulo: 'Desde un comparativo',
+        contenido: [
+          'Si se pidieron presupuestos a varios proveedores, cargalos en un ',
+          { texto: 'comparativo de compra', ruta: '/comparativos' },
+          ': al elegir uno, "Armar orden de compra" la crea en borrador con sus precios y condiciones.',
+        ],
+      },
+      {
         titulo: 'Emitir y mandar',
         contenido: '"Emitir" la deja fija y el PDF sale sin la marca de borrador, listo para mandarle al proveedor. Si hay que cambiar algo, "Volver a borrador" (mientras no tenga facturas). Anular deja la orden en el historial con su número.',
       },
@@ -565,9 +575,38 @@ const help: Record<string, HelpContent> = {
         contenido: '"Registrar recepción" anota cuánto llegó de cada artículo. Lo que llegó de menos queda marcado en la orden y en el cotejo. Se puede registrar más de una vez si llega en partes.',
       },
       {
+        titulo: 'Sumar al stock lo que llega',
+        contenido: 'Al registrar la recepción, en "Suma al stock" elegí el producto del depósito de cada artículo (si el código o el nombre coinciden, ya viene elegido). Lo recibido se suma al stock de ese producto y queda en su historial como "Compra recibida", con el número de orden. Si después corregís la cantidad o el producto, se ajusta sólo la diferencia. Los artículos que no son de stock (fletes, servicios, consumibles) dejalos en "No va al stock". Para anular una orden cuya mercadería ya se sumó, primero poné la recepción en cero.',
+      },
+      {
         titulo: 'Cotejo con la factura',
         contenido: 'Cuando llega la factura del proveedor, vinculala a la orden (desde la orden o desde la factura en Facturas a Pagar). El cotejo compara lo pedido con lo facturado, sumando todas las facturas de la orden. Si coincide, "Cotejada: cerrar la orden"; si hay diferencia, se cierra igual anotando el motivo. En la factura también se ve si coincide con su orden antes de aprobarla o pagarla.',
         veTambien: [{ texto: 'Facturas a Pagar', ruta: '/facturas' }, { texto: 'Órdenes de pago', ruta: '/ordenes-pago' }],
+      },
+    ],
+  },
+
+  // ── Comparativos de compra ──────────────────────────────────────────────────
+  '/comparativos': {
+    titulo: 'Comparativos de compra',
+    descripcion: 'Los presupuestos de varios proveedores para una misma compra, en un cuadro para decidir a quién comprarle. Lo que se elige pasa a ser la orden de compra.',
+    secciones: [
+      {
+        titulo: 'Armar el cuadro',
+        contenido: '"Nuevo comparativo": poné qué se compra y cargá los artículos con su cantidad, uno por fila. Cada proveedor es una columna: elegilo arriba y cargá el precio unitario de cada artículo; si no lo cotizó, dejalo vacío. Abajo van el IVA, el número de presupuesto, la entrega, el plazo y la forma de pago y la validez. Se puede guardar con un solo proveedor y sumar los demás a medida que mandan el presupuesto.',
+      },
+      {
+        titulo: 'Leer el cuadro',
+        contenido: 'En verde, el precio más bajo de cada artículo y el total más barato. El más barato se busca entre los que cotizaron todo; el que cotizó sólo una parte lo dice ("Cotizó 2 de 3") porque su total no es comparable. Abajo se ve cuánto saldría comprando cada artículo al que lo cotizó más barato. El PDF sale con el mismo cuadro para presentarlo.',
+      },
+      {
+        titulo: 'Elegir y armar la orden de compra',
+        contenido: [
+          '"Elegir" en la columna del proveedor (lo hace un administrador). Si no es el más barato o no cotizó todo, hay que anotar por qué; queda en el comparativo, en el PDF y en la orden. Después, "Armar orden de compra" crea la ',
+          { texto: 'orden de compra', ruta: '/ordenes-compra' },
+          ' en borrador con esos precios, el número de presupuesto y las condiciones, y los datos del proveedor de su última orden. Los artículos que ese proveedor no cotizó no se pasan. Para cambiar de opinión: anulá la orden y "Reabrir" el comparativo.',
+        ],
+        veTambien: [{ texto: 'Órdenes de compra', ruta: '/ordenes-compra' }, { texto: 'Proveedores', ruta: '/proveedores' }],
       },
     ],
   },
@@ -750,6 +789,30 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Importar la planilla de pagos',
         contenido: '"Importar planilla" lee la planilla PAGOS+CAJAS (una hoja por mes, varios bloques semanales por hoja). Cada semana entra como "De la planilla": se aprobó fuera del sistema, así que no tiene revisión por línea. La vista previa compara cada semana contra el TOTAL CAJA SEMANAL de la planilla y avisa si no coincide. Reimportar no duplica y no toca las semanas que ya se trabajan en el sistema.',
+      },
+    ],
+  },
+
+  // ── Ficha del proveedor ─────────────────────────────────────────────────────
+  '/proveedores/:id': {
+    titulo: 'Ficha del proveedor',
+    descripcion: 'Sus datos, lo que se le debe y todo lo que se le compró y pagó, en una sola pantalla.',
+    secciones: [
+      {
+        titulo: 'Cuenta del proveedor',
+        contenido: [
+          'Arriba, cuánto se le debe (lo pendiente de sus facturas), cuánto está vencido, lo facturado y lo pagado, por moneda. Las anuladas no cuentan. Debajo, sus ',
+          { texto: 'facturas', ruta: '/facturas' },
+          ' (tildá "Sólo las pendientes" para ver qué falta pagar), los pagos hechos con su medio y la orden de pago que los generó, y sus ',
+          { texto: 'órdenes de compra', ruta: '/ordenes-compra' },
+          ' y ',
+          { texto: 'órdenes de pago', ruta: '/ordenes-pago' },
+          '. Cada número abre su detalle. Lo ve quien tiene acceso a Facturas a Pagar.',
+        ],
+      },
+      {
+        titulo: 'En los eventos',
+        contenido: 'Los egresos de los eventos cargados a este proveedor y los echeqs que se le dieron. Un echeq sin evento lleva a Cheques.',
       },
     ],
   },
@@ -1099,6 +1162,7 @@ export function getHelpContent(pathname: string): HelpContent | null {
   if (/^\/eventos\/\d+\/conciliatoria/.test(pathname))        return help['/eventos/:id/conciliatoria']        ?? null;
   if (/^\/eventos\/\d+/.test(pathname))                       return help['/eventos/:id']                      ?? null;
   if (/^\/facturas\/\d+/.test(pathname))                      return help['/facturas/:id']                     ?? null;
+  if (/^\/proveedores\/\d+/.test(pathname))                   return help['/proveedores/:id']                  ?? null;
 
   return null;
 }

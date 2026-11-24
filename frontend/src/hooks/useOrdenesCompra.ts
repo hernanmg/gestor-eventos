@@ -41,6 +41,7 @@ function useInvalidar() {
   return () => {
     qc.invalidateQueries({ queryKey: KEY });
     qc.invalidateQueries({ queryKey: ['facturas'] });
+    qc.invalidateQueries({ queryKey: ['stock'] }); // la recepción suma al stock
   };
 }
 
@@ -71,7 +72,7 @@ export function useEliminarOrden() {
 export function useRecibirOrden() {
   const invalidar = useInvalidar();
   return useMutation({
-    mutationFn: ({ id, items, fecha }: { id: number; fecha?: string; items: { id: number; cantidad_recibida: number }[] }) =>
+    mutationFn: ({ id, items, fecha }: { id: number; fecha?: string; items: { id: number; cantidad_recibida: number; producto_id?: number | null }[] }) =>
       api.post(`/ordenes-compra/${id}/recibir`, { items, fecha }).then(r => r.data),
     onSuccess: invalidar,
   });

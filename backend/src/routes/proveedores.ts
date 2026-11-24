@@ -4,7 +4,7 @@ import { tenantMiddleware } from '../middleware/tenant';
 import { requireRole, requireAnyRole, ROLES } from '../middleware/requireRole';
 import { asyncHandler } from '../lib/asyncHandler';
 import {
-  list, getById, create, update, remove, buscar, toggleActivo,
+  list, getById, create, update, remove, buscar, toggleActivo, getCuenta,
 } from '../controllers/proveedores.controller';
 
 const router = Router();
@@ -18,6 +18,7 @@ router.use(tenantMiddleware);
 // buscar MUST be before /:id so Express doesn't match "buscar" as an id
 router.get('/buscar',    requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(buscar));
 router.get('/',          requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(list));
+router.get('/:id/cuenta', requireRole('ADMIN', { permiso: 'FACTURAS' }), asyncHandler(getCuenta));
 router.get('/:id',       requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(getById));
 router.post('/',         requireRole('ADMIN'), asyncHandler(create));
 router.put('/:id',       requireRole('ADMIN'), asyncHandler(update));

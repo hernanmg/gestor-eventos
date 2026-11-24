@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import type { Proveedor } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
 import TabStrip from '@/components/ui/TabStrip';
+import { tienePermiso } from '@/lib/permisos';
+import CuentaProveedor from './CuentaProveedor';
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -148,6 +150,8 @@ export default function ProveedorDetallePage() {
   const provId     = Number(id);
   const { user }   = useAuth();
   const isAdmin    = user?.rol === 'ADMIN'; // ABM de proveedores es exclusivo de ADMIN (matriz de permisos)
+  // La cuenta (facturas, saldo, pagos, órdenes) tiene el acceso de Facturas a Pagar
+  const verCuenta  = isAdmin || tienePermiso(user, 'FACTURAS');
   const [histTab,  setHistTab]  = useState<HistorialTab>('movimientos');
   const [editOpen, setEditOpen] = useState(false);
 
@@ -219,12 +223,16 @@ export default function ProveedorDetallePage() {
 
       <DatosProveedor p={proveedor} />
 
+      {verCuenta && <CuentaProveedor proveedorId={provId} />}
+
+      {verCuenta && <h2 className="text-sm font-semibold -mb-3">En los eventos</h2>}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Movimientos" value={stats.total_movimientos} />
         <StatCard label="Eventos"      value={stats.total_eventos} />
-        <StatCard label="Facturado ARS" value={formatCurrency(stats.total_facturado_ars, 'ARS')} />
-        <StatCard label="Facturado USD" value={formatCurrency(stats.total_facturado_usd, 'USD')} />
+        <StatCard label="Egresos en eventos ARS" value={formatCurrency(stats.total_facturado_ars, 'ARS')} />
+        <StatCard label="Egresos en eventos USD" value={formatCurrency(stats.total_facturado_usd, 'USD')} />
       </div>
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Echeqs emitidos"   value={stats.total_echeqs_emitidos} />
@@ -317,9 +325,9 @@ export default function ProveedorDetallePage() {
                   <tr
                     key={e.id}
                     className="cursor-pointer hover:bg-accent/30 transition-colors"
-                    onClick={() => navigate(`/eventos/${e.evento_id}`)}
+                    onClick={() => navigate(e.evento_id ? `/eventos/${e.evento_id}` : '/cheques')}
                   >
-                    <td className={cn(td, 'font-medium')}>{e.evento_nombre}</td>
+                    <td className={cn(td, 'font-medium')}>{e.evento_nombre ?? '—'}</td>
                     <td className={cn(td, 'font-mono text-xs')}>{e.numero}</td>
                     <td className={cn(td, 'text-right tabular-nums font-medium')}>{formatCurrency(e.importe, e.moneda)}</td>
                     <td className={cn(td, 'text-muted-foreground text-xs')}>{e.moneda}</td>

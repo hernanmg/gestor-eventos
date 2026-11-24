@@ -2,7 +2,7 @@ import {
   Calendar, CalendarDays, Settings, FileUp, LayoutGrid, Building2, ClipboardList, Package, FileText,
   Users, Palette, FileSignature, Wallet, ClipboardCheck, ArrowLeftRight, Truck, Landmark, Receipt,
   Building, UserCheck, Fuel, Banknote, Ambulance, FileSpreadsheet, Shirt, CreditCard,
-  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, ShoppingCart, HandCoins, type LucideIcon,
+  Route as RouteIcon, Boxes, Calculator, CalendarClock, Sigma, Megaphone, ScrollText, ShieldCheck, ShoppingCart, HandCoins, Scale, type LucideIcon,
 } from 'lucide-react';
 import { useAlertasDashboard } from '@/hooks/useDashboard';
 import { useAlertasStock, usePendientesFirma } from '@/hooks/useStock';
@@ -98,6 +98,7 @@ export function useNavModel(user: MeResponse): NavModel {
     proveedores: { to: '/proveedores',       label: 'Proveedores',        icon: Building2,      group: 'finanzas' },
     ordenes:     { to: '/ordenes-compra',    label: 'Órdenes de compra',  icon: ShoppingCart,   group: 'finanzas' },
     ordenesPago: { to: '/ordenes-pago',      label: 'Órdenes de pago',    icon: HandCoins,      group: 'finanzas' },
+    comparativos: { to: '/comparativos',     label: 'Comparativos de compra', icon: Scale,       group: 'finanzas' },
     cheques:     { to: '/cheques',           label: 'Cheques',            icon: ScrollText,     group: 'finanzas' },
     afip:        { to: '/afip-prestamos',    label: 'AFIP / Créditos',    icon: Landmark,       group: 'finanzas' },
     cierre:      { to: '/cierre-contable',   label: 'Cierre Contable',    icon: FileSpreadsheet, group: 'finanzas' },
@@ -219,6 +220,8 @@ export function useNavModel(user: MeResponse): NavModel {
     esAdmin && I.proveedores,
     // Órdenes de compra — arman borradores ADMIN y OPERADOR (ej. Jazmín pide material)
     adminOOper && I.ordenes,
+    // Comparativos de presupuestos — mismo acceso que las órdenes de compra
+    adminOOper && I.comparativos,
     // Órdenes de pago — mismo acceso que Facturas a Pagar
     (esAdmin || tienePermiso(user, 'FACTURAS')) && I.ordenesPago,
     esAdmin && I.cheques,

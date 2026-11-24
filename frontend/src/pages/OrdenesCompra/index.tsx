@@ -11,6 +11,7 @@ import {
 import { useProveedores } from '@/hooks/useProveedores';
 import { useEventos } from '@/hooks/useEvento';
 import { useAuth } from '@/hooks/useAuth';
+import { useProductos } from '@/hooks/useStock';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -21,7 +22,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import TabStrip from '@/components/ui/TabStrip';
 import { formatDate, formatCurrency } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
-import type { EstadoOrdenCompra, OrdenCompraDetalle, Moneda } from '@/types';
+import type { EstadoOrdenCompra, OrdenCompraDetalle, OrdenCompraItem, Moneda } from '@/types';
 
 const inputCls  = 'w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls  = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -226,6 +227,31 @@ function OrdenEditor({ open, orden, onClose, onGuardada }: {
   );
 }
 
+// ── Producto del stock al que se suma lo recibido ────────────────────────────
+
+const normalizar = (t: string | null | undefined) => (t ?? '').normalize('NFD').replace(new RegExp('[\u0300-\u036f]', 'g'), '').trim().toLowerCase();
+
+function ProductoStockPicker({ item, value, onChange }: { item: OrdenCompraItem; value: string; onChange: (v: string) => void }) {
+  const { data: productos = [] } = useProductos();
+  // Sugerencia: mismo código interno o del fabricante, o mismo nombre
+  useEffect(() => {
+    if (value || item.producto_id != null || !productos.length) return;
+    const cod = normalizar(item.codigo);
+    const desc = normalizar(item.descripcion);
+    const p = productos.find(p => (cod && (normalizar(p.codigo_interno) === cod || normalizar(p.codigo_externo) === cod)))
+      ?? productos.find(p => desc && (normalizar(p.nombre) === desc || normalizar(p.nombre_interno) === desc));
+    if (p) onChange(String(p.id));
+  }, [productos.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const options = useMemo(() => [
+    { value: 'none', label: '— No va al stock —' },
+    ...productos.map(p => ({ value: String(p.id), label: `${p.codigo_interno ? `${p.codigo_interno} · ` : ''}${p.nombre} (hay ${p.stock_total})` })),
+  ], [productos]);
+  return (
+    <Combobox options={options} value={value || 'none'} onChange={v => onChange(v === 'none' ? '' : v)}
+      placeholder="No va al stock" searchPlaceholder="Buscar producto…" emptyMessage="No está en el stock" className="w-full min-w-[200px] h-8 text-xs" />
+  );
+}
+
 // ── Detalle: estados, recepción y cotejo con la factura ──────────────────────
 
 function OrdenDetalle({ id, onClose, onEditar }: { id: number; onClose: () => void; onEditar: (o: OrdenCompraDetalle) => void }) {
@@ -244,6 +270,7 @@ function OrdenDetalle({ id, onClose, onEditar }: { id: number; onClose: () => vo
 
   const [recibiendo, setRecibiendo] = useState(false);
   const [recibido, setRecibido] = useState<Record<number, string>>({});
+  const [productoSel, setProductoSel] = useState<Record<number, string>>({});
   const [notasCotejo, setNotasCotejo] = useState('');
   const [facturaSel, setFacturaSel] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -251,18 +278,20 @@ function OrdenDetalle({ id, onClose, onEditar }: { id: number; onClose: () => vo
   useEffect(() => { setRecibiendo(false); setError(null); setFacturaSel(''); setNotasCotejo(o?.notas_cotejo ?? ''); }, [id, o?.estado, o?.notas_cotejo]);
 
   if (isLoading || !o) {
-    return <Dialog open onOpenChange={x => !x && onClose()}><DialogContent><p className="text-sm text-muted-foreground">Cargando…</p></DialogContent></Dialog>;
+    return <Dialog open onOpenChange={x => !x && onClose()}><DialogContent><DialogTitle className="sr-only">Cargando</DialogTitle><p className="text-sm text-muted-foreground">Cargando…</p></DialogContent></Dialog>;
   }
 
   const run = async (p: Promise<unknown>) => { setError(null); try { await p; } catch (err) { setError(getApiErrorMessage(err)); } };
   const hacer = (a: AccionOrden, confirmar?: string) => { if (confirmar && !window.confirm(confirmar)) return; run(accion.mutateAsync({ id, accion: a })); };
   const empezarRecepcion = () => {
     setRecibido(Object.fromEntries(o.items.map(i => [i.id, String(i.cantidad_recibida != null ? num(i.cantidad_recibida) : num(i.cantidad))])));
+    setProductoSel(Object.fromEntries(o.items.map(i => [i.id, i.producto_id != null ? String(i.producto_id) : ''])));
     setRecibiendo(true);
   };
-  const guardarRecepcion = () => run(recibir.mutateAsync({ id, items: o.items.map(i => ({ id: i.id, cantidad_recibida: num(recibido[i.id]) })) }).then(() => setRecibiendo(false)));
+  const guardarRecepcion = () => run(recibir.mutateAsync({ id, items: o.items.map(i => ({ id: i.id, cantidad_recibida: num(recibido[i.id]), producto_id: productoSel[i.id] ? Number(productoSel[i.id]) : null })) }).then(() => setRecibiendo(false)));
   const c = o.cotejo;
   const m = o.moneda;
+  const hayStock = o.items.some(i => i.producto_id != null);
 
   return (
     <Dialog open onOpenChange={x => !x && onClose()}>
@@ -307,6 +336,7 @@ function OrdenDetalle({ id, onClose, onEditar }: { id: number; onClose: () => vo
                 <th className="px-2 py-1.5 text-right text-xs font-medium text-muted-foreground">Precio unit.</th>
                 <th className="px-2 py-1.5 text-right text-xs font-medium text-muted-foreground">Total</th>
                 <th className="px-2 py-1.5 text-right text-xs font-medium text-muted-foreground">Recibido</th>
+                {(recibiendo || hayStock) && <th className="px-2 py-1.5 text-left text-xs font-medium text-muted-foreground">Suma al stock</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -325,17 +355,32 @@ function OrdenDetalle({ id, onClose, onEditar }: { id: number; onClose: () => vo
                         ? <input type="number" step="any" min="0" value={recibido[i.id] ?? ''} onChange={e => setRecibido(p => ({ ...p, [i.id]: e.target.value }))} className={cn(inputCls, 'w-24 text-right ml-auto')} />
                         : rec == null ? '—' : fmtCant(rec)}
                     </td>
+                    {recibiendo ? (
+                      <td className="px-2 py-1.5" data-label="Suma al stock">
+                        <ProductoStockPicker item={i} value={productoSel[i.id] ?? ''} onChange={v => setProductoSel(p => ({ ...p, [i.id]: v }))} />
+                      </td>
+                    ) : hayStock && (
+                      <td className="px-2 py-1.5 text-xs" data-label="Suma al stock">
+                        {i.producto
+                          ? <Link className="underline" to={`/stock/productos/${i.producto.id}`}>{i.producto.nombre}</Link>
+                          : <span className="text-muted-foreground">—</span>}
+                        {i.producto && !!i.cantidad_ingresada && <span className="text-green-700 ml-1">+{i.cantidad_ingresada}</span>}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr><td colSpan={4} className="px-2 py-1 text-right text-muted-foreground">Subtotal</td><td className="px-2 py-1 text-right tabular-nums">{formatCurrency(num(o.subtotal), m)}</td><td /></tr>
-              <tr><td colSpan={4} className="px-2 py-1 text-right text-muted-foreground">IVA {num(o.iva_porcentaje)}%</td><td className="px-2 py-1 text-right tabular-nums">{formatCurrency(num(o.iva), m)}</td><td /></tr>
-              <tr><td colSpan={4} className="px-2 py-1 text-right font-semibold">Total</td><td className="px-2 py-1 text-right font-semibold tabular-nums">{formatCurrency(num(o.total), m)}</td><td /></tr>
+              <tr><td colSpan={4} className="px-2 py-1 text-right text-muted-foreground">Subtotal</td><td className="px-2 py-1 text-right tabular-nums">{formatCurrency(num(o.subtotal), m)}</td><td />{(recibiendo || hayStock) && <td />}</tr>
+              <tr><td colSpan={4} className="px-2 py-1 text-right text-muted-foreground">IVA {num(o.iva_porcentaje)}%</td><td className="px-2 py-1 text-right tabular-nums">{formatCurrency(num(o.iva), m)}</td><td />{(recibiendo || hayStock) && <td />}</tr>
+              <tr><td colSpan={4} className="px-2 py-1 text-right font-semibold">Total</td><td className="px-2 py-1 text-right font-semibold tabular-nums">{formatCurrency(num(o.total), m)}</td><td />{(recibiendo || hayStock) && <td />}</tr>
             </tfoot>
           </BaseTable>
         </div>
+        {recibiendo && (
+          <p className="text-xs text-muted-foreground">Lo recibido de cada ítem con producto se suma al stock de ese producto. Si después corregís la recepción, se ajusta sólo la diferencia.</p>
+        )}
         {recibiendo && (
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setRecibiendo(false)}>Cancelar</Button>

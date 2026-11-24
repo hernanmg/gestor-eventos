@@ -270,3 +270,88 @@ export async function toggleActivo(req: Request, res: Response) {
 
   res.json(mapProv(updated));
 }
+
+// ── Cuenta del proveedor: facturas, saldo, pagos y órdenes ───────────────────
+// GET /api/proveedores/:id/cuenta — mismo acceso que Facturas a Pagar.
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const numOC = (n: number) => `OC ${String(n).padStart(6, '0')}`;
+const numOP = (n: number) => `OP ${String(n).padStart(6, '0')}`;
+
+export async function getCuenta(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const empresaId = req.empresaId!;
+  const proveedor = await prisma.proveedor.findFirst({ where: { id, deleted_at: null, ...withTenant(empresaId) }, select: { id: true } });
+  if (!proveedor) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
+
+  const [facturas, pagos, ordenesCompra, ordenesPago] = await Promise.all([
+    prisma.factura.findMany({
+      where:   { proveedor_id: id, empresa_id: empresaId, deleted_at: null },
+      orderBy: [{ fecha_emision: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true, numero_factura: true, tipo_factura: true, fecha_emision: true, fecha_vencimiento: true,
+        importe_total: true, importe_pagado: true, importe_pendiente: true, moneda: true, estado: true,
+        evento:       { select: { id: true, nombre: true } },
+        orden_compra: { select: { id: true, numero: true } },
+      },
+    }),
+    prisma.pagoFactura.findMany({
+      where:   { deleted_at: null, factura: { proveedor_id: id, empresa_id: empresaId, deleted_at: null } },
+      orderBy: [{ fecha_pago: 'desc' }, { id: 'desc' }],
+      take:    200,
+      select: {
+        id: true, fecha_pago: true, importe: true, moneda: true, medio_pago: true, referencia: true,
+        factura:    { select: { id: true, numero_factura: true, tipo_factura: true } },
+        orden_pago: { select: { id: true, numero: true } },
+      },
+    }),
+    prisma.ordenCompra.findMany({
+      where:   { proveedor_id: id, empresa_id: empresaId, deleted_at: null },
+      orderBy: [{ fecha: 'desc' }, { numero: 'desc' }],
+      select:  { id: true, numero: true, fecha: true, estado: true, total: true, moneda: true, evento: { select: { id: true, nombre: true } } },
+    }),
+    prisma.ordenPago.findMany({
+      where:   { proveedor_id: id, empresa_id: empresaId, deleted_at: null },
+      orderBy: [{ fecha: 'desc' }, { numero: 'desc' }],
+      select:  { id: true, numero: true, fecha: true, estado: true, total_facturas: true, moneda: true, concepto: true },
+    }),
+  ]);
+
+  // Hoy a medianoche UTC (las fechas de vencimiento son de calendario)
+  const ahora = new Date();
+  const hoy = new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()));
+
+  const porMoneda = new Map<string, { moneda: string; facturado: number; pagado: number; pendiente: number; vencido: number; facturas_pendientes: number }>();
+  for (const f of facturas) {
+    if (f.estado === 'ANULADA') continue;
+    const m = porMoneda.get(f.moneda) ?? { moneda: f.moneda, facturado: 0, pagado: 0, pendiente: 0, vencido: 0, facturas_pendientes: 0 };
+    const pend = Number(f.importe_pendiente);
+    m.facturado += Number(f.importe_total);
+    m.pagado    += Number(f.importe_pagado);
+    m.pendiente += pend;
+    if (pend > 0.005) {
+      m.facturas_pendientes++;
+      if (f.fecha_vencimiento && f.fecha_vencimiento < hoy) m.vencido += pend;
+    }
+    porMoneda.set(f.moneda, m);
+  }
+
+  res.json({
+    saldo: [...porMoneda.values()].map(m => ({ ...m, facturado: r2(m.facturado), pagado: r2(m.pagado), pendiente: r2(m.pendiente), vencido: r2(m.vencido) })),
+    facturas: facturas.map(f => ({
+      id: f.id, numero_factura: f.numero_factura, tipo_factura: f.tipo_factura,
+      fecha_emision: f.fecha_emision, fecha_vencimiento: f.fecha_vencimiento,
+      importe_total: Number(f.importe_total), importe_pendiente: Number(f.importe_pendiente), moneda: f.moneda, estado: f.estado,
+      vencida: f.estado !== 'ANULADA' && Number(f.importe_pendiente) > 0.005 && !!f.fecha_vencimiento && f.fecha_vencimiento < hoy,
+      evento: f.evento,
+      orden_compra: f.orden_compra ? { id: f.orden_compra.id, numero: numOC(f.orden_compra.numero) } : null,
+    })),
+    pagos: pagos.map(p => ({
+      id: p.id, fecha_pago: p.fecha_pago, importe: Number(p.importe), moneda: p.moneda, medio_pago: p.medio_pago, referencia: p.referencia,
+      factura: p.factura,
+      orden_pago: p.orden_pago ? { id: p.orden_pago.id, numero: numOP(p.orden_pago.numero) } : null,
+    })),
+    ordenes_compra: ordenesCompra.map(o => ({ id: o.id, numero: numOC(o.numero), fecha: o.fecha, estado: o.estado, total: Number(o.total), moneda: o.moneda, evento: o.evento })),
+    ordenes_pago: ordenesPago.map(o => ({ id: o.id, numero: numOP(o.numero), fecha: o.fecha, estado: o.estado, total: Number(o.total_facturas), moneda: o.moneda, concepto: o.concepto })),
+  });
+}

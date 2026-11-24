@@ -101,7 +101,7 @@ async function cargarOrden(id: number, empresaId: number) {
   return prisma.ordenCompra.findFirst({
     where: { id, empresa_id: empresaId, deleted_at: null },
     include: {
-      items:     { orderBy: { orden_item: 'asc' } },
+      items:     { orderBy: { orden_item: 'asc' }, include: { producto: { select: { id: true, nombre: true, codigo_interno: true, stock_total: true, unidad: true } } } },
       proveedor: { select: { id: true, nombre: true, cuit: true, telefono: true, email: true } },
       evento:    { select: { id: true, nombre: true } },
       facturas: {
@@ -146,16 +146,19 @@ export async function getOrdenCompra(req: Request, res: Response) {
 
 // GET /api/ordenes-compra/sugerencia?proveedor_id= — datos de la última orden a ese proveedor
 export async function sugerenciaProveedor(req: Request, res: Response) {
-  const proveedorId = Number(req.query.proveedor_id);
+  res.json(await datosUltimaOrden(req.empresaId!, Number(req.query.proveedor_id)));
+}
+
+export async function datosUltimaOrden(empresaId: number, proveedorId: number) {
   const [prov, ultima] = await Promise.all([
     prisma.proveedor.findFirst({ where: { id: proveedorId, deleted_at: null }, select: { telefono: true } }),
     prisma.ordenCompra.findFirst({
-      where:   { empresa_id: req.empresaId!, proveedor_id: proveedorId, deleted_at: null },
+      where:   { empresa_id: empresaId, proveedor_id: proveedorId, deleted_at: null },
       orderBy: { created_at: 'desc' },
       select:  { contacto: true, telefono: true, domicilio: true, ciudad: true, entrega: true, direccion_entrega: true, plazo_pago: true, forma_pago: true },
     }),
   ]);
-  res.json({ ...ultima, telefono: ultima?.telefono ?? prov?.telefono ?? null });
+  return { ...ultima, telefono: ultima?.telefono ?? prov?.telefono ?? null };
 }
 
 async function validarRelaciones(empresaId: number, proveedorId: number, eventoId: number | null | undefined) {
@@ -179,42 +182,51 @@ function datosOrden(d: z.infer<typeof ordenSchema>) {
   };
 }
 
-// POST /api/ordenes-compra — se crea en borrador con el próximo número
-export async function createOrdenCompra(req: Request, res: Response) {
-  const parsed = ordenSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+export type OrdenCompraInput = z.input<typeof ordenSchema>;
+
+// Alta en borrador con el próximo número. La usan el POST y el comparativo de
+// presupuestos (al armar la orden con la cotización elegida).
+export async function crearOrdenCompra(input: unknown, empresaId: number, usuarioId: number, ip?: string):
+  Promise<{ status: number; body: any }> {
+  const parsed = ordenSchema.safeParse(input);
+  if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0]?.message ?? 'Datos inválidos', detail: parsed.error.flatten().fieldErrors } };
   const d = parsed.data;
   const fecha = parseFechaCalendario(d.fecha);
-  if (!fecha) { res.status(400).json({ error: 'Fecha inválida' }); return; }
-  const err = await validarRelaciones(req.empresaId!, d.proveedor_id, d.evento_id);
-  if (err) { res.status(404).json({ error: err }); return; }
+  if (!fecha) return { status: 400, body: { error: 'Fecha inválida' } };
+  const err = await validarRelaciones(empresaId, d.proveedor_id, d.evento_id);
+  if (err) return { status: 404, body: { error: err } };
   const c = calcular(d.items, d.iva_porcentaje ?? 21);
 
   // Reintento por si dos usuarios crean a la vez y chocan en el número
-  for (let intento = 0; intento < 3; intento++) {
+  for (let intento = 0; ; intento++) {
     try {
       const orden = await prisma.$transaction(async tx => {
-        const max = await tx.ordenCompra.aggregate({ where: { empresa_id: req.empresaId! }, _max: { numero: true } });
+        const max = await tx.ordenCompra.aggregate({ where: { empresa_id: empresaId }, _max: { numero: true } });
         return tx.ordenCompra.create({
           data: {
-            ...withTenant(req.empresaId!), numero: (max._max.numero ?? 0) + 1, fecha,
+            ...withTenant(empresaId), numero: (max._max.numero ?? 0) + 1, fecha,
             ...datosOrden(d), subtotal: c.subtotal, iva: c.iva, total: c.total,
-            created_by: req.user!.id,
+            created_by: usuarioId,
             items: { create: c.filas },
           },
         });
       });
       await registrarAuditoria({
-        usuarioId: req.user!.id, empresaId: req.empresaId, eventoId: d.evento_id ?? undefined, accion: 'CREATE', entidad: 'OrdenCompra', entidadId: orden.id,
-        descripcion: `Creó la ${formatearNumeroOC(orden.numero)} (borrador) por ${c.total}`, ip: req.ip, tx: prisma,
+        usuarioId, empresaId, eventoId: d.evento_id ?? undefined, accion: 'CREATE', entidad: 'OrdenCompra', entidadId: orden.id,
+        descripcion: `Creó la ${formatearNumeroOC(orden.numero)} (borrador) por ${c.total}`, ip, tx: prisma,
       });
-      res.status(201).json({ ...orden, numero_formateado: formatearNumeroOC(orden.numero) });
-      return;
+      return { status: 201, body: { ...orden, numero_formateado: formatearNumeroOC(orden.numero) } };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && intento < 2) continue;
       throw e;
     }
   }
+}
+
+// POST /api/ordenes-compra — se crea en borrador con el próximo número
+export async function createOrdenCompra(req: Request, res: Response) {
+  const r = await crearOrdenCompra(req.body, req.empresaId!, req.user!.id, req.ip);
+  res.status(r.status).json(r.body);
 }
 
 // PUT /api/ordenes-compra/:id — sólo en borrador
@@ -266,6 +278,9 @@ export async function cambiarEstadoOrden(req: Request, res: Response) {
   if ((req.params.accion === 'volver-borrador' || req.params.accion === 'anular') && o._count.facturas > 0) {
     res.status(409).json({ error: 'La orden tiene facturas vinculadas: desvinculalas primero.' }); return;
   }
+  if (req.params.accion === 'anular' && await prisma.ordenCompraItem.count({ where: { orden_id: id, cantidad_ingresada: { not: 0 } } })) {
+    res.status(409).json({ error: 'Lo recibido ya se sumó al stock: corregí la recepción a cero antes de anular.' }); return;
+  }
   const upd = await prisma.ordenCompra.update({
     where: { id },
     data: {
@@ -283,10 +298,19 @@ export async function cambiarEstadoOrden(req: Request, res: Response) {
 
 const recibirSchema = z.object({
   fecha: z.string().optional(),
-  items: z.array(z.object({ id: z.number().int(), cantidad_recibida: z.number().min(0) })).min(1),
+  items: z.array(z.object({
+    id: z.number().int(),
+    cantidad_recibida: z.number().min(0),
+    // Producto del stock al que se suma lo recibido. undefined = no cambia; null = no va al stock
+    producto_id: z.number().int().nullable().optional(),
+  })).min(1),
 });
 
-// POST /api/ordenes-compra/:id/recibir — control de lo que llegó (se puede repetir)
+class StockNegativo extends Error {}
+
+// POST /api/ordenes-compra/:id/recibir — control de lo que llegó (se puede repetir).
+// Lo recibido de los ítems con producto se suma al stock general; al corregir
+// la recepción se ajusta sólo la diferencia (cantidad_ingresada lleva la cuenta).
 export async function recibirOrden(req: Request, res: Response) {
   const id = Number(req.params.id);
   const parsed = recibirSchema.safeParse(req.body);
@@ -294,24 +318,77 @@ export async function recibirOrden(req: Request, res: Response) {
   const o = await prisma.ordenCompra.findFirst({ where: { id, ...withTenant(req.empresaId!), deleted_at: null }, include: { items: true } });
   if (!o) { res.status(404).json({ error: 'Orden de compra no encontrada' }); return; }
   if (o.estado !== 'EMITIDA' && o.estado !== 'RECIBIDA') { res.status(409).json({ error: 'Sólo se registra la recepción de una orden emitida' }); return; }
-  const ids = new Set(o.items.map(i => i.id));
-  if (parsed.data.items.some(i => !ids.has(i.id))) { res.status(400).json({ error: 'Ítem que no es de esta orden' }); return; }
+  const porId = new Map(o.items.map(i => [i.id, i]));
+  if (parsed.data.items.some(i => !porId.has(i.id))) { res.status(400).json({ error: 'Ítem que no es de esta orden' }); return; }
   const fecha = parsed.data.fecha ? parseFechaCalendario(parsed.data.fecha) : null;
+  const numero = formatearNumeroOC(o.numero);
 
-  await prisma.$transaction([
-    ...parsed.data.items.map(i => prisma.ordenCompraItem.update({ where: { id: i.id }, data: { cantidad_recibida: i.cantidad_recibida } })),
-    prisma.ordenCompra.update({ where: { id }, data: { estado: 'RECIBIDA', recibida_at: fecha ?? o.recibida_at ?? new Date() } }),
-  ]);
+  // Productos elegidos: tienen que ser del stock de esta empresa
+  const prodIds = [...new Set(parsed.data.items.map(i => i.producto_id).filter((x): x is number => x != null))];
+  const productos = prodIds.length
+    ? await prisma.producto.findMany({ where: { id: { in: prodIds }, empresa_id: req.empresaId!, deleted_at: null }, select: { id: true } })
+    : [];
+  if (productos.length !== prodIds.length) { res.status(400).json({ error: 'Producto de stock que no existe en esta empresa' }); return; }
+
+  // Ajustes de stock: cuánto sumar o restar a cada producto
+  type Ajuste = { producto_id: number; cantidad: number; item: string };
+  const ajustes: Ajuste[] = [];
+  const updatesItems: { id: number; data: Prisma.OrdenCompraItemUncheckedUpdateInput }[] = [];
+  for (const i of parsed.data.items) {
+    const it = porId.get(i.id)!;
+    const productoNuevo = i.producto_id === undefined ? it.producto_id : i.producto_id;
+    const etiqueta = `ítem ${it.orden_item} (${it.descripcion})`;
+    if (productoNuevo != null && !Number.isInteger(i.cantidad_recibida)) {
+      res.status(400).json({ error: `La cantidad recibida del ${etiqueta} tiene que ser entera para sumarla al stock` }); return;
+    }
+    const nuevaIngresada = productoNuevo != null ? i.cantidad_recibida : 0;
+    if (it.producto_id != null && it.producto_id !== productoNuevo) {
+      // Cambió el producto (o se sacó del stock): se devuelve lo del anterior
+      if (it.cantidad_ingresada !== 0) ajustes.push({ producto_id: it.producto_id, cantidad: -it.cantidad_ingresada, item: etiqueta });
+      if (productoNuevo != null && nuevaIngresada !== 0) ajustes.push({ producto_id: productoNuevo, cantidad: nuevaIngresada, item: etiqueta });
+    } else if (productoNuevo != null) {
+      const delta = nuevaIngresada - it.cantidad_ingresada;
+      if (delta !== 0) ajustes.push({ producto_id: productoNuevo, cantidad: delta, item: etiqueta });
+    }
+    updatesItems.push({ id: it.id, data: { cantidad_recibida: i.cantidad_recibida, producto_id: productoNuevo, cantidad_ingresada: nuevaIngresada } });
+  }
+
+  try {
+    await prisma.$transaction(async tx => {
+      for (const u of updatesItems) await tx.ordenCompraItem.update({ where: { id: u.id }, data: u.data });
+      await tx.ordenCompra.update({ where: { id }, data: { estado: 'RECIBIDA', recibida_at: fecha ?? o.recibida_at ?? new Date() } });
+      for (const a of ajustes) {
+        const p = await tx.producto.update({ where: { id: a.producto_id }, data: { stock_total: { increment: a.cantidad } }, select: { nombre: true, stock_total: true } });
+        if (p.stock_total < 0) throw new StockNegativo(`El stock de "${p.nombre}" quedaría en ${p.stock_total}: corregí primero el stock del producto`);
+        await tx.movimientoStock.create({
+          data: {
+            producto_id: a.producto_id,
+            tipo:        a.cantidad > 0 ? 'INGRESO_COMPRA' : 'AJUSTE_COMPRA',
+            cantidad:    a.cantidad,
+            fecha:       fecha ?? new Date(),
+            descripcion: `${a.cantidad > 0 ? 'Recepción' : 'Corrección de la recepción'} de la ${numero}, ${a.item}`,
+            created_by:  req.user!.id,
+          },
+        });
+      }
+    });
+  } catch (e) {
+    if (e instanceof StockNegativo) { res.status(409).json({ error: e.message }); return; }
+    throw e;
+  }
+
   const faltan = o.items.filter(it => {
     const r = parsed.data.items.find(x => x.id === it.id)?.cantidad_recibida ?? (it.cantidad_recibida != null ? Number(it.cantidad_recibida) : null);
     return r != null && r < Number(it.cantidad);
   }).length;
+  const alStock = ajustes.reduce((n, a) => n + a.cantidad, 0);
   await registrarAuditoria({
     usuarioId: req.user!.id, empresaId: req.empresaId, accion: 'UPDATE', entidad: 'OrdenCompra', entidadId: id,
-    descripcion: `Registró la recepción de la ${formatearNumeroOC(o.numero)}${faltan ? ` — ${faltan} ítem(s) con faltante` : ' — completa'}`, ip: req.ip, tx: prisma,
+    descripcion: `Registró la recepción de la ${numero}${faltan ? ` — ${faltan} ítem(s) con faltante` : ' — completa'}${ajustes.length ? ` — stock ${alStock >= 0 ? '+' : ''}${alStock}` : ''}`,
+    ip: req.ip, tx: prisma,
   });
   const full = await cargarOrden(id, req.empresaId!);
-  res.json({ ...full, numero_formateado: formatearNumeroOC(o.numero), cotejo: cotejo(full!) });
+  res.json({ ...full, numero_formateado: numero, cotejo: cotejo(full!) });
 }
 
 // POST /api/ordenes-compra/:id/cerrar — factura cotejada
