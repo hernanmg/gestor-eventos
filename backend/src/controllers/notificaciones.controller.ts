@@ -9,6 +9,7 @@ import { novedadesParaAvisar } from './novedades.controller';
 import { avisoChequesViernes } from './cheques.controller';
 import { avisoChequesRecibidos } from './chequesRecibidos.controller';
 import { resumenSegurosPersonal } from './segurosPersonal.controller';
+import { alertasCambios } from '../lib/cambiosVehiculo';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -826,6 +827,11 @@ async function resolveDocumentacionFlota(req: Request): Promise<NotificacionItem
       descripcion: `Sale el ${fmtUTC(c.fecha_salida)}${c.destino ? ` → ${c.destino}` : ''} — control sin revisar`,
       urgencia: (c.fecha_salida < hoy ? 'critical' : 'warning') as Urgencia,
       link: '/flota?tab=salidas', fecha: c.fecha_salida,
+    })),
+    // Neumáticos (rotación por km) y baterías
+    ...(await alertasCambios(empresaId, hoy)).map(a => ({
+      id: a.id, tipo: a.tipo, titulo: a.titulo, descripcion: a.descripcion,
+      urgencia: a.urgencia as Urgencia, link: '/flota?tab=neumaticos', fecha: a.fecha,
     })),
   ];
 }

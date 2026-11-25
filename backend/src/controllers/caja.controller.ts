@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { recalcularSaldosCaja } from '../lib/recalcularSaldos';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
+import { vincularCombustibleCaja, sincronizarCargaDeCaja, ErrorCombustibleCaja } from '../lib/combustibleCaja';
 
 // Comprobante de un movimiento de caja cargado desde la vista de Andrea (Caja
 // del mes) — mismo patrón que uploadDocumento en afipPrestamos.controller.ts.
@@ -70,6 +71,14 @@ function mapMovCaja(m: any, tabMap?: Map<string, string>) {
     saldo_corriente:    Number(m.saldo_corriente),
     movimiento_origen:  movOrigen,
     movimientos_origen: undefined,
+    // Gasto de combustible atado a un vehículo (Logística 12)
+    carga_combustible:  m.carga_combustible && !m.carga_combustible.deleted_at ? {
+      id:        m.carga_combustible.id,
+      camion:    m.carga_combustible.camion,
+      litros:    m.carga_combustible.litros != null ? Number(m.carga_combustible.litros) : null,
+      evento:    m.carga_combustible.evento ?? null,
+      tipo_combustible: m.carga_combustible.tipo_combustible,
+    } : null,
     // Nunca mandar el binario del comprobante en el listado — sólo su nombre,
     // el front pide el archivo aparte vía GET /movimientos-caja/:id/comprobante.
     comprobante_data:   undefined,
@@ -539,6 +548,7 @@ export async function listMovimientosCaja(req: Request, res: Response) {
         // (resumen agrupado por evento) — el endpoint scoped a evento no lo
         // necesita, ya sabe de antemano en qué evento está parado.
         evento: { select: { id: true, nombre: true } },
+        carga_combustible: { select: { id: true, litros: true, tipo_combustible: true, deleted_at: true, camion: { select: { id: true, codigo: true, patente: true } }, evento: { select: { id: true, nombre: true } } } },
         movimientos_origen: {
           where:  { deleted_at: null },
           select: {
@@ -744,6 +754,7 @@ export async function updateMovimientoCaja(req: Request, res: Response) {
       },
     });
     await recalcularSaldosCaja(existing.cuenta_id, tx);
+    await sincronizarCargaDeCaja(tx, id);
     await registrarAuditoria({
       usuarioId:    req.user!.id,
       empresaId:    req.empresaId,
@@ -778,6 +789,7 @@ export async function deleteMovimientoCaja(req: Request, res: Response) {
       data:  { deleted_at: new Date(), updated_by: req.user!.id },
     });
     await recalcularSaldosCaja(existing.cuenta_id, tx);
+    await sincronizarCargaDeCaja(tx, id);
     await registrarAuditoria({
       usuarioId:  req.user!.id,
       empresaId:  req.empresaId,
@@ -793,6 +805,27 @@ export async function deleteMovimientoCaja(req: Request, res: Response) {
   });
 
   res.json({ message: 'Movimiento de caja eliminado correctamente' });
+}
+
+// ── Combustible pagado de la caja → vehículo y evento (Logística 12) ─────────
+
+const combustibleCajaSchema = z.object({
+  camion_id:        z.number().int().positive().nullable(),
+  litros:           z.number().positive().nullable().optional(),
+  evento_id:        z.number().int().positive().nullable().optional(),
+  tipo_combustible: z.enum(['NAFTA_SUPER', 'NAFTA_PREMIUM', 'DIESEL', 'GNC']).optional(),
+});
+
+export async function putCombustibleCaja(req: Request, res: Response) {
+  const parsed = combustibleCajaSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return; }
+  try {
+    const carga = await vincularCombustibleCaja(Number(req.params.id), parsed.data as any, req.empresaId!, req.user!.id);
+    res.json({ carga_id: carga?.id ?? null });
+  } catch (e) {
+    if (e instanceof ErrorCombustibleCaja) { res.status(400).json({ error: e.message }); return; }
+    throw e;
+  }
 }
 
 // ── Transferencia ─────────────────────────────────────────────────────────────

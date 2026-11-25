@@ -111,6 +111,19 @@ export default function ProductoDetallePage() {
         <Stat label="Stock mínimo"  value={producto.stock_minimo} />
       </div>
 
+      {(disp?.cruces_solapados?.length ?? 0) > 0 && (
+        <div className="rounded border bg-muted/30 p-3 text-sm space-y-1">
+          <p className="font-medium">Material con terceros</p>
+          {disp!.cruces_solapados!.map(c => (
+            <p key={c.cruce_id} className="text-muted-foreground">
+              {c.tipo === 'ALQUILER_DADO' || c.tipo === 'PRESTAMO_DADO' ? `${c.cantidad} afuera, ${c.tipo === 'ALQUILER_DADO' ? 'alquiladas' : 'prestadas'} a ${c.tercero}` : `${c.cantidad} de ${c.tercero} (${c.tipo === 'ALQUILER_TOMADO' ? 'alquiladas' : 'prestadas'})`}
+              {c.fecha_hasta ? ` · vuelven el ${new Date(c.fecha_hasta).toLocaleDateString('es-AR', { timeZone: 'UTC' })}` : ''}
+            </p>
+          ))}
+          <p className="text-xs text-muted-foreground">Ya están descontadas (o sumadas) en "Disponible hoy".</p>
+        </div>
+      )}
+
       {/* Asignaciones activas */}
       <div>
         <h2 className="text-sm font-semibold mb-2">Asignaciones activas</h2>

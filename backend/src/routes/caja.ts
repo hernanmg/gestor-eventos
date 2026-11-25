@@ -8,7 +8,7 @@ import {
   updateCuenta, deleteCuenta, updateEstadoCuenta,
   listMovimientosCaja, createMovimientoCaja,
   updateMovimientoCaja, deleteMovimientoCaja,
-  conciliar, uploadComprobanteMovCaja, descargarComprobanteMovCaja,
+  conciliar, uploadComprobanteMovCaja, descargarComprobanteMovCaja, putCombustibleCaja,
 } from '../controllers/caja.controller';
 
 // Comprobante opcional en "Agregar movimiento" (vista de Andrea) — si el
@@ -42,5 +42,7 @@ movCajaRouter.use(auth);
 movCajaRouter.use(tenantMiddleware);
 movCajaRouter.put('/:id',              requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(updateMovimientoCaja));
 movCajaRouter.delete('/:id',           requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(deleteMovimientoCaja));
+// Gasto de combustible → vehículo y evento (crea/actualiza la carga de combustible)
+movCajaRouter.put('/:id/combustible',  requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(putCombustibleCaja));
 movCajaRouter.post('/:id/conciliar',   requireAnyRole(ROLES.ADMIN_OPERADOR), asyncHandler(conciliar));
 movCajaRouter.get('/:id/comprobante',  requireAnyRole(ROLES.TODOS_MENOS_RESTRINGIDOS), asyncHandler(descargarComprobanteMovCaja));

@@ -7,6 +7,8 @@ import CajaDelMesTab from './CajaDelMesTab';
 import SiniestrosTab from './SiniestrosTab';
 import ExcedenteHorasTab from './ExcedenteHorasTab';
 import PagosSemanalesTab from './PagosSemanalesTab';
+import { useAuth } from '@/hooks/useAuth';
+import { EMPRESAS } from '@/lib/empresasConstants';
 
 type Seccion = 'caja' | 'pagos-semanales' | 'siniestros' | 'excedente-horas';
 
@@ -29,6 +31,21 @@ const NAV: { key: Seccion; label: string; icon: typeof ClipboardList }[] = [
 ];
 
 export default function GastosOperativosPage() {
+  const { user } = useAuth();
+  // Enjoy no tiene la caja del mes de Andrea: sólo los pagos semanales (Male).
+  const esDos57 = user?.empresaId === EMPRESAS.DOS57;
+  if (!esDos57) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
+        <PageHeader title="Pagos semanales" subtitle="El resumen de pagos de la semana para que Matías lo apruebe línea por línea." />
+        <PagosSemanalesTab />
+      </div>
+    );
+  }
+  return <GastosDos57 />;
+}
+
+function GastosDos57() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [seccion, setSeccion] = useState<Seccion>(tabParam && SECCION_QUERY[tabParam] ? SECCION_QUERY[tabParam] : 'caja');

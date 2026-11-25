@@ -670,6 +670,8 @@ export interface MovimientoCaja {
   comprobante_nombre:   string | null;
   tiene_comprobante:    boolean;
   liquidacion_admin_id?: number | null;
+  // Gasto de combustible atado a un vehículo (Combustible → carga pagada de la caja)
+  carga_combustible?:   { id: number; camion: { id: number; codigo: string; patente: string | null }; litros: number | null; evento: { id: number; nombre: string } | null; tipo_combustible: TipoCombustible } | null;
   orden:                number;
   transferencia_par_id: number | null;
   movimiento_origen:    MovimientoOrigen | null;
@@ -1211,9 +1213,30 @@ export interface PersonaSeguro {
 
 export interface PedidoProductorGrupo {
   poliza: { id: number; tipo: TipoSeguroPersonal; aseguradora: string; numero_poliza: string | null; productor: string | null; productor_contacto: string | null };
-  altas:  { cobertura_id: number; empleado: string; documento: string | null; fecha: string }[];
+  altas:  { cobertura_id: number; empleado: string; documento: string | null; fecha: string; hasta: string | null; evento: string | null }[];
   bajas:  { cobertura_id: number; empleado: string; documento: string | null; fecha: string }[];
   texto:  string;
+}
+
+// Altas por evento o viaje (AP de los eventuales)
+export interface PersonaEventoSeguro {
+  empleado_id:   number;
+  empleado:      string;
+  apodo:         string | null;
+  documento:     string | null;
+  categoria:     string;
+  estado:        string;
+  fuentes:       string[];
+  dias:          number;
+  desde:         string | null;
+  hasta:         string | null;
+  cobertura:     { id: number; fecha_alta: string; fecha_baja: string | null; evento_id: number | null; alta_informada_at: string | null; poliza: { id: number; tipo: TipoSeguroPersonal; aseguradora: string } } | null;
+  estado_seguro: 'CUBIERTO' | 'EN_PARTE' | 'SIN_SEGURO';
+  tiene_abierta: boolean;
+}
+export interface SeguroEventoRespuesta {
+  evento:   { id: number; nombre: string; lugar: string | null; desde: string | null; hasta: string | null };
+  personas: PersonaEventoSeguro[];
 }
 
 export interface SugerenciasLegajo {
@@ -1273,7 +1296,7 @@ export interface ServicioTaller {
 
 export interface AlertaFlotaItem {
   id:       string;
-  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO' | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE';
+  tipo:     'SEGURO_VENCE' | 'PATENTE_VENCE' | 'TALLER_DEMORADO' | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'ROTACION_NEUMATICOS' | 'CAMBIO_BATERIA';
   titulo:   string;
   fecha:    string;
   color:    string;
@@ -1388,7 +1411,10 @@ export interface CargaCombustible {
   camion:               { id: number; codigo: string; descripcion: string | null; patente: string | null } | null;
   fecha:                string;
   tipo_combustible:     TipoCombustible;
-  litros:               number;
+  // Null sólo en una carga que viene de un gasto de caja sin los litros del ticket
+  litros:               number | null;
+  // Pagada de una caja: el monto y la fecha los manda ese gasto
+  movimiento_caja_id?:  number | null;
   precio_por_litro:     number | null;
   monto_total:          number;
   estacion_nombre:      string | null;
@@ -1697,7 +1723,75 @@ export interface Disponibilidad {
     fecha_retorno: string | null;
     estado:        EstadoAsignacion;
   }[];
+  cruce_dado?:   number;
+  cruce_tomado?: number;
+  cruces_solapados?: { cruce_id: number; tercero: string; tipo: TipoCruceMaterial; cantidad: number; fecha_desde: string; fecha_hasta: string | null }[];
   en_quiebre: boolean;
+}
+
+// ── Cruce de material con terceros (Depósito 5) ──────────────────────────────
+export type TipoCruceMaterial = 'ALQUILER_DADO' | 'PRESTAMO_DADO' | 'ALQUILER_TOMADO' | 'PRESTAMO_TOMADO' | 'VENTA' | 'COMPRA';
+export type EstadoCruceMaterial = 'ABIERTO' | 'CERRADO' | 'ANULADO';
+
+export interface CruceMaterialItem {
+  id:                 number;
+  producto_id:        number | null;
+  producto:           { id: number; nombre: string; codigo_externo: string | null; codigo_interno: string | null } | null;
+  descripcion:        string;
+  cantidad:           number;
+  cantidad_devuelta:  number;
+  valor_unitario_eur: number | null;
+}
+
+export interface CruceMaterial {
+  id:                  number;
+  tercero:             string;
+  tipo:                TipoCruceMaterial;
+  estado:              EstadoCruceMaterial;
+  fecha_desde:         string;
+  fecha_hasta:         string | null;
+  fecha_cierre:        string | null;
+  evento_id:           number | null;
+  evento:              { id: number; nombre: string } | null;
+  referencia:          string | null;
+  tasa_euro:           number | null;
+  porcentaje_alquiler: number | null;
+  notas:               string | null;
+  import_key:          string | null;
+  items:               CruceMaterialItem[];
+  temporal:            boolean;
+  piezas:              number;
+  pendientes:          number;
+  total_eur:           number | null;
+  total_pesos:         number | null;
+  alquiler_mensual:    number | null;
+}
+
+export interface CruceMaterialInput {
+  tercero:              string;
+  tipo:                 TipoCruceMaterial;
+  fecha_desde:          string;
+  fecha_hasta?:         string | null;
+  evento_id?:           number | null;
+  referencia?:          string | null;
+  tasa_euro?:           number | null;
+  porcentaje_alquiler?: number | null;
+  notas?:               string | null;
+  import_key?:          string | null;
+  items: { id?: number; producto_id: number | null; descripcion: string; cantidad: number; valor_unitario_eur: number | null }[];
+}
+
+export interface HojaPlanillaCruce {
+  hoja:                string;
+  titulo:              string | null;
+  columna_cantidad:    string;
+  tasa_euro:           number | null;
+  fecha:               string | null;
+  porcentaje_alquiler: number | null;
+  sin_producto:        number;
+  import_key:          string;
+  ya_cargada:          boolean;
+  items: { descripcion: string; cantidad: number; valor_unitario_eur: number | null; referencia: string | null; producto_id: number | null; producto_nombre: string | null; como: 'codigo' | 'nombre' | 'precio' | null }[];
 }
 
 export interface SugerenciaStock {
@@ -2738,7 +2832,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO' | 'TAREA_EVENTO' | 'CRUCE_MATERIAL';
 
 export type UrgenciaCalendario = 'normal' | 'warning' | 'critical';
 
@@ -3860,4 +3954,63 @@ export interface ChequesRecibidosRespuesta {
 
 export interface ChequeRecibidoInput {
   formato: FormatoCheque; numero: string; banco?: string | null; importe: number; fecha_pago: string; fecha_emision?: string | null; notas?: string | null;
+}
+
+// ── Neumáticos y baterías por vehículo (Flota, Logística 8) ──────────────────
+export type TipoCambioVehiculo = 'NEUMATICOS' | 'ROTACION' | 'BATERIA';
+
+export interface CambioVehiculo {
+  id:            number;
+  camion_id:     number;
+  tipo:          TipoCambioVehiculo;
+  fecha:         string | null;
+  km:            number | null;
+  detalle:       string | null;
+  proximo_km:    number | null;
+  proxima_fecha: string | null;
+  importe:       number | null;
+  proveedor:     string | null;
+  notas:         string | null;
+  import_key:    string | null;
+}
+
+export interface EstadoCambiosVehiculo {
+  camion:          { id: number; codigo: string; descripcion: string | null; patente: string | null; tipo_vehiculo: string | null };
+  km_actual:       number | null;
+  neumaticos:      CambioVehiculo | null;
+  rotacion:        (CambioVehiculo & { proxima_km: number | null; faltan_km: number | null }) | null;
+  bateria:         (CambioVehiculo & { dias_para_cambio: number | null; meses: number | null }) | null;
+  alerta_rotacion: 'VENCIDA' | 'PROXIMA' | null;
+  alerta_bateria:  'VENCIDA' | 'PROXIMA' | null;
+  historial:       CambioVehiculo[];
+}
+
+export interface CambiosVehiculoRespuesta {
+  vehiculos:        EstadoCambiosVehiculo[];
+  rotacion_cada_km: number;
+}
+
+export interface CambioVehiculoInput {
+  camion_id:      number;
+  tipo:           TipoCambioVehiculo;
+  fecha?:         string | null;
+  km?:            number | null;
+  detalle?:       string | null;
+  proximo_km?:    number | null;
+  proxima_fecha?: string | null;
+  importe?:       number | null;
+  proveedor?:     string | null;
+  notas?:         string | null;
+}
+
+export interface ImportCambiosResultado {
+  aplicado: boolean;
+  filas: {
+    hoja: string; fila: number; vehiculo: string; camion: { id: number; codigo: string } | null; aproximado: boolean;
+    acciones: { tipo: TipoCambioVehiculo; fecha: string | null; km: number | null; detalle: string | null; proximo_km: number | null; notas: string | null; estado: 'NUEVO' | 'EXISTE' }[];
+    km_actual: number | null;
+  }[];
+  sin_vehiculo: { hoja: string; fila: number; vehiculo: string }[];
+  nuevos: number; existentes: number;
+  km_actualizados: { codigo: string; antes: number | null; despues: number }[];
 }

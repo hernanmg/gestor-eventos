@@ -22,6 +22,16 @@ import {
   listCunas, getCuna, createCuna, updateCuna, deleteCuna,
   addProductoCuna, removeProductoCuna,
 } from '../controllers/cuna.controller';
+import {
+  uploadPlanillaCruce, listCruces, createCruce, updateCruce, devolverCruce, anularCruce, leerPlanilla,
+} from '../controllers/cruceMaterial.controller';
+
+function planillaCruceMiddleware(req: any, res: any, next: any) {
+  uploadPlanillaCruce.single('file')(req, res, (err: any) => {
+    if (err) { res.status(400).json({ error: err.message ?? 'Error al subir el archivo' }); return; }
+    next();
+  });
+}
 
 const router = Router();
 router.use(auth);
@@ -62,6 +72,14 @@ router.post('/transferencia', requireRole('OPERADOR'), asyncHandler(transferenci
 // ── Importador catálogo Layher / foto de producto ─────────────────────────────
 router.post('/importar/catalogo', requireRole('OPERADOR'), uploadCatalogo.single('archivo'), asyncHandler(importarCatalogo));
 router.post('/importar/foto/:id', requireRole('OPERADOR'), uploadFoto.single('foto'),        asyncHandler(importarFoto));
+
+// ── Cruce de material con terceros (alquileres, préstamos, compras y ventas) ──
+router.get('/cruces',                   asyncHandler(listCruces));
+router.post('/cruces/leer-planilla',    requireRole('OPERADOR'), planillaCruceMiddleware, asyncHandler(leerPlanilla));
+router.post('/cruces',                  requireRole('OPERADOR'), asyncHandler(createCruce));
+router.put('/cruces/:id',               requireRole('OPERADOR'), asyncHandler(updateCruce));
+router.post('/cruces/:id/devolucion',   requireRole('OPERADOR'), asyncHandler(devolverCruce));
+router.post('/cruces/:id/anular',       requireRole('OPERADOR'), asyncHandler(anularCruce));
 
 // ── Camiones ──────────────────────────────────────────────────────────────────
 router.get('/camiones',           asyncHandler(listCamiones));

@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { registrarAuditoria } from '../lib/auditoria';
 import { withTenant } from '../lib/tenant';
 import { EMPRESAS } from '../lib/empresasConstants';
+import { efectoCruces } from '../lib/cruceMaterial';
 import type { UbicacionStock, EstadoAsignacion, OrigenTransfer, Prisma } from '@prisma/client';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -108,7 +109,10 @@ export async function calcDisponibilidad(
   });
 
   const cantidad_comprometida = solapadas.reduce((a, s) => a + s.cantidad, 0);
-  const disponible = producto.stock_total - cantidad_comprometida;
+  // Cruce de material con terceros: lo alquilado o prestado a otro no está; lo
+  // que otro nos alquila o presta, sí (mientras dure).
+  const cruce = await efectoCruces(productoId, fechaDesde, fechaHasta);
+  const disponible = producto.stock_total + cruce.tomado - cruce.dado - cantidad_comprometida;
 
   return {
     producto_id: producto.id,
@@ -116,6 +120,9 @@ export async function calcDisponibilidad(
     stock_total: producto.stock_total,
     stock_minimo: producto.stock_minimo,
     cantidad_comprometida,
+    cruce_dado:   cruce.dado,
+    cruce_tomado: cruce.tomado,
+    cruces_solapados: cruce.cruces,
     disponible,
     asignaciones_solapadas: solapadas.map(s => ({
       asignacion_id: s.id,

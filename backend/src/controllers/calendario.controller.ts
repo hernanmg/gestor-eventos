@@ -17,7 +17,7 @@ export type TipoCalendario =
   | 'SINIESTRO_PENDIENTE' | 'EXCEDENTE_PENDIENTE' | 'ACTIVO_STOCK_BAJO' | 'SGR_VENCE'
   | 'SINIESTRO_VEHICULO_PENDIENTE'
   | 'TECNICA_VENCE' | 'CARNET_VENCE' | 'MULTA_VENCE' | 'CONTROL_SALIDA'
-  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO';
+  | 'NOVEDAD' | 'MONTAJE' | 'CUMPLEANOS' | 'SEGURO_PERSONAL_VENCE' | 'PAGO_FIJO' | 'CHEQUE_RECIBIDO' | 'TAREA_EVENTO' | 'CRUCE_MATERIAL';
 
 type Urgencia = 'normal' | 'warning' | 'critical';
 
@@ -72,6 +72,8 @@ const COLORES: Record<TipoCalendario, string> = {
   SEGURO_PERSONAL_VENCE: '#F59E0B',
   PAGO_FIJO:            '#0F766E',
   CHEQUE_RECIBIDO:      '#15803D',
+  TAREA_EVENTO:         '#4338CA',
+  CRUCE_MATERIAL:       '#0F766E',
 };
 
 // Claves aceptadas por ?tipos= — plural/legible en la URL, mapeado al tipo interno.
@@ -108,6 +110,8 @@ const TIPO_QUERY_MAP: Record<string, TipoCalendario> = {
   seguros_personal: 'SEGURO_PERSONAL_VENCE',
   pagos_fijos:     'PAGO_FIJO',
   cheques_recibidos: 'CHEQUE_RECIBIDO',
+  tareas_evento:   'TAREA_EVENTO',
+  cruces_material: 'CRUCE_MATERIAL',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1138,6 +1142,97 @@ async function resolveMontajes(empresaFiltro: number | undefined, desde: Date, h
   return items;
 }
 
+// Tareas del cronograma de cada evento: las de Operación (DOS57, por rubro y
+// fase) y el cronograma de Producción (Enjoy). Un ítem por evento y día, con
+// las tareas en metadata, así un cronograma por hora no llena la celda.
+// Atrasada = día pasado con tareas sin hacer.
+const FASE_LABEL: Record<string, string> = { VIAJE_IDA: 'Viaje de ida', MONTAJE: 'Montaje', EVENTO: 'Evento', DESMONTAJE: 'Desmontaje', VIAJE_VUELTA: 'Viaje de vuelta' };
+
+async function resolveTareasEvento(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const tareas = await prisma.cronogramaEvento.findMany({
+    where: {
+      deleted_at: null,
+      fecha: { gte: desde, lte: hasta },
+      evento: { deleted_at: null },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: {
+      evento: { select: { id: true, nombre: true } },
+      empresa: { select: { nombre: true } },
+      rubro_evento: { select: { rubro: { select: { nombre: true } } } },
+    },
+    orderBy: [{ fecha: 'asc' }, { hora: 'asc' }, { orden: 'asc' }],
+  });
+
+  const grupos = new Map<string, typeof tareas>();
+  for (const t of tareas) {
+    const k = `${t.evento_id}|${t.fecha.toISOString().slice(0, 10)}`;
+    (grupos.get(k) ?? grupos.set(k, []).get(k)!).push(t);
+  }
+
+  return [...grupos.values()].map(g => {
+    const t0 = g[0];
+    const pendientes = g.filter(t => t.estado !== 'HECHA').length;
+    const operacion = g.some(t => t.rubro_evento_id != null);
+    const pasado = t0.fecha < hoy;
+    const titulo = g.length === 1
+      ? `${t0.hora ? `${t0.hora} ` : ''}${t0.actividad} — ${t0.evento.nombre}`
+      : `${g.length} tareas${pendientes ? ` · ${pendientes} sin hacer` : ' · hechas'} — ${t0.evento.nombre}`;
+    return {
+      id:             `tarea-${t0.evento_id}-${t0.fecha.toISOString().slice(0, 10)}`,
+      tipo:           'TAREA_EVENTO' as const,
+      titulo,
+      fecha:          t0.fecha,
+      empresa_id:     t0.empresa_id,
+      empresa_nombre: t0.empresa.nombre,
+      color:          pendientes === 0 ? '#6B7280' : COLORES.TAREA_EVENTO,
+      urgencia:       pendientes && pasado ? 'critical' as const : pendientes && t0.fecha.getTime() === hoy.getTime() ? 'warning' as const : 'normal' as const,
+      metadata:       {
+        evento_id: t0.evento_id, evento_nombre: t0.evento.nombre, operacion, pendientes, total: g.length, atrasada: pendientes > 0 && pasado,
+        tareas: g.map(t => ({
+          id: t.id, hora: t.hora, actividad: t.actividad, estado: t.estado,
+          responsable: t.responsable, rubro: t.rubro_evento?.rubro.nombre ?? null, fase: t.fase ? FASE_LABEL[t.fase] : null,
+        })),
+      },
+    };
+  });
+}
+
+// Cruce de material con terceros (Depósito 5): el día en que tiene que volver
+// lo alquilado o prestado a otro, o en que hay que devolver lo que otro nos
+// alquiló o prestó. Si ya pasó y sigue afuera, sale en rojo el día de hoy.
+async function resolveCrucesMaterial(empresaFiltro: number | undefined, desde: Date, hasta: Date, hoy: Date): Promise<CalendarioItem[]> {
+  const cruces = await prisma.cruceMaterial.findMany({
+    where: {
+      deleted_at: null, estado: 'ABIERTO', fecha_hasta: { not: null, lte: hasta },
+      tipo: { in: ['ALQUILER_DADO', 'PRESTAMO_DADO', 'ALQUILER_TOMADO', 'PRESTAMO_TOMADO'] },
+      ...(empresaFiltro !== undefined ? { empresa_id: empresaFiltro } : {}),
+    },
+    include: { items: { select: { cantidad: true, cantidad_devuelta: true } }, empresa: { select: { nombre: true } } },
+  });
+  const items: CalendarioItem[] = [];
+  for (const c of cruces) {
+    const vence = c.fecha_hasta!;
+    const vencido = vence < hoy;
+    const fecha = vencido ? hoy : vence;
+    if (fecha < desde || fecha > hasta) continue;
+    const pendientes = c.items.reduce((a, i) => a + Math.max(0, i.cantidad - i.cantidad_devuelta), 0);
+    const dado = c.tipo === 'ALQUILER_DADO' || c.tipo === 'PRESTAMO_DADO';
+    items.push({
+      id:             `cruce-${c.id}`,
+      tipo:           'CRUCE_MATERIAL' as const,
+      titulo:         dado ? `Vuelve material de ${c.tercero} (${pendientes} piezas)` : `Devolver material a ${c.tercero} (${pendientes} piezas)`,
+      fecha,
+      empresa_id:     c.empresa_id,
+      empresa_nombre: c.empresa.nombre,
+      color:          COLORES.CRUCE_MATERIAL,
+      urgencia:       vencido ? 'critical' as const : vence.getTime() === hoy.getTime() ? 'warning' as const : 'normal' as const,
+      metadata:       { cruce_id: c.id, tercero: c.tercero, tipo: c.tipo, pendientes, fecha_hasta: vence, vencido, dado },
+    });
+  }
+  return items;
+}
+
 // Cumpleaños del personal activo (Mayra). La fecha de nacimiento es de
 // calendario (UTC); el 29/2 cae el 28/2 los años no bisiestos. El rango
 // puede cruzar el año, así que se prueba cada año que toca.
@@ -1268,6 +1363,10 @@ export async function getCalendario(req: Request, res: Response) {
   if (tiposActivos.has('NOVEDAD'))        tareas.push(resolveNovedades(empresaFiltro, desde, hasta));
   // Montaje/desmontaje: igual que los eventos, lo ven todos.
   if (tiposActivos.has('MONTAJE'))        tareas.push(resolveMontajes(empresaFiltro, desde, hasta));
+  // Tareas del cronograma (Operación / Producción): igual que los eventos, las ven todos.
+  if (tiposActivos.has('TAREA_EVENTO'))   tareas.push(resolveTareasEvento(empresaFiltro, desde, hasta, hoyUTC));
+  // Cruce de material: enlaza a /stock (ADMIN y OPERADOR).
+  if (tiposActivos.has('CRUCE_MATERIAL') && isAdminOOperador) tareas.push(resolveCrucesMaterial(empresaFiltro, desde, hasta, hoyUTC));
   // Cumpleaños: el link va al legajo en /rrhh (sólo ADMIN), mismo criterio que JORNADA.
   if (tiposActivos.has('CUMPLEANOS') && isAdmin) tareas.push(resolveCumpleanos(empresaFiltro, desde, hasta, hoyUTC));
 

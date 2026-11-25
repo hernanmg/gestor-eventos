@@ -9,6 +9,8 @@ import type { CalendarioItem, TipoCalendario } from '@/types';
 export const TIPO_LABEL: Record<TipoCalendario, string> = {
   EVENTO:               'Eventos',
   MONTAJE:              'Montaje / desmontaje',
+  TAREA_EVENTO:         'Tareas de eventos',
+  CRUCE_MATERIAL:       'Material con terceros',
   FACTURA_VENCE:        'Facturas',
   ECHEQ_COBRO:          'Echeqs',
   JORNADA:              'Jornadas',
@@ -44,6 +46,8 @@ export const TIPO_LABEL: Record<TipoCalendario, string> = {
 export const COLORES: Record<TipoCalendario, string> = {
   EVENTO:               '#1E3A5F',
   MONTAJE:              '#5B7BA6',
+  TAREA_EVENTO:         '#4338CA',
+  CRUCE_MATERIAL:       '#0F766E',
   FACTURA_VENCE:        '#DC2626',
   ECHEQ_COBRO:          '#F59E0B',
   JORNADA:              '#065F46',
@@ -106,6 +110,8 @@ export function getDetailLink(item: CalendarioItem): string {
     case 'CONTROL_SALIDA': return '/flota?tab=salidas';
     case 'NOVEDAD':        return `/novedades?abrir=${m.novedad_id}`;
     case 'MONTAJE':        return `/eventos/${m.evento_id}`;
+    case 'TAREA_EVENTO':   return `/eventos/${m.evento_id}?tab=${m.operacion ? 'operacion' : 'produccion'}`;
+    case 'CRUCE_MATERIAL': return `/stock?tab=cruces&cruce=${m.cruce_id}`;
     case 'SGR_VENCE':      return '/afip-prestamos?tab=sgr';
     case 'GASTO_ESPACIO_VENCE': return `/espacios-compartidos/${m.espacio_id}`;
     case 'EXCEDENTE_PENDIENTE': return '/gastos-operativos?tab=excedente-horas';
@@ -145,6 +151,13 @@ export function metadataResumen(item: CalendarioItem): string[] {
     case 'FACTURA_EMITIDA_VENCE': return [`Saldo pendiente: ${m.moneda} ${Number(m.saldo_pendiente).toLocaleString('es-AR')}`];
     case 'SINIESTRO_VEHICULO_PENDIENTE': return [`N° ${m.numero_siniestro ?? '—'}`, `${m.dias_sin_actividad} días sin actualizar`];
     case 'MULTA_VENCE':    return [`Monto: ${Number(m.monto).toLocaleString('es-AR')}`];
+    case 'TAREA_EVENTO': {
+      const ts = (m.tareas ?? []) as { hora: string | null; actividad: string; estado: string; responsable: string | null; rubro: string | null }[];
+      const marca = (e: string) => (e === 'HECHA' ? '✓ ' : e === 'EN_CURSO' ? '◐ ' : '○ ');
+      const lineas = ts.slice(0, 4).map(t => `${marca(t.estado)}${t.hora ? `${t.hora} ` : ''}${t.actividad}${t.rubro ? ` (${t.rubro})` : ''}${t.responsable ? ` · ${t.responsable}` : ''}`);
+      return [...(m.atrasada ? ['Atrasada: quedaron tareas sin hacer'] : []), ...lineas, ...(ts.length > 4 ? [`y ${ts.length - 4} más`] : [])];
+    }
+    case 'CRUCE_MATERIAL': return [`${m.pendientes} pieza${m.pendientes === 1 ? '' : 's'} sin devolver`, ...(m.vencido ? [`Tenía que volver el ${new Date(m.fecha_hasta).toLocaleDateString('es-AR', { timeZone: 'UTC' })}`] : [])];
     case 'MONTAJE':        return [m.fase === 'MONTAJE' ? 'Armado previo al evento' : 'Desarme posterior al evento', ...(m.lugar ? [`Lugar: ${m.lugar}`] : [])];
     case 'SGR_VENCE':      return m.estado_vinculacion ? [`Vinculación: ${String(m.estado_vinculacion).toLowerCase()}`] : [];
     case 'GASTO_ESPACIO_VENCE': return [`Monto: $${Number(m.monto).toLocaleString('es-AR')}`];

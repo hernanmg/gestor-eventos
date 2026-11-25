@@ -120,7 +120,7 @@ const EMPTY: FormData = {
 function formFromCarga(c: CargaCombustible): FormData {
   return {
     camion_id: String(c.camion_id), fecha: c.fecha.slice(0, 10), tipo_combustible: c.tipo_combustible,
-    litros: String(c.litros), precio_por_litro: c.precio_por_litro != null ? String(c.precio_por_litro) : '',
+    litros: c.litros != null ? String(c.litros) : '', precio_por_litro: c.precio_por_litro != null ? String(c.precio_por_litro) : '',
     monto_total: String(c.monto_total), estacion_nombre: c.estacion_nombre ?? '',
     km_actual: c.km_actual != null ? String(c.km_actual) : '', evento_id: c.evento_id ? String(c.evento_id) : '',
     cuenta_corriente_id: c.cuenta_corriente_id ? String(c.cuenta_corriente_id) : '',
@@ -486,7 +486,10 @@ export default function CargasTab() {
                         <td className="px-3 py-2.5 text-muted-foreground">{formatDate(c.fecha)}</td>
                         <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{c.numero_comprobante ?? '-'}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{c.tipo_movimiento ?? '-'}</td>
-                        <td className="px-3 py-2.5 font-mono font-medium">{c.camion?.codigo ?? <span className="text-muted-foreground italic">sin vehículo</span>}</td>
+                        <td className="px-3 py-2.5 font-mono font-medium">
+                          {c.camion?.codigo ?? <span className="text-muted-foreground italic">sin vehículo</span>}
+                          {c.movimiento_caja_id != null && <span title="Pagada de la caja: el monto y la fecha se cambian desde ese gasto" className="ml-1.5 rounded bg-sky-50 px-1 py-0.5 font-sans text-[10px] font-normal text-sky-800">Caja</span>}
+                        </td>
                         <td className="px-3 py-2.5">{c.camion ? `${formatLitros(c.litros)} L` : '-'}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{c.precio_por_litro != null ? formatCurrency(c.precio_por_litro) : '-'}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{c.pagos != null ? formatCurrency(c.pagos) : '-'}</td>
@@ -508,7 +511,7 @@ export default function CargasTab() {
                               </Button>
                             )}
                             <Button variant="ghost" size="icon" onClick={() => { setEditing(c); setDialogOpen(true); }} title="Editar"><Pencil size={14} /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>
+                            {c.movimiento_caja_id == null && <Button variant="ghost" size="icon" onClick={() => handleDelete(c)} className="text-destructive hover:text-destructive" title="Eliminar"><Trash2 size={14} /></Button>}
                           </div>
                         </td>
                       </tr>

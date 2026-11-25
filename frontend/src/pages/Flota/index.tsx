@@ -9,10 +9,11 @@ import TallerTab from './TallerTab';
 import CarnetsTab from './CarnetsTab';
 import ControlesSalidaTab from './ControlesSalidaTab';
 import MultasTab from './MultasTab';
+import NeumaticosTab from './NeumaticosTab';
 import SiniestrosVehiculoPanel from '@/components/siniestros/SiniestrosVehiculoPanel';
 import { useAuth } from '@/hooks/useAuth';
 
-type FlotaTab = 'vehiculos' | 'seguros' | 'patentes' | 'taller' | 'siniestros' | 'salidas' | 'carnets' | 'multas';
+type FlotaTab = 'vehiculos' | 'seguros' | 'patentes' | 'taller' | 'siniestros' | 'salidas' | 'carnets' | 'multas' | 'neumaticos';
 
 export default function FlotaPage() {
   const { user } = useAuth();
@@ -36,6 +37,7 @@ export default function FlotaPage() {
           { key: 'seguros',   label: 'Seguros' },
           { key: 'patentes',  label: 'Patentes y Peajes' },
           { key: 'taller',    label: 'Taller mecánico' },
+          { key: 'neumaticos', label: 'Neumáticos y baterías' },
           { key: 'siniestros', label: 'Siniestros' },
           { key: 'salidas',   label: 'Control de salida' },
           { key: 'carnets',   label: 'Carnets' },
@@ -47,6 +49,7 @@ export default function FlotaPage() {
       {tab === 'seguros'   && <SegurosTab />}
       {tab === 'patentes'  && <PatentesPeajesTab focusVehiculoId={vehiculoParam ? Number(vehiculoParam) : null} />}
       {tab === 'taller'    && <TallerTab />}
+      {tab === 'neumaticos' && <NeumaticosTab canEdit={canEdit} />}
       {tab === 'siniestros' && <SiniestrosVehiculoPanel canEdit={canEdit} />}
       {tab === 'salidas'   && <ControlesSalidaTab canEdit={canEdit} />}
       {tab === 'carnets'   && <CarnetsTab canEdit={canEdit} />}

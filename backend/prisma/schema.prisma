@@ -343,6 +343,8 @@ model Empresa {
   ordenesPago            OrdenPago[]
   pagosFijos             PagoFijo[]
   chequesRecibidos       ChequeRecibido[]
+  cambiosVehiculo        CambioVehiculo[]
+  crucesMaterial         CruceMaterial[]
   coberturasEmpleado     CoberturaEmpleado[]
   cuotasSeguroVehiculo   CuotaSeguroVehiculo[]
 }
@@ -473,6 +475,8 @@ model Evento {
   accesos                EventoAcceso[]
   asignaciones_stock     AsignacionStock[]
   asignaciones_prestadas AsignacionStock[]       @relation("StockPrestado")
+  cruces_material        CruceMaterial[]
+  coberturas_seguro      CoberturaEmpleado[]
   facturas               Factura[]
   jornadas               Jornada[]
   liquidaciones          Liquidacion[]
@@ -998,13 +1002,14 @@ model MovimientoCaja {
   updated_by           Int?
 
   // Movimientos de egreso/ingreso que originaron este movimiento de caja
-  movimientos_origen Movimiento[]    @relation("MovimientoOrigenCaja")
+  movimientos_origen Movimiento[]      @relation("MovimientoOrigenCaja")
   // Echeqs cobrados que liquidaron en este movimiento bancario
-  echeqs_cobrados    Echeq[]         @relation("EcheqCobradoCaja")
+  echeqs_cobrados    Echeq[]           @relation("EcheqCobradoCaja")
   // Pago fijo del mes que se asentó en esta cuenta (Finanzas → Pagos fijos)
   pago_fijo_mes      PagoFijoMes?
   // Cheque recibido que se acreditó o se vendió en esta cuenta
   cheque_recibido    ChequeRecibido?
+  carga_combustible  CargaCombustible?
 
   // Sueldo administrativo que generó este egreso — un empleado con split
   // entre empresas genera varios MovimientoCaja (uno por empresa) a partir
@@ -1454,6 +1459,7 @@ model Producto {
   movimientos      MovimientoStock[]
   cunas            CunaProducto[]
   itemsOrdenCompra OrdenCompraItem[]
+  itemsCruce       CruceMaterialItem[]
 
   @@unique([codigo_interno, empresa_id])
   @@unique([codigo_externo, empresa_id])
@@ -1579,6 +1585,7 @@ model Camion {
   multas               Multa[]
   controles_salida     ControlSalidaVehiculo[]
   novedades            Novedad[]
+  cambios              CambioVehiculo[]
 
   @@unique([codigo, empresa_id])
 }
@@ -1744,6 +1751,44 @@ model ServicioTaller {
   created_by          Int?
 }
 
+// ─── NEUMÁTICOS Y BATERÍAS (Logística 8) ─────────────────────────────────────
+// Planilla NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR de Santi, hojas CAMBIO DE
+// NEUMATICOS y CAMBIO DE BATERIA. Cada fila es un cambio en un vehículo:
+// cubiertas nuevas, una rotación (por km: la planilla la hace cada 10.000 km)
+// o una batería. El estado de cada vehículo es el último de cada tipo.
+enum TipoCambioVehiculo {
+  NEUMATICOS
+  ROTACION
+  BATERIA
+}
+
+model CambioVehiculo {
+  id            Int                @id @default(autoincrement())
+  empresa_id    Int
+  empresa       Empresa            @relation(fields: [empresa_id], references: [id])
+  camion_id     Int
+  camion        Camion             @relation(fields: [camion_id], references: [id])
+  tipo          TipoCambioVehiculo
+  // Calendario (medianoche UTC). Puede faltar: la planilla anota las
+  // rotaciones sólo por km y algunas cubiertas sin fecha.
+  fecha         DateTime?
+  km            Int?
+  detalle       String? // "4 cubiertas Bridgestone 265/65 R17", "Varta 12V/110"
+  proximo_km    Int? // próxima rotación
+  proxima_fecha DateTime? // próximo cambio (baterías)
+  importe       Decimal?           @db.Decimal(12, 2)
+  proveedor     String?
+  notas         String?
+  import_key    String?
+  created_at    DateTime           @default(now())
+  updated_at    DateTime           @updatedAt
+  deleted_at    DateTime?
+  created_by    Int?
+
+  @@unique([empresa_id, import_key])
+  @@index([camion_id, tipo])
+}
+
 // ─── COMBUSTIBLE (flota — pantalla de Santi/Nico) ────────────────────────────
 // Relevamiento: la carga real en la estación (YPF, cuenta corriente) NO
 // registra km/tipo de combustible — eso se pide acá como mejora nueva, no
@@ -1781,7 +1826,9 @@ model CargaCombustible {
   // Datos de la carga
   fecha            DateTime
   tipo_combustible TipoCombustible @default(DIESEL)
-  litros           Decimal         @db.Decimal(10, 3) // 3 decimales, igual que la planilla real (ej. 781,103 L)
+  // 3 decimales, igual que la planilla real (ej. 781,103 L). Null sólo en una
+  // carga que viene de un gasto de caja sin los litros anotados en el ticket.
+  litros           Decimal?        @db.Decimal(10, 3)
   precio_por_litro Decimal?        @db.Decimal(10, 2)
   monto_total      Decimal         @db.Decimal(12, 2)
 
@@ -1837,6 +1884,12 @@ model CargaCombustible {
   // Responsable de una "carga extra" (pagada de su caja chica) — columna
   // RESPONSABLE de la planilla real. Null en cargas de cuenta corriente.
   responsable_nombre String?
+
+  // Gasto de combustible pagado de una caja (Caja Global, Caja del mes de
+  // Andrea, cajas chicas): la carga se crea desde ese movimiento para atarlo
+  // al vehículo y al evento. El monto y la fecha siguen al movimiento.
+  movimiento_caja_id Int?            @unique
+  movimiento_caja    MovimientoCaja? @relation(fields: [movimiento_caja_id], references: [id])
 
   // Comprobante
   comprobante_data   Bytes?
@@ -3665,6 +3718,10 @@ model CoberturaEmpleado {
   fecha_baja        DateTime? // null = sigue cubierto
   alta_informada_at DateTime? // cuándo se le pidió el alta al productor
   baja_informada_at DateTime?
+  // Alta por un evento o viaje (AP de eventuales): va con su "hasta" y el
+  // pedido al productor la manda como un solo renglón "del … al …".
+  evento_id         Int?
+  evento            Evento?        @relation(fields: [evento_id], references: [id])
   notas             String?
   created_at        DateTime       @default(now())
   updated_at        DateTime       @updatedAt
@@ -4709,4 +4766,68 @@ model ChequeRecibido {
 
   @@unique([empresa_id, import_key])
   @@index([empresa_id, fecha_pago])
+}
+
+// ── Cruce de material con terceros (Depósito 5) ──────────────────────────────
+// Material Layher que DOS57 alquila o presta a otro (Zamora, Agesta, Airasca,
+// Jofre…) o que toma de otro por un tiempo, y lo que se compra o vende entre
+// ellos. Los alquileres y préstamos abiertos cambian lo disponible mientras
+// duran; la compra y la venta cambian el stock del producto una sola vez.
+enum TipoCruceMaterial {
+  ALQUILER_DADO // se lo alquilamos a un tercero: sale del stock por un tiempo
+  PRESTAMO_DADO
+  ALQUILER_TOMADO // un tercero nos alquila: se suma por un tiempo
+  PRESTAMO_TOMADO
+  VENTA // se resta del stock
+  COMPRA // se suma al stock
+}
+
+enum EstadoCruceMaterial {
+  ABIERTO // alquiler o préstamo en curso (con piezas sin devolver)
+  CERRADO // devuelto del todo, o compra/venta aplicada
+  ANULADO
+}
+
+model CruceMaterial {
+  id                  Int                 @id @default(autoincrement())
+  empresa_id          Int
+  empresa             Empresa             @relation(fields: [empresa_id], references: [id])
+  tercero             String
+  tipo                TipoCruceMaterial
+  estado              EstadoCruceMaterial @default(ABIERTO)
+  fecha_desde         DateTime // fecha de calendario
+  fecha_hasta         DateTime? // devolución prevista
+  fecha_cierre        DateTime? // cuándo volvió todo (o se aplicó la compra/venta)
+  evento_id           Int?
+  evento              Evento?             @relation(fields: [evento_id], references: [id])
+  referencia          String? // remito o comprobante
+  tasa_euro           Decimal?            @db.Decimal(12, 2) // pesos por euro
+  porcentaje_alquiler Decimal?            @db.Decimal(5, 2) // % mensual sobre el valor en euros
+  notas               String?
+  import_key          String? // "<archivo>|<hoja>" cuando sale de una planilla
+  items               CruceMaterialItem[]
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+  deleted_at          DateTime?
+  created_by          Int?
+  updated_by          Int?
+
+  @@unique([empresa_id, import_key])
+  @@index([empresa_id, estado])
+}
+
+model CruceMaterialItem {
+  id                 Int           @id @default(autoincrement())
+  cruce_id           Int
+  cruce              CruceMaterial @relation(fields: [cruce_id], references: [id], onDelete: Cascade)
+  producto_id        Int? // sin producto: queda anotado pero no mueve el stock
+  producto           Producto?     @relation(fields: [producto_id], references: [id])
+  descripcion        String
+  cantidad           Int
+  cantidad_devuelta  Int           @default(0)
+  valor_unitario_eur Decimal?      @db.Decimal(12, 2)
+  orden              Int           @default(0)
+
+  @@index([cruce_id])
+  @@index([producto_id])
 }

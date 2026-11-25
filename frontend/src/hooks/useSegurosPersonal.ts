@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { PolizaPersonal, PersonaSeguro, PedidoProductorGrupo, SugerenciasLegajo, TipoSeguroPersonal } from '@/types';
+import type { PolizaPersonal, PersonaSeguro, PedidoProductorGrupo, SugerenciasLegajo, TipoSeguroPersonal, SeguroEventoRespuesta } from '@/types';
 
 // Seguro del personal (ART/AP) — /api/seguros-personal
 const KEY = ['seguros-personal'] as const;
@@ -126,6 +126,23 @@ export function useMarcarPedido() {
   return useMutation({
     mutationFn: (d: { altas: number[]; bajas: number[] }) => api.post('/seguros-personal/pedido-productor/marcar', d).then(r => r.data),
     onSuccess:  invalidar,
+  });
+}
+
+export function useSeguroEvento(eventoId: number | null) {
+  return useQuery({
+    queryKey: [...KEY, 'evento', eventoId],
+    queryFn:  () => api.get<SeguroEventoRespuesta>(`/seguros-personal/evento/${eventoId}`).then(r => r.data),
+    enabled:  !!eventoId,
+  });
+}
+
+export function useAltasEvento() {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: ({ eventoId, ...d }: { eventoId: number; poliza_id: number; items: { empleado_id: number; desde: string; hasta: string }[] }) =>
+      api.post<{ creadas: number; errores: string[] }>(`/seguros-personal/evento/${eventoId}/altas`, d).then(r => r.data),
+    onSuccess: invalidar,
   });
 }
 

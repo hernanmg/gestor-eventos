@@ -334,7 +334,7 @@ export async function updateCombustible(req: Request, res: Response) {
   const parsed = cargaUpdateSchema.safeParse({
     ...b,
     camion_id:           b.camion_id           !== undefined ? Number(b.camion_id) : undefined,
-    litros:              b.litros              !== undefined ? parseFloat(b.litros) : undefined,
+    litros:              b.litros !== undefined && b.litros !== '' && b.litros !== null ? parseFloat(b.litros) : undefined,
     precio_por_litro:    b.precio_por_litro    !== undefined ? (b.precio_por_litro ? parseFloat(b.precio_por_litro) : null) : undefined,
     monto_total:         b.monto_total         !== undefined ? parseFloat(b.monto_total) : undefined,
     km_actual:           b.km_actual           !== undefined ? (b.km_actual ? Number(b.km_actual) : null) : undefined,
@@ -347,6 +347,17 @@ export async function updateCombustible(req: Request, res: Response) {
     res.status(400).json({ error: 'Datos inválidos', detail: parsed.error.flatten().fieldErrors }); return;
   }
   const d = parsed.data;
+
+  // Carga que sale de un gasto de caja: el monto, la fecha y el vehículo se
+  // manejan desde la caja (la carga los sigue); acá sólo km, estación y notas.
+  if (existing.movimiento_caja_id) {
+    const cambiaMonto  = d.monto_total !== undefined && Math.abs(d.monto_total - Number(existing.monto_total)) > 0.005;
+    const cambiaFecha  = d.fecha !== undefined && parseFechaUTC(d.fecha).getTime() !== existing.fecha.getTime();
+    const cambiaCamion = d.camion_id !== undefined && d.camion_id !== existing.camion_id;
+    if (cambiaMonto || cambiaFecha || cambiaCamion) {
+      res.status(400).json({ error: 'Esta carga sale de un gasto de caja: el monto, la fecha y el vehículo se cambian desde la caja.' }); return;
+    }
+  }
 
   const camionId = d.camion_id ?? existing.camion_id;
   const fecha    = d.fecha ? parseFechaUTC(d.fecha) : existing.fecha;
@@ -412,6 +423,9 @@ export async function deleteCombustible(req: Request, res: Response) {
 
   if (existing.cuenta_corriente_id) {
     res.status(400).json({ error: 'No se puede eliminar una carga con cuenta corriente vinculada. Editala en su lugar.' }); return;
+  }
+  if (existing.movimiento_caja_id) {
+    res.status(400).json({ error: 'Esta carga sale de un gasto de caja: para sacarla, quitá el vehículo desde ese gasto en la caja.' }); return;
   }
 
   await prisma.cargaCombustible.update({ where: { id }, data: { deleted_at: new Date() } });

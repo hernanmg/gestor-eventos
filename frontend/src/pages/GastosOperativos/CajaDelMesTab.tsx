@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { CategoriaAndrea, MovimientoCaja } from '@/types';
 import TabStrip from '@/components/ui/TabStrip';
+import { CombustibleCajaChip, CombustibleCajaDialog, esGastoCombustible } from '@/components/domain/CombustibleCaja';
 
 // Orden de tabs preferido, calcado del Excel real (CAJAS_JULIO-2026.xlsx) —
 // cualquier otra cuenta de empresa que exista (o se cree más adelante) se
@@ -214,6 +215,7 @@ function MovimientoDrawer({
 }) {
   const cuentaId = movimiento.cuenta_id;
   const deleteMov = useDeleteMovimientoCuenta(cuentaId);
+  const [combustible, setCombustible] = useState(false);
   const esIngreso = Number(movimiento.debe) > 0;
   const tipoLabel = esIngreso ? 'Ingreso' : (TIPO_OPTIONS.find(t => t.value === movimiento.categoria_andrea)?.label ?? 'Gastos Varios');
 
@@ -240,6 +242,7 @@ function MovimientoDrawer({
           {row('Monto', <span className={esIngreso ? 'text-green-700 font-medium' : 'font-medium'}>{formatCurrency(esIngreso ? movimiento.debe : movimiento.haber)}</span>)}
           {row('Saldo luego del movimiento', formatCurrency(movimiento.saldo_corriente))}
           {row('Responsable', movimiento.responsable_nombre ?? '—')}
+          {esGastoCombustible(movimiento) && row('Vehículo', <CombustibleCajaChip mov={movimiento} canEdit={canEdit} onAbrir={() => setCombustible(true)} />)}
           {row('Comprobante', movimiento.referencia ?? '—')}
           {row('Comprobante', movimiento.tiene_comprobante
             ? <a href={comprobanteMovCajaUrl(movimiento.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-link hover:underline"><Download size={12} /> Descargar</a>
@@ -247,6 +250,7 @@ function MovimientoDrawer({
           {movimiento.movimiento_origen && row('Movimiento vinculado', `${movimiento.movimiento_origen.concepto ?? ''} (rubro ${movimiento.movimiento_origen.rubro_nombre ?? '—'})`)}
           {movimiento.liquidacion_admin_id && row('Liquidación vinculada', <a href="/rrhh?tab=sueldos-admin" className="text-link hover:underline">Ver en Sueldos Admin</a>)}
         </div>
+        {combustible && <CombustibleCajaDialog mov={movimiento} onClose={() => setCombustible(false)} onSaved={onClose} />}
         {canEdit && (
           <div className="flex justify-end gap-2 pt-2 border-t mt-2">
             <Button variant="outline" size="sm" onClick={onEdit}><Pencil size={13} className="mr-1.5" /> Editar</Button>

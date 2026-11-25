@@ -451,7 +451,7 @@ export async function aprobarPendientes(req: Request, res: Response) {
 
 const GRUPO_CATEGORIA: Record<string, string> = {
   FOFI: 'EQUIPO FOFI', NESTORAS: 'EQUIPO NESTOR', EXTRANJERO: 'EQUIPO EXTRANJEROS',
-  JORNALERO: 'GRUPO DOS57 JORNALEROS', ARMADOR: 'GRUPO ARMADORES', CAPITAN: 'GRUPO CAPITANES',
+  JORNALERO: 'GRUPO {EMPRESA} JORNALEROS', ARMADOR: 'GRUPO ARMADORES', CAPITAN: 'GRUPO CAPITANES',
   CHOFER: 'CHOFERES', SERENO: 'SERENOS', TECNICO: 'TÉCNICOS', OTRO: 'OTROS',
 };
 
@@ -480,6 +480,8 @@ export async function sugerencias(req: Request, res: Response) {
   const desde = new Date(r.semana_desde.getTime() - 7 * MS_DIA);
   const hastaExcl = new Date(r.semana_hasta.getTime() + MS_DIA);
 
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { nombre: true } });
+  const nombreEmpresa = /enjoy/i.test(empresa?.nombre ?? '') ? 'ENJOY' : /dos\s*57/i.test(empresa?.nombre ?? '') ? 'DOS57' : (empresa?.nombre ?? '').toUpperCase();
   const refs = await prisma.lineaResumenPago.findMany({
     where: { deleted_at: null, origen_ref: { not: null }, resumen: { deleted_at: null, ...withTenant(empresaId) } },
     select: { origen_ref: true },
@@ -516,7 +518,7 @@ export async function sugerencias(req: Request, res: Response) {
     const personas = [...new Set(ls.map(l => nombreCorto(l.empleado)))];
     out.push({
       tipo: 'JORNALEROS',
-      detalle: `${GRUPO_CATEGORIA[cat] ?? cat} - ${personas.length} PAX (Sem. ${fmtDia(ini)} al ${fmtDia(fin)})`,
+      detalle: `${(GRUPO_CATEGORIA[cat] ?? cat).replace('{EMPRESA}', nombreEmpresa)} - ${personas.length} PAX (Sem. ${fmtDia(ini)} al ${fmtDia(fin)})`,
       importe: r2(ls.reduce((a, l) => a + Number(l.total_a_cobrar), 0)),
       observacion: personas.join(' / ').slice(0, 300),
       origen_ref: `liq:${ls.map(l => l.id).join(',')}`,
@@ -529,7 +531,7 @@ export async function sugerencias(req: Request, res: Response) {
   if (ants.length) {
     out.push({
       tipo: 'ADELANTO',
-      detalle: 'ADELANTOS DOS57',
+      detalle: `ADELANTOS ${nombreEmpresa}`,
       importe: r2(ants.reduce((a, x) => a + Number(x.monto), 0)),
       observacion: ants.map(a => `${nombreCorto(a.empleado)} $${Number(a.monto).toLocaleString('es-AR')}`).join(' / ').slice(0, 300),
       origen_ref: `ant:${ants.map(a => a.id).join(',')}`,
@@ -544,7 +546,7 @@ export async function sugerencias(req: Request, res: Response) {
     const movs = await prisma.movimientoCaja.findMany({
       where: {
         cuenta_id: { in: cuentas.map(c => c.id) }, deleted_at: null, haber: { gt: 0 },
-        fecha: { gte: desde, lt: hastaExcl }, transferencia_par_id: null, liquidacion_admin_id: null,
+        fecha: { gte: desde, lt: hastaExcl }, transferencia_par_id: null, liquidacion_admin_id: null, liquidacion_id: null,
       },
       select: { id: true, cuenta_id: true, haber: true, categoria_andrea: true, descripcion: true },
     });

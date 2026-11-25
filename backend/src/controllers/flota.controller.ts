@@ -10,6 +10,7 @@ import { importarPizarraFlota, generarPlantillaPizarra, parsePlanillaPizarra } f
 import { procesarCuadroSeguros } from '../lib/cuadroSegurosImporter';
 import { normalizarPatente } from '../lib/normalizarPatente';
 import { estadoVencimiento, hoyUTC, parseFechaCalendario, requiereTecnica, DIAS_AVISO_VENCIMIENTO } from '../lib/vencimientos';
+import { alertasCambios } from '../lib/cambiosVehiculo';
 
 // ── Multer (póliza / comprobante) ────────────────────────────────────────────
 
@@ -1020,6 +1021,12 @@ export async function alertasFlota(req: Request, res: Response) {
         metadata: { multa_id: m.id, camion_id: m.camion_id },
       };
     }),
+    // Rotación de cubiertas por km y cambio de batería
+    ...(await alertasCambios(req.empresaId!, hoyCal)).map(a => ({
+      id: a.id, tipo: a.tipo, titulo: a.titulo, fecha: a.fecha,
+      color: a.urgencia === 'critical' ? '#DC2626' : '#F59E0B', urgencia: a.urgencia,
+      metadata: { camion_id: a.camion_id, descripcion: a.descripcion },
+    })),
   ];
 
   res.json({ items });

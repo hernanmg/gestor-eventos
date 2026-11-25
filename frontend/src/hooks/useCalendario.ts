@@ -37,6 +37,8 @@ export const TIPO_QUERY_MAP: Record<TipoCalendario, string> = {
   SEGURO_PERSONAL_VENCE: 'seguros_personal',
   PAGO_FIJO:            'pagos_fijos',
   CHEQUE_RECIBIDO:      'cheques_recibidos',
+  TAREA_EVENTO:         'tareas_evento',
+  CRUCE_MATERIAL:       'cruces_material',
 };
 
 export const TODOS_LOS_TIPOS: TipoCalendario[] = Object.keys(TIPO_QUERY_MAP) as TipoCalendario[];

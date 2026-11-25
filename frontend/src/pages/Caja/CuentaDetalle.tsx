@@ -14,6 +14,7 @@ import { formatCurrency, formatDate, parseMoney } from '@/lib/formatters';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import type { MovimientoCaja } from '@/types';
 import BaseTable from '@/components/ui/BaseTable';
+import { CombustibleCajaChip, CombustibleCajaDialog } from '@/components/domain/CombustibleCaja';
 
 const inputCls = 'w-full border border-input rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring';
 const labelCls = 'block text-xs font-medium text-muted-foreground mb-0.5';
@@ -148,6 +149,7 @@ export default function CuentaDetallePage() {
   const [newRowData,  setNewRowData]  = useState({ fecha: '', descripcion: '', debe: '', haber: '' });
   const [newRowError, setNewRowError] = useState<string | null>(null);
   const [editing,     setEditing]     = useState<MovimientoCaja | null>(null);
+  const [combustible, setCombustible] = useState<MovimientoCaja | null>(null);
 
   const eventosEnMovimientos = useMemo(() => {
     const map = new Map<number, string>();
@@ -380,7 +382,10 @@ export default function CuentaDetallePage() {
               ) : movimientosFiltrados.map(m => (
                 <tr key={m.id} className="group hover:bg-muted/10">
                   <td className={td}>{m.fecha ? formatDate(m.fecha) : '-'}</td>
-                  <td className={td}>{m.descripcion ?? '-'}</td>
+                  <td className={td}>
+                    {m.descripcion ?? '-'}
+                    <CombustibleCajaChip mov={m} canEdit={canEdit} onAbrir={() => setCombustible(m)} className="ml-1.5" />
+                  </td>
                   <td className={cn(td, 'text-muted-foreground')}>
                     {m.evento ? m.evento.nombre : <span className="italic">Sin evento</span>}
                   </td>
@@ -454,6 +459,7 @@ export default function CuentaDetallePage() {
         Los movimientos que se agregan acá quedan sin evento asociado — para cargar un movimiento en el contexto de un evento puntual, hacelo desde la tab Caja de ese evento.
       </p>
 
+      {combustible && <CombustibleCajaDialog mov={combustible} onClose={() => setCombustible(null)} />}
       {editing && (
         <EditarMovimientoDialog cuentaId={cuentaId} movimiento={editing} onClose={() => setEditing(null)} />
       )}

@@ -512,7 +512,7 @@ const help: Record<string, HelpContent> = {
   // ── Flota ────────────────────────────────────────────────────────────────────
   '/flota': {
     titulo: 'Flota',
-    descripcion: 'Gestioná la flota de vehículos con seguros, revisión técnica, patentes, peajes, taller, carnets, multas y el control de salida.',
+    descripcion: 'Gestioná la flota de vehículos con seguros, revisión técnica, patentes, peajes, taller, neumáticos y baterías, carnets, multas y el control de salida.',
     secciones: [
       {
         titulo: '¿Para qué sirve?',
@@ -530,6 +530,10 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'RTO / ITV',
         contenido: 'En la pestaña Vehículos, la columna "RTO / ITV" muestra el tipo y el vencimiento de la revisión técnica. Hacé click en la celda para actualizarla. Trailers y autoelevadores figuran como "No lleva". La pizarra (Importar pizarra) también la carga desde la columna ITU / RTO, con el formato "RTO 27/09/2026"; la plantilla que descargás sale con los datos actuales del sistema, así no se pisa nada al reimportarla.',
+      },
+      {
+        titulo: 'Neumáticos y baterías',
+        contenido: 'En la pestaña Neumáticos y baterías se ve, para cada vehículo, el último cambio de cubiertas, la próxima rotación y la última batería. Con "Registrar" se anotan cubiertas nuevas, una rotación o una batería, con la fecha, el km, el detalle, el importe y dónde se hizo; la flechita de cada vehículo muestra su historial.\nLa rotación se controla por km: si no se anota otra, la próxima es 10.000 km después de la última, como en la planilla. El km actual sale de las cargas de combustible y de lo que se registra acá. Cuando faltan menos de 1.000 km, o ya se pasó, avisa en la campanita de quien tiene la flota a cargo; la batería avisa 30 días antes del próximo cambio, si se anotó.\n"Importar planilla" lee las hojas CAMBIO DE NEUMATICOS y CAMBIO DE BATERIA de NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR. Busca cada vehículo por la patente; si hay una letra cambiada lo avisa para revisarlo, y lo que no encuentra no se importa. También actualiza el km actual si la planilla tiene uno mayor. Reimportar no duplica ni pisa lo corregido.',
       },
       {
         titulo: 'Carnets de conducir',
@@ -697,6 +701,10 @@ const help: Record<string, HelpContent> = {
         contenido: 'Cada alta y baja queda pendiente de pedir. "Pedido al productor" arma, por póliza, el mensaje con nombre, CUIL y fecha de cada movimiento: copialo, mandalo por WhatsApp o mail y marcalo como pedido.',
       },
       {
+        titulo: 'Por evento o viaje',
+        contenido: '"Por evento" arma la lista de quién va a un evento con lo que ya está cargado: el parte diario, las jornadas y la bitácora de viajes (y se puede agregar a alguien a mano). Para cada uno muestra si está cubierto en esas fechas. A los que no, se los anota en la póliza de accidentes personales del primer al último día (se pueden cambiar las fechas), y el pedido al productor les pide el alta "del … al …" con el nombre del evento. Quien ya tiene un seguro abierto, como la ART, no se vuelve a anotar.',
+      },
+      {
         titulo: 'Tomar del legajo',
         contenido: 'Para la primera carga: propone en qué póliza anotar a cada persona activa según el "tipo de contratación" del legajo (ART, SANCOR, FEDERAL PATRONAL (AP)…). Lo que no dice ART se propone como accidentes personales; revisalo antes de confirmar. Como es la cobertura que ya existe, no entra en el pedido al productor.',
       },
@@ -802,6 +810,14 @@ const help: Record<string, HelpContent> = {
         contenido: 'Una caja abierta recibe movimientos. Cuando el responsable vuelve se marca "pendiente de rendición" y un admin confirma la rendición, que la cierra. Las cajas cerradas ya están rendidas: no suman en el saldo consolidado.',
       },
       {
+        titulo: 'Combustible pagado de la caja',
+        contenido: [
+          'En un gasto de combustible (de la columna Combustible o que dice nafta, gasoil, YPF…) aparece el botón "Vehículo". Ahí se elige el vehículo, los litros si el ticket los trae y el evento. Eso lo anota como una carga del vehículo en ',
+          { texto: 'Combustible', ruta: '/combustible' },
+          ' y, con el evento, en su logística y su costo real. Si después se corrige el monto o la fecha del gasto, o se borra, la carga lo sigue; en Combustible aparece marcada "Caja" y no se puede cambiar el monto ni borrar desde ahí.',
+        ],
+      },
+      {
         titulo: 'Importar cajas chicas',
         contenido: '"Importar cajas chicas" (admin) lee la planilla de cajas chicas: cada bloque NOMBRE / MES con su fila de totales pasa a ser una caja de efectivo sin evento, ya cerrada, a nombre de la persona y el mes ("Caja chica Dani Yanello — Mayo 2026 (2)" si ese mes rindió más de una vez). Los ingresos (apertura, sobrante, reposiciones) van al debe y los gastos al haber.\nLa vista previa compara cada caja contra la fila de totales de la planilla y avisa cuando las filas no suman lo mismo. Los bloques repetidos (la hoja que junta las de todos, o una hoja copiada de otra) quedan destildados; si una copia tiene filas distintas y la importás, va a una caja aparte para compararla. Se puede abrir cada caja para ver sus movimientos antes de confirmar. Reimportar no duplica y no borra lo cargado a mano.',
       },
@@ -811,11 +827,11 @@ const help: Record<string, HelpContent> = {
   // ── Gastos del mes (Andrea, DOS57) ──────────────────────────────────────────
   '/gastos-operativos': {
     titulo: 'Gastos del mes',
-    descripcion: 'La caja general de DOS57 con sus columnas, el resumen semanal de pagos para aprobar, los siniestros de empleados y el excedente de horas.',
+    descripcion: 'La caja general de DOS57 con sus columnas, el resumen semanal de pagos para aprobar, los siniestros de empleados y el excedente de horas. En Enjoy esta pantalla es sólo la de Pagos semanales, que arma Male.',
     secciones: [
       {
         titulo: 'Caja del mes',
-        contenido: 'El libro diario de cada caja de la empresa, con una columna por tipo de gasto: combustible, comida, gastos varios, servicios, devolución de gastos, vales y viático de extranjeros. El viático de extranjeros es la cena y el desayuno que se les paga cada semana: va como gasto de la caja, no en la liquidación, y se carga sólo cuando corresponde (si el evento ya les da la cena, no se carga).',
+        contenido: 'El libro diario de cada caja de la empresa, con una columna por tipo de gasto: combustible, comida, gastos varios, servicios, devolución de gastos, vales y viático de extranjeros. El viático de extranjeros es la cena y el desayuno que se les paga cada semana: va como gasto de la caja, no en la liquidación, y se carga sólo cuando corresponde (si el evento ya les da la cena, no se carga).\nEn el detalle de un gasto de combustible se puede elegir el vehículo (y los litros y el evento): queda como carga de ese vehículo en Combustible.',
       },
       {
         titulo: 'Pagos semanales: armar la semana',
@@ -852,6 +868,22 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'En los eventos',
         contenido: 'Los egresos de los eventos cargados a este proveedor y los echeqs que se le dieron. Un echeq sin evento lleva a Cheques.',
+      },
+    ],
+  },
+
+  // ── Stock (Depósito) ────────────────────────────────────────────────────────
+  '/stock': {
+    titulo: 'Stock',
+    descripcion: 'El material del depósito: productos con su stock y lo disponible según los eventos, cunas, camiones, pañol, activos, material con terceros y alertas de faltantes.',
+    secciones: [
+      {
+        titulo: 'Disponible',
+        contenido: 'Lo disponible de cada producto es el stock menos lo asignado a los eventos en esas fechas, menos lo que está alquilado o prestado a otra empresa, más lo que otra empresa nos alquila o presta mientras dure. Con eso se calculan las alertas de faltantes, actuales y de las próximas semanas.',
+      },
+      {
+        titulo: 'Material con terceros',
+        contenido: 'El material que se cruza con otras empresas (Zamora, Agesta, Airasca, Jofre…). "Le alquilamos" y "Le prestamos" lo sacan de lo disponible desde que sale hasta que vuelve; "Nos alquila" y "Nos presta" lo suman mientras dura; "Le vendemos" y "Le compramos" cambian el stock del producto una sola vez (anular la operación lo revierte). Con el valor en euros, la cotización y el porcentaje mensual se calcula el alquiler, como en el cuadro de cruce.\n"Devolución" registra lo que volvió (o lo que devolvimos), aunque sea una parte; cuando vuelve todo, la operación se cierra. La fecha de vuelta aparece en el Calendario y, si pasó y el material sigue afuera, sale en rojo.\n"Desde una planilla" lee un cuadro de cruce (cada hoja es una operación: alquiler, remito o compra) y busca cada pieza en el catálogo por el código Layher, por el precio en euros o por el nombre con sus medidas. Las que no encuentra quedan anotadas sin mover el stock. Una misma hoja no se carga dos veces.',
       },
     ],
   },
@@ -1064,6 +1096,14 @@ const help: Record<string, HelpContent> = {
       {
         titulo: 'Montaje, desmontaje y cumpleaños',
         contenido: 'Si el evento tiene cargados días de montaje o desmontaje, cada uno aparece en su día, antes del inicio y después del fin, con el número de día (por ejemplo "Montaje (2/3)"). Los cumpleaños del personal activo salen de la fecha de nacimiento del legajo y los ve administración.',
+      },
+      {
+        titulo: 'Material con terceros',
+        contenido: 'El día en que tiene que volver el material alquilado o prestado a otra empresa, o en que hay que devolver lo que otra nos alquiló o prestó. Si ya pasó y sigue afuera, aparece en rojo el día de hoy. Lo ven administración y operación.',
+      },
+      {
+        titulo: 'Tareas de los eventos',
+        contenido: 'Las tareas de la pestaña Operación (y el cronograma de Producción) aparecen en su día, una entrada por evento: "Montaje escenario" si es una sola, o "4 tareas · 2 sin hacer" si son varias, con el detalle al abrirla. Si el día ya pasó y quedaron tareas sin hacer, sale en rojo. Al tocarla se abre la pestaña del evento.',
       },
     ],
   },

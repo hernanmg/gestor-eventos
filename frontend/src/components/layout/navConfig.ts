@@ -211,8 +211,9 @@ export function useNavModel(user: MeResponse): NavModel {
     esAdmin && I.importer,
     // Finanzas
     conLectura && I.caja,
-    // Gastos del mes (Andrea, DOS57) — Caja del mes, siniestros de empleados y excedente de horas
-    dos57 && adminOOper && I.gastos,
+    // Gastos del mes (Andrea, DOS57) — Caja del mes, pagos semanales, siniestros de empleados y excedente de horas.
+    // En Enjoy sólo los pagos semanales que arma Male para Matías.
+    adminOOper && (dos57 ? I.gastos : { ...I.gastos, label: 'Pagos semanales' }),
     (esAdmin || tienePermiso(user, 'TARJETA_CORPORATIVA')) && I.tarjeta,
     esAdmin && I.espacios,
     (esAdmin || tienePermiso(user, 'FACTURAS')) && I.facturas,

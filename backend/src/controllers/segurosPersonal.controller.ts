@@ -402,21 +402,23 @@ export async function pedidoProductor(req: Request, res: Response) {
     include: {
       empleado: { select: { id: true, nombre: true, apellido: true, cuit: true, dni: true, fecha_nacimiento: true } },
       poliza:   { select: { id: true, tipo: true, aseguradora: true, numero_poliza: true, productor: true, productor_contacto: true } },
+      evento:   { select: { id: true, nombre: true } },
     },
   });
 
   const porPoliza = new Map<number, {
     poliza: typeof pendientes[number]['poliza'];
-    altas: { cobertura_id: number; empleado: string; documento: string | null; fecha: Date }[];
+    altas: { cobertura_id: number; empleado: string; documento: string | null; fecha: Date; hasta: Date | null; evento: string | null }[];
     bajas: { cobertura_id: number; empleado: string; documento: string | null; fecha: Date }[];
   }>();
   for (const c of pendientes) {
     const g = porPoliza.get(c.poliza_id) ?? { poliza: c.poliza, altas: [], bajas: [] };
     const fila = { cobertura_id: c.id, empleado: nombreEmpleado(c.empleado), documento: c.empleado.cuit ?? c.empleado.dni ?? null };
-    // Alta y baja pendientes en el mismo registro (entró y salió antes de
-    // pedirlo): se piden las dos.
-    if (!c.alta_informada_at) g.altas.push({ ...fila, fecha: c.fecha_alta });
-    if (c.fecha_baja && !c.baja_informada_at) g.bajas.push({ ...fila, fecha: c.fecha_baja });
+    // Alta y baja pendientes en el mismo registro (un eventual que va a un
+    // evento o un viaje, o alguien que entró y salió antes de pedirlo): se
+    // piden juntas, como un alta "del … al …".
+    if (!c.alta_informada_at) g.altas.push({ ...fila, fecha: c.fecha_alta, hasta: c.fecha_baja && !c.baja_informada_at ? c.fecha_baja : null, evento: c.evento?.nombre ?? null });
+    else if (c.fecha_baja && !c.baja_informada_at) g.bajas.push({ ...fila, fecha: c.fecha_baja });
     porPoliza.set(c.poliza_id, g);
   }
 
@@ -426,7 +428,7 @@ export async function pedidoProductor(req: Request, res: Response) {
     lineas.push(`Hola${g.poliza.productor ? ` ${g.poliza.productor}` : ''}, te pido estos movimientos en la póliza ${g.poliza.tipo} de ${g.poliza.aseguradora}${g.poliza.numero_poliza ? ` (N° ${g.poliza.numero_poliza})` : ''} de ${empresa?.nombre ?? ''}:`);
     if (g.altas.length) {
       lineas.push('', 'ALTAS');
-      for (const a of g.altas) lineas.push(`- ${a.empleado}${a.documento ? ` — ${a.documento}` : ''} — desde el ${fmtUTC(a.fecha)}`);
+      for (const a of g.altas) lineas.push(`- ${a.empleado}${a.documento ? ` — ${a.documento}` : ''} — ${a.hasta ? `del ${fmtUTC(a.fecha)} al ${fmtUTC(a.hasta)}` : `desde el ${fmtUTC(a.fecha)}`}${a.evento ? ` (${a.evento})` : ''}`);
     }
     if (g.bajas.length) {
       lineas.push('', 'BAJAS');
@@ -451,7 +453,12 @@ export async function marcarPedidoInformado(req: Request, res: Response) {
   const ahora = new Date();
   const base = { ...withTenant(req.empresaId!), deleted_at: null };
   const [a, b] = await Promise.all([
-    altas.length ? prisma.coberturaEmpleado.updateMany({ where: { ...base, id: { in: altas }, alta_informada_at: null }, data: { alta_informada_at: ahora } }) : { count: 0 },
+    altas.length ? prisma.$transaction(async tx => {
+      // Las altas con fecha de baja todavía sin pedir salieron como "del … al …":
+      // esa baja también queda pedida.
+      await tx.coberturaEmpleado.updateMany({ where: { ...base, id: { in: altas }, alta_informada_at: null, fecha_baja: { not: null }, baja_informada_at: null }, data: { baja_informada_at: ahora } });
+      return tx.coberturaEmpleado.updateMany({ where: { ...base, id: { in: altas }, alta_informada_at: null }, data: { alta_informada_at: ahora } });
+    }) : { count: 0 },
     bajas.length ? prisma.coberturaEmpleado.updateMany({ where: { ...base, id: { in: bajas }, fecha_baja: { not: null }, baja_informada_at: null }, data: { baja_informada_at: ahora } }) : { count: 0 },
   ]);
   await registrarAuditoria({
@@ -519,6 +526,136 @@ export async function sugerenciasLegajo(req: Request, res: Response) {
 }
 
 // ── Resumen (avisos y calendario) ────────────────────────────────────────────
+
+
+// ── Altas por evento o viaje (AP de los eventuales) ──────────────────────────
+// Andrea: "dar de alta a todos porque viajaban". Quién va a cada evento sale de
+// lo que ya está cargado (parte diario, jornadas, bitácora de viajes) y se le
+// pueden sumar personas a mano. Para cada uno se ve si está cubierto en esas
+// fechas; a los que no, se los anota en una póliza AP del primer al último día,
+// y el pedido al productor lo manda como un alta "del … al …".
+
+const MS_DIA = 86_400_000;
+const isoDia = (d: Date) => d.toISOString().slice(0, 10);
+
+export async function personalEvento(req: Request, res: Response) {
+  const empresaId = req.empresaId!;
+  const eventoId = Number(req.params.eventoId);
+  const evento = await prisma.evento.findFirst({
+    where: { id: eventoId, deleted_at: null, ...withTenant(empresaId) },
+    select: { id: true, nombre: true, fecha_inicio: true, fecha_fin: true, dias_montaje: true, dias_desmontaje: true, lugar: true },
+  });
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+  // Días del evento, con montaje y desmontaje (fechas de calendario en UTC)
+  const ini = evento.fecha_inicio ? hoyUTC(evento.fecha_inicio) : null;
+  const fin = evento.fecha_fin ? hoyUTC(evento.fecha_fin) : ini;
+  const evDesde = ini ? new Date(ini.getTime() - evento.dias_montaje * MS_DIA) : null;
+  const evHasta = fin ? new Date(fin.getTime() + evento.dias_desmontaje * MS_DIA) : null;
+
+  const [asig, jornadas, viajes, coberturasEv] = await Promise.all([
+    prisma.asignacionDiaria.findMany({
+      where: { evento_id: eventoId, deleted_at: null, empresa_id: empresaId, parte_diario: { deleted_at: null } },
+      select: { empleado_id: true, parte_diario: { select: { fecha: true } } },
+    }),
+    prisma.jornada.findMany({ where: { evento_id: eventoId, deleted_at: null, empresa_id: empresaId }, select: { empleado_id: true, fecha: true } }),
+    prisma.bitacoraViaje.findMany({ where: { evento_id: eventoId, deleted_at: null, empresa_id: empresaId, empleado_id: { not: null } }, select: { empleado_id: true, fecha: true } }),
+    prisma.coberturaEmpleado.findMany({ where: { evento_id: eventoId, deleted_at: null, empresa_id: empresaId }, select: { empleado_id: true, fecha_alta: true, fecha_baja: true } }),
+  ]);
+
+  type Acum = { fuentes: Set<string>; dias: Set<string> };
+  const porEmp = new Map<number, Acum>();
+  const sumar = (id: number | null, fuente: string, fecha: Date | null) => {
+    if (!id) return;
+    const a = porEmp.get(id) ?? { fuentes: new Set<string>(), dias: new Set<string>() };
+    a.fuentes.add(fuente);
+    if (fecha) a.dias.add(isoDia(hoyUTC(fecha)));
+    porEmp.set(id, a);
+  };
+  for (const a of asig) sumar(a.empleado_id, 'Parte diario', a.parte_diario.fecha);
+  for (const j of jornadas) sumar(j.empleado_id, 'Jornadas', j.fecha);
+  for (const v of viajes) sumar(v.empleado_id, 'Bitácora de viajes', v.fecha);
+  for (const c of coberturasEv) sumar(c.empleado_id, 'Alta por el evento', null);
+
+  const ids = [...porEmp.keys()];
+  const empleados = ids.length ? await prisma.empleado.findMany({
+    where: { id: { in: ids }, empresa_id: empresaId, deleted_at: null },
+    select: {
+      id: true, nombre: true, apellido: true, apodo: true, cuit: true, dni: true, categoria: true, estado: true,
+      coberturas: { where: { deleted_at: null }, orderBy: { fecha_alta: 'desc' }, select: { id: true, fecha_alta: true, fecha_baja: true, evento_id: true, alta_informada_at: true, poliza: { select: { id: true, tipo: true, aseguradora: true } } } },
+    },
+  }) : [];
+
+  const personas = empleados.map(e => {
+    const a = porEmp.get(e.id)!;
+    const dias = [...a.dias].sort();
+    const desde = dias.length ? new Date(`${dias[0]}T00:00:00Z`) : evDesde;
+    const hasta = dias.length ? new Date(`${dias[dias.length - 1]}T00:00:00Z`) : evHasta;
+    // Cubierto si alguna cobertura abarca todo el rango; "en parte" si toca algún día
+    const cubre = e.coberturas.find(c => desde && hasta && c.fecha_alta <= desde && (!c.fecha_baja || c.fecha_baja >= hasta));
+    const toca = !cubre && e.coberturas.find(c => desde && hasta && c.fecha_alta <= hasta && (!c.fecha_baja || c.fecha_baja >= desde));
+    const abierta = e.coberturas.find(c => !c.fecha_baja) ?? null;
+    return {
+      empleado_id: e.id, empleado: nombreEmpleado(e), apodo: e.apodo, documento: e.cuit ?? e.dni ?? null, categoria: e.categoria, estado: e.estado,
+      fuentes: [...a.fuentes], dias: dias.length,
+      desde: desde ? isoDia(desde) : null, hasta: hasta ? isoDia(hasta) : null,
+      cobertura: cubre || toca || null,
+      estado_seguro: cubre ? 'CUBIERTO' as const : toca ? 'EN_PARTE' as const : 'SIN_SEGURO' as const,
+      tiene_abierta: !!abierta,
+    };
+  }).sort((x, y) => (x.estado_seguro === 'CUBIERTO' ? 1 : 0) - (y.estado_seguro === 'CUBIERTO' ? 1 : 0) || x.empleado.localeCompare(y.empleado));
+
+  res.json({
+    evento: { id: evento.id, nombre: evento.nombre, lugar: evento.lugar, desde: evDesde ? isoDia(evDesde) : null, hasta: evHasta ? isoDia(evHasta) : null },
+    personas,
+  });
+}
+
+const altasEventoSchema = z.object({
+  poliza_id: z.number().int(),
+  items: z.array(z.object({ empleado_id: z.number().int(), desde: z.string().min(1), hasta: z.string().min(1) })).min(1, 'Elegí al menos una persona'),
+});
+
+// POST /evento/:eventoId/altas — anota a cada uno en la póliza del primer al
+// último día. No toca otras coberturas: si alguien tiene una abierta, ya está
+// cubierto (o hay que corregirla a mano).
+export async function altasEvento(req: Request, res: Response) {
+  const empresaId = req.empresaId!;
+  const eventoId = Number(req.params.eventoId);
+  const parsed = altasEventoSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }); return; }
+  const d = parsed.data;
+  const [evento, poliza] = await Promise.all([
+    prisma.evento.findFirst({ where: { id: eventoId, deleted_at: null, ...withTenant(empresaId) }, select: { id: true, nombre: true } }),
+    prisma.polizaPersonal.findFirst({ where: { id: d.poliza_id, empresa_id: empresaId, deleted_at: null }, select: { id: true, tipo: true, aseguradora: true } }),
+  ]);
+  if (!evento) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+  if (!poliza) { res.status(404).json({ error: 'Póliza no encontrada' }); return; }
+
+  const empleados = await prisma.empleado.findMany({
+    where: { id: { in: d.items.map(i => i.empleado_id) }, empresa_id: empresaId, deleted_at: null },
+    select: { id: true, nombre: true, apellido: true, coberturas: { where: { deleted_at: null, fecha_baja: null }, select: { id: true } } },
+  });
+  const porId = new Map(empleados.map(e => [e.id, e]));
+  let creadas = 0; const errores: string[] = [];
+  for (const it of d.items) {
+    const e = porId.get(it.empleado_id);
+    if (!e) { errores.push(`Persona ${it.empleado_id}: no existe`); continue; }
+    const desde = parseFechaCalendario(it.desde); const hasta = parseFechaCalendario(it.hasta);
+    if (!desde || !hasta || hasta < desde) { errores.push(`${nombreEmpleado(e)}: revisá las fechas`); continue; }
+    if (e.coberturas.length) { errores.push(`${nombreEmpleado(e)}: ya tiene un seguro abierto`); continue; }
+    await prisma.coberturaEmpleado.create({
+      data: { empresa_id: empresaId, empleado_id: e.id, poliza_id: poliza.id, fecha_alta: desde, fecha_baja: hasta, evento_id: evento.id, notas: `Por el evento ${evento.nombre}`, created_by: req.user!.id },
+    });
+    creadas++;
+  }
+  await registrarAuditoria({
+    usuarioId: req.user!.id, empresaId, accion: 'CREATE', entidad: 'CoberturaEmpleado', eventoId: evento.id,
+    descripcion: `Anotó ${creadas} persona(s) en ${poliza.tipo} ${poliza.aseguradora} por el evento ${evento.nombre}`,
+    datosDespues: { creadas, errores }, ip: req.ip, tx: prisma,
+  });
+  res.json({ creadas, errores });
+}
 
 export async function resumenSegurosPersonal(empresaId: number) {
   const [polizas, sinSeguro, inactivosCubiertos, pendientesPedido] = await Promise.all([

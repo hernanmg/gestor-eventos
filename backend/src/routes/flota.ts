@@ -19,6 +19,7 @@ import {
   createControlSalida, updateControlSalida, deleteControlSalida,
 } from '../controllers/flotaDocumentacion.controller';
 import { upload as uploadXlsx } from '../controllers/importer.controller';
+import { listCambios, createCambio, updateCambio, deleteCambio, importarCambios } from '../controllers/cambiosVehiculo.controller';
 import {
   listBitacoraFlota, opcionesBitacoraFlota, createViajeFlota, updateViajeFlota, deleteViajeFlota,
 } from '../controllers/bitacoraFlota.controller';
@@ -106,6 +107,13 @@ router.delete('/taller/:id',           requireRole('ADMIN'), asyncHandler(delete
 
 // ── Alertas ───────────────────────────────────────────────────────────────────
 router.get('/alertas', asyncHandler(alertasFlota));
+
+// ── Neumáticos y baterías (planilla de Santi) ────────────────────────────────
+router.get('/cambios',            asyncHandler(listCambios));
+router.post('/cambios/importar',  xlsxMiddleware, asyncHandler(importarCambios));
+router.post('/cambios',           asyncHandler(createCambio));
+router.put('/cambios/:id',        asyncHandler(updateCambio));
+router.delete('/cambios/:id',     requireRole('ADMIN'), asyncHandler(deleteCambio));
 
 // ── Importador de pizarra (Lorena) — plantilla Excel + import del archivo ─────
 router.get('/pizarra-plantilla',  asyncHandler(plantillaPizarra));

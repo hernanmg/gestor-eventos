@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Plus, ShieldCheck, Pencil, Trash2, FileText, Send, ClipboardList, UserPlus, UserMinus, History, Copy, Check,
+  Plus, ShieldCheck, Pencil, Trash2, FileText, Send, ClipboardList, UserPlus, UserMinus, History, Copy, Check, CalendarDays,
 } from 'lucide-react';
 import {
   usePolizasPersonal, usePersonalSeguro, useGuardarPolizaPersonal, useEliminarPolizaPersonal, documentoPolizaPersonalUrl,
   useAltaCobertura, useAltaCoberturaLote, useBajaCobertura, useEditarCobertura, useEliminarCobertura,
-  usePedidoProductor, useMarcarPedido, useSugerenciasLegajo,
+  usePedidoProductor, useMarcarPedido, useSugerenciasLegajo, useSeguroEvento, useAltasEvento,
 } from '@/hooks/useSegurosPersonal';
+import { useEventos } from '@/hooks/useEvento';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -462,6 +463,180 @@ function LegajoDialog({ open, polizas, onCrearPoliza, onClose }: {
   );
 }
 
+// ── Por evento o viaje ───────────────────────────────────────────────────────
+
+const ESTADO_EVENTO: Record<'CUBIERTO' | 'EN_PARTE' | 'SIN_SEGURO', { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
+  CUBIERTO:   { label: 'Cubierto',          variant: 'success' },
+  EN_PARTE:   { label: 'Cubierto en parte', variant: 'warning' },
+  SIN_SEGURO: { label: 'Sin seguro',        variant: 'destructive' },
+};
+
+function EventoDialog({ open, polizas, personal, onPedido, onClose }: {
+  open: boolean; polizas: PolizaPersonal[]; personal: PersonaSeguro[]; onPedido: () => void; onClose: () => void;
+}) {
+  const { data: eventos = [] } = useEventos();
+  const [eventoId, setEventoId] = useState<number | null>(null);
+  const { data, isLoading } = useSeguroEvento(open ? eventoId : null);
+  const altas = useAltasEvento();
+  const polizasAP = polizas.filter(p => p.tipo === 'AP');
+  const [polizaId, setPolizaId] = useState('');
+  const [sel, setSel] = useState<Record<number, { on: boolean; desde: string; hasta: string }>>({});
+  const [extra, setExtra] = useState<number[]>([]);
+  const [agregar, setAgregar] = useState('');
+  const [resultado, setResultado] = useState<{ creadas: number; errores: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { if (open) { setResultado(null); setError(null); } }, [open]);
+  useEffect(() => { setExtra([]); setResultado(null); setError(null); }, [eventoId]);
+  useEffect(() => { if (!polizaId && polizasAP.length === 1) setPolizaId(String(polizasAP[0].id)); }, [polizasAP, polizaId]);
+  // Por defecto: todos los que no están cubiertos, con sus fechas
+  useEffect(() => {
+    if (!data) return;
+    setSel(Object.fromEntries(data.personas.map(p => [p.empleado_id, {
+      on: p.estado_seguro === 'SIN_SEGURO' && !p.tiene_abierta, desde: p.desde ?? data.evento.desde ?? '', hasta: p.hasta ?? data.evento.hasta ?? '',
+    }])));
+  }, [data]);
+
+  const filas = useMemo(() => {
+    if (!data) return [];
+    const enLista = new Set(data.personas.map(p => p.empleado_id));
+    const extras = extra.filter(id => !enLista.has(id)).map(id => personal.find(p => p.id === id)).filter((p): p is PersonaSeguro => !!p).map(p => ({
+      empleado_id: p.id, empleado: `${p.apellido}, ${p.nombre}`, apodo: p.apodo, documento: p.cuit ?? p.dni, categoria: p.categoria, estado: p.estado,
+      fuentes: ['Agregado a mano'], dias: 0, desde: data.evento.desde, hasta: data.evento.hasta,
+      cobertura: p.cobertura_actual ? { ...p.cobertura_actual, evento_id: null } : null,
+      estado_seguro: p.cobertura_actual ? 'CUBIERTO' as const : 'SIN_SEGURO' as const, tiene_abierta: !!p.cobertura_actual,
+    }));
+    return [...data.personas, ...extras];
+  }, [data, extra, personal]);
+  const elegidos = filas.filter(p => sel[p.empleado_id]?.on);
+  const disponibles = personal.filter(p => p.estado === 'ACTIVO' && !filas.some(f => f.empleado_id === p.id));
+  const setFila = (id: number, cambio: Partial<{ on: boolean; desde: string; hasta: string }>) =>
+    setSel(s => ({ ...s, [id]: { ...(s[id] as typeof s[number] | undefined ?? { on: false, desde: data?.evento.desde ?? '', hasta: data?.evento.hasta ?? '' }), ...cambio } }));
+
+  const sumar = (id: string) => {
+    if (!id) return;
+    const n = Number(id);
+    setExtra(x => [...x, n]);
+    const p = personal.find(x => x.id === n);
+    setFila(n, { on: !p?.cobertura_actual, desde: data?.evento.desde ?? '', hasta: data?.evento.hasta ?? '' });
+    setAgregar('');
+  };
+
+  const anotar = async () => {
+    setError(null);
+    if (!eventoId) return;
+    if (!polizaId) { setError('Elegí la póliza'); return; }
+    for (const p of elegidos) {
+      const f = sel[p.empleado_id];
+      if (!f.desde || !f.hasta || f.hasta < f.desde) { setError(`Revisá las fechas de ${p.empleado}`); return; }
+    }
+    try {
+      const r = await altas.mutateAsync({ eventoId, poliza_id: Number(polizaId), items: elegidos.map(p => ({ empleado_id: p.empleado_id, desde: sel[p.empleado_id].desde, hasta: sel[p.empleado_id].hasta })) });
+      setResultado(r); setExtra([]);
+    } catch (err) { setError(getApiErrorMessage(err)); }
+  };
+
+  const eventosOrd = [...eventos].sort((a, b) => (b.fecha_inicio ?? '').localeCompare(a.fecha_inicio ?? ''));
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Seguro por evento o viaje</DialogTitle></DialogHeader>
+        <div className="space-y-3 mt-1 text-sm">
+          <p className="text-xs text-muted-foreground">
+            Quién va al evento sale del parte diario, las jornadas y la bitácora de viajes; si falta alguien, agregalo. A los que no están cubiertos en esas fechas
+            se los anota en la póliza de accidentes personales del primer al último día, y el pedido al productor les pide el alta "del … al …".
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Evento</label>
+              <select value={eventoId ?? ''} onChange={e => setEventoId(e.target.value ? Number(e.target.value) : null)} className={selectCls} aria-label="Evento">
+                <option value="">Elegir…</option>
+                {eventosOrd.map(ev => <option key={ev.id} value={ev.id}>{ev.nombre}{ev.fecha_inicio ? ` — ${formatDate(ev.fecha_inicio)}` : ''}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Póliza en la que se anotan</label>
+              <select value={polizaId} onChange={e => setPolizaId(e.target.value)} className={selectCls} aria-label="Póliza">
+                <option value="">Elegir…</option>
+                {[...polizasAP, ...polizas.filter(p => p.tipo !== 'AP')].map(p => <option key={p.id} value={p.id}>{p.tipo} — {p.aseguradora}{p.numero_poliza ? ` (N° ${p.numero_poliza})` : ''}</option>)}
+              </select>
+            </div>
+          </div>
+          {data && (
+            <p className="text-xs text-muted-foreground">
+              {data.evento.desde ? <>Del {formatDate(data.evento.desde)} al {formatDate(data.evento.hasta)} (con montaje y desmontaje)</> : 'El evento no tiene fechas cargadas'}{data.evento.lugar ? ` · ${data.evento.lugar}` : ''}
+            </p>
+          )}
+          {eventoId && isLoading && <p className="text-muted-foreground">Cargando…</p>}
+          {resultado && (
+            <div className="text-green-700 bg-green-50 rounded p-2 flex flex-wrap items-center justify-between gap-2">
+              <span>Se anotaron {resultado.creadas} persona(s).{resultado.errores.length ? ` No se pudo: ${resultado.errores.join('; ')}` : ''}</span>
+              {resultado.creadas > 0 && <Button size="sm" variant="outline" onClick={onPedido}><Send size={14} className="mr-1.5" />Ver el pedido al productor</Button>}
+            </div>
+          )}
+          {data && (
+            <>
+              {filas.length === 0 && <p className="text-muted-foreground">Todavía no hay nadie cargado en este evento (parte diario, jornadas o bitácora). Agregá a quienes viajan.</p>}
+              {filas.length > 0 && (
+                <div className="overflow-x-auto">
+                  <BaseTable className="w-full text-sm min-w-[720px]">
+                    <thead className="border-b bg-muted/30">
+                      <tr>
+                        <th className="px-2 py-2 w-8" />
+                        <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">Persona</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">De dónde</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">Seguro</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">Desde</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">Hasta</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filas.map(p => {
+                        const f = sel[p.empleado_id];
+                        const bloqueada = p.tiene_abierta;
+                        const est = ESTADO_EVENTO[p.estado_seguro];
+                        return (
+                          <tr key={p.empleado_id} className={cn(p.estado_seguro === 'CUBIERTO' && 'text-muted-foreground')}>
+                            <td className="px-2 py-1.5"><input type="checkbox" checked={!!f?.on} disabled={bloqueada} onChange={e => setFila(p.empleado_id, { on: e.target.checked })} aria-label={`Anotar a ${p.empleado}`} /></td>
+                            <td className="px-2 py-1.5" data-label="Persona"><span className="font-medium text-foreground">{p.empleado}</span>{p.documento ? <span className="block text-xs text-muted-foreground">{p.documento}</span> : null}</td>
+                            <td className="px-2 py-1.5 text-xs text-muted-foreground" data-label="De dónde">{p.fuentes.join(', ')}{p.dias ? ` · ${p.dias} día${p.dias === 1 ? '' : 's'}` : ''}</td>
+                            <td className="px-2 py-1.5" data-label="Seguro">
+                              <Badge variant={est.variant}>{est.label}</Badge>
+                              {p.cobertura && <span className="block text-xs text-muted-foreground mt-0.5">{p.cobertura.poliza.tipo} {p.cobertura.poliza.aseguradora}{p.cobertura.fecha_baja ? ` · hasta ${formatDate(p.cobertura.fecha_baja)}` : ''}</span>}
+                              {bloqueada && p.estado_seguro !== 'CUBIERTO' && <span className="block text-xs text-amber-700">Tiene un seguro abierto: corregí sus fechas desde el historial</span>}
+                            </td>
+                            <td className="px-2 py-1.5" data-label="Desde"><input type="date" value={f?.desde ?? ''} onChange={e => setFila(p.empleado_id, { desde: e.target.value })} className={inputCls} disabled={bloqueada} /></td>
+                            <td className="px-2 py-1.5" data-label="Hasta"><input type="date" value={f?.hasta ?? ''} onChange={e => setFila(p.empleado_id, { hasta: e.target.value })} className={inputCls} disabled={bloqueada} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </BaseTable>
+                </div>
+              )}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-full sm:w-80">
+                  <label className={labelCls}>Agregar a alguien que viaja</label>
+                  <select value={agregar} onChange={e => sumar(e.target.value)} className={selectCls} aria-label="Agregar persona">
+                    <option value="">Elegir del padrón…</option>
+                    {disponibles.map(p => <option key={p.id} value={p.id}>{p.apellido}, {p.nombre}{p.apodo ? ` (${p.apodo})` : ''}</option>)}
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
+            {data && <Button size="sm" onClick={anotar} disabled={!elegidos.length || altas.isPending}>{altas.isPending ? 'Anotando…' : `Anotar ${elegidos.length}`}</Button>}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Página ───────────────────────────────────────────────────────────────────
 
 type Filtro = 'todos' | 'sin_seguro' | 'ART' | 'AP' | 'inactivos';
@@ -484,6 +659,7 @@ export default function SegurosPersonalPage() {
   const [historial, setHistorial] = useState<PersonaSeguro | null>(null);
   const [pedidoOpen, setPedidoOpen] = useState(searchParams.get('pedido') === '1');
   const [legajoOpen, setLegajoOpen] = useState(false);
+  const [eventoOpen, setEventoOpen] = useState(false);
   const [buscar, setBuscar] = useState('');
 
   // El historial abierto se refresca con los datos nuevos después de editar
@@ -522,6 +698,9 @@ export default function SegurosPersonalPage() {
           <>
             <Button size="sm" variant="outline" onClick={() => setPedidoOpen(true)}>
               <Send size={14} className="mr-1.5" /> Pedido al productor {conteo.pedido > 0 && <span className="ml-1.5"><TabCount count={conteo.pedido} /></span>}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEventoOpen(true)} disabled={polizas.length === 0} title={polizas.length === 0 ? 'Primero cargá las pólizas' : 'Anotar en el seguro a los que van a un evento o un viaje'}>
+              <CalendarDays size={14} className="mr-1.5" /> Por evento
             </Button>
             <Button size="sm" variant="outline" onClick={() => setLegajoOpen(true)} disabled={polizas.length === 0} title={polizas.length === 0 ? 'Primero cargá las pólizas' : undefined}>
               <ClipboardList size={14} className="mr-1.5" /> Tomar del legajo
@@ -652,6 +831,7 @@ export default function SegurosPersonalPage() {
       <BajaDialog persona={baja} onClose={() => setBaja(null)} />
       <HistorialDialog persona={historialActual} canEdit={canEdit} onClose={() => setHistorial(null)} />
       <PedidoDialog open={pedidoOpen} onClose={() => { setPedidoOpen(false); if (searchParams.get('pedido')) { searchParams.delete('pedido'); setSearchParams(searchParams, { replace: true }); } }} />
+      <EventoDialog open={eventoOpen} polizas={polizas} personal={personal} onPedido={() => { setEventoOpen(false); setPedidoOpen(true); }} onClose={() => setEventoOpen(false)} />
       <LegajoDialog open={legajoOpen} polizas={polizas} onCrearPoliza={p => { setLegajoOpen(false); setPolizaDialog({ poliza: null, inicial: p }); }} onClose={() => setLegajoOpen(false)} />
     </div>
   );

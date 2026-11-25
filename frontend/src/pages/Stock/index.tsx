@@ -17,6 +17,7 @@ import CunasTab from './CunasTab';
 import CamionesTab from './CamionesTab';
 import PanolTab from './PanolTab';
 import ActivosTab from './ActivosTab';
+import CrucesTab from './CrucesTab';
 import BaseTable from '@/components/ui/BaseTable';
 import PageHeader from '@/components/ui/PageHeader';
 import TabStrip, { TabCount } from '@/components/ui/TabStrip';
@@ -674,7 +675,7 @@ function AlertasTab() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type StockTab = 'productos' | 'alertas' | 'cunas' | 'camiones' | 'panol' | 'activos';
+type StockTab = 'productos' | 'alertas' | 'cunas' | 'camiones' | 'panol' | 'activos' | 'cruces';
 
 export default function StockPage() {
   const { user } = useAuth();
@@ -712,6 +713,7 @@ export default function StockPage() {
           { key: 'camiones',  label: 'Camiones' },
           ...(vePanol ? [{ key: 'panol' as StockTab, label: 'Pañol', badge: <TabCount count={alertasPanolCount} /> }] : []),
           { key: 'activos',   label: 'Activos' },
+          { key: 'cruces',    label: 'Material con terceros' },
           { key: 'alertas',   label: 'Alertas de stock', badge: <TabCount count={quiebresCount} /> },
         ]}
       />
@@ -721,6 +723,7 @@ export default function StockPage() {
       {tab === 'camiones'  && <CamionesTab />}
       {tab === 'panol' && vePanol && <PanolTab />}
       {tab === 'activos'   && <ActivosTab />}
+      {tab === 'cruces'    && <CrucesTab />}
       {tab === 'alertas'   && <AlertasTab />}
     </div>
   );

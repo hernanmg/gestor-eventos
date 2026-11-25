@@ -1,7 +1,7 @@
 # Estado del sistema — Enjoy · DOS57
 
 > Fuente única del avance por pilar. Se actualiza al cerrar cada funcionalidad y se toma una foto mensual en `docs/avance/AAAA-MM.md`.
-> Última actualización: 2026-11-24 · Agenda de pagos fijos del mes · Cheques recibidos de clientes ligados a la factura, con aviso para custodia o depósito · Proveedor habitual y costo estimado por rubro, sugeridos en la Ficha · 2026-11-23: Comparativo de presupuestos de proveedores, que se convierte en la orden de compra · Lo que llega de una orden de compra se suma al stock · Ficha del proveedor con lo que se le debe, sus facturas, pagos y órdenes · 2026-11-20: Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
+> Última actualización: 2026-11-25 · Material Layher cruzado con otras empresas (alquileres, préstamos, compras y ventas) que se resta o se suma a lo disponible, con su alquiler en euros e importación del cuadro de cruce · Seguro de accidentes personales por evento o viaje: lista de quién va y altas "del … al …" para el productor · 2026-11-24: Pagos semanales también en Enjoy (los arma Male) · Neumáticos y baterías por vehículo, con aviso de rotación por km · Combustible pagado de la caja atado al vehículo y al evento · Tareas de los eventos en el Calendario · Agenda de pagos fijos del mes · Cheques recibidos de clientes ligados a la factura, con aviso para custodia o depósito · Proveedor habitual y costo estimado por rubro, sugeridos en la Ficha · 2026-11-23: Comparativo de presupuestos de proveedores, que se convierte en la orden de compra · Lo que llega de una orden de compra se suma al stock · Ficha del proveedor con lo que se le debe, sus facturas, pagos y órdenes · 2026-11-20: Órdenes de pago a proveedores con revisión, autorización y PDF · Importador de comprobantes emitidos de AFIP (facturas de venta con sus cobros) · Órdenes de compra a proveedores con PDF, recepción y cotejo con la factura · Seguro del personal (ART y AP: quién está cubierto, altas y bajas, pedido al productor) e importador del cuadro de seguros de Mayra con las cuotas mes a mes · Sueldos: vacaciones, aguinaldo y extras por separado, aguinaldo calculado, premios de Matías por un tiempo y cierre en efectivo y transferencia · 2026-11-19: Cheques de la empresa por banco con el aviso de los jueves e importador de la planilla de Galicia; calendario con montaje y desmontaje, cumpleaños, SGR, gastos de espacios, siniestros del personal y excedente de horas · 2026-11-18: Respuestas de Mayra (antigüedad, premio de producción 1 o 2, bancos) y reunión con Male: importador de horas contra la planilla real, liquidaciones con fecha de pago, pedido de transferencias y pago con comprobante · 2026-11-17: Importador de la planilla de centro de costos y guía de carga de datos de Enjoy en la Ayuda · 2026-11-13: Libro de novedades; respuesta de Male sobre el resumen del evento en Enjoy · 2026-11-12: respuestas de Andrea y Male a las preguntas del informe de noviembre; resumen semanal de pagos con aprobación por línea (10 de 12 pilares relevados; Marketing y Comunicación quedan pendientes con Vicky)
 
 ## Cómo se lee
 
@@ -23,17 +23,17 @@
 | # | Pilar | Responsables | DOS57 | Enjoy |
 |---|---|---|---|---|
 | 01 | RRHH | Mayra (ambas) · Andrea, Lorena, Jazmín, Santi (DOS57) · Male, Daniel (Enjoy) | 92% | 90% |
-| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 93% | 86% |
+| 02 | Finanzas | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Chino (Enjoy) | 93% | 91% |
 | 03 | Administración | Mayra, Matías · Andrea, Florencia (DOS57) · Chino, Male, Vicky (Enjoy) | 87% | 83% |
 | 04 | Proveedores | Mayra (ambas) · Andrea, Santi y Nico (DOS57) · Male, Nico (Enjoy) | 97% | 97% |
-| 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 81%* | 86% |
-| 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 86% | 68% |
-| 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 89% | 63% |
+| 05 | Depósito | Sergio (Pollo), Verónica, Jazmín (DOS57) · Daniel (Enjoy) | 86%* | 86% |
+| 06 | Logística | Florencia, Lorena, Santi y Nico, Jazmín (DOS57) · Daniel, Chino, Male (Enjoy) | 94% | 82% |
+| 07 | Seguros | Lorena, Andrea, Mayra (DOS57) · Mayra (Enjoy) | 94% | 63% |
 | 08 | Marketing | Vicky | pendiente de relevar | |
 | 09 | Comunicación | Vicky | pendiente de relevar | |
 | 10 | Novedades | Santi (flota), Florencia (eventos), todos | 75% | 75% |
 | 11 | Varios y módulos auxiliares | Matías (administrador del sistema) | 90% | 90% |
-| 12 | Calendario transversal *(nuevo)* | todos | 93% | 93% |
+| 12 | Calendario transversal *(nuevo)* | todos | 100% | 100% |
 
 ---
 
@@ -128,7 +128,7 @@ También confirma cosas que ya están: ítems fijos del acuerdo (básico, incent
 
 ## 02 · Finanzas
 
-**DOS57: 93% construido (21,5 de 23) · Enjoy: 86% construido (19 de 22) · En uso: 0%**
+**DOS57: 93% construido (21,5 de 23) · Enjoy: 91% construido (20 de 22) · En uso: 0%**
 
 Responsables: Mayra cierra las dos empresas y lleva Galicia y Nación en las dos, y Francés en Enjoy. Chino lleva Bancor y Rebanking en las dos empresas (respuesta de Mayra, nov 2026). En DOS57, Andrea lleva las cajas del mes y Santi y Nico la tarjeta y el combustible. En Enjoy, Male. Matías aprueba los pagos.
 
@@ -143,7 +143,7 @@ No se cuentan acá: órdenes de compra y comparativos de proveedores (Proveedore
 | 1 | Caja Global: cuentas de la empresa (efectivo, banco, FIMA), con o sin evento, y saldo consolidado | ✅ | ✅ | CAJAS JULIO-2026 (Andrea) · BANCOS (Mayra) | Caja Global |
 | 2 | Cajas chicas por persona (Pollo, Jazmín, David, Daniel, Vicky, coworking…), con rendición y cierre; importador | ✅ | ✅ | CAJAS 2026 (Enjoy) · CAJAS JULIO-2026 (Andrea) · Caja Chica COWORKING (Mayra) | Caja Global |
 | 3 | Caja del mes de Andrea con sus categorías (combustible, comida, servicios, vales, varios) | ✅ | — | CAJAS JULIO-2026 (Andrea) | Gastos del mes |
-| 4 | Resumen semanal de pagos para que Matías apruebe (grupos de jornaleros, reposición de cajas chicas y de la caja de reserva, pagos a proveedores). Matías lo revisa línea por línea: un tilde de aprobado en cada una y al lado el cambio que pide (sacar o sumar un premio, corregir un monto). Trae del sistema lo que ya está cargado e importa la planilla histórica | ✅ | ❓ | PAGOS+CAJAS 2026 (SOLICITUD MATIAS) (Andrea) · Respuesta de Andrea (nov 2026) | Gastos del mes → Pagos semanales. En DOS57 lo arma Andrea; en Enjoy lo haría Male (a confirmar) |
+| 4 | Resumen semanal de pagos para que Matías apruebe (grupos de jornaleros, reposición de cajas chicas y de la caja de reserva, pagos a proveedores). Matías lo revisa línea por línea: un tilde de aprobado en cada una y al lado el cambio que pide (sacar o sumar un premio, corregir un monto). Trae del sistema lo que ya está cargado e importa la planilla histórica | ✅ | ✅ | PAGOS+CAJAS 2026 (SOLICITUD MATIAS) (Andrea) · Respuesta de Andrea (nov 2026) · Confirmado para Enjoy (nov 2026) | Gastos del mes → Pagos semanales. En DOS57 lo arma Andrea; en Enjoy lo arma Male (menú Pagos semanales), y las liquidaciones de jornaleros que ella deja para pagar el viernes entran solas como sugerencia |
 | 5 | Saldos en varias monedas, con dólar e IPC actualizados | ✅ | ✅ | Entrevista Mayra | Caja Global · Indicadores |
 
 ### Cheques
@@ -185,7 +185,6 @@ La especificación de Enjoy (§44) las deja fuera de la primera etapa: conciliac
 
 ### Para definir con el cliente
 
-- **Resumen semanal de pagos en Enjoy** (punto 4): Andrea cree que lo arma Male. Confirmar con ella si lo hace y si Matías lo aprueba igual, línea por línea.
 - **Cheques de la empresa** (punto 8): ya se pueden cargar de cualquier banco. Falta confirmar si los de Bancor los carga Chino o Mayra.
 - **Aviso de los jueves** (punto 9): hoy les llega a los administradores. ¿Le tiene que llegar a alguien más, por ejemplo a Chino por Bancor?
 - **Leasings** (punto 13): ¿cuántos hay y con quién?
@@ -307,7 +306,7 @@ No se cuentan acá: alta desde el formulario de Google (RRHH, punto 4), pedidos 
 
 ## 05 · Depósito
 
-**DOS57: 81% construido (14,5 de 18)\* · Enjoy: 86% construido (12 de 14) · En uso: 0%**
+**DOS57: 86% construido (15,5 de 18)\* · Enjoy: 86% construido (12 de 14) · En uso: 0%**
 
 \* Sergio (Pollo) y Verónica, responsables del depósito de DOS57, todavía no fueron relevados. Lo de DOS57 sale de Jazmín y de las planillas de stock. Cuando se los releve, el total puede crecer.
 
@@ -325,7 +324,7 @@ No se cuentan acá, para no contar dos veces: remitos y comidas (Logística), pr
 | 2 | Importadores del catálogo: Layher en DOS57, por espacio y período en Enjoy | ✅ | ✅ | Mismas planillas | Stock → Importar |
 | 3 | Varios depósitos y ubicación de cada pieza (principal, depósito del Pollo, herrería, techos; en Enjoy por espacio) | 🟡 | ✅ | Relevamiento Jazmín | Enjoy tiene el espacio por producto; en DOS57 el catálogo no distingue depósitos |
 | 4 | Ingreso de compras al stock general | ✅ | ✅ | Relevamiento Jazmín · Entrevista Mayra ("ingresar al stock una vez que llega") | Al registrar la recepción de la orden de compra (Proveedores, punto 14) se elige el producto de cada artículo y lo recibido se suma a su stock; si se corrige, se ajusta la diferencia |
-| 5 | Material Layher que se cruza con otros (Agesta, Airasca, Zamora, Jofre): alquilado, prestado, vendido o comprado, que se suma o se resta del stock por un tiempo | ⬜ | — | Relevamiento Jazmín · Entrevista Mayra · Conciliación AIRASCA · Cuadro Cruce de Material BB | El estado "alquilado" está previsto, falta la carga |
+| 5 | Material Layher que se cruza con otros (Agesta, Airasca, Zamora, Jofre): alquilado, prestado, vendido o comprado, que se suma o se resta del stock por un tiempo | ✅ | — | Relevamiento Jazmín · Entrevista Mayra · Conciliación AIRASCA · Cuadro Cruce de Material BB | Stock → Material con terceros: lo alquilado o prestado a otro sale de lo disponible hasta que vuelve, lo que otro nos alquila o presta se suma mientras dura, y la compra o la venta cambia el stock. Devoluciones parciales, alquiler mensual en euros como en el cuadro, la fecha de vuelta en el Calendario, e importación de cada hoja del cuadro de cruce con las piezas buscadas en el catálogo |
 | 6 | Conteo periódico: stock físico contra el sistema | 🟡 | 🟡 | Conteos por período de Enjoy · Relevamiento Jazmín | Los conteos entran por el importador; falta cargarlos en pantalla |
 | 7 | Activos propios por sector (oficinas, depósito, taller), bien de uso o bien de capital, y a quién se entregó cada computadora o celular | 🟡 | 🟡 | Stock Polo 52 - Dos57 2023 · Planilla Stocks - Celulares + Notebook · Entrevista Mayra | Stock → Activos tiene ubicación y responsable; faltan bien de uso o capital y la entrega a cada persona |
 | 8 | Alertas de stock mínimo y de faltantes | ✅ | ✅ | — | Stock → Alertas · menú |
@@ -357,12 +356,13 @@ No se cuentan acá, para no contar dos veces: remitos y comidas (Logística), pr
 - **Stock de producción** (punto 9): ¿se lleva en el sistema? ¿Quién lo carga ("la colorada" y Mario, según Jazmín)?
 - **Depósitos de DOS57** (punto 3): ¿cuántos son y qué hay en cada uno?
 - **Alquileres de temporada** (punto 5): ¿el costo del alquiler va al evento que lo usa o al depósito?
+- **Material con terceros** (punto 5): ¿quién lo carga, Jazmín o Mayra? ¿Se cargan las operaciones viejas del cuadro de BB (2023-2025) o sólo las que siguen abiertas? El alquiler a Zamora del segundo semestre 2026 tiene tres versiones (4%, 3% y 3,5%): ¿cuál quedó? Los stringers, fenólicos y otras piezas que no son del catálogo Layher se anotan pero no mueven el stock: ¿se suman al catálogo?
 
 ---
 
 ## 06 · Logística
 
-**DOS57: 86% construido (15,5 de 18) · Enjoy: 68% construido (9,5 de 14) · En uso: 0%**
+**DOS57: 94% construido (17 de 18) · Enjoy: 82% construido (11,5 de 14) · En uso: 0%**
 
 Enjoy tiene flota propia: 4 vehículos operativos según "Info Flotas - Dos57_Enjoy" (Mayra), más una hoja de bajas y ventas. El módulo de Flota ya funciona para las dos empresas, pero los vehículos de Enjoy todavía no están cargados. Hoy en Enjoy nadie lleva la flota: los papeles los tiene Mayra y la nafta se carga cuando hace falta y se paga de la caja chica. A futuro quieren llevar también bitácora y combustible, a cargo de Male y Chino. El movimiento diario sigue siendo solo de DOS57.
 
@@ -383,7 +383,7 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 | 5 | Taller: ingreso, presupuesto, retiro, costo final y cuenta corriente del taller | ✅ | ✅ | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR (Santi) | Flota → Taller |
 | 6 | Service por kilómetros: último service, cambio de aceite, aviso del próximo | 🟡 | 🟡 | Relevamiento Santi · NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hoja CAMBIO DE ACEITE (Santi) | El taller registra el servicio, pero no lleva km ni avisa el próximo |
 | 7 | Control de salida antes de cada viaje: papeles en verde, amarillo o rojo, con foto de cómo estaba todo al salir | ✅ | ✅ | Relevamiento Lorena (revisión con David) | Flota → Controles de salida |
-| 8 | Neumáticos y baterías por vehículo: fecha de colocación, km, próxima rotación | ⬜ | ⬜ | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hojas NEUMÁTICOS y BATERÍA (Santi) | — |
+| 8 | Neumáticos y baterías por vehículo: fecha de colocación, km, próxima rotación | ✅ | ✅ | NOVEDADES Y PENDIENTES PARQUE AUTOMOTOR, hojas NEUMÁTICOS y BATERÍA (Santi) | Flota → Neumáticos y baterías: cubiertas nuevas, rotaciones y baterías de cada vehículo, con su historial. La rotación se avisa por km (cada 10.000 km, como la planilla) y la batería antes del próximo cambio. Importa las dos hojas de la planilla |
 
 ### Viajes y combustible
 
@@ -392,7 +392,7 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 | 9 | Bitácora de viajes: choferes y planillas de camiones de Flor en un solo lugar, sin pagar dos veces el viático | ✅ | ⬜ | Excel de viajes de Luis · Planilla_Viajes_Camiones (Flor) · Respuesta de Male (nov 2026) | Bitácora · Enjoy: lo quieren a futuro, hoy no se lleva |
 | 10 | Movimiento diario: camiones y camionetas por separado | ✅ | — | Relevamiento Flor | Movimiento Diario |
 | 11 | Combustible: importador de la planilla de la estación (cuenta corriente YPF), cargas por vehículo, km por litro | ✅ | ⬜ | Planilla de Combustible (Santi) · DETALLE TECNICO CONSUMO CAMIONES (Flor) · Respuesta de Male (nov 2026) | Combustible · Enjoy: lo quieren a futuro, hoy no se lleva |
-| 12 | Combustible pagado de la caja (fuera de la cuenta YPF), atado al vehículo y al evento | 🟡 | ⬜ | Relevamiento Santi y Flor · Respuesta de Male (nov 2026) | DOS57: entra como gasto de combustible en la caja, pero sin vehículo · Enjoy: hoy se paga de la caja chica sin registrar el vehículo |
+| 12 | Combustible pagado de la caja (fuera de la cuenta YPF), atado al vehículo y al evento | ✅ | ✅ | Relevamiento Santi y Flor · Respuesta de Male (nov 2026) | Caja Global y Caja del mes: en un gasto de combustible se elige el vehículo, los litros y el evento, y queda como carga del vehículo en Combustible y en la logística y el costo real del evento. Sirve también para las cajas chicas de Enjoy |
 | 13 | Logística del evento: viajes y combustible de cada evento, con sugerencia de a qué evento corresponde cada viaje | ✅ | — | Relevamiento Flor | Evento → Logística |
 | 14 | Cajas de los choferes por evento ("caja Luis, caja Tati…") | 🟡 | — | Matriz de costo real (Flor) | Se cargan a mano en el costo real; no salen de la caja de cada chofer |
 
@@ -412,14 +412,15 @@ No se cuentan acá: seguros y siniestros de vehículos (Seguros), carnets y mult
 - **Flota de Enjoy** (puntos 9, 11 y 12): ¿desde cuándo quieren llevar bitácora y combustible? ¿Cargan en una estación con cuenta corriente o siempre de caja chica?
 - **Service por km** (punto 6): ¿cada cuántos km se hace el service de cada vehículo? ¿De dónde sale el km actual (bitácora, combustible, foto del tablero)?
 - **Cajas de los choferes** (punto 14): ¿cada chofer tiene una caja propia que rinde por evento, o es plata de la caja de Santi o de Andrea?
-- **Combustible de caja** (punto 12): ¿alcanza con elegir el vehículo y el evento al cargar el gasto en la caja?
+- **Combustible de caja** (punto 12): hoy en cada gasto de combustible de la caja se elige el vehículo, los litros y el evento. ¿Quién lo va a completar: Andrea al cargar la caja, o Santi después?
+- **Neumáticos y baterías** (punto 8): ¿la rotación cada 10.000 km vale también para los camiones y semis, o tienen otro intervalo? ¿Cada cuánto se cambia la batería (para que avise)? En la planilla, el "AUTOELEVADOR 4X4" no está en Flota con ese nombre: ¿cuál es? Según los km de la misma planilla, cinco camionetas ya pasaron la rotación.
 - **Diferencias de litros** entre la hoja de logística y la hoja de cada camión (pendiente del relevamiento de Flor).
 
 ---
 
 ## 07 · Seguros
 
-**DOS57: 89% construido (8 de 9) · Enjoy: 63% construido (5 de 8) · En uso: 0%**
+**DOS57: 94% construido (8,5 de 9) · Enjoy: 63% construido (5 de 8) · En uso: 0%**
 
 Responsables: Lorena (pólizas y siniestros de la flota, siniestros del personal), Andrea (ART/AP del personal y altas y bajas con el productor), Mayra (cuadro de seguros y pagos de las dos empresas).
 
@@ -430,7 +431,7 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 | # | Funcionalidad | DOS57 | Enjoy | De dónde sale | Dónde está |
 |---|---|---|---|---|---|
 | 1 | Seguro de cada empleado (ART si está registrado, AP si no): aseguradora, póliza, vencimiento y aviso | ✅ | ✅ | Relevamiento Andrea y Santi · Entrevista Mayra · Datos Personales (Lorena) | Seguro del personal: pólizas de la empresa, en cuál está cada persona y desde cuándo, aviso de vencimiento, de personal sin seguro y de inactivos que siguen anotados; primera carga desde el legajo |
-| 2 | Alta y baja de los eventuales en el seguro de AP por evento o viaje, con el pedido al productor | 🟡 | ❓ | Relevamiento Andrea ("dar de alta a todos porque viajaban") | Seguro del personal: altas y bajas con fecha y el mensaje para el productor listo para copiar; falta armar la lista a partir de quién viaja a cada evento |
+| 2 | Alta y baja de los eventuales en el seguro de AP por evento o viaje, con el pedido al productor | ✅ | ❓ | Relevamiento Andrea ("dar de alta a todos porque viajaban") | Seguro del personal → Por evento: quién va al evento sale del parte diario, las jornadas y la bitácora de viajes (y se suma gente a mano); muestra quién no está cubierto en esas fechas, lo anota en AP del primer al último día y el pedido al productor lo pide como alta "del … al …" con el nombre del evento |
 | 3 | Siniestros del personal (ART): datos del accidente, póliza, diagnóstico, alta médica, documentos y gastos; importador | ✅ | — | 2026_Informe Siniestros Personal (Lorena) | Siniestros |
 
 ### Vehículos
@@ -451,7 +452,7 @@ Se conecta con: RRHH (cada empleado y su cobertura), Logística (control de sali
 
 ### Para definir con el cliente
 
-- **ART/AP del personal** (puntos 1 y 2): en el legajo, "SANCOR" se tomó como accidentes personales (en el informe de siniestros aparece con jornaleros, fofis y extranjeros): ¿es así? ¿Alcanza con que el sistema arme la lista de quién viaja a cada evento para pedir las altas?
+- **ART/AP del personal** (puntos 1 y 2): en el legajo, "SANCOR" se tomó como accidentes personales (en el informe de siniestros aparece con jornaleros, fofis y extranjeros): ¿es así? El sistema ya arma la lista de quién va a cada evento y pide las altas "del … al …": ¿el productor las toma así, o prefiere el alta y la baja por separado?
 - **Cuadro de seguros**: el cuadro 2025 tiene otra aseguradora que la pizarra 2026 en 4 vehículos (la Sprinter AF728AT y la plancha AG958JV: Federación Patronal en el cuadro, San Cristóbal en la pizarra; el Volvo FTL303 y la Toyota KEX251: Experta en el cuadro, San Cristóbal en la pizarra). Además, 7 vehículos y 2 trailers no están en Flota: los autos de Andre, Mayra, Lore y Nico, la Amarok NSN325, la Ranger IHX980 con su trailer, el trailer de Enjoy y el semi AA830QO, que en la pizarra figura como AA830GU. El Mercedes azul WNO918 no tiene la póliza cargada porque en la pizarra el vencimiento es ilegible. ¿Hay un cuadro 2026? ¿Los autos personales se llevan en Flota?
 - **Enjoy** (punto 2): ¿su personal eventual también se da de alta en AP por evento?
 - **Seguros del evento** (punto 9): ¿quién los gestiona? ¿El predio pide certificado de cobertura?
@@ -522,9 +523,9 @@ Qué es: lo que sostiene a todos los pilares: acceso, permisos, configuración, 
 
 ## 12 · Calendario transversal *(pilar nuevo)*
 
-**DOS57: 93% construido (14 de 15) · Enjoy: 93% construido (14 de 15) · En uso: 0%**
+**DOS57: 100% construido (15 de 15) · Enjoy: 100% construido (15 de 15) · En uso: 0%**
 
-Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un solo lugar lo que pasa y lo que vence en todos los pilares, y cada persona ve lo suyo. Hoy suma 29 tipos de ítems.
+Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un solo lugar lo que pasa y lo que vence en todos los pilares, y cada persona ve lo suyo. Hoy suma 34 tipos de ítems.
 
 ### Cómo se ve
 
@@ -541,7 +542,7 @@ Por qué es un pilar propio: el calendario no pertenece a un área. Junta en un 
 |---|---|---|---|---|---|
 | 5 | Administración: eventos, de la fecha de inicio a la de fin | ✅ | ✅ | — | Calendario |
 | 6 | Administración: días de montaje y desmontaje, diferenciados del evento | ✅ | ✅ | Relevamiento Flor (armado → evento → desarme) | Calendario: cada día de armado y de desarme, con su número ("Montaje 2/3") |
-| 7 | Logística: tareas del cronograma de cada evento (Operación) | ⬜ | ⬜ | Carpeta del evento (Flor) · Planilla de producción (Daniel) | — |
+| 7 | Logística: tareas del cronograma de cada evento (Operación) | ✅ | ✅ | Carpeta del evento (Flor) · Planilla de producción (Daniel) | Calendario: una entrada por evento y día con sus tareas (las de Operación y el cronograma de Producción); en rojo si quedaron sin hacer |
 | 8 | RRHH: jornadas, partes diarios y liquidaciones (una entrada por día de pago, que abre el listado de ese día) | ✅ | ✅ | Reunión con Male (nov 2026) | Calendario |
 | 9 | Finanzas: echeqs, cuotas de AFIP y de créditos, facturas a cobrar, rendiciones de caja, saldo bajo, cuentas corrientes sin movimiento | ✅ | ✅ | — | Calendario |
 | 10 | Proveedores: vencimiento de facturas a pagar | ✅ | ✅ | — | Calendario |

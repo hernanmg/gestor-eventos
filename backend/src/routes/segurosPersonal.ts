@@ -7,7 +7,7 @@ import {
   uploadPolizaPersonal,
   listPolizasPersonal, createPolizaPersonal, updatePolizaPersonal, deletePolizaPersonal, getDocumentoPolizaPersonal,
   listPersonalSeguro, altaCobertura, altaCoberturaLote, bajaCobertura, updateCobertura, deleteCobertura,
-  pedidoProductor, marcarPedidoInformado, sugerenciasLegajo,
+  pedidoProductor, marcarPedidoInformado, sugerenciasLegajo, personalEvento, altasEvento,
 } from '../controllers/segurosPersonal.controller';
 
 function docMiddleware(req: any, res: any, next: any) {
@@ -39,6 +39,9 @@ router.post('/coberturas/lote',       escritura, asyncHandler(altaCoberturaLote)
 router.patch('/coberturas/:id/baja',  escritura, asyncHandler(bajaCobertura));
 router.put('/coberturas/:id',         escritura, asyncHandler(updateCobertura));
 router.delete('/coberturas/:id',      escritura, asyncHandler(deleteCobertura));
+
+router.get('/evento/:eventoId',        escritura, asyncHandler(personalEvento));
+router.post('/evento/:eventoId/altas', escritura, asyncHandler(altasEvento));
 
 router.get('/pedido-productor',       escritura, asyncHandler(pedidoProductor));
 router.post('/pedido-productor/marcar', escritura, asyncHandler(marcarPedidoInformado));
